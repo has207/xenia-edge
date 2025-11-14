@@ -26,8 +26,10 @@
 
 int main(int argc, char** argv) {
 #if XE_PLATFORM_LINUX
-  // Force X11 backend (Vulkan needs XCB, not Wayland)
-  qputenv("QT_QPA_PLATFORM", "xcb");
+  // Only set if user has NOT defined QT_QPA_PLATFORM
+  if (!secure_getenv("QT_QPA_PLATFORM")) {
+    setenv("QT_QPA_PLATFORM", "xcb", 1);
+  }
 #endif
 
   QApplication qt_app(argc, argv);
