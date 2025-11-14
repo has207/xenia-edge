@@ -78,7 +78,7 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           sudo apt-add-repository "deb http://apt.llvm.org/${UBUNTU_BASE}/ llvm-toolchain-${UBUNTU_BASE}-21 main"
           sudo apt-get -y update
-          sudo apt-get -y install mesa-vulkan-drivers valgrind libc++-dev libc++abi-dev libsdl2-dev libvulkan-dev libx11-xcb-dev clang-21 ninja-build spirv-tools libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-cursor0 libxcb-shape0 libfontconfig1-dev libxtst-dev
+          sudo apt-get -y install mesa-vulkan-drivers valgrind libc++-dev libc++abi-dev libsdl2-dev libvulkan-dev libx11-xcb-dev clang-21 ninja-build spirv-tools libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-cursor0 libxcb-shape0 libfontconfig1-dev libxtst-dev wayland-protocols libwayland-dev libwayland-bin qt6-wayland qt6-wayland-dev
 
           # Install Qt 6.9.2 via aqtinstall
           if [ '${{ steps.cache-qt-linux.outputs.cache-hit }}' != 'true' ]; then
@@ -135,6 +135,8 @@ jobs:
 
           # Use linuxdeploy to bundle Qt dependencies
           export QMAKE=/opt/Qt/6.9.2/gcc_64/bin/qmake
+          export EXTRA_QT_PLUGINS="waylandcompositor"
+          export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
           export LD_LIBRARY_PATH=/opt/Qt/6.9.2/gcc_64/lib:$LD_LIBRARY_PATH
 
           # Install icons with proper naming for linuxdeploy
