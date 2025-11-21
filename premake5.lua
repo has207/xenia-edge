@@ -172,7 +172,7 @@ filter("platforms:Linux")
   local qt_dir = os.getenv("QT_DIR")
   if qt_dir then
     -- Extract Qt version from path (e.g., /opt/Qt/6.9.2/gcc_64 -> 6.9.2)
-    local qt_version = path.getname(path.getdirectory(qt_dir))
+    local qt_version = string.match(qt_dir, "%d+[%d.,]*")
     includedirs({
       path.join(qt_dir, "include"),
       path.join(qt_dir, "include/QtCore"),
