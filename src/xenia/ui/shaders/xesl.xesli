@@ -1125,28 +1125,28 @@ float4_xe float_x4_xe(float x) { return float4_xe(x, x, x, x); }
     return ctz(value);
   }
   uint first_one_bit_high_xe(int value) {
-    return 32u - uint(clz(value));
+    return 31u - clz(uint(value));
   }
   uint2_xe first_one_bit_high_xe(int2_xe value) {
-    return uint_x2_xe(32u) - uint2_xe(clz(value));
+    return uint_x2_xe(31u) - clz(uint2_xe(value));
   }
   uint3_xe first_one_bit_high_xe(int3_xe value) {
-    return uint_x3_xe(32u) - uint3_xe(clz(value));
+    return uint_x3_xe(31u) - clz(uint3_xe(value));
   }
   uint4_xe first_one_bit_high_xe(int4_xe value) {
-    return uint_x4_xe(32u) - uint4_xe(clz(value));
+    return uint_x4_xe(31u) - clz(uint4_xe(value));
   }
   uint first_one_bit_high_xe(uint value) {
-    return 32u - clz(value);
+    return 31u - clz(value);
   }
   uint2_xe first_one_bit_high_xe(uint2_xe value) {
-    return uint_x2_xe(32u) - clz(value);
+    return uint_x2_xe(31u) - clz(value);
   }
   uint3_xe first_one_bit_high_xe(uint3_xe value) {
-    return uint_x3_xe(32u) - clz(value);
+    return uint_x3_xe(31u) - clz(value);
   }
   uint4_xe first_one_bit_high_xe(uint4_xe value) {
-    return uint_x4_xe(32u) - clz(value);
+    return uint_x4_xe(31u) - clz(value);
   }
 #else
   #error Bit count operations not defined for the target language.
