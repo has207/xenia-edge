@@ -3,8 +3,10 @@
 // Released under the BSD license - see LICENSE in the root for more details.
 
 #include "xenia/gpu/metal/metal_debug_utils.h"
-#include "xenia/gpu/metal/metal_command_processor.h"
+
+#include "xenia/base/logging.h"
 #include "xenia/base/string.h"
+#include "xenia/gpu/metal/metal_command_processor.h"
 #include "third_party/metal-cpp/Foundation/Foundation.hpp"
 #include "third_party/fmt/include/fmt/format.h"
 #include <cstdio>

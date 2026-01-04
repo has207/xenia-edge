@@ -1,4 +1,6 @@
 #include "xenia/gpu/metal/metal_shared_memory.h"
+
+#include "xenia/base/logging.h"
 #include "xenia/gpu/metal/metal_command_processor.h"
 #include "xenia/ui/metal/metal_util.h"
 

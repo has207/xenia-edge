@@ -22,6 +22,7 @@
 #include "third_party/stb/stb_image_write.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
+#include "xenia/base/logging.h"
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/metal/metal_texture_cache.h"
