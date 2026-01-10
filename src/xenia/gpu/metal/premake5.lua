@@ -166,6 +166,7 @@ project("xenia-gpu-metal-trace-viewer")
 
     links {
       "Metal.framework",
+      "MetalFX.framework",
       "MetalKit.framework",
       "QuartzCore.framework",
       "SDL2",
@@ -264,6 +265,7 @@ project("xenia-gpu-metal-trace-dump")
 
     links {
       "Metal.framework",
+      "MetalFX.framework",
       "MetalKit.framework",
       "metalirconverter",
       "dxilconv",
