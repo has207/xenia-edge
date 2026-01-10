@@ -17,6 +17,7 @@
 #include "xenia/base/math.h"
 #include "xenia/base/profiling.h"
 #include "xenia/gpu/metal/metal_command_processor.h"
+#include "xenia/gpu/metal/metal_resource_tracker.h"
 
 
 namespace xe {
@@ -220,6 +221,7 @@ MTL::Buffer* MetalBufferCache::CreateBuffer(size_t size, MTL::ResourceOptions op
     XELOGE("Metal buffer cache: Failed to create buffer of size {}", size);
     return nullptr;
   }
+  TrackMetalBufferCreated(size);
 
   return buffer;
 }

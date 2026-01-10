@@ -15,6 +15,7 @@
 
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/xenos.h"
+#include "xenia/gpu/metal/metal_resource_tracker.h"
 #include "xenia/memory.h"
 
 #include "third_party/metal-cpp/Metal/Metal.hpp"
@@ -69,6 +70,7 @@ class MetalBufferCache {
     MetalBuffer() : buffer(nullptr), capacity(0), size(0), is_dynamic(false) {}
     ~MetalBuffer() {
       if (buffer) {
+        TrackMetalBufferReleased(buffer->length());
         buffer->release();
         buffer = nullptr;
       }

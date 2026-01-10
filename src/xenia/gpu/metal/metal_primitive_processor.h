@@ -65,6 +65,7 @@ class MetalPrimitiveProcessor : public PrimitiveProcessor {
   // Built-in index buffer for primitive type conversion
   MTL::Buffer* builtin_index_buffer_ = nullptr;
   uint64_t builtin_index_buffer_gpu_address_ = 0;
+  size_t builtin_index_buffer_size_ = 0;
 
   // Per-frame index buffer for primitive conversion
   struct FrameIndexBuffer {

@@ -48,6 +48,8 @@ project("xenia-gpu-metal")
       "metal_primitive_processor.h",
       "metal_render_target_cache.cc",
       "metal_render_target_cache.h",
+      "metal_resource_tracker.cc",
+      "metal_resource_tracker.h",
       "metal_shader.cc",
       "metal_shader.h",
       "metal_shader_cache.cc",
