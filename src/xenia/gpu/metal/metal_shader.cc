@@ -23,7 +23,6 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
-#include "xenia/gpu/dxbc.h"
 #include "xenia/gpu/dxbc_shader.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/metal/dxbc_to_dxil_converter.h"
@@ -34,59 +33,6 @@
 namespace xe {
 namespace gpu {
 namespace metal {
-
-namespace {
-
-bool DxbcFeatureInfoHasROV(const std::vector<uint8_t>& dxbc_data,
-                           bool& sfi_present) {
-  sfi_present = false;
-  if (dxbc_data.size() < sizeof(dxbc::ContainerHeader)) {
-    return false;
-  }
-
-  dxbc::ContainerHeader header = {};
-  std::memcpy(&header, dxbc_data.data(), sizeof(header));
-  if (header.fourcc != dxbc::ContainerHeader::kFourCC) {
-    return false;
-  }
-
-  const size_t offsets_bytes =
-      size_t(header.blob_count) * sizeof(uint32_t);
-  const size_t header_bytes = sizeof(dxbc::ContainerHeader) + offsets_bytes;
-  if (dxbc_data.size() < header_bytes) {
-    return false;
-  }
-
-  const uint8_t* offsets_base = dxbc_data.data() + sizeof(dxbc::ContainerHeader);
-  for (uint32_t i = 0; i < header.blob_count; ++i) {
-    uint32_t blob_offset = 0;
-    std::memcpy(&blob_offset, offsets_base + i * sizeof(uint32_t),
-                sizeof(blob_offset));
-    if (blob_offset + sizeof(dxbc::BlobHeader) > dxbc_data.size()) {
-      continue;
-    }
-
-    dxbc::BlobHeader blob_header = {};
-    std::memcpy(&blob_header, dxbc_data.data() + blob_offset,
-                sizeof(blob_header));
-    if (blob_header.fourcc != dxbc::BlobHeader::FourCC::kShaderFeatureInfo) {
-      continue;
-    }
-
-    sfi_present = true;
-    const size_t payload_offset = blob_offset + sizeof(dxbc::BlobHeader);
-    if (payload_offset + sizeof(dxbc::ShaderFeatureInfo) > dxbc_data.size()) {
-      return false;
-    }
-    dxbc::ShaderFeatureInfo info = {};
-    std::memcpy(&info, dxbc_data.data() + payload_offset, sizeof(info));
-    return (info.feature_flags[0] & dxbc::kShaderFeature0_ROVs) != 0;
-  }
-
-  return false;
-}
-
-}  // namespace
 
 MetalShader::MetalShader(xenos::ShaderType shader_type,
                          uint64_t ucode_data_hash, const uint32_t* ucode_dwords,
@@ -156,17 +102,6 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
       }
     }
   }
-  if (cvars::metal_edram_rov && shader().type() == xenos::ShaderType::kPixel) {
-    static int rov_feature_log_count = 0;
-    if (rov_feature_log_count < 16) {
-      bool sfi_present = false;
-      bool rov_feature = DxbcFeatureInfoHasROV(dxbc_data, sfi_present);
-      XELOGI("MetalShader: DXBC SFI0 present={} ROV_feature={}", sfi_present,
-             rov_feature);
-      ++rov_feature_log_count;
-    }
-  }
-
   auto dump_msc_failure = [&](const char* reason) {
     if (cvars::dump_shaders.empty()) {
       return;
