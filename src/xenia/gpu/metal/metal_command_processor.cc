@@ -2062,7 +2062,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   LogCacheStatsIfNeeded();
   // Debug flags for background-related render targets.
   bool debug_bg_rt0_320x2048 = false;
-  bool debug_bg_rt0_1280x2048 = false;
   uint32_t normalized_color_mask = 0;
   uint32_t ordered_blend_mask = 0;
   bool use_ordered_blend_fallback = false;
@@ -2371,7 +2370,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         debug_bg_rt0_320x2048 = true;
         XELOGI("BG_DEBUG: draw {} into 320x2048 RT0", draw_counter);
       } else if (rt0_w == 1280 && rt0_h == 2048) {
-        debug_bg_rt0_1280x2048 = true;
         XELOGI("BG_DEBUG: draw {} into 1280x2048 RT0", draw_counter);
       }
     }
@@ -7883,10 +7881,6 @@ void MetalCommandProcessor::LogInterpolators(MetalShader* vertex_shader,
   if (pixel_shader) {
     // Get interpolators read by pixel shader
     const RegisterFile& regs = *register_file_;
-
-    // Debug flag: set when this draw targets the 320x2048 color RT0 used for
-    // the A-Train background pass so we can log more detailed state.
-    bool debug_bg_rt0_320x2048 = false;
 
     auto sq_program_cntl = regs.Get<reg::SQ_PROGRAM_CNTL>();
     auto sq_context_misc = regs.Get<reg::SQ_CONTEXT_MISC>();
