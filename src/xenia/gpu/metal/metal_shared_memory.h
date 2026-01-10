@@ -10,17 +10,8 @@
 #ifndef XENIA_GPU_METAL_METAL_SHARED_MEMORY_H_
 #define XENIA_GPU_METAL_METAL_SHARED_MEMORY_H_
 
-// TODO(Metal): Performance Optimization - Zero-Copy Memory
-// Currently, Xbox memory is file-backed (mmap with MAP_SHARED), which Metal
-// cannot directly wrap with newBufferWithBytesNoCopy (requires MAP_ANON).
-// We create a separate Metal buffer and copy data, similar to D3D12.
-// 
-// Future optimization for macOS ARM64:
-// - Allocate Xbox memory with MAP_ANON | MAP_SHARED instead of file-backed
-// - Use vm_remap() for multiple memory views
-// - Metal can then directly wrap the memory for zero-copy GPU access
-// - Expected benefits: ~50% memory reduction, no UploadRanges overhead
-// - See memory_mac.cc for implementation when ready
+// Metal shared memory attempts bytes-no-copy aliasing on unified-memory
+// devices and falls back to staged uploads when unsupported.
 
 #include "xenia/gpu/shared_memory.h"
 #include "xenia/ui/metal/metal_api.h"
@@ -52,6 +43,7 @@ public:
 private:
     MetalCommandProcessor& command_processor_;
     MTL::Buffer* buffer_ = nullptr;
+    bool use_zero_copy_ = false;
 
 };
 
