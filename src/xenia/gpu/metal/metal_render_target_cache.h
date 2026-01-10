@@ -112,12 +112,10 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   // Xbox 360's -32...32 range. When this is true, resolve/copy must compensate
   // to match the guest packing expectations.
   bool IsFixedRG16TruncatedToMinus1To1() const {
-    return GetPath() == Path::kHostRenderTargets &&
-           !cvars::snorm16_render_target_full_range;
+    return !cvars::snorm16_render_target_full_range;
   }
   bool IsFixedRGBA16TruncatedToMinus1To1() const {
-    return GetPath() == Path::kHostRenderTargets &&
-           !cvars::snorm16_render_target_full_range;
+    return !cvars::snorm16_render_target_full_range;
   }
 
   void ClearCache() override;
@@ -162,40 +160,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
 
   MTL::Buffer* GetEdramBuffer() const { return edram_buffer_; }
 
-  // Debug/slow-path: dump current host RT contents into EDRAM.
-  void FlushEdramFromHostRenderTargets();
-
-  // Per-draw ordered blending fallback: dump a scissor region from a specific
-  // color RT into the EDRAM buffer before blending.
-  void DumpRenderTargetToEdramRect(MetalRenderTarget* render_target,
-                                   uint32_t scissor_x, uint32_t scissor_y,
-                                   uint32_t scissor_width,
-                                   uint32_t scissor_height,
-                                   MTL::CommandBuffer* command_buffer);
-
-  // Per-draw ordered blending fallback: blend a scissor region from a specific
-  // color RT into the EDRAM buffer.
-  void BlendRenderTargetToEdramRect(MetalRenderTarget* render_target,
-                                    uint32_t rt_index,
-                                    uint32_t rt_write_mask,
-                                    uint32_t scissor_x,
-                                    uint32_t scissor_y,
-                                    uint32_t scissor_width,
-                                    uint32_t scissor_height,
-                                    MTL::CommandBuffer* command_buffer);
-  void ReloadRenderTargetFromEdramTiles(MetalRenderTarget* render_target,
-                                        uint32_t tile_x0, uint32_t tile_y0,
-                                        uint32_t tile_x1, uint32_t tile_y1,
-                                        MTL::CommandBuffer* command_buffer);
-  void SetOrderedBlendCoverageActive(bool active);
-  bool IsOrderedBlendCoverageActive() const {
-    return ordered_blend_coverage_active_;
-  }
-  MTL::Texture* GetOrderedBlendCoverageTexture() const {
-    return ordered_blend_coverage_texture_;
-  }
-  static constexpr uint32_t kOrderedBlendCoverageAttachmentIndex = 4;
-
   CacheStats GetCacheStats() const;
 
   // Resolve (copy) render targets to shared memory
@@ -215,8 +179,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
 
  private:
   static uint32_t GetMetalEdramDumpFormat(RenderTargetKey key);
-  bool EnsureOrderedBlendCoverageTexture(uint32_t width, uint32_t height,
-                                         uint32_t sample_count);
   MTL::Library* GetOrCreateEdramLoadLibrary(bool msaa);
   MTL::RenderPipelineState* GetOrCreateEdramLoadPipeline(
       MTL::PixelFormat dest_format, uint32_t sample_count);
@@ -226,7 +188,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
 
   // Metal device reference
   MTL::Device* device_ = nullptr;
-  bool raster_order_groups_supported_ = false;
   bool gamma_render_target_as_srgb_ = false;
 
   std::unique_ptr<MetalHeapPool> render_target_heap_pool_;
@@ -248,12 +209,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   MTL::ComputePipelineState* edram_dump_color_32bpp_2xmsaa_pipeline_ = nullptr;
   MTL::ComputePipelineState* edram_dump_color_32bpp_4xmsaa_pipeline_ = nullptr;
   // EDRAM blend compute shaders (host RT -> EDRAM with blend/keep mask).
-  MTL::ComputePipelineState* edram_blend_32bpp_1xmsaa_pipeline_ = nullptr;
-  MTL::ComputePipelineState* edram_blend_32bpp_2xmsaa_pipeline_ = nullptr;
-  MTL::ComputePipelineState* edram_blend_32bpp_4xmsaa_pipeline_ = nullptr;
-  MTL::ComputePipelineState* edram_blend_64bpp_1xmsaa_pipeline_ = nullptr;
-  MTL::ComputePipelineState* edram_blend_64bpp_2xmsaa_pipeline_ = nullptr;
-  MTL::ComputePipelineState* edram_blend_64bpp_4xmsaa_pipeline_ = nullptr;
   // Color, 64bpp.
   MTL::ComputePipelineState* edram_dump_color_64bpp_1xmsaa_pipeline_ = nullptr;
   MTL::ComputePipelineState* edram_dump_color_64bpp_2xmsaa_pipeline_ = nullptr;
@@ -291,11 +246,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   MTL::ComputePipelineState* host_depth_store_pipelines_[3] = {};
 
   // Per-draw ordered-blend coverage attachment.
-  bool ordered_blend_coverage_active_ = false;
-  MTL::Texture* ordered_blend_coverage_texture_ = nullptr;
-  uint32_t ordered_blend_coverage_width_ = 0;
-  uint32_t ordered_blend_coverage_height_ = 0;
-  uint32_t ordered_blend_coverage_samples_ = 0;
 
   // Transfer shaders (host RT ownership transfers) - modeled after D3D12.
 
@@ -516,11 +466,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
                          uint32_t dump_rows, uint32_t dump_pitch,
                          MTL::CommandBuffer* command_buffer = nullptr);
 
-  // Blends and packs host render targets into EDRAM for resolve paths.
-  void BlendRenderTargetsToEdram(uint32_t dump_base,
-                                 uint32_t dump_row_length_used,
-                                 uint32_t dump_rows, uint32_t dump_pitch,
-                                 MTL::CommandBuffer* command_buffer = nullptr);
 };
 
 }  // namespace metal
