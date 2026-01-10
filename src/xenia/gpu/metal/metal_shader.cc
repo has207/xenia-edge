@@ -13,6 +13,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <inttypes.h>
+#include <dispatch/dispatch.h>
+
+#ifndef DISPATCH_DATA_DESTRUCTOR_NONE
+#define DISPATCH_DATA_DESTRUCTOR_NONE DISPATCH_DATA_DESTRUCTOR_DEFAULT
+#endif
 
 #include "xenia/base/assert.h"
 #include "xenia/base/filesystem.h"
@@ -22,6 +27,7 @@
 #include "xenia/gpu/dxbc_shader.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/metal/dxbc_to_dxil_converter.h"
+#include "xenia/gpu/metal/metal_shader_cache.h"
 #include "xenia/gpu/metal/metal_shader_converter.h"
 #include "xenia/ui/metal/metal_api.h"
 
@@ -113,6 +119,42 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
   if (dxbc_data.empty()) {
     XELOGE("MetalShader: No translated DXBC data available");
     return false;
+  }
+
+  const uint64_t shader_cache_key = MetalShaderCache::GetCacheKey(
+      shader().ucode_data_hash(), modification(),
+      static_cast<uint32_t>(shader().type()));
+
+  if (cvars::metal_shader_disk_cache && g_metal_shader_cache &&
+      g_metal_shader_cache->IsInitialized()) {
+    MetalShaderCache::CachedMetallib cached;
+    if (g_metal_shader_cache->Load(shader_cache_key, &cached)) {
+      NS::Error* error = nullptr;
+      dispatch_data_t cached_data = dispatch_data_create(
+          cached.metallib_data.data(), cached.metallib_data.size(), nullptr,
+          DISPATCH_DATA_DESTRUCTOR_NONE);
+      metal_library_ = device->newLibrary(cached_data, &error);
+      dispatch_release(cached_data);
+      if (metal_library_) {
+        function_name_ = cached.function_name;
+        metallib_data_ = std::move(cached.metallib_data);
+        NS::String* function_name_ns = NS::String::string(
+            function_name_.c_str(), NS::UTF8StringEncoding);
+        metal_function_ = metal_library_->newFunction(function_name_ns);
+        if (metal_function_) {
+          if (cvars::metal_verbose_logging) {
+            XELOGI("MetalShader: Loaded cached metallib (key {:016X})",
+                   shader_cache_key);
+          }
+          return true;
+        }
+        metal_library_->release();
+        metal_library_ = nullptr;
+      } else if (error && cvars::metal_verbose_logging) {
+        XELOGI("MetalShader: Failed to load cached metallib: {}",
+               error->localizedDescription()->utf8String());
+      }
+    }
   }
   if (cvars::metal_edram_rov && shader().type() == xenos::ShaderType::kPixel) {
     static int rov_feature_log_count = 0;
@@ -261,7 +303,7 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
   NS::Error* error = nullptr;
   dispatch_data_t data =
       dispatch_data_create(metallib_data_.data(), metallib_data_.size(),
-                           nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+                           nullptr, DISPATCH_DATA_DESTRUCTOR_NONE);
 
   metal_library_ = device->newLibrary(data, &error);
   dispatch_release(data);
@@ -310,6 +352,12 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
       XELOGE("  - {}", name->utf8String());
     }
     return false;
+  }
+
+  if (cvars::metal_shader_disk_cache && g_metal_shader_cache &&
+      g_metal_shader_cache->IsInitialized()) {
+    g_metal_shader_cache->Store(shader_cache_key, function_name_,
+                                metallib_data_.data(), metallib_data_.size());
   }
 
   XELOGI("MetalShader: Successfully created Metal shader function");

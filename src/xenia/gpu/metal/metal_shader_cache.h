@@ -1,56 +1,74 @@
 /**
- ******************************************************************************
+ *******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
- ******************************************************************************
- * Copyright 2025 Ben Vanik. All rights reserved.                             *
- * Released under the BSD license - see LICENSE in the root for more details. *
- ******************************************************************************
+ *******************************************************************************
  */
 
 #ifndef XENIA_GPU_METAL_METAL_SHADER_CACHE_H_
 #define XENIA_GPU_METAL_METAL_SHADER_CACHE_H_
 
+#include <cstdint>
+#include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
-#include <mutex>
 
 namespace xe {
 namespace gpu {
 namespace metal {
 
-// Simple cache for DXBC to DXIL conversions to avoid re-running Wine
 class MetalShaderCache {
  public:
-  struct CacheEntry {
-    std::vector<uint8_t> dxil_data;
-    uint64_t timestamp;
+  struct CachedMetallib {
+    std::string function_name;
+    std::vector<uint8_t> metallib_data;
   };
 
-  // Get cached DXIL data if available
-  bool GetCachedDxil(uint64_t shader_hash, std::vector<uint8_t>& dxil_out);
-  
-  // Store DXIL data in cache
-  void StoreDxil(uint64_t shader_hash, const std::vector<uint8_t>& dxil_data);
-  
-  // Clear all cached entries
-  void Clear();
-  
-  // Get cache statistics
-  size_t GetCacheSize() const { return cache_.size(); }
-  size_t GetTotalBytes() const;
-  
-  // Save/load cache from disk (optional)
-  bool SaveToFile(const std::string& path);
-  bool LoadFromFile(const std::string& path);
+  struct CacheStats {
+    size_t entry_count = 0;
+    size_t total_bytes = 0;
+    size_t memory_entry_count = 0;
+    size_t memory_total_bytes = 0;
+  };
+
+  MetalShaderCache() = default;
+  ~MetalShaderCache() = default;
+
+  void Initialize(const std::filesystem::path& cache_dir);
+  void Shutdown();
+
+  bool IsInitialized() const { return initialized_; }
+  std::filesystem::path cache_dir() const { return cache_dir_; }
+
+  static uint64_t GetCacheKey(uint64_t ucode_hash, uint64_t modification,
+                             uint32_t stage);
+
+  bool Load(uint64_t cache_key, CachedMetallib* out);
+  void Store(uint64_t cache_key, std::string_view function_name,
+             const uint8_t* metallib_data, size_t metallib_size);
+
+  CacheStats GetStats() const;
 
  private:
+  struct MemoryEntry {
+    std::string function_name;
+    std::vector<uint8_t> metallib_data;
+  };
+
+  bool LoadFromDisk(uint64_t cache_key, CachedMetallib* out);
+  bool StoreToDisk(uint64_t cache_key, const CachedMetallib& in);
+
+  std::filesystem::path GetDiskPath(uint64_t cache_key) const;
+
   mutable std::mutex mutex_;
-  std::unordered_map<uint64_t, CacheEntry> cache_;
+  bool initialized_ = false;
+  std::filesystem::path cache_dir_;
+  std::unordered_map<uint64_t, MemoryEntry> cache_;
 };
 
-// Global shader cache instance
 extern std::unique_ptr<MetalShaderCache> g_metal_shader_cache;
 
 }  // namespace metal
