@@ -8,14 +8,20 @@
  */
 
 #include "xenia/gpu/metal/metal_command_processor.h"
+#include "xenia/gpu/gpu_flags.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstdint>
+#include <chrono>
 #include <cstdlib>
+#include <dispatch/dispatch.h>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <cstring>
 #include <unordered_set>
 #include <sstream>
@@ -23,6 +29,8 @@
 #include <vector>
 
 #include "third_party/metal-cpp/Foundation/NSProcessInfo.hpp"
+#include "third_party/metal-cpp/Foundation/NSURL.hpp"
+#include "third_party/metal-cpp/Metal/MTLEvent.hpp"
 
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
@@ -35,9 +43,12 @@
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/gpu/metal/metal_shader_converter.h"
+#include "xenia/gpu/metal/metal_shader_cache.h"
+#include "xenia/gpu/metal/metal_resource_tracker.h"
 #include "xenia/gpu/metal/metal_graphics_system.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
+#include "third_party/fmt/include/fmt/format.h"
 using BYTE = uint8_t;
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_quad_hs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_triangle_hs.h"
@@ -52,6 +63,10 @@ using BYTE = uint8_t;
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/tessellation_adaptive_vs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/tessellation_indexed_vs.h"
 #include "xenia/ui/metal/metal_presenter.h"
+
+#ifndef DISPATCH_DATA_DESTRUCTOR_NONE
+#define DISPATCH_DATA_DESTRUCTOR_NONE DISPATCH_DATA_DESTRUCTOR_DEFAULT
+#endif
 
 
 // Metal IR Converter Runtime - defines IRDescriptorTableEntry and bind points
@@ -136,6 +151,44 @@ bool ShouldDumpGeometryShaders() {
   }
   return std::strcmp(env, "0") != 0;
 }
+
+constexpr uint32_t kPipelineDiskCacheMagic = 0x43504D58;  // 'XMPC'
+constexpr uint32_t kPipelineDiskCacheVersion = 1;
+constexpr size_t kPipelineDiskCacheMaxEntrySize = 1 << 20;
+
+XEPACKEDSTRUCT(PipelineDiskCacheHeader, {
+  uint32_t magic;
+  uint32_t version;
+  uint32_t reserved[2];
+});
+
+XEPACKEDSTRUCT(PipelineDiskCacheEntryHeader, {
+  uint32_t entry_size;
+  uint32_t reserved;
+});
+
+XEPACKEDSTRUCT(PipelineDiskCacheEntryBase, {
+  uint64_t pipeline_key;
+  uint64_t vertex_shader_cache_key;
+  uint64_t pixel_shader_cache_key;
+  uint32_t edram_rov_used;
+  uint32_t edram_compute_fallback_mask;
+  uint32_t sample_count;
+  uint32_t depth_format;
+  uint32_t stencil_format;
+  uint32_t color_formats[4];
+  uint32_t coverage_format;
+  uint32_t normalized_color_mask;
+  uint32_t alpha_to_mask_enable;
+  uint32_t blendcontrol[4];
+  uint32_t vertex_attribute_count;
+  uint32_t vertex_layout_count;
+});
+
+static_assert(sizeof(PipelineDiskCacheHeader) == 16,
+              "Unexpected pipeline disk cache header size.");
+static_assert(sizeof(PipelineDiskCacheEntryHeader) == 8,
+              "Unexpected pipeline disk cache entry header size.");
 
 const char* GetShaderDumpDir() {
   const char* dump_dir = std::getenv("XENIA_SHADER_DUMP_DIR");
@@ -437,10 +490,12 @@ MetalCommandProcessor::~MetalCommandProcessor() {
     render_pass_descriptor_ = nullptr;
   }
   if (render_target_texture_) {
+    TrackMetalTextureReleased(render_target_texture_);
     render_target_texture_->release();
     render_target_texture_ = nullptr;
   }
   if (depth_stencil_texture_) {
+    TrackMetalTextureReleased(depth_stencil_texture_);
     depth_stencil_texture_->release();
     depth_stencil_texture_ = nullptr;
   }
@@ -492,10 +547,12 @@ MetalCommandProcessor::~MetalCommandProcessor() {
 
   // Release IR Converter runtime buffers and resources
   if (null_buffer_) {
+    TrackMetalBufferReleased(null_buffer_->length());
     null_buffer_->release();
     null_buffer_ = nullptr;
   }
   if (null_texture_) {
+    TrackMetalTextureReleased(null_texture_);
     null_texture_->release();
     null_texture_ = nullptr;
   }
@@ -515,30 +572,38 @@ MetalCommandProcessor::~MetalCommandProcessor() {
   uniforms_buffer_ = nullptr;
   top_level_ab_ = nullptr;
   draw_args_buffer_ = nullptr;
+
+  ShutdownShaderStorage();
 }
 
 MetalCommandProcessor::DrawRingBuffers::~DrawRingBuffers() {
   if (res_heap_ab) {
+    TrackMetalBufferReleased(res_heap_ab->length());
     res_heap_ab->release();
     res_heap_ab = nullptr;
   }
   if (smp_heap_ab) {
+    TrackMetalBufferReleased(smp_heap_ab->length());
     smp_heap_ab->release();
     smp_heap_ab = nullptr;
   }
   if (cbv_heap_ab) {
+    TrackMetalBufferReleased(cbv_heap_ab->length());
     cbv_heap_ab->release();
     cbv_heap_ab = nullptr;
   }
   if (uniforms_buffer) {
+    TrackMetalBufferReleased(uniforms_buffer->length());
     uniforms_buffer->release();
     uniforms_buffer = nullptr;
   }
   if (top_level_ab) {
+    TrackMetalBufferReleased(top_level_ab->length());
     top_level_ab->release();
     top_level_ab = nullptr;
   }
   if (draw_args_buffer) {
+    TrackMetalBufferReleased(draw_args_buffer->length());
     draw_args_buffer->release();
     draw_args_buffer = nullptr;
   }
@@ -665,6 +730,16 @@ bool MetalCommandProcessor::SetupContext() {
   }
   XELOGI("MetalCommandProcessor::SetupContext: Got device and queue");
 
+  wait_shared_event_ = device_->newSharedEvent();
+  if (wait_shared_event_) {
+    wait_shared_event_->setLabel(
+        NS::String::string("XeniaWaitEvent", NS::UTF8StringEncoding));
+    wait_shared_event_value_ = 0;
+  } else {
+    XELOGW("MetalCommandProcessor: SharedEvent unavailable; falling back to "
+           "waitUntilCompleted");
+  }
+
   bool supports_apple7 = device_->supportsFamily(MTL::GPUFamilyApple7);
   bool supports_mac2 = device_->supportsFamily(MTL::GPUFamilyMac2);
   bool supports_metal3 = device_->supportsFamily(MTL::GPUFamilyMetal3);
@@ -676,6 +751,9 @@ bool MetalCommandProcessor::SetupContext() {
   mesh_shader_supported_ = supports_apple7 || supports_mac2;
   XELOGI("MetalCommandProcessor::SetupContext: Mesh shaders supported={}",
          mesh_shader_supported_);
+
+  draw_ring_count_ =
+      std::max<int32_t>(1, ::cvars::metal_draw_ring_count);
 
   // Initialize shared memory
   XELOGI("MetalCommandProcessor::SetupContext: Creating shared memory");
@@ -729,13 +807,14 @@ bool MetalCommandProcessor::SetupContext() {
 
   if (mesh_shader_supported_) {
     uint64_t tess_tables_size = IRRuntimeTessellatorTablesSize();
-    tessellator_tables_buffer_ =
-        device_->newBuffer(tess_tables_size, MTL::ResourceStorageModeShared);
-    if (!tessellator_tables_buffer_) {
-      XELOGE("Failed to allocate tessellator tables buffer ({} bytes)",
-             tess_tables_size);
-      return false;
-    }
+  tessellator_tables_buffer_ =
+      device_->newBuffer(tess_tables_size, MTL::ResourceStorageModeShared);
+  if (!tessellator_tables_buffer_) {
+    XELOGE("Failed to allocate tessellator tables buffer ({} bytes)",
+           tess_tables_size);
+    return false;
+  }
+  TrackMetalBufferCreated(tess_tables_size);
     tessellator_tables_buffer_->setLabel(
         NS::String::string("XeniaTessellatorTables", NS::UTF8StringEncoding));
     IRRuntimeLoadTessellatorTables(tessellator_tables_buffer_);
@@ -759,6 +838,7 @@ bool MetalCommandProcessor::SetupContext() {
     XELOGE("Failed to create render target texture");
     return false;
   }
+  TrackMetalTextureCreated(render_target_texture_);
   render_target_texture_->setLabel(
       NS::String::string("XeniaRenderTarget", NS::UTF8StringEncoding));
 
@@ -778,6 +858,7 @@ bool MetalCommandProcessor::SetupContext() {
     XELOGE("Failed to create depth/stencil texture");
     return false;
   }
+  TrackMetalTextureCreated(depth_stencil_texture_);
   depth_stencil_texture_->setLabel(
       NS::String::string("XeniaDepthStencil", NS::UTF8StringEncoding));
 
@@ -812,6 +893,7 @@ bool MetalCommandProcessor::SetupContext() {
     XELOGE("Failed to create null buffer");
     return false;
   }
+  TrackMetalBufferCreated(kNullBufferSize);
   null_buffer_->setLabel(
       NS::String::string("NullBuffer", NS::UTF8StringEncoding));
   std::memset(null_buffer_->contents(), 0, kNullBufferSize);
@@ -836,6 +918,7 @@ bool MetalCommandProcessor::SetupContext() {
     XELOGE("Failed to create null texture");
     return false;
   }
+  TrackMetalTextureCreated(null_texture_);
   null_texture_->setLabel(
       NS::String::string("NullTexture2DArray", NS::UTF8StringEncoding));
 
@@ -967,15 +1050,27 @@ void MetalCommandProcessor::PrepareForWait() {
     XELOGI(
         "MetalCommandProcessor::PrepareForWait: submitting and waiting for "
         "command buffer");
+    uint64_t wait_value = 0;
+    if (wait_shared_event_) {
+      wait_value = ++wait_shared_event_value_;
+      current_command_buffer_->encodeSignalEvent(wait_shared_event_,
+                                                 wait_value);
+    }
     ScheduleDrawRingRelease(current_command_buffer_);
     current_command_buffer_->commit();
-    current_command_buffer_->waitUntilCompleted();
+    if (wait_shared_event_) {
+      wait_shared_event_->waitUntilSignaledValue(
+          wait_value, std::numeric_limits<uint64_t>::max());
+    } else {
+      current_command_buffer_->waitUntilCompleted();
+    }
     current_command_buffer_->release();
     current_command_buffer_ = nullptr;
     SetActiveDrawRing(nullptr);
     current_draw_index_ = 0;
     XELOGI("MetalCommandProcessor::PrepareForWait: command buffer completed");
   }
+  DrainCommandBufferAutoreleasePool();
 
   FlushEdramFromHostRenderTargetsIfEnabled("PrepareForWait");
 
@@ -987,16 +1082,28 @@ void MetalCommandProcessor::PrepareForWait() {
     XELOGI(
         "MetalCommandProcessor::PrepareForWait: submitting sync command "
         "buffer");
+    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
     // Note: commandBuffer() returns an autoreleased object per metal-cpp docs.
     // We do NOT call release() since we didn't retain() it.
     // The autorelease pool will handle cleanup.
     MTL::CommandBuffer* sync_cmd = command_queue_->commandBuffer();
     if (sync_cmd) {
+      uint64_t wait_value = 0;
+      if (wait_shared_event_) {
+        wait_value = ++wait_shared_event_value_;
+        sync_cmd->encodeSignalEvent(wait_shared_event_, wait_value);
+      }
       sync_cmd->commit();
-      sync_cmd->waitUntilCompleted();
+      if (wait_shared_event_) {
+        wait_shared_event_->waitUntilSignaledValue(
+            wait_value, std::numeric_limits<uint64_t>::max());
+      } else {
+        sync_cmd->waitUntilCompleted();
+      }
       // Don't release - it's autoreleased and will be cleaned up by the pool
       XELOGI("MetalCommandProcessor::PrepareForWait: sync complete");
     }
+    pool->release();
   }
 
   // Also call the base class to flush trace writer
@@ -1022,12 +1129,22 @@ void MetalCommandProcessor::ShutdownContext() {
     XELOGI("MetalCommandProcessor::ShutdownContext: committing command buffer");
     fflush(stdout);
     fflush(stderr);
+    uint64_t wait_value = 0;
+    if (wait_shared_event_) {
+      wait_value = ++wait_shared_event_value_;
+      current_command_buffer_->encodeSignalEvent(wait_shared_event_, wait_value);
+    }
     ScheduleDrawRingRelease(current_command_buffer_);
     current_command_buffer_->commit();
     XELOGI("MetalCommandProcessor::ShutdownContext: waiting for completion");
     fflush(stdout);
     fflush(stderr);
-    current_command_buffer_->waitUntilCompleted();
+    if (wait_shared_event_) {
+      wait_shared_event_->waitUntilSignaledValue(
+          wait_value, std::numeric_limits<uint64_t>::max());
+    } else {
+      current_command_buffer_->waitUntilCompleted();
+    }
     XELOGI("MetalCommandProcessor::ShutdownContext: command buffer completed");
     fflush(stdout);
     fflush(stderr);
@@ -1047,12 +1164,24 @@ void MetalCommandProcessor::ShutdownContext() {
     XELOGI(
         "MetalCommandProcessor::ShutdownContext: submitting sync command "
         "buffer");
+    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
     MTL::CommandBuffer* sync_cmd = command_queue_->commandBuffer();
     if (sync_cmd) {
+      uint64_t wait_value = 0;
+      if (wait_shared_event_) {
+        wait_value = ++wait_shared_event_value_;
+        sync_cmd->encodeSignalEvent(wait_shared_event_, wait_value);
+      }
       sync_cmd->commit();
-      sync_cmd->waitUntilCompleted();
+      if (wait_shared_event_) {
+        wait_shared_event_->waitUntilSignaledValue(
+            wait_value, std::numeric_limits<uint64_t>::max());
+      } else {
+        sync_cmd->waitUntilCompleted();
+      }
       XELOGI("MetalCommandProcessor::ShutdownContext: sync complete");
     }
+    pool->release();
   }
 
   // Now safe to release encoder and command buffer
@@ -1067,6 +1196,7 @@ void MetalCommandProcessor::ShutdownContext() {
     current_command_buffer_->release();
     current_command_buffer_ = nullptr;
   }
+  DrainCommandBufferAutoreleasePool();
   XELOGI("MetalCommandProcessor::ShutdownContext: encoder/cb cleanup done");
   fflush(stdout);
   fflush(stderr);
@@ -1088,6 +1218,7 @@ void MetalCommandProcessor::ShutdownContext() {
     primitive_processor_.reset();
   }
   if (tessellator_tables_buffer_) {
+    TrackMetalBufferReleased(tessellator_tables_buffer_->length());
     tessellator_tables_buffer_->release();
     tessellator_tables_buffer_ = nullptr;
   }
@@ -1103,6 +1234,12 @@ void MetalCommandProcessor::ShutdownContext() {
   shader_translator_.reset();
   dxbc_to_dxil_converter_.reset();
   metal_shader_converter_.reset();
+  if (wait_shared_event_) {
+    wait_shared_event_->release();
+    wait_shared_event_ = nullptr;
+  }
+
+  ShutdownShaderStorage();
 
   XELOGI(
       "MetalCommandProcessor::ShutdownContext: tessellation draws: "
@@ -1113,22 +1250,520 @@ void MetalCommandProcessor::ShutdownContext() {
   XELOGI("MetalCommandProcessor::ShutdownContext: end");
 }
 
+void MetalCommandProcessor::InitializeShaderStorage(
+    const std::filesystem::path& cache_root, uint32_t title_id,
+    bool blocking) {
+  CommandProcessor::InitializeShaderStorage(cache_root, title_id, blocking);
+  InitializeShaderStorageInternal(cache_root, title_id, blocking);
+}
+
+bool MetalCommandProcessor::InitializeShaderStorageInternal(
+    const std::filesystem::path& cache_root, uint32_t title_id, bool blocking) {
+  ShutdownShaderStorage();
+
+  if (!device_) {
+    XELOGW("Metal shader storage init skipped (no device)");
+    return false;
+  }
+
+  shader_storage_root_ = cache_root / "shaders" / "metal";
+  shader_storage_local_root_ =
+      shader_storage_root_ / "local" / GetShaderStorageDeviceTag();
+  shader_storage_title_root_ =
+      shader_storage_local_root_ / fmt::format("{:08X}", title_id);
+
+  std::error_code ec;
+  std::filesystem::create_directories(shader_storage_title_root_, ec);
+  if (ec) {
+    XELOGW("Metal shader storage: Failed to create {}: {}",
+           shader_storage_title_root_.string(), ec.message());
+    return false;
+  }
+
+  metallib_cache_dir_ = shader_storage_title_root_ / "metallib";
+  if (::cvars::metal_shader_disk_cache && g_metal_shader_cache) {
+    g_metal_shader_cache->Initialize(metallib_cache_dir_);
+  }
+
+  bool edram_rov_used =
+      render_target_cache_ &&
+      render_target_cache_->GetPath() ==
+          RenderTargetCache::Path::kPixelShaderInterlock;
+  const char* path_suffix = edram_rov_used ? "rov" : "rtv";
+
+  pipeline_disk_cache_path_ =
+      shader_storage_title_root_ /
+      fmt::format("{:08X}.{}.metal.pipelines", title_id, path_suffix);
+  pipeline_binary_archive_path_ =
+      shader_storage_title_root_ /
+      fmt::format("{:08X}.{}.metal.binarchive", title_id, path_suffix);
+
+  if (::cvars::metal_pipeline_disk_cache) {
+    LoadPipelineDiskCache(pipeline_disk_cache_path_,
+                          &pipeline_disk_cache_entries_);
+  }
+
+  if (::cvars::metal_pipeline_binary_archive) {
+    InitializePipelineBinaryArchive(pipeline_binary_archive_path_);
+  }
+
+  if (blocking && pipeline_binary_archive_ &&
+      !pipeline_disk_cache_entries_.empty()) {
+    PrewarmPipelineBinaryArchive(pipeline_disk_cache_entries_);
+  }
+
+  return true;
+}
+
+void MetalCommandProcessor::ShutdownShaderStorage() {
+  if (pipeline_binary_archive_) {
+    SerializePipelineBinaryArchive();
+    pipeline_binary_archive_->release();
+    pipeline_binary_archive_ = nullptr;
+  }
+  if (pipeline_disk_cache_file_) {
+    std::fclose(pipeline_disk_cache_file_);
+    pipeline_disk_cache_file_ = nullptr;
+  }
+  pipeline_disk_cache_keys_.clear();
+  pipeline_disk_cache_entries_.clear();
+
+  if (g_metal_shader_cache) {
+    g_metal_shader_cache->Shutdown();
+  }
+}
+
+std::string MetalCommandProcessor::GetShaderStorageDeviceTag() const {
+  std::string tag = "unknown";
+  if (device_ && device_->name()) {
+    tag = device_->name()->utf8String();
+  }
+
+  for (char& ch : tag) {
+    if (!std::isalnum(static_cast<unsigned char>(ch))) {
+      ch = '_';
+    }
+  }
+  return tag;
+}
+
+bool MetalCommandProcessor::LoadPipelineDiskCache(
+    const std::filesystem::path& path,
+    std::vector<PipelineDiskCacheEntry>* entries) {
+  if (!entries) {
+    return false;
+  }
+  entries->clear();
+  pipeline_disk_cache_keys_.clear();
+
+  pipeline_disk_cache_file_ = xe::filesystem::OpenFile(path, "a+b");
+  if (!pipeline_disk_cache_file_) {
+    XELOGW("Metal pipeline disk cache: Failed to open {}", path.string());
+    return false;
+  }
+
+  PipelineDiskCacheHeader header = {};
+  if (std::fread(&header, sizeof(header), 1, pipeline_disk_cache_file_) != 1 ||
+      header.magic != kPipelineDiskCacheMagic ||
+      header.version != kPipelineDiskCacheVersion) {
+    header.magic = kPipelineDiskCacheMagic;
+    header.version = kPipelineDiskCacheVersion;
+    header.reserved[0] = 0;
+    header.reserved[1] = 0;
+    xe::filesystem::Seek(pipeline_disk_cache_file_, 0, SEEK_SET);
+    std::fwrite(&header, sizeof(header), 1, pipeline_disk_cache_file_);
+    std::fflush(pipeline_disk_cache_file_);
+    xe::filesystem::Seek(pipeline_disk_cache_file_, 0, SEEK_END);
+    return true;
+  }
+
+  while (true) {
+    PipelineDiskCacheEntryHeader entry_header = {};
+    if (std::fread(&entry_header, sizeof(entry_header), 1,
+                   pipeline_disk_cache_file_) != 1) {
+      break;
+    }
+
+    if (entry_header.entry_size < sizeof(PipelineDiskCacheEntryBase) ||
+        entry_header.entry_size > kPipelineDiskCacheMaxEntrySize) {
+      break;
+    }
+
+    PipelineDiskCacheEntryBase base = {};
+    if (std::fread(&base, sizeof(base), 1, pipeline_disk_cache_file_) != 1) {
+      break;
+    }
+
+    size_t expected_size =
+        sizeof(PipelineDiskCacheEntryBase) +
+        size_t(base.vertex_attribute_count) *
+            sizeof(PipelineDiskCacheVertexAttribute) +
+        size_t(base.vertex_layout_count) *
+            sizeof(PipelineDiskCacheVertexLayout);
+    if (entry_header.entry_size != expected_size) {
+      xe::filesystem::Seek(pipeline_disk_cache_file_,
+                           entry_header.entry_size -
+                               sizeof(PipelineDiskCacheEntryBase),
+                           SEEK_CUR);
+      continue;
+    }
+
+    PipelineDiskCacheEntry entry = {};
+    entry.pipeline_key = base.pipeline_key;
+    entry.vertex_shader_cache_key = base.vertex_shader_cache_key;
+    entry.pixel_shader_cache_key = base.pixel_shader_cache_key;
+    entry.edram_rov_used = base.edram_rov_used;
+    entry.edram_compute_fallback_mask = base.edram_compute_fallback_mask;
+    entry.sample_count = base.sample_count;
+    entry.depth_format = base.depth_format;
+    entry.stencil_format = base.stencil_format;
+    std::memcpy(entry.color_formats, base.color_formats,
+                sizeof(base.color_formats));
+    entry.coverage_format = base.coverage_format;
+    entry.normalized_color_mask = base.normalized_color_mask;
+    entry.alpha_to_mask_enable = base.alpha_to_mask_enable;
+    std::memcpy(entry.blendcontrol, base.blendcontrol,
+                sizeof(base.blendcontrol));
+
+    entry.vertex_attributes.resize(base.vertex_attribute_count);
+    if (base.vertex_attribute_count) {
+      if (std::fread(entry.vertex_attributes.data(),
+                     sizeof(PipelineDiskCacheVertexAttribute),
+                     base.vertex_attribute_count,
+                     pipeline_disk_cache_file_) != base.vertex_attribute_count) {
+        break;
+      }
+    }
+    entry.vertex_layouts.resize(base.vertex_layout_count);
+    if (base.vertex_layout_count) {
+      if (std::fread(entry.vertex_layouts.data(),
+                     sizeof(PipelineDiskCacheVertexLayout),
+                     base.vertex_layout_count,
+                     pipeline_disk_cache_file_) != base.vertex_layout_count) {
+        break;
+      }
+    }
+
+    entries->push_back(std::move(entry));
+    pipeline_disk_cache_keys_.insert(base.pipeline_key);
+  }
+
+  xe::filesystem::Seek(pipeline_disk_cache_file_, 0, SEEK_END);
+  return true;
+}
+
+bool MetalCommandProcessor::AppendPipelineDiskCacheEntry(
+    const PipelineDiskCacheEntry& entry) {
+  if (!pipeline_disk_cache_file_) {
+    return false;
+  }
+  if (!pipeline_disk_cache_keys_.insert(entry.pipeline_key).second) {
+    return false;
+  }
+
+  PipelineDiskCacheEntryBase base = {};
+  base.pipeline_key = entry.pipeline_key;
+  base.vertex_shader_cache_key = entry.vertex_shader_cache_key;
+  base.pixel_shader_cache_key = entry.pixel_shader_cache_key;
+  base.edram_rov_used = entry.edram_rov_used;
+  base.edram_compute_fallback_mask = entry.edram_compute_fallback_mask;
+  base.sample_count = entry.sample_count;
+  base.depth_format = entry.depth_format;
+  base.stencil_format = entry.stencil_format;
+  std::memcpy(base.color_formats, entry.color_formats,
+              sizeof(base.color_formats));
+  base.coverage_format = entry.coverage_format;
+  base.normalized_color_mask = entry.normalized_color_mask;
+  base.alpha_to_mask_enable = entry.alpha_to_mask_enable;
+  std::memcpy(base.blendcontrol, entry.blendcontrol, sizeof(base.blendcontrol));
+  base.vertex_attribute_count =
+      static_cast<uint32_t>(entry.vertex_attributes.size());
+  base.vertex_layout_count =
+      static_cast<uint32_t>(entry.vertex_layouts.size());
+
+  size_t entry_size =
+      sizeof(PipelineDiskCacheEntryBase) +
+      entry.vertex_attributes.size() * sizeof(PipelineDiskCacheVertexAttribute) +
+      entry.vertex_layouts.size() * sizeof(PipelineDiskCacheVertexLayout);
+  if (entry_size > kPipelineDiskCacheMaxEntrySize) {
+    return false;
+  }
+
+  PipelineDiskCacheEntryHeader entry_header = {};
+  entry_header.entry_size = static_cast<uint32_t>(entry_size);
+
+  std::fwrite(&entry_header, sizeof(entry_header), 1, pipeline_disk_cache_file_);
+  std::fwrite(&base, sizeof(base), 1, pipeline_disk_cache_file_);
+  if (!entry.vertex_attributes.empty()) {
+    std::fwrite(entry.vertex_attributes.data(),
+                sizeof(PipelineDiskCacheVertexAttribute),
+                entry.vertex_attributes.size(), pipeline_disk_cache_file_);
+  }
+  if (!entry.vertex_layouts.empty()) {
+    std::fwrite(entry.vertex_layouts.data(),
+                sizeof(PipelineDiskCacheVertexLayout),
+                entry.vertex_layouts.size(), pipeline_disk_cache_file_);
+  }
+  std::fflush(pipeline_disk_cache_file_);
+  pipeline_disk_cache_entries_.push_back(entry);
+  return true;
+}
+
+bool MetalCommandProcessor::InitializePipelineBinaryArchive(
+    const std::filesystem::path& archive_path) {
+  if (!device_) {
+    return false;
+  }
+  if (pipeline_binary_archive_) {
+    pipeline_binary_archive_->release();
+    pipeline_binary_archive_ = nullptr;
+  }
+
+  MTL::BinaryArchiveDescriptor* desc =
+      MTL::BinaryArchiveDescriptor::alloc()->init();
+  NS::String* path_string =
+      NS::String::string(archive_path.string().c_str(),
+                         NS::UTF8StringEncoding);
+  NS::URL* url = NS::URL::fileURLWithPath(path_string);
+  desc->setUrl(url);
+
+  NS::Error* error = nullptr;
+  pipeline_binary_archive_ = device_->newBinaryArchive(desc, &error);
+  desc->release();
+  if (!pipeline_binary_archive_) {
+    if (error) {
+      XELOGW("Metal binary archive init failed: {}",
+             error->localizedDescription()->utf8String());
+    }
+    return false;
+  }
+  pipeline_binary_archive_path_ = archive_path;
+  pipeline_binary_archive_dirty_ = false;
+  return true;
+}
+
+void MetalCommandProcessor::SerializePipelineBinaryArchive() {
+  if (!pipeline_binary_archive_ || !pipeline_binary_archive_dirty_) {
+    return;
+  }
+  NS::String* path_string =
+      NS::String::string(pipeline_binary_archive_path_.string().c_str(),
+                         NS::UTF8StringEncoding);
+  NS::URL* url = NS::URL::fileURLWithPath(path_string);
+  NS::Error* error = nullptr;
+  if (!pipeline_binary_archive_->serializeToURL(url, &error)) {
+    if (error) {
+      XELOGW("Metal binary archive serialize failed: {}",
+             error->localizedDescription()->utf8String());
+    }
+  }
+  pipeline_binary_archive_dirty_ = false;
+}
+
+void MetalCommandProcessor::PrewarmPipelineBinaryArchive(
+    const std::vector<PipelineDiskCacheEntry>& entries) {
+  if (!pipeline_binary_archive_ || entries.empty()) {
+    return;
+  }
+  if (!g_metal_shader_cache || !g_metal_shader_cache->IsInitialized()) {
+    return;
+  }
+
+  size_t prewarmed = 0;
+  for (const auto& entry : entries) {
+    MetalShaderCache::CachedMetallib vs_cached;
+    if (!g_metal_shader_cache->Load(entry.vertex_shader_cache_key,
+                                    &vs_cached)) {
+      continue;
+    }
+
+    NS::Error* error = nullptr;
+    dispatch_data_t vs_data = dispatch_data_create(
+        vs_cached.metallib_data.data(), vs_cached.metallib_data.size(), nullptr,
+        DISPATCH_DATA_DESTRUCTOR_NONE);
+    MTL::Library* vs_library = device_->newLibrary(vs_data, &error);
+    dispatch_release(vs_data);
+    if (!vs_library) {
+      continue;
+    }
+    NS::String* vs_name = NS::String::string(vs_cached.function_name.c_str(),
+                                             NS::UTF8StringEncoding);
+    MTL::Function* vs_function = vs_library->newFunction(vs_name);
+    if (!vs_function) {
+      vs_library->release();
+      continue;
+    }
+
+    MTL::Library* ps_library = nullptr;
+    MTL::Function* ps_function = nullptr;
+    if (entry.pixel_shader_cache_key) {
+      MetalShaderCache::CachedMetallib ps_cached;
+      if (g_metal_shader_cache->Load(entry.pixel_shader_cache_key,
+                                     &ps_cached)) {
+        dispatch_data_t ps_data = dispatch_data_create(
+            ps_cached.metallib_data.data(), ps_cached.metallib_data.size(),
+            nullptr, DISPATCH_DATA_DESTRUCTOR_NONE);
+        ps_library = device_->newLibrary(ps_data, &error);
+        dispatch_release(ps_data);
+        if (ps_library) {
+          NS::String* ps_name =
+              NS::String::string(ps_cached.function_name.c_str(),
+                                 NS::UTF8StringEncoding);
+          ps_function = ps_library->newFunction(ps_name);
+        }
+      }
+    }
+
+    MTL::RenderPipelineDescriptor* desc =
+        MTL::RenderPipelineDescriptor::alloc()->init();
+    desc->setVertexFunction(vs_function);
+    if (ps_function) {
+      desc->setFragmentFunction(ps_function);
+    }
+
+    for (uint32_t i = 0; i < 4; ++i) {
+      desc->colorAttachments()->object(i)->setPixelFormat(
+          static_cast<MTL::PixelFormat>(entry.color_formats[i]));
+    }
+    if (entry.coverage_format !=
+        static_cast<uint32_t>(MTL::PixelFormatInvalid)) {
+      desc->colorAttachments()
+          ->object(MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex)
+          ->setPixelFormat(static_cast<MTL::PixelFormat>(entry.coverage_format));
+    }
+    desc->setDepthAttachmentPixelFormat(
+        static_cast<MTL::PixelFormat>(entry.depth_format));
+    desc->setStencilAttachmentPixelFormat(
+        static_cast<MTL::PixelFormat>(entry.stencil_format));
+    desc->setSampleCount(entry.sample_count);
+    desc->setAlphaToCoverageEnabled(entry.alpha_to_mask_enable != 0);
+
+    for (uint32_t i = 0; i < 4; ++i) {
+      auto* color_attachment = desc->colorAttachments()->object(i);
+      if (entry.color_formats[i] ==
+          static_cast<uint32_t>(MTL::PixelFormatInvalid)) {
+        color_attachment->setWriteMask(MTL::ColorWriteMaskNone);
+        color_attachment->setBlendingEnabled(false);
+        continue;
+      }
+      if (entry.edram_rov_used) {
+        color_attachment->setWriteMask(MTL::ColorWriteMaskNone);
+        color_attachment->setBlendingEnabled(false);
+        continue;
+      }
+      uint32_t rt_write_mask =
+          (entry.normalized_color_mask >> (i * 4)) & 0xF;
+      if (entry.edram_compute_fallback_mask & (1u << i)) {
+        color_attachment->setWriteMask(
+            rt_write_mask ? MTL::ColorWriteMaskAll : MTL::ColorWriteMaskNone);
+        color_attachment->setBlendingEnabled(false);
+        continue;
+      }
+      color_attachment->setWriteMask(
+          ToMetalColorWriteMask(rt_write_mask));
+      if (!rt_write_mask) {
+        color_attachment->setBlendingEnabled(false);
+        continue;
+      }
+
+      reg::RB_BLENDCONTROL blendcontrol = {};
+      blendcontrol.value = entry.blendcontrol[i];
+      MTL::BlendFactor src_rgb =
+          ToMetalBlendFactorRgb(blendcontrol.color_srcblend);
+      MTL::BlendFactor dst_rgb =
+          ToMetalBlendFactorRgb(blendcontrol.color_destblend);
+      MTL::BlendOperation op_rgb =
+          ToMetalBlendOperation(blendcontrol.color_comb_fcn);
+      MTL::BlendFactor src_alpha =
+          ToMetalBlendFactorAlpha(blendcontrol.alpha_srcblend);
+      MTL::BlendFactor dst_alpha =
+          ToMetalBlendFactorAlpha(blendcontrol.alpha_destblend);
+      MTL::BlendOperation op_alpha =
+          ToMetalBlendOperation(blendcontrol.alpha_comb_fcn);
+
+      bool blending_enabled =
+          src_rgb != MTL::BlendFactorOne || dst_rgb != MTL::BlendFactorZero ||
+          op_rgb != MTL::BlendOperationAdd ||
+          src_alpha != MTL::BlendFactorOne || dst_alpha != MTL::BlendFactorZero ||
+          op_alpha != MTL::BlendOperationAdd;
+      color_attachment->setBlendingEnabled(blending_enabled);
+      if (blending_enabled) {
+        color_attachment->setSourceRGBBlendFactor(src_rgb);
+        color_attachment->setDestinationRGBBlendFactor(dst_rgb);
+        color_attachment->setRgbBlendOperation(op_rgb);
+        color_attachment->setSourceAlphaBlendFactor(src_alpha);
+        color_attachment->setDestinationAlphaBlendFactor(dst_alpha);
+        color_attachment->setAlphaBlendOperation(op_alpha);
+      }
+    }
+
+    if (entry.coverage_format !=
+        static_cast<uint32_t>(MTL::PixelFormatInvalid)) {
+      auto* coverage_attachment = desc->colorAttachments()->object(
+          MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex);
+      coverage_attachment->setWriteMask(MTL::ColorWriteMaskAll);
+      coverage_attachment->setBlendingEnabled(false);
+    }
+
+    if (!entry.vertex_attributes.empty() ||
+        !entry.vertex_layouts.empty()) {
+      MTL::VertexDescriptor* vertex_desc =
+          MTL::VertexDescriptor::alloc()->init();
+      for (const auto& attr : entry.vertex_attributes) {
+        auto* attr_desc =
+            vertex_desc->attributes()->object(attr.attribute_index);
+        attr_desc->setFormat(static_cast<MTL::VertexFormat>(attr.format));
+        attr_desc->setOffset(attr.offset);
+        attr_desc->setBufferIndex(attr.buffer_index);
+      }
+      for (const auto& layout : entry.vertex_layouts) {
+        auto* layout_desc =
+            vertex_desc->layouts()->object(layout.buffer_index);
+        layout_desc->setStride(layout.stride);
+        layout_desc->setStepFunction(
+            static_cast<MTL::VertexStepFunction>(layout.step_function));
+        layout_desc->setStepRate(layout.step_rate);
+      }
+      desc->setVertexDescriptor(vertex_desc);
+      vertex_desc->release();
+    }
+
+    NS::Array* archives = NS::Array::array(pipeline_binary_archive_);
+    desc->setBinaryArchives(archives);
+    if (pipeline_binary_archive_->addRenderPipelineFunctions(desc, &error)) {
+      pipeline_binary_archive_dirty_ = true;
+      ++prewarmed;
+    }
+    desc->release();
+    vs_function->release();
+    vs_library->release();
+    if (ps_function) {
+      ps_function->release();
+    }
+    if (ps_library) {
+      ps_library->release();
+    }
+  }
+
+  if (::cvars::metal_verbose_logging) {
+    XELOGI("Metal pipeline binary archive prewarmed {} pipelines", prewarmed);
+  }
+}
+
 void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                       uint32_t frontbuffer_width,
                                       uint32_t frontbuffer_height) {
-  XELOGI("MetalCommandProcessor::IssueSwap(ptr={:08X}, {}x{})", frontbuffer_ptr,
-         frontbuffer_width, frontbuffer_height);
+  if (::cvars::metal_verbose_logging) {
+    XELOGI("MetalCommandProcessor::IssueSwap(ptr={:08X}, {}x{})", frontbuffer_ptr,
+           frontbuffer_width, frontbuffer_height);
+  }
   saw_swap_ = true;
   last_swap_ptr_ = frontbuffer_ptr;
   last_swap_width_ = frontbuffer_width;
   last_swap_height_ = frontbuffer_height;
 
   // End any active render encoder
-  if (current_render_encoder_) {
-    current_render_encoder_->endEncoding();
-    current_render_encoder_->release();
-    current_render_encoder_ = nullptr;
-  }
+  EndRenderEncoder();
 
   // Submit and wait for command buffer
   if (current_command_buffer_) {
@@ -1335,6 +1970,7 @@ void MetalCommandProcessor::CaptureCurrentFrame() {
     XELOGE("Failed to create staging buffer for frame capture");
     return;
   }
+  TrackMetalBufferCreated(buffer_size);
 
   // Create a blit command buffer
   MTL::CommandBuffer* blit_cmd = command_queue_->commandBuffer();
@@ -1369,6 +2005,7 @@ void MetalCommandProcessor::CaptureCurrentFrame() {
     std::memcpy(captured_frame_data_.data(), src, buffer_size);
   }
 
+  TrackMetalBufferReleased(staging_buffer->length());
   staging_buffer->release();
   // Note: blit_cmd is from commandBuffer() which is autoreleased - don't
   // release
@@ -2094,7 +2731,8 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     uint32_t length = 0;
     uint32_t stride = 0;
   };
-  std::vector<VertexBindingRange> vertex_ranges;
+  std::array<VertexBindingRange, 32> vertex_ranges;
+  uint32_t vertex_range_count = 0;
   const auto& vb_bindings = vertex_shader->vertex_bindings();
   bool uses_vertex_fetch = ShaderUsesVertexFetch(*vertex_shader);
 
@@ -2163,7 +2801,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       }
     }
 
-    vertex_ranges.reserve(vb_bindings.size());
     for (const auto& binding : vb_bindings) {
       xenos::xe_gpu_vertex_fetch_t vfetch =
           regs.GetVertexFetch(binding.fetch_constant);
@@ -2174,12 +2811,13 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       range.offset = buffer_offset;
       range.length = buffer_length;
       range.stride = binding.stride_words * 4;
-      vertex_ranges.push_back(range);
+      assert_true(vertex_range_count < vertex_ranges.size());
+      vertex_ranges[vertex_range_count++] = range;
     }
 
     // Debug: Check vertex data AFTER sync - with endian swap
     static int draw_count = 0;
-    if (draw_count < 3) {
+    if (::cvars::metal_verbose_logging && draw_count < 3) {
       draw_count++;
       const RegisterFile& regs_dbg = *register_file_;
       const uint32_t* fetch_data =
@@ -2232,7 +2870,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         tessellator_tables_buffer_, 0, kIRRuntimeTessellatorTablesBindPoint);
     current_render_encoder_->setMeshBuffer(
         tessellator_tables_buffer_, 0, kIRRuntimeTessellatorTablesBindPoint);
-    current_render_encoder_->useResource(tessellator_tables_buffer_,
+    UseRenderEncoderResource(tessellator_tables_buffer_,
                                          MTL::ResourceUsageRead);
   }
 
@@ -2461,7 +3099,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
     constexpr size_t kStageVertex = 0;
     constexpr size_t kStagePixel = 1;
-    uint32_t ring_index = current_draw_index_ % uint32_t(kDrawRingCount);
+    uint32_t ring_index = current_draw_index_ % uint32_t(draw_ring_count_);
     size_t table_index_vertex = size_t(ring_index) * kStageCount + kStageVertex;
     size_t table_index_pixel = size_t(ring_index) * kStageCount + kStagePixel;
 
@@ -2640,7 +3278,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
     auto* res_entries_all =
         reinterpret_cast<IRDescriptorTableEntry*>(res_heap_ab_->contents());
-    const size_t kDescriptorTableCount = kStageCount * kDrawRingCount;
+    const size_t kDescriptorTableCount = kStageCount * draw_ring_count_;
     const size_t uav_table_base_index =
         kResourceHeapSlotsPerTable * kDescriptorTableCount;
     auto* uav_entries_all = res_entries_all + uav_table_base_index;
@@ -2714,7 +3352,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       IRDescriptorTableSetBuffer(&uav_entries_pixel[0],
                                  shared_mem_buffer->gpuAddress(),
                                  shared_mem_buffer->length());
-      current_render_encoder_->useResource(shared_mem_buffer,
+      UseRenderEncoderResource(shared_mem_buffer,
                                            shared_memory_usage);
     }
     if (render_target_cache_) {
@@ -2726,22 +3364,25 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         IRDescriptorTableSetBuffer(&uav_entries_pixel[1],
                                    edram_buffer->gpuAddress(),
                                    edram_buffer->length());
-        current_render_encoder_->useResource(
+        UseRenderEncoderResource(
             edram_buffer,
             MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
       }
     }
 
-    std::vector<MTL::Texture*> textures_for_encoder;
-    textures_for_encoder.reserve(16);
+    std::array<MTL::Texture*, 64> textures_for_encoder;
+    uint32_t textures_for_encoder_count = 0;
     auto track_texture_usage = [&](MTL::Texture* texture) {
       if (!texture) {
         return;
       }
-      if (std::find(textures_for_encoder.begin(), textures_for_encoder.end(),
-                    texture) == textures_for_encoder.end()) {
-        textures_for_encoder.push_back(texture);
+      for (uint32_t i = 0; i < textures_for_encoder_count; ++i) {
+        if (textures_for_encoder[i] == texture) {
+          return;
+        }
       }
+      assert_true(textures_for_encoder_count < textures_for_encoder.size());
+      textures_for_encoder[textures_for_encoder_count++] = texture;
     };
 
     auto bind_shader_textures = [&](MetalShader* shader,
@@ -2828,17 +3469,18 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     bind_shader_samplers(vertex_shader, smp_entries_vertex);
     bind_shader_samplers(pixel_shader, smp_entries_pixel);
 
-    for (MTL::Texture* texture : textures_for_encoder) {
-      current_render_encoder_->useResource(texture, MTL::ResourceUsageRead);
+    for (uint32_t i = 0; i < textures_for_encoder_count; ++i) {
+      UseRenderEncoderResource(textures_for_encoder[i],
+                                           MTL::ResourceUsageRead);
     }
 
-    current_render_encoder_->useResource(null_buffer_, MTL::ResourceUsageRead);
-    current_render_encoder_->useResource(null_texture_, MTL::ResourceUsageRead);
-    current_render_encoder_->useResource(res_heap_ab_, MTL::ResourceUsageRead);
-    current_render_encoder_->useResource(smp_heap_ab_, MTL::ResourceUsageRead);
-    current_render_encoder_->useResource(top_level_ab_, MTL::ResourceUsageRead);
-    current_render_encoder_->useResource(cbv_heap_ab_, MTL::ResourceUsageRead);
-    current_render_encoder_->useResource(uniforms_buffer_,
+    UseRenderEncoderResource(null_buffer_, MTL::ResourceUsageRead);
+    UseRenderEncoderResource(null_texture_, MTL::ResourceUsageRead);
+    UseRenderEncoderResource(res_heap_ab_, MTL::ResourceUsageRead);
+    UseRenderEncoderResource(smp_heap_ab_, MTL::ResourceUsageRead);
+    UseRenderEncoderResource(top_level_ab_, MTL::ResourceUsageRead);
+    UseRenderEncoderResource(cbv_heap_ab_, MTL::ResourceUsageRead);
+    UseRenderEncoderResource(uniforms_buffer_,
                                          MTL::ResourceUsageRead);
 
     auto write_top_level_and_cbvs =
@@ -2955,9 +3597,10 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     MTL::Buffer* shared_mem_buffer =
         shared_memory_ ? shared_memory_->GetBuffer() : nullptr;
     if (shared_mem_buffer) {
-      current_render_encoder_->useResource(shared_mem_buffer,
+      UseRenderEncoderResource(shared_mem_buffer,
                                            shared_memory_usage);
-      for (const auto& range : vertex_ranges) {
+      for (uint32_t i = 0; i < vertex_range_count; ++i) {
+        const auto& range = vertex_ranges[i];
         size_t binding_index = range.binding_index;
         if (binding_index <
             (sizeof(vertex_buffers) / sizeof(vertex_buffers[0]))) {
@@ -2977,7 +3620,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     // stage-in bindings that can trigger invalid buffer loads.
     if (shared_memory_) {
       if (MTL::Buffer* shared_mem_buffer = shared_memory_->GetBuffer()) {
-        current_render_encoder_->useResource(shared_mem_buffer,
+        UseRenderEncoderResource(shared_mem_buffer,
                                              shared_memory_usage);
       }
     }
@@ -2990,17 +3633,18 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       MTL::Buffer* shared_mem_buffer = shared_memory_->GetBuffer();
       if (shared_mem_buffer) {
         // Mark shared memory as used for reading
-        current_render_encoder_->useResource(shared_mem_buffer,
+        UseRenderEncoderResource(shared_mem_buffer,
                                              shared_memory_usage);
 
         // Bind vertex buffers for each binding
         static int vb_log_count = 0;
-        for (const auto& range : vertex_ranges) {
+        for (uint32_t i = 0; i < vertex_range_count; ++i) {
+          const auto& range = vertex_ranges[i];
           uint64_t buffer_index =
               kIRVertexBufferBindPoint + uint64_t(range.binding_index);
           current_render_encoder_->setVertexBuffer(shared_mem_buffer,
                                                    range.offset, buffer_index);
-          if (vb_log_count < 5) {
+          if (::cvars::metal_verbose_logging && vb_log_count < 5) {
             XELOGI(
                 "VB_DEBUG: binding={} addr=0x{:08X} size={} stride={} -> "
                 "buffer_index={}",
@@ -3015,7 +3659,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     } else if (shared_memory_) {
       // No vertex bindings, but still mark shared memory as resident
       if (MTL::Buffer* shared_mem_buffer = shared_memory_->GetBuffer()) {
-        current_render_encoder_->useResource(shared_mem_buffer,
+        UseRenderEncoderResource(shared_mem_buffer,
                                              shared_memory_usage);
       }
     }
@@ -3127,7 +3771,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         XELOGE("IssueDraw: index buffer is null for tessellation");
         return false;
       }
-      current_render_encoder_->useResource(index_buffer,
+      UseRenderEncoderResource(index_buffer,
                                            MTL::ResourceUsageRead);
       uint32_t index_stride =
           (index_type == MTL::IndexTypeUInt16) ? sizeof(uint16_t)
@@ -3215,7 +3859,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                uint32_t(primitive_processing_result.index_buffer_type));
         return false;
       }
-      current_render_encoder_->useResource(index_buffer,
+      UseRenderEncoderResource(index_buffer,
                                            MTL::ResourceUsageRead);
       uint32_t index_stride =
           (index_type == MTL::IndexTypeUInt16) ? sizeof(uint16_t)
@@ -3408,8 +4052,7 @@ bool MetalCommandProcessor::IssueCopy() {
   uint32_t written_address = 0;
   uint32_t written_length = 0;
 
-  if (!render_target_cache_->Resolve(*memory_, written_address,
-                                     written_length,
+  if (!render_target_cache_->Resolve(*memory_, written_address, written_length,
                                      current_command_buffer_)) {
     XELOGE("MetalCommandProcessor::IssueCopy - Resolve failed");
     return false;
@@ -3552,15 +4195,39 @@ MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
     return nullptr;
   }
 
+  EnsureCommandBufferAutoreleasePool();
+
   // Note: commandBuffer() returns an autoreleased object, we must retain it.
   current_command_buffer_ = command_queue_->commandBuffer();
   if (!current_command_buffer_) {
     XELOGE("EnsureCommandBuffer: failed to create command buffer");
     return nullptr;
   }
+  created_command_buffers_.fetch_add(1, std::memory_order_relaxed);
+  const auto start_time = std::chrono::steady_clock::now();
   current_command_buffer_->retain();
   current_command_buffer_->setLabel(
       NS::String::string("XeniaCommandBuffer", NS::UTF8StringEncoding));
+  inflight_command_buffers_.fetch_add(1, std::memory_order_relaxed);
+  current_command_buffer_->addCompletedHandler([this, start_time](
+                                                    MTL::CommandBuffer*) {
+    const auto end_time = std::chrono::steady_clock::now();
+    const uint64_t elapsed_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(end_time -
+                                                              start_time)
+            .count();
+    completed_command_buffers_total_us_.fetch_add(elapsed_us,
+                                                  std::memory_order_relaxed);
+    uint64_t max_us =
+        completed_command_buffers_max_us_.load(std::memory_order_relaxed);
+    while (elapsed_us > max_us &&
+           !completed_command_buffers_max_us_.compare_exchange_weak(
+               max_us, elapsed_us, std::memory_order_relaxed)) {
+    }
+    inflight_command_buffers_.fetch_sub(1, std::memory_order_relaxed);
+    completed_command_buffers_.fetch_add(1, std::memory_order_relaxed);
+    last_command_buffer_complete_time_ = std::chrono::steady_clock::now();
+  });
 
   if (primitive_processor_ && !frame_open_) {
     primitive_processor_->BeginFrame();
@@ -3568,6 +4235,23 @@ MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
   }
 
   return current_command_buffer_;
+}
+
+void MetalCommandProcessor::EnsureCommandBufferAutoreleasePool() {
+  if (command_buffer_autorelease_pool_) {
+    return;
+  }
+  command_buffer_autorelease_pool_ = NS::AutoreleasePool::alloc()->init();
+  ++autorelease_pools_created_;
+}
+
+void MetalCommandProcessor::DrainCommandBufferAutoreleasePool() {
+  if (!command_buffer_autorelease_pool_) {
+    return;
+  }
+  command_buffer_autorelease_pool_->release();
+  command_buffer_autorelease_pool_ = nullptr;
+  ++autorelease_pools_drained_;
 }
 
 void MetalCommandProcessor::EndRenderEncoder() {
@@ -3578,11 +4262,78 @@ void MetalCommandProcessor::EndRenderEncoder() {
   current_render_encoder_->release();
   current_render_encoder_ = nullptr;
   current_render_pass_descriptor_ = nullptr;
+  ResetRenderEncoderResourceUsage();
+}
+
+void MetalCommandProcessor::ResetRenderEncoderResourceUsage() {
+  render_encoder_resource_usage_.clear();
+  render_encoder_heap_usage_.clear();
+}
+
+void MetalCommandProcessor::UseRenderEncoderResource(MTL::Resource* resource,
+                                                     MTL::ResourceUsage usage) {
+  if (!current_render_encoder_ || !resource) {
+    return;
+  }
+  UseRenderEncoderHeap(resource->heap());
+  uint32_t usage_bits = static_cast<uint32_t>(usage);
+  auto it = render_encoder_resource_usage_.find(resource);
+  if (it != render_encoder_resource_usage_.end()) {
+    if ((it->second & usage_bits) == usage_bits) {
+      return;
+    }
+    it->second |= usage_bits;
+  } else {
+    render_encoder_resource_usage_.emplace(resource, usage_bits);
+  }
+  current_render_encoder_->useResource(resource, usage);
+}
+
+void MetalCommandProcessor::UseRenderEncoderHeap(MTL::Heap* heap) {
+  if (!current_render_encoder_ || !heap) {
+    return;
+  }
+  if (!render_encoder_heap_usage_.insert(heap).second) {
+    return;
+  }
+  current_render_encoder_->useHeap(heap);
+}
+
+void MetalCommandProcessor::UseRenderEncoderAttachmentHeaps(
+    MTL::RenderPassDescriptor* descriptor) {
+  if (!current_render_encoder_ || !descriptor) {
+    return;
+  }
+  auto* color_attachments = descriptor->colorAttachments();
+  for (uint32_t i = 0; i < 8; ++i) {
+    auto* attachment = color_attachments->object(i);
+    if (!attachment) {
+      continue;
+    }
+    MTL::Texture* texture = attachment->texture();
+    if (texture) {
+      UseRenderEncoderHeap(texture->heap());
+    }
+  }
+  auto* depth_attachment = descriptor->depthAttachment();
+  if (depth_attachment && depth_attachment->texture()) {
+    UseRenderEncoderHeap(depth_attachment->texture()->heap());
+  }
+  auto* stencil_attachment = descriptor->stencilAttachment();
+  if (stencil_attachment && stencil_attachment->texture()) {
+    UseRenderEncoderHeap(stencil_attachment->texture()->heap());
+  }
 }
 
 void MetalCommandProcessor::BeginCommandBuffer() {
   if (!EnsureCommandBuffer()) {
     return;
+  }
+
+  if (!current_render_encoder_ &&
+      (!render_encoder_resource_usage_.empty() ||
+       !render_encoder_heap_usage_.empty())) {
+    ResetRenderEncoderResourceUsage();
   }
 
   EnsureActiveDrawRing();
@@ -3625,10 +4376,7 @@ void MetalCommandProcessor::BeginCommandBuffer() {
   // restart the render encoder with the updated descriptor.
   if (current_render_encoder_ &&
       current_render_pass_descriptor_ != pass_descriptor) {
-    current_render_encoder_->endEncoding();
-    current_render_encoder_->release();
-    current_render_encoder_ = nullptr;
-    current_render_pass_descriptor_ = nullptr;
+    EndRenderEncoder();
   }
 
   if (!current_render_encoder_) {
@@ -3645,6 +4393,7 @@ void MetalCommandProcessor::BeginCommandBuffer() {
         NS::String::string("XeniaRenderEncoder", NS::UTF8StringEncoding));
     ff_blend_factor_valid_ = false;
     current_render_pass_descriptor_ = pass_descriptor;
+    UseRenderEncoderAttachmentHeaps(pass_descriptor);
   }
 
   // Derive viewport/scissor from the actual bound render target rather than
@@ -3686,7 +4435,7 @@ void MetalCommandProcessor::BeginCommandBuffer() {
 }
 
 void MetalCommandProcessor::EnsureDrawRingCapacity() {
-  if (current_draw_index_ < kDrawRingCount) {
+  if (current_draw_index_ < draw_ring_count_) {
     return;
   }
 
@@ -3696,8 +4445,10 @@ void MetalCommandProcessor::EnsureDrawRingCapacity() {
     return;
   }
 
-  XELOGW("Metal draw ring exhausted ({} draws); switching ring page",
-         current_draw_index_);
+  if (::cvars::metal_verbose_logging) {
+    XELOGI("Metal draw ring exhausted ({} draws); switching ring page",
+           current_draw_index_);
+  }
   SetActiveDrawRing(ring);
   command_buffer_draw_rings_.push_back(ring);
   current_draw_index_ = 0;
@@ -3705,12 +4456,7 @@ void MetalCommandProcessor::EnsureDrawRingCapacity() {
 
 void MetalCommandProcessor::EndCommandBuffer() {
   XELOGI("MetalCommandProcessor::EndCommandBuffer: called");
-  if (current_render_encoder_) {
-    current_render_encoder_->endEncoding();
-    current_render_encoder_->release();
-    current_render_encoder_ = nullptr;
-    current_render_pass_descriptor_ = nullptr;
-  }
+  EndRenderEncoder();
 
   if (current_command_buffer_) {
     ScheduleDrawRingRelease(current_command_buffer_);
@@ -3720,6 +4466,7 @@ void MetalCommandProcessor::EndCommandBuffer() {
     SetActiveDrawRing(nullptr);
     current_draw_index_ = 0;
   }
+  DrainCommandBufferAutoreleasePool();
 
   FlushEdramFromHostRenderTargetsIfEnabled("EndCommandBuffer");
 }
@@ -4040,6 +4787,35 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
   }
   uint64_t key = XXH3_64bits(&key_data, sizeof(key_data));
 
+  PipelineDiskCacheEntry disk_entry;
+  bool record_disk_entry =
+      ::cvars::metal_pipeline_disk_cache && pipeline_disk_cache_file_;
+  if (record_disk_entry) {
+    disk_entry.pipeline_key = key;
+    disk_entry.vertex_shader_cache_key = MetalShaderCache::GetCacheKey(
+        vertex_translation->shader().ucode_data_hash(),
+        vertex_translation->modification(),
+        static_cast<uint32_t>(vertex_translation->shader().type()));
+    if (pixel_translation) {
+      disk_entry.pixel_shader_cache_key = MetalShaderCache::GetCacheKey(
+          pixel_translation->shader().ucode_data_hash(),
+          pixel_translation->modification(),
+          static_cast<uint32_t>(pixel_translation->shader().type()));
+    }
+    disk_entry.edram_rov_used = key_data.edram_rov_used;
+    disk_entry.edram_compute_fallback_mask = key_data.edram_compute_fallback_mask;
+    disk_entry.sample_count = key_data.sample_count;
+    disk_entry.depth_format = key_data.depth_format;
+    disk_entry.stencil_format = key_data.stencil_format;
+    std::memcpy(disk_entry.color_formats, key_data.color_formats,
+                sizeof(key_data.color_formats));
+    disk_entry.coverage_format = key_data.coverage_format;
+    disk_entry.normalized_color_mask = key_data.normalized_color_mask;
+    disk_entry.alpha_to_mask_enable = key_data.alpha_to_mask_enable;
+    std::memcpy(disk_entry.blendcontrol, key_data.blendcontrol,
+                sizeof(key_data.blendcontrol));
+  }
+
   // Check cache
   auto it = pipeline_cache_.find(key);
   if (it != pipeline_cache_.end()) {
@@ -4208,6 +4984,10 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
     };
 
     MTL::VertexDescriptor* vertex_desc = MTL::VertexDescriptor::alloc()->init();
+    if (record_disk_entry) {
+      disk_entry.vertex_attributes.clear();
+      disk_entry.vertex_layouts.clear();
+    }
 
     uint32_t attr_index = static_cast<uint32_t>(kIRStageInAttributeStartIndex);
     for (const auto& binding : vertex_bindings) {
@@ -4226,6 +5006,14 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
         attr_desc->setOffset(
             static_cast<NS::UInteger>(attr.fetch_instr.attributes.offset * 4));
         attr_desc->setBufferIndex(static_cast<NS::UInteger>(buffer_index));
+        if (record_disk_entry) {
+          PipelineDiskCacheVertexAttribute cached_attr = {};
+          cached_attr.attribute_index = attr_index;
+          cached_attr.format = static_cast<uint32_t>(fmt);
+          cached_attr.offset = attr.fetch_instr.attributes.offset * 4;
+          cached_attr.buffer_index = static_cast<uint32_t>(buffer_index);
+          disk_entry.vertex_attributes.push_back(cached_attr);
+        }
         used_any_attribute = true;
         ++attr_index;
       }
@@ -4235,11 +5023,33 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
         layout->setStride(binding.stride_words * 4);
         layout->setStepFunction(MTL::VertexStepFunctionPerVertex);
         layout->setStepRate(1);
+        if (record_disk_entry) {
+          PipelineDiskCacheVertexLayout cached_layout = {};
+          cached_layout.buffer_index = static_cast<uint32_t>(buffer_index);
+          cached_layout.stride = binding.stride_words * 4;
+          cached_layout.step_function =
+              static_cast<uint32_t>(MTL::VertexStepFunctionPerVertex);
+          cached_layout.step_rate = 1;
+          disk_entry.vertex_layouts.push_back(cached_layout);
+        }
       }
     }
 
     desc->setVertexDescriptor(vertex_desc);
     vertex_desc->release();
+  }
+
+  if (pipeline_binary_archive_) {
+    NS::Array* archives = NS::Array::array(pipeline_binary_archive_);
+    desc->setBinaryArchives(archives);
+    NS::Error* archive_error = nullptr;
+    if (pipeline_binary_archive_->addRenderPipelineFunctions(desc,
+                                                             &archive_error)) {
+      pipeline_binary_archive_dirty_ = true;
+    } else if (archive_error && ::cvars::metal_verbose_logging) {
+      XELOGI("Metal binary archive add failed: {}",
+             archive_error->localizedDescription()->utf8String());
+    }
   }
 
   // Create pipeline state
@@ -4264,6 +5074,9 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
   }
 
   pipeline_cache_[key] = pipeline;
+  if (record_disk_entry) {
+    AppendPipelineDiskCacheEntry(disk_entry);
+  }
   if (edram_rov_used && reflection) {
     NS::Array* fragment_args = reflection->fragmentArguments();
     if (fragment_args) {
@@ -6215,7 +7028,7 @@ MetalCommandProcessor::CreateDrawRingBuffers() {
   static uint32_t ring_id = 0;
   auto ring = std::make_shared<DrawRingBuffers>();
 
-  const size_t kDescriptorTableCount = kStageCount * kDrawRingCount;
+  const size_t kDescriptorTableCount = kStageCount * draw_ring_count_;
   const size_t kResourceHeapSlots =
       kResourceHeapSlotsPerTable * kDescriptorTableCount;
   const size_t kUavTableBaseIndex = kResourceHeapSlots;
@@ -6240,6 +7053,7 @@ MetalCommandProcessor::CreateDrawRingBuffers() {
     XELOGE("Failed to create resource descriptor heap buffer");
     return nullptr;
   }
+  TrackMetalBufferCreated(kResourceHeapBytes);
   std::string ring_label_suffix = std::to_string(ring_id);
   ring->res_heap_ab->setLabel(NS::String::string(
       ("ResourceDescriptorHeap_" + ring_label_suffix).c_str(),
@@ -6273,6 +7087,7 @@ MetalCommandProcessor::CreateDrawRingBuffers() {
     XELOGE("Failed to create sampler descriptor heap buffer");
     return nullptr;
   }
+  TrackMetalBufferCreated(kSamplerHeapBytes);
   ring->smp_heap_ab->setLabel(NS::String::string(
       ("SamplerDescriptorHeap_" + ring_label_suffix).c_str(),
       NS::UTF8StringEncoding));
@@ -6288,6 +7103,7 @@ MetalCommandProcessor::CreateDrawRingBuffers() {
     XELOGE("Failed to create uniforms buffer");
     return nullptr;
   }
+  TrackMetalBufferCreated(kUniformsBufferSize);
   ring->uniforms_buffer->setLabel(NS::String::string(
       ("UniformsBuffer_" + ring_label_suffix).c_str(),
       NS::UTF8StringEncoding));
@@ -6299,6 +7115,7 @@ MetalCommandProcessor::CreateDrawRingBuffers() {
     XELOGE("Failed to create top-level argument buffer");
     return nullptr;
   }
+  TrackMetalBufferCreated(kTopLevelABTotalBytes);
   ring->top_level_ab->setLabel(NS::String::string(
       ("TopLevelArgumentBuffer_" + ring_label_suffix).c_str(),
       NS::UTF8StringEncoding));
@@ -6310,6 +7127,7 @@ MetalCommandProcessor::CreateDrawRingBuffers() {
     XELOGE("Failed to create draw arguments buffer");
     return nullptr;
   }
+  TrackMetalBufferCreated(kDrawArgsSize);
   ring->draw_args_buffer->setLabel(NS::String::string(
       ("DrawArgumentsBuffer_" + ring_label_suffix).c_str(),
       NS::UTF8StringEncoding));
@@ -6321,6 +7139,7 @@ MetalCommandProcessor::CreateDrawRingBuffers() {
     XELOGE("Failed to create CBV descriptor heap buffer");
     return nullptr;
   }
+  TrackMetalBufferCreated(kCBVHeapBytes);
   ring->cbv_heap_ab->setLabel(NS::String::string(
       ("CBVDescriptorHeap_" + ring_label_suffix).c_str(),
       NS::UTF8StringEncoding));
@@ -6490,7 +7309,7 @@ void MetalCommandProcessor::PopulateIRConverterBuffers() {
         uniforms_buffer_, 0, kIRArgumentBufferUniformsBindPoint);
 
     // Make shared memory resident for GPU access
-    current_render_encoder_->useResource(shared_mem_buffer,
+    UseRenderEncoderResource(shared_mem_buffer,
                                          MTL::ResourceUsageRead);
   }
 }
@@ -7101,6 +7920,8 @@ void MetalCommandProcessor::LogInterpolators(MetalShader* vertex_shader,
 
   XELOGI("=== END INTERPOLATOR INFO ===");
 }
+
+
 
 }  // namespace metal
 }  // namespace gpu

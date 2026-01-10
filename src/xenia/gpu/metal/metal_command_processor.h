@@ -10,12 +10,16 @@
 #ifndef XENIA_GPU_METAL_METAL_COMMAND_PROCESSOR_H_
 #define XENIA_GPU_METAL_METAL_COMMAND_PROCESSOR_H_
 
+#include <chrono>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "xenia/base/platform.h"
 #include "xenia/base/string_buffer.h"
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/draw_util.h"
@@ -23,6 +27,7 @@
 #include "xenia/gpu/metal/dxbc_to_dxil_converter.h"
 #include "xenia/gpu/metal/metal_geometry_shader.h"
 #include "xenia/gpu/metal/metal_primitive_processor.h"
+#include "xenia/gpu/metal/metal_resource_tracker.h"
 #include "xenia/gpu/metal/metal_render_target_cache.h"
 #include "xenia/gpu/metal/metal_shader.h"
 #include "xenia/gpu/metal/metal_shader_converter.h"
@@ -31,6 +36,11 @@
 #include "third_party/metal-shader-converter/include/metal_irconverter_runtime.h"
 #include "xenia/ui/metal/metal_api.h"
 #include "xenia/ui/metal/metal_provider.h"
+
+namespace MTL {
+class Heap;
+class SharedEvent;
+}  // namespace MTL
 
 namespace xe {
 namespace gpu {
@@ -63,6 +73,11 @@ class MetalCommandProcessor : public CommandProcessor {
   }
   MTL::CommandBuffer* EnsureCommandBuffer();
   void EndRenderEncoder();
+  void ResetRenderEncoderResourceUsage();
+  void UseRenderEncoderResource(MTL::Resource* resource,
+                                MTL::ResourceUsage usage);
+  void EnsureCommandBufferAutoreleasePool();
+  void DrainCommandBufferAutoreleasePool();
 
   // Get current render pass descriptor (for render target binding)
   MTL::RenderPassDescriptor* GetCurrentRenderPassDescriptor();
@@ -78,8 +93,10 @@ class MetalCommandProcessor : public CommandProcessor {
   bool ConsumeSwapDestSwap(uint32_t dest_base, bool* swap_out);
 
  protected:
-  bool SetupContext() override;
-  void ShutdownContext() override;
+ bool SetupContext() override;
+ void ShutdownContext() override;
+ void InitializeShaderStorage(const std::filesystem::path& cache_root,
+                              uint32_t title_id, bool blocking) override;
 
   // Flush pending GPU work before entering wait state.
   // This ensures Metal command buffers are submitted and completed before
@@ -122,6 +139,8 @@ class MetalCommandProcessor : public CommandProcessor {
   void EndCommandBuffer();
   void FlushEdramFromHostRenderTargetsIfEnabled(const char* reason);
   void EnsureDrawRingCapacity();
+  void UseRenderEncoderAttachmentHeaps(MTL::RenderPassDescriptor* descriptor);
+  void UseRenderEncoderHeap(MTL::Heap* heap);
 
   // Pipeline state management
   MTL::RenderPipelineState* GetOrCreatePipelineState(
@@ -210,6 +229,51 @@ class MetalCommandProcessor : public CommandProcessor {
 
   bool EnsureDepthOnlyPixelShader();
 
+  struct PipelineDiskCacheVertexAttribute {
+    uint32_t attribute_index;
+    uint32_t format;
+    uint32_t offset;
+    uint32_t buffer_index;
+  };
+
+  struct PipelineDiskCacheVertexLayout {
+    uint32_t buffer_index;
+    uint32_t stride;
+    uint32_t step_function;
+    uint32_t step_rate;
+  };
+
+  struct PipelineDiskCacheEntry {
+    uint64_t pipeline_key = 0;
+    uint64_t vertex_shader_cache_key = 0;
+    uint64_t pixel_shader_cache_key = 0;
+    uint32_t edram_rov_used = 0;
+    uint32_t edram_compute_fallback_mask = 0;
+    uint32_t sample_count = 1;
+    uint32_t depth_format = 0;
+    uint32_t stencil_format = 0;
+    uint32_t color_formats[4] = {};
+    uint32_t coverage_format = 0;
+    uint32_t normalized_color_mask = 0;
+    uint32_t alpha_to_mask_enable = 0;
+    uint32_t blendcontrol[4] = {};
+    std::vector<PipelineDiskCacheVertexAttribute> vertex_attributes;
+    std::vector<PipelineDiskCacheVertexLayout> vertex_layouts;
+  };
+
+  bool InitializeShaderStorageInternal(const std::filesystem::path& cache_root,
+                                       uint32_t title_id, bool blocking);
+  void ShutdownShaderStorage();
+  std::string GetShaderStorageDeviceTag() const;
+  bool LoadPipelineDiskCache(const std::filesystem::path& path,
+                             std::vector<PipelineDiskCacheEntry>* entries);
+  bool AppendPipelineDiskCacheEntry(const PipelineDiskCacheEntry& entry);
+  bool InitializePipelineBinaryArchive(
+      const std::filesystem::path& archive_path);
+  void SerializePipelineBinaryArchive();
+  void PrewarmPipelineBinaryArchive(
+      const std::vector<PipelineDiskCacheEntry>& entries);
+
   // Constants for descriptor heap sizes.
   // MSC's IR runtime uses a D3D12-like "root signature" model. In D3D12, many
   // root parameters are stage-visible, so VS and PS can both use registers like
@@ -220,7 +284,6 @@ class MetalCommandProcessor : public CommandProcessor {
   // VS and PS (per draw), and ring-buffer them so CPU writes don't overwrite
   // data still in flight on the GPU.
   static constexpr size_t kStageCount = 2;  // Vertex + pixel.
-  static constexpr size_t kDrawRingCount = 32;
 
   // Root signature descriptor counts in MetalShaderConverter are intentionally
   // oversized (bindless-style). Allocate extra padding because MSC IR shaders
@@ -280,6 +343,8 @@ class MetalCommandProcessor : public CommandProcessor {
   // Metal device and command queue (from provider)
   MTL::Device* device_ = nullptr;
   MTL::CommandQueue* command_queue_ = nullptr;
+  MTL::SharedEvent* wait_shared_event_ = nullptr;
+  uint64_t wait_shared_event_value_ = 0;
 
   // Render targets
   MTL::Texture* render_target_texture_ = nullptr;
@@ -292,6 +357,12 @@ class MetalCommandProcessor : public CommandProcessor {
   MTL::CommandBuffer* current_command_buffer_ = nullptr;
   MTL::RenderCommandEncoder* current_render_encoder_ = nullptr;
   MTL::RenderPassDescriptor* current_render_pass_descriptor_ = nullptr;
+  NS::AutoreleasePool* command_buffer_autorelease_pool_ = nullptr;
+
+  // Tracks resources marked via useResource for the current render encoder
+  // to avoid redundant driver calls across draws within the same encoder.
+  std::unordered_map<MTL::Resource*, uint32_t> render_encoder_resource_usage_;
+  std::unordered_set<MTL::Heap*> render_encoder_heap_usage_;
 
   // Shared memory for Xbox 360 memory access
   std::unique_ptr<MetalSharedMemory> shared_memory_;
@@ -309,7 +380,7 @@ class MetalCommandProcessor : public CommandProcessor {
   MetalRenderTargetCache* render_target_cache() const {
     return render_target_cache_.get();
   }
-  MetalTextureCache* texture_cache() const { return texture_cache_.get(); }
+ MetalTextureCache* texture_cache() const { return texture_cache_.get(); }
 
  private:
   // Shader translation components
@@ -399,6 +470,7 @@ class MetalCommandProcessor : public CommandProcessor {
   std::vector<std::shared_ptr<DrawRingBuffers>> draw_ring_pool_;
   std::vector<std::shared_ptr<DrawRingBuffers>> command_buffer_draw_rings_;
   std::mutex draw_ring_mutex_;
+  size_t draw_ring_count_ = 0;
 
   MTL::Library* depth_only_pixel_library_ = nullptr;
   std::string depth_only_pixel_function_name_;
@@ -412,6 +484,31 @@ class MetalCommandProcessor : public CommandProcessor {
   // Fixed-function dynamic state cached per render encoder.
   float ff_blend_factor_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   bool ff_blend_factor_valid_ = false;
+
+  std::filesystem::path shader_storage_root_;
+  std::filesystem::path shader_storage_local_root_;
+  std::filesystem::path shader_storage_title_root_;
+  std::filesystem::path metallib_cache_dir_;
+  std::filesystem::path pipeline_disk_cache_path_;
+  std::filesystem::path pipeline_binary_archive_path_;
+  std::unordered_set<uint64_t> pipeline_disk_cache_keys_;
+  std::vector<PipelineDiskCacheEntry> pipeline_disk_cache_entries_;
+  FILE* pipeline_disk_cache_file_ = nullptr;
+  MTL::BinaryArchive* pipeline_binary_archive_ = nullptr;
+  bool pipeline_binary_archive_dirty_ = false;
+
+  std::atomic<int32_t> inflight_command_buffers_{0};
+  std::atomic<uint64_t> completed_command_buffers_{0};
+  std::atomic<uint64_t> created_command_buffers_{0};
+  std::atomic<uint64_t> completed_command_buffers_total_us_{0};
+  std::atomic<uint64_t> completed_command_buffers_max_us_{0};
+  std::chrono::steady_clock::time_point last_command_buffer_complete_time_{};
+  uint64_t last_completed_command_buffers_ = 0;
+  uint64_t last_completed_command_buffers_total_us_ = 0;
+  uint64_t autorelease_pools_created_ = 0;
+  uint64_t autorelease_pools_drained_ = 0;
+  uint64_t last_autorelease_pools_created_ = 0;
+  uint64_t last_autorelease_pools_drained_ = 0;
 
   // Draw counter for ring-buffer descriptor heap allocation
   // Each draw uses a different region of the descriptor heap to avoid
