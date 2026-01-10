@@ -2059,6 +2059,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                                       IndexBufferInfo* index_buffer_info,
                                       bool major_mode_explicit) {
   const RegisterFile& regs = *register_file_;
+  LogCacheStatsIfNeeded();
   // Debug flags for background-related render targets.
   bool debug_bg_rt0_320x2048 = false;
   bool debug_bg_rt0_1280x2048 = false;
@@ -7919,6 +7920,169 @@ void MetalCommandProcessor::LogInterpolators(MetalShader* vertex_shader,
   }
 
   XELOGI("=== END INTERPOLATOR INFO ===");
+}
+
+void MetalCommandProcessor::LogCacheStatsIfNeeded() {
+  if (!::cvars::metal_log_cache_stats) {
+    return;
+  }
+
+  const int32_t interval_seconds =
+      std::max<int32_t>(1, ::cvars::metal_log_cache_stats_interval_seconds);
+  const auto now = std::chrono::steady_clock::now();
+  if (last_cache_stats_log_time_ != std::chrono::steady_clock::time_point() &&
+      now - last_cache_stats_log_time_ <
+          std::chrono::seconds(interval_seconds)) {
+    return;
+  }
+  last_cache_stats_log_time_ = now;
+
+  auto bytes_to_mb = [](uint64_t bytes) -> double {
+    return double(bytes) / (1024.0 * 1024.0);
+  };
+
+  MetalTextureCache::CacheStats tex_stats;
+  if (texture_cache_) {
+    tex_stats = texture_cache_->GetCacheStats();
+  }
+  MetalRenderTargetCache::CacheStats rt_stats;
+  if (render_target_cache_) {
+    rt_stats = render_target_cache_->GetCacheStats();
+  }
+  MetalShaderCache::CacheStats shader_stats;
+  if (g_metal_shader_cache && g_metal_shader_cache->IsInitialized()) {
+    shader_stats = g_metal_shader_cache->GetStats();
+  }
+  uint64_t shared_memory_bytes = 0;
+  if (shared_memory_) {
+    if (auto* buffer = shared_memory_->GetBuffer()) {
+      shared_memory_bytes = buffer->length();
+    }
+  }
+  uint64_t edram_bytes = 0;
+  if (render_target_cache_) {
+    if (auto* edram_buffer = render_target_cache_->GetEdramBuffer()) {
+      edram_bytes = edram_buffer->length();
+    }
+  }
+  const char* cb_state = current_command_buffer_ ? "yes" : "no";
+  const char* enc_state = current_render_encoder_ ? "yes" : "no";
+  const int32_t inflight =
+      inflight_command_buffers_.load(std::memory_order_relaxed);
+  const uint64_t completed =
+      completed_command_buffers_.load(std::memory_order_relaxed);
+  const uint64_t created =
+      created_command_buffers_.load(std::memory_order_relaxed);
+  const uint64_t completed_total_us =
+      completed_command_buffers_total_us_.load(std::memory_order_relaxed);
+  const uint64_t completed_max_us =
+      completed_command_buffers_max_us_.load(std::memory_order_relaxed);
+  const uint64_t completed_delta = completed - last_completed_command_buffers_;
+  const uint64_t completed_total_us_delta =
+      completed_total_us - last_completed_command_buffers_total_us_;
+  const double completed_avg_ms =
+      completed_delta
+          ? (double(completed_total_us_delta) / 1000.0) /
+                double(completed_delta)
+          : 0.0;
+  const double completed_max_ms = double(completed_max_us) / 1000.0;
+  const uint64_t pools_created_delta =
+      autorelease_pools_created_ - last_autorelease_pools_created_;
+  const uint64_t pools_drained_delta =
+      autorelease_pools_drained_ - last_autorelease_pools_drained_;
+  last_completed_command_buffers_ = completed;
+  last_completed_command_buffers_total_us_ = completed_total_us;
+  last_autorelease_pools_created_ = autorelease_pools_created_;
+  last_autorelease_pools_drained_ = autorelease_pools_drained_;
+  int64_t ms_since_complete = -1;
+  if (last_command_buffer_complete_time_ !=
+      std::chrono::steady_clock::time_point()) {
+    ms_since_complete =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - last_command_buffer_complete_time_)
+            .count();
+  }
+  MetalResourceStats resource_stats = GetMetalResourceStats();
+  MetalResourceStats resource_delta = resource_stats;
+  resource_delta.buffers_created -= last_resource_stats_.buffers_created;
+  resource_delta.buffers_released -= last_resource_stats_.buffers_released;
+  resource_delta.buffer_bytes_created -=
+      last_resource_stats_.buffer_bytes_created;
+  resource_delta.buffer_bytes_released -=
+      last_resource_stats_.buffer_bytes_released;
+  resource_delta.textures_created -= last_resource_stats_.textures_created;
+  resource_delta.textures_released -= last_resource_stats_.textures_released;
+  resource_delta.texture_bytes_created -=
+      last_resource_stats_.texture_bytes_created;
+  resource_delta.texture_bytes_released -=
+      last_resource_stats_.texture_bytes_released;
+  last_resource_stats_ = resource_stats;
+
+  const double buffers_created_mb =
+      bytes_to_mb(resource_delta.buffer_bytes_created);
+  const double buffers_released_mb =
+      bytes_to_mb(resource_delta.buffer_bytes_released);
+  const double textures_created_mb =
+      bytes_to_mb(resource_delta.texture_bytes_created);
+  const double textures_released_mb =
+      bytes_to_mb(resource_delta.texture_bytes_released);
+  const double buffers_live_mb =
+      bytes_to_mb(resource_stats.buffer_bytes_created -
+                  resource_stats.buffer_bytes_released);
+  const double textures_live_mb =
+      bytes_to_mb(resource_stats.texture_bytes_created -
+                  resource_stats.texture_bytes_released);
+
+  XELOGI(
+      "MetalCacheStats: textures={} host_mb={:.2f} rts={} rt_textures={} "
+      "rt_mb~{:.2f} shaders={} shader_mb={:.2f} pipelines={} geom_pipelines={} "
+      "tess_pipelines={} draw_rings={} ring_pool={} shared_mb={:.2f} "
+      "edram_mb={:.2f} cb={} enc={} inflight_cb={} completed_cb={} "
+      "ms_since_cb_done={} cb_created={} cb_completed_delta={} "
+      "cb_avg_ms={:.2f} cb_max_ms={:.2f} pools_created={} pools_drained={} "
+      "new_bufs={} buf_mb+={:.2f} buf_mb-={:.2f} new_tex={} tex_mb+={:.2f} "
+      "tex_mb-={:.2f} buf_live_mb={:.2f} tex_live_mb={:.2f}",
+      tex_stats.texture_count, bytes_to_mb(tex_stats.total_host_memory_bytes),
+      rt_stats.render_target_count, rt_stats.texture_count,
+      bytes_to_mb(rt_stats.approx_texture_bytes), shader_stats.entry_count,
+      bytes_to_mb(shader_stats.total_bytes), pipeline_cache_.size(),
+      geometry_pipeline_cache_.size(), tessellation_pipeline_cache_.size(),
+      command_buffer_draw_rings_.size(), draw_ring_pool_.size(),
+      bytes_to_mb(shared_memory_bytes), bytes_to_mb(edram_bytes), cb_state,
+      enc_state, inflight, completed, ms_since_complete, created,
+      completed_delta, completed_avg_ms, completed_max_ms, pools_created_delta,
+      pools_drained_delta, resource_delta.buffers_created, buffers_created_mb,
+      buffers_released_mb, resource_delta.textures_created, textures_created_mb,
+      textures_released_mb, buffers_live_mb, textures_live_mb);
+
+  std::filesystem::path log_path = "scratch/logs/metal_cache_stats.log";
+  std::error_code ec;
+  std::filesystem::create_directories(log_path.parent_path(), ec);
+  std::ofstream log_file(log_path, std::ios::app);
+  if (log_file.is_open()) {
+    log_file << fmt::format(
+        "MetalCacheStats: textures={} host_mb={:.2f} rts={} rt_textures={} "
+        "rt_mb~{:.2f} shaders={} shader_mb={:.2f} pipelines={} geom_pipelines={} "
+        "tess_pipelines={} draw_rings={} ring_pool={} shared_mb={:.2f} "
+        "edram_mb={:.2f} cb={} enc={} inflight_cb={} completed_cb={} "
+        "ms_since_cb_done={} cb_created={} cb_completed_delta={} "
+        "cb_avg_ms={:.2f} cb_max_ms={:.2f} pools_created={} pools_drained={} "
+        "new_bufs={} buf_mb+={:.2f} buf_mb-={:.2f} new_tex={} tex_mb+={:.2f} "
+        "tex_mb-={:.2f} buf_live_mb={:.2f} tex_live_mb={:.2f}\n",
+        tex_stats.texture_count, bytes_to_mb(tex_stats.total_host_memory_bytes),
+        rt_stats.render_target_count, rt_stats.texture_count,
+        bytes_to_mb(rt_stats.approx_texture_bytes), shader_stats.entry_count,
+        bytes_to_mb(shader_stats.total_bytes), pipeline_cache_.size(),
+        geometry_pipeline_cache_.size(), tessellation_pipeline_cache_.size(),
+        command_buffer_draw_rings_.size(), draw_ring_pool_.size(),
+        bytes_to_mb(shared_memory_bytes), bytes_to_mb(edram_bytes), cb_state,
+        enc_state, inflight, completed, ms_since_complete, created,
+        completed_delta, completed_avg_ms, completed_max_ms,
+        pools_created_delta, pools_drained_delta, resource_delta.buffers_created,
+        buffers_created_mb, buffers_released_mb, resource_delta.textures_created,
+        textures_created_mb, textures_released_mb, buffers_live_mb,
+        textures_live_mb);
+  }
 }
 
 

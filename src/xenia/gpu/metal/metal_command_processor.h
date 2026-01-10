@@ -336,6 +336,7 @@ class MetalCommandProcessor : public CommandProcessor {
   // Debug logging utilities
   void DumpUniformsBuffer();
   void LogInterpolators(MetalShader* vertex_shader, MetalShader* pixel_shader);
+  void LogCacheStatsIfNeeded();
 
   // Frame capture
   void CaptureCurrentFrame();
@@ -484,6 +485,7 @@ class MetalCommandProcessor : public CommandProcessor {
   // Fixed-function dynamic state cached per render encoder.
   float ff_blend_factor_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   bool ff_blend_factor_valid_ = false;
+  std::chrono::steady_clock::time_point last_cache_stats_log_time_{};
 
   std::filesystem::path shader_storage_root_;
   std::filesystem::path shader_storage_local_root_;
@@ -509,6 +511,7 @@ class MetalCommandProcessor : public CommandProcessor {
   uint64_t autorelease_pools_drained_ = 0;
   uint64_t last_autorelease_pools_created_ = 0;
   uint64_t last_autorelease_pools_drained_ = 0;
+  MetalResourceStats last_resource_stats_{};
 
   // Draw counter for ring-buffer descriptor heap allocation
   // Each draw uses a different region of the descriptor heap to avoid
