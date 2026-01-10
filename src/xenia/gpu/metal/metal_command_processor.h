@@ -137,7 +137,6 @@ class MetalCommandProcessor : public CommandProcessor {
   // Command buffer management
   void BeginCommandBuffer();
   void EndCommandBuffer();
-  void FlushEdramFromHostRenderTargetsIfEnabled(const char* reason);
   void EnsureDrawRingCapacity();
   void UseRenderEncoderAttachmentHeaps(MTL::RenderPassDescriptor* descriptor);
   void UseRenderEncoderHeap(MTL::Heap* heap);
@@ -146,7 +145,7 @@ class MetalCommandProcessor : public CommandProcessor {
   MTL::RenderPipelineState* GetOrCreatePipelineState(
       MetalShader::MetalTranslation* vertex_translation,
       MetalShader::MetalTranslation* pixel_translation,
-      const RegisterFile& regs, uint32_t edram_compute_fallback_mask);
+      const RegisterFile& regs);
 
   struct GeometryVertexStageState {
     MTL::Library* library = nullptr;
@@ -209,14 +208,13 @@ class MetalCommandProcessor : public CommandProcessor {
   GeometryPipelineState* GetOrCreateGeometryPipelineState(
       MetalShader::MetalTranslation* vertex_translation,
       MetalShader::MetalTranslation* pixel_translation,
-      GeometryShaderKey geometry_shader_key, const RegisterFile& regs,
-      uint32_t edram_compute_fallback_mask);
+      GeometryShaderKey geometry_shader_key, const RegisterFile& regs);
 
   TessellationPipelineState* GetOrCreateTessellationPipelineState(
       MetalShader::MetalTranslation* domain_translation,
       MetalShader::MetalTranslation* pixel_translation,
       const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
-      const RegisterFile& regs, uint32_t edram_compute_fallback_mask);
+      const RegisterFile& regs);
 
   // Fixed-function depth/stencil state (mirrors Vulkan/D3D12 dynamic state).
   void ApplyDepthStencilState(bool primitive_polygonal,
@@ -247,13 +245,10 @@ class MetalCommandProcessor : public CommandProcessor {
     uint64_t pipeline_key = 0;
     uint64_t vertex_shader_cache_key = 0;
     uint64_t pixel_shader_cache_key = 0;
-    uint32_t edram_rov_used = 0;
-    uint32_t edram_compute_fallback_mask = 0;
     uint32_t sample_count = 1;
     uint32_t depth_format = 0;
     uint32_t stencil_format = 0;
     uint32_t color_formats[4] = {};
-    uint32_t coverage_format = 0;
     uint32_t normalized_color_mask = 0;
     uint32_t alpha_to_mask_enable = 0;
     uint32_t blendcontrol[4] = {};
@@ -330,8 +325,7 @@ class MetalCommandProcessor : public CommandProcessor {
       uint32_t interpolator_mask) const;
   DxbcShaderTranslator::Modification GetCurrentPixelShaderModification(
       const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
-      reg::RB_DEPTHCONTROL normalized_depth_control,
-      bool ordered_blend_coverage) const;
+      reg::RB_DEPTHCONTROL normalized_depth_control) const;
 
   // Debug logging utilities
   void DumpUniformsBuffer();

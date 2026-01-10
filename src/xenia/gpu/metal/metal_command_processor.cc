@@ -153,7 +153,7 @@ bool ShouldDumpGeometryShaders() {
 }
 
 constexpr uint32_t kPipelineDiskCacheMagic = 0x43504D58;  // 'XMPC'
-constexpr uint32_t kPipelineDiskCacheVersion = 1;
+constexpr uint32_t kPipelineDiskCacheVersion = 2;
 constexpr size_t kPipelineDiskCacheMaxEntrySize = 1 << 20;
 
 XEPACKEDSTRUCT(PipelineDiskCacheHeader, {
@@ -171,13 +171,10 @@ XEPACKEDSTRUCT(PipelineDiskCacheEntryBase, {
   uint64_t pipeline_key;
   uint64_t vertex_shader_cache_key;
   uint64_t pixel_shader_cache_key;
-  uint32_t edram_rov_used;
-  uint32_t edram_compute_fallback_mask;
   uint32_t sample_count;
   uint32_t depth_format;
   uint32_t stencil_format;
   uint32_t color_formats[4];
-  uint32_t coverage_format;
   uint32_t normalized_color_mask;
   uint32_t alpha_to_mask_enable;
   uint32_t blendcontrol[4];
@@ -704,9 +701,6 @@ bool MetalCommandProcessor::ConsumeSwapDestSwap(uint32_t dest_base,
 
 bool MetalCommandProcessor::SetupContext() {
   XELOGI("MetalCommandProcessor::SetupContext: Starting");
-  XELOGI(
-      "MetalCommandProcessor::SetupContext: metal_edram_compute_fallback={}",
-      ::cvars::metal_edram_compute_fallback);
   saw_swap_ = false;
   last_swap_ptr_ = 0;
   last_swap_width_ = 0;
@@ -960,19 +954,17 @@ bool MetalCommandProcessor::SetupContext() {
 
 bool MetalCommandProcessor::InitializeShaderTranslation() {
   // Initialize DXBC shader translator (use Apple vendor ID for Metal)
-  // Parameters: vendor_id, bindless_resources_used, edram_rov_used,
+  // Parameters: vendor_id, bindless_resources_used,
   //             gamma_render_target_as_srgb, msaa_2x_supported,
   //             draw_resolution_scale_x, draw_resolution_scale_y
-  const bool edram_rov_used = ::cvars::metal_edram_rov;
   shader_translator_ = std::make_unique<DxbcShaderTranslator>(
       ui::GraphicsProvider::GpuVendorID::kApple,
       false,  // bindless_resources_used - not using bindless for now
-      edram_rov_used,
+      false,
       ::cvars::gamma_render_target_as_srgb,
       true,   // msaa_2x_supported - Metal supports MSAA
       1,      // draw_resolution_scale_x - 1x for now
       1);     // draw_resolution_scale_y - 1x for now
-  XELOGI("MetalCommandProcessor: edram_rov_used={}", edram_rov_used);
 
   // Initialize DXBC to DXIL converter
   dxbc_to_dxil_converter_ = std::make_unique<DxbcToDxilConverter>();
@@ -1072,7 +1064,6 @@ void MetalCommandProcessor::PrepareForWait() {
   }
   DrainCommandBufferAutoreleasePool();
 
-  FlushEdramFromHostRenderTargetsIfEnabled("PrepareForWait");
 
   // Even if we have no active command buffer, there might be GPU work from
   // previously submitted command buffers that autoreleased objects depend on.
@@ -1154,7 +1145,6 @@ void MetalCommandProcessor::ShutdownContext() {
     current_draw_index_ = 0;
   }
 
-  FlushEdramFromHostRenderTargetsIfEnabled("ShutdownContext");
 
   // Even if we have no active command buffer at this point, there may be
   // previously committed command buffers still in flight. Submit and wait for
@@ -1285,11 +1275,7 @@ bool MetalCommandProcessor::InitializeShaderStorageInternal(
     g_metal_shader_cache->Initialize(metallib_cache_dir_);
   }
 
-  bool edram_rov_used =
-      render_target_cache_ &&
-      render_target_cache_->GetPath() ==
-          RenderTargetCache::Path::kPixelShaderInterlock;
-  const char* path_suffix = edram_rov_used ? "rov" : "rtv";
+  const char* path_suffix = "rtv";
 
   pipeline_disk_cache_path_ =
       shader_storage_title_root_ /
@@ -1412,14 +1398,11 @@ bool MetalCommandProcessor::LoadPipelineDiskCache(
     entry.pipeline_key = base.pipeline_key;
     entry.vertex_shader_cache_key = base.vertex_shader_cache_key;
     entry.pixel_shader_cache_key = base.pixel_shader_cache_key;
-    entry.edram_rov_used = base.edram_rov_used;
-    entry.edram_compute_fallback_mask = base.edram_compute_fallback_mask;
     entry.sample_count = base.sample_count;
     entry.depth_format = base.depth_format;
     entry.stencil_format = base.stencil_format;
     std::memcpy(entry.color_formats, base.color_formats,
                 sizeof(base.color_formats));
-    entry.coverage_format = base.coverage_format;
     entry.normalized_color_mask = base.normalized_color_mask;
     entry.alpha_to_mask_enable = base.alpha_to_mask_enable;
     std::memcpy(entry.blendcontrol, base.blendcontrol,
@@ -1465,14 +1448,11 @@ bool MetalCommandProcessor::AppendPipelineDiskCacheEntry(
   base.pipeline_key = entry.pipeline_key;
   base.vertex_shader_cache_key = entry.vertex_shader_cache_key;
   base.pixel_shader_cache_key = entry.pixel_shader_cache_key;
-  base.edram_rov_used = entry.edram_rov_used;
-  base.edram_compute_fallback_mask = entry.edram_compute_fallback_mask;
   base.sample_count = entry.sample_count;
   base.depth_format = entry.depth_format;
   base.stencil_format = entry.stencil_format;
   std::memcpy(base.color_formats, entry.color_formats,
               sizeof(base.color_formats));
-  base.coverage_format = entry.coverage_format;
   base.normalized_color_mask = entry.normalized_color_mask;
   base.alpha_to_mask_enable = entry.alpha_to_mask_enable;
   std::memcpy(base.blendcontrol, entry.blendcontrol, sizeof(base.blendcontrol));
@@ -1625,12 +1605,6 @@ void MetalCommandProcessor::PrewarmPipelineBinaryArchive(
       desc->colorAttachments()->object(i)->setPixelFormat(
           static_cast<MTL::PixelFormat>(entry.color_formats[i]));
     }
-    if (entry.coverage_format !=
-        static_cast<uint32_t>(MTL::PixelFormatInvalid)) {
-      desc->colorAttachments()
-          ->object(MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex)
-          ->setPixelFormat(static_cast<MTL::PixelFormat>(entry.coverage_format));
-    }
     desc->setDepthAttachmentPixelFormat(
         static_cast<MTL::PixelFormat>(entry.depth_format));
     desc->setStencilAttachmentPixelFormat(
@@ -1646,19 +1620,8 @@ void MetalCommandProcessor::PrewarmPipelineBinaryArchive(
         color_attachment->setBlendingEnabled(false);
         continue;
       }
-      if (entry.edram_rov_used) {
-        color_attachment->setWriteMask(MTL::ColorWriteMaskNone);
-        color_attachment->setBlendingEnabled(false);
-        continue;
-      }
       uint32_t rt_write_mask =
           (entry.normalized_color_mask >> (i * 4)) & 0xF;
-      if (entry.edram_compute_fallback_mask & (1u << i)) {
-        color_attachment->setWriteMask(
-            rt_write_mask ? MTL::ColorWriteMaskAll : MTL::ColorWriteMaskNone);
-        color_attachment->setBlendingEnabled(false);
-        continue;
-      }
       color_attachment->setWriteMask(
           ToMetalColorWriteMask(rt_write_mask));
       if (!rt_write_mask) {
@@ -1695,14 +1658,6 @@ void MetalCommandProcessor::PrewarmPipelineBinaryArchive(
         color_attachment->setDestinationAlphaBlendFactor(dst_alpha);
         color_attachment->setAlphaBlendOperation(op_alpha);
       }
-    }
-
-    if (entry.coverage_format !=
-        static_cast<uint32_t>(MTL::PixelFormatInvalid)) {
-      auto* coverage_attachment = desc->colorAttachments()->object(
-          MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex);
-      coverage_attachment->setWriteMask(MTL::ColorWriteMaskAll);
-      coverage_attachment->setBlendingEnabled(false);
     }
 
     if (!entry.vertex_attributes.empty() ||
@@ -1775,7 +1730,6 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
     current_draw_index_ = 0;
   }
 
-  FlushEdramFromHostRenderTargetsIfEnabled("IssueSwap");
 
   if (primitive_processor_ && frame_open_) {
     primitive_processor_->EndFrame();
@@ -2063,11 +2017,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   // Debug flags for background-related render targets.
   bool debug_bg_rt0_320x2048 = false;
   uint32_t normalized_color_mask = 0;
-  uint32_t ordered_blend_mask = 0;
-  bool use_ordered_blend_fallback = false;
-  bool ordered_blend_coverage = false;
-  draw_util::Scissor guest_scissor = {};
-  bool guest_scissor_valid = false;
 
   // Check for copy mode
   xenos::ModeControl edram_mode = regs.Get<reg::RB_MODECONTROL>().edram_mode;
@@ -2278,58 +2227,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         "normalized_color_mask=0x{:X}",
         pixel_shader ? pixel_shader->writes_color_targets() : 0,
         normalized_color_mask);
-    const bool edram_psi_used =
-        render_target_cache_->GetPath() ==
-        RenderTargetCache::Path::kPixelShaderInterlock;
-    {
-      static int edram_blend_log_count = 0;
-      ordered_blend_mask = 0;
-      if (edram_psi_used && normalized_color_mask) {
-        for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
-          uint32_t rt_write_mask =
-              (normalized_color_mask >> (i * 4)) & 0xF;
-          if (!rt_write_mask) {
-            continue;
-          }
-          auto blendcontrol = regs.Get<reg::RB_BLENDCONTROL>(
-              reg::RB_BLENDCONTROL::rt_register_indices[i]);
-          bool blending_enabled =
-              blendcontrol.color_srcblend != xenos::BlendFactor::kOne ||
-              blendcontrol.color_destblend != xenos::BlendFactor::kZero ||
-              blendcontrol.color_comb_fcn != xenos::BlendOp::kAdd ||
-              blendcontrol.alpha_srcblend != xenos::BlendFactor::kOne ||
-              blendcontrol.alpha_destblend != xenos::BlendFactor::kZero ||
-              blendcontrol.alpha_comb_fcn != xenos::BlendOp::kAdd;
-          float rt_clamp[4];
-          uint32_t rt_keep_mask[2];
-          RenderTargetCache::GetPSIColorFormatInfo(
-              regs.Get<reg::RB_COLOR_INFO>(
-                  reg::RB_COLOR_INFO::rt_register_indices[i])
-                  .color_format,
-              rt_write_mask, rt_clamp[0], rt_clamp[1], rt_clamp[2],
-              rt_clamp[3], rt_keep_mask[0], rt_keep_mask[1]);
-          bool rt_disabled =
-              rt_keep_mask[0] == UINT32_MAX && rt_keep_mask[1] == UINT32_MAX;
-          bool keep_mask_nonempty =
-              !rt_disabled && (rt_keep_mask[0] != 0 || rt_keep_mask[1] != 0);
-          if (!rt_disabled && (blending_enabled || keep_mask_nonempty)) {
-            ordered_blend_mask |= (1u << i);
-          }
-        }
-      }
-      if (edram_blend_log_count < 16 && ordered_blend_mask) {
-        ++edram_blend_log_count;
-        XELOGI("EDRAM blend: ordered blending likely required (mask=0x{:X})",
-               ordered_blend_mask);
-      }
-    }
-    const bool allow_compute_fallback =
-        edram_psi_used && ::cvars::metal_edram_rov &&
-        ::cvars::metal_edram_compute_fallback;
-    use_ordered_blend_fallback = ordered_blend_mask && allow_compute_fallback;
-    ordered_blend_coverage = use_ordered_blend_fallback && pixel_shader;
-    draw_util::GetScissor(regs, guest_scissor);
-    guest_scissor_valid = true;
     if (!render_target_cache_->Update(is_rasterization_done,
                                       normalized_depth_control,
                                       normalized_color_mask, *vertex_shader)) {
@@ -2338,8 +2235,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
           "failed");
       return false;
     }
-    render_target_cache_->SetOrderedBlendCoverageActive(
-        ordered_blend_coverage);
 
     // Log info for all draws to help debug missing background
     MTL::Texture* rt0_tex = render_target_cache_->GetColorTarget(0);
@@ -2371,40 +2266,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         XELOGI("BG_DEBUG: draw {} into 320x2048 RT0", draw_counter);
       } else if (rt0_w == 1280 && rt0_h == 2048) {
         XELOGI("BG_DEBUG: draw {} into 1280x2048 RT0", draw_counter);
-      }
-    }
-  }
-
-  if (use_ordered_blend_fallback && ordered_blend_mask && render_target_cache_) {
-    if (!guest_scissor_valid) {
-      static bool logged_missing_scissor = false;
-      if (!logged_missing_scissor) {
-        logged_missing_scissor = true;
-        XELOGW(
-            "Metal: ordered blend fallback pre-dump skipped (guest scissor "
-            "unavailable)");
-      }
-    } else {
-      EndRenderEncoder();
-      MTL::CommandBuffer* cmd = EnsureCommandBuffer();
-      if (cmd) {
-        for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
-          if (!(ordered_blend_mask & (1u << i))) {
-            continue;
-          }
-          uint32_t rt_write_mask =
-              (normalized_color_mask >> (i * 4)) & 0xF;
-          if (!rt_write_mask) {
-            continue;
-          }
-          auto* rt = render_target_cache_->GetColorRenderTarget(i);
-          if (!rt) {
-            continue;
-          }
-          render_target_cache_->DumpRenderTargetToEdramRect(
-              rt, guest_scissor.offset[0], guest_scissor.offset[1],
-              guest_scissor.extent[0], guest_scissor.extent[1], cmd);
-        }
       }
     }
   }
@@ -2545,7 +2406,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   DxbcShaderTranslator::Modification pixel_shader_modification =
       pixel_shader ? GetCurrentPixelShaderModification(
                          *pixel_shader, interpolator_mask, ps_param_gen_pos,
-                         normalized_depth_control, ordered_blend_coverage)
+                         normalized_depth_control)
                    : DxbcShaderTranslator::Modification(0);
 
   PipelineGeometryShader geometry_shader_type =
@@ -2642,27 +2503,23 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     }
   }
 
-  uint32_t edram_compute_fallback_mask =
-      use_ordered_blend_fallback ? ordered_blend_mask : 0;
-
   TessellationPipelineState* tessellation_pipeline_state = nullptr;
   GeometryPipelineState* geometry_pipeline_state = nullptr;
   if (use_tessellation_emulation) {
     tessellation_pipeline_state = GetOrCreateTessellationPipelineState(
         vertex_translation, pixel_translation, primitive_processing_result,
-        regs, edram_compute_fallback_mask);
+        regs);
     pipeline = tessellation_pipeline_state
                    ? tessellation_pipeline_state->pipeline
                    : nullptr;
   } else if (use_geometry_emulation) {
     geometry_pipeline_state = GetOrCreateGeometryPipelineState(
-        vertex_translation, pixel_translation, geometry_shader_key, regs,
-        edram_compute_fallback_mask);
+        vertex_translation, pixel_translation, geometry_shader_key, regs);
     pipeline = geometry_pipeline_state ? geometry_pipeline_state->pipeline
                                        : nullptr;
   } else {
     pipeline = GetOrCreatePipelineState(vertex_translation, pixel_translation,
-                                        regs, edram_compute_fallback_mask);
+                                        regs);
   }
 
   if (!pipeline) {
@@ -2986,16 +2843,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
     // Fixed-function depth/stencil state is not part of the pipeline state in
     // Metal, so update it per draw.
-    bool edram_rov_used = render_target_cache_ &&
-                          render_target_cache_->GetPath() ==
-                              RenderTargetCache::Path::kPixelShaderInterlock;
-    if (edram_rov_used) {
-      // ROV path handles depth/stencil in the shader, so disable fixed-function
-      // depth/stencil state.
-      current_render_encoder_->setDepthStencilState(nullptr);
-    } else {
-      ApplyDepthStencilState(primitive_polygonal, depth_control);
-    }
+    ApplyDepthStencilState(primitive_polygonal, depth_control);
 
     // Debug: Log viewport/scissor setup for early draws
     static int vp_log_count = 0;
@@ -3070,14 +2918,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         primitive_processing_result.line_loop_closing_index,
         primitive_processing_result.host_shader_index_endian, viewport_info,
         used_texture_mask, depth_control, normalized_color_mask);
-
-    static int rov_log_count = 0;
-    if (rov_log_count < 8) {
-      ++rov_log_count;
-      XELOGI(
-          "Metal ROV: enabled={} shared_memory_is_uav={} ff_depth_stencil={}",
-          edram_rov_used, shared_memory_is_uav, !edram_rov_used);
-    }
 
     float blend_constants[] = {
         regs.Get<float>(XE_GPU_REG_RB_BLEND_RED),
@@ -3963,40 +3803,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       primitive_processing_result.host_draw_vertex_count,
       uint32_t(primitive_processing_result.index_buffer_type));
 
-  if (use_ordered_blend_fallback && ordered_blend_mask && render_target_cache_) {
-    if (!guest_scissor_valid) {
-      static bool logged_missing_scissor = false;
-      if (!logged_missing_scissor) {
-        logged_missing_scissor = true;
-        XELOGW(
-            "Metal: ordered blend fallback skipped (guest scissor unavailable)");
-      }
-    } else {
-      EndRenderEncoder();
-      MTL::CommandBuffer* cmd = EnsureCommandBuffer();
-      if (cmd) {
-        for (uint32_t i = 0; i < xenos::kMaxColorRenderTargets; ++i) {
-          if (!(ordered_blend_mask & (1u << i))) {
-            continue;
-          }
-          uint32_t rt_write_mask =
-              (normalized_color_mask >> (i * 4)) & 0xF;
-          if (!rt_write_mask) {
-            continue;
-          }
-          auto* rt = render_target_cache_->GetColorRenderTarget(i);
-          if (!rt) {
-            continue;
-          }
-          render_target_cache_->BlendRenderTargetToEdramRect(
-              rt, i, rt_write_mask, guest_scissor.offset[0],
-              guest_scissor.offset[1], guest_scissor.extent[0],
-              guest_scissor.extent[1], cmd);
-        }
-      }
-    }
-  }
-
   if (memexport_used && shared_memory_) {
     for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
       shared_memory_->RangeWrittenByGpu(
@@ -4467,21 +4273,6 @@ void MetalCommandProcessor::EndCommandBuffer() {
   }
   DrainCommandBufferAutoreleasePool();
 
-  FlushEdramFromHostRenderTargetsIfEnabled("EndCommandBuffer");
-}
-
-void MetalCommandProcessor::FlushEdramFromHostRenderTargetsIfEnabled(
-    const char* reason) {
-  if (!render_target_cache_ || !::cvars::metal_edram_rov ||
-      !::cvars::metal_edram_compute_fallback ||
-      render_target_cache_->GetPath() !=
-          RenderTargetCache::Path::kHostRenderTargets) {
-    return;
-  }
-  XELOGI(
-      "MetalCommandProcessor: flushing EDRAM from host RTs (reason={})",
-      reason ? reason : "unknown");
-  render_target_cache_->FlushEdramFromHostRenderTargets();
 }
 
 void MetalCommandProcessor::ApplyDepthStencilState(
@@ -4634,26 +4425,23 @@ void MetalCommandProcessor::ApplyRasterizerState(bool primitive_polygonal) {
   }
   current_render_encoder_->setTriangleFillMode(fill_mode);
 
-  if (render_target_cache_->GetPath() ==
-      RenderTargetCache::Path::kHostRenderTargets) {
-    float polygon_offset_scale = 0.0f;
-    float polygon_offset = 0.0f;
-    draw_util::GetPreferredFacePolygonOffset(regs, primitive_polygonal,
-                                             polygon_offset_scale,
-                                             polygon_offset);
-    float depth_bias_factor =
-        regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
-                xenos::DepthRenderTargetFormat::kD24S8
-            ? draw_util::kD3D10PolygonOffsetFactorUnorm24
-            : draw_util::kD3D10PolygonOffsetFactorFloat24;
-    float depth_bias_constant = polygon_offset * depth_bias_factor;
-    float depth_bias_slope =
-        polygon_offset_scale * xenos::kPolygonOffsetScaleSubpixelUnit *
-        float(std::max(render_target_cache_->draw_resolution_scale_x(),
-                       render_target_cache_->draw_resolution_scale_y()));
-    current_render_encoder_->setDepthBias(depth_bias_constant, depth_bias_slope,
-                                          0.0f);
-  }
+  float polygon_offset_scale = 0.0f;
+  float polygon_offset = 0.0f;
+  draw_util::GetPreferredFacePolygonOffset(regs, primitive_polygonal,
+                                           polygon_offset_scale,
+                                           polygon_offset);
+  float depth_bias_factor =
+      regs.Get<reg::RB_DEPTH_INFO>().depth_format ==
+              xenos::DepthRenderTargetFormat::kD24S8
+          ? draw_util::kD3D10PolygonOffsetFactorUnorm24
+          : draw_util::kD3D10PolygonOffsetFactorFloat24;
+  float depth_bias_constant = polygon_offset * depth_bias_factor;
+  float depth_bias_slope =
+      polygon_offset_scale * xenos::kPolygonOffsetScaleSubpixelUnit *
+      float(std::max(render_target_cache_->draw_resolution_scale_x(),
+                     render_target_cache_->draw_resolution_scale_y()));
+  current_render_encoder_->setDepthBias(depth_bias_constant, depth_bias_slope,
+                                        0.0f);
 
   current_render_encoder_->setDepthClipMode(
       pa_cl_clip_cntl.clip_disable ? MTL::DepthClipModeClamp
@@ -4668,7 +4456,7 @@ MetalCommandProcessor::GetCurrentRenderPassDescriptor() {
 MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
     MetalShader::MetalTranslation* vertex_translation,
     MetalShader::MetalTranslation* pixel_translation,
-    const RegisterFile& regs, uint32_t edram_compute_fallback_mask) {
+    const RegisterFile& regs) {
   if (!vertex_translation || !vertex_translation->metal_function()) {
     XELOGE("No valid vertex shader function");
     return nullptr;
@@ -4677,14 +4465,10 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
   // Determine attachment formats and sample count from the render target cache
   // so the pipeline matches the actual render pass. If no real RT is bound,
   // fall back to the dummy RT0 format used by the cache.
-  bool edram_rov_used = render_target_cache_ &&
-                        render_target_cache_->GetPath() ==
-                            RenderTargetCache::Path::kPixelShaderInterlock;
   uint32_t sample_count = 1;
   MTL::PixelFormat color_formats[4] = {
       MTL::PixelFormatInvalid, MTL::PixelFormatInvalid, MTL::PixelFormatInvalid,
       MTL::PixelFormatInvalid};
-  MTL::PixelFormat coverage_format = MTL::PixelFormatInvalid;
   MTL::PixelFormat depth_format = MTL::PixelFormatInvalid;
   MTL::PixelFormat stencil_format = MTL::PixelFormatInvalid;
   if (render_target_cache_) {
@@ -4725,50 +4509,32 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
             sample_count, static_cast<uint32_t>(depth_tex->sampleCount()));
       }
     }
-    if (render_target_cache_->IsOrderedBlendCoverageActive()) {
-      if (MTL::Texture* coverage_tex =
-              render_target_cache_->GetOrderedBlendCoverageTexture()) {
-        coverage_format = coverage_tex->pixelFormat();
-        if (coverage_tex->sampleCount() > 0) {
-          sample_count = std::max<uint32_t>(
-              sample_count, static_cast<uint32_t>(coverage_tex->sampleCount()));
-        }
-      } else {
-        coverage_format = MTL::PixelFormatR8Unorm;
-      }
-    }
   }
 
   struct PipelineKey {
     const void* vs;
     const void* ps;
-    uint32_t edram_rov_used;
-    uint32_t edram_compute_fallback_mask;
     uint32_t sample_count;
     uint32_t depth_format;
     uint32_t stencil_format;
     uint32_t color_formats[4];
-    uint32_t coverage_format;
     uint32_t normalized_color_mask;
     uint32_t alpha_to_mask_enable;
     uint32_t blendcontrol[4];
   } key_data = {};
   key_data.vs = vertex_translation;
   key_data.ps = pixel_translation;
-  key_data.edram_rov_used = edram_rov_used ? 1 : 0;
-  key_data.edram_compute_fallback_mask = edram_compute_fallback_mask;
   key_data.sample_count = sample_count;
   key_data.depth_format = uint32_t(depth_format);
   key_data.stencil_format = uint32_t(stencil_format);
   for (uint32_t i = 0; i < 4; ++i) {
     key_data.color_formats[i] = uint32_t(color_formats[i]);
   }
-  key_data.coverage_format = uint32_t(coverage_format);
   uint32_t pixel_shader_writes_color_targets =
       pixel_translation ? pixel_translation->shader().writes_color_targets()
                         : 0;
   key_data.normalized_color_mask = 0;
-  if (!edram_rov_used && pixel_shader_writes_color_targets) {
+  if (pixel_shader_writes_color_targets) {
     key_data.normalized_color_mask =
         draw_util::GetNormalizedColorMask(regs,
                                           pixel_shader_writes_color_targets);
@@ -4776,13 +4542,10 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
   auto rb_colorcontrol = regs.Get<reg::RB_COLORCONTROL>();
   key_data.alpha_to_mask_enable = rb_colorcontrol.alpha_to_mask_enable ? 1 : 0;
   for (uint32_t i = 0; i < 4; ++i) {
-    key_data.blendcontrol[i] = 0;
-    if (!edram_rov_used) {
-      key_data.blendcontrol[i] =
-          regs.Get<reg::RB_BLENDCONTROL>(
-                  reg::RB_BLENDCONTROL::rt_register_indices[i])
-              .value;
-    }
+    key_data.blendcontrol[i] =
+        regs.Get<reg::RB_BLENDCONTROL>(
+                reg::RB_BLENDCONTROL::rt_register_indices[i])
+            .value;
   }
   uint64_t key = XXH3_64bits(&key_data, sizeof(key_data));
 
@@ -4801,14 +4564,11 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
           pixel_translation->modification(),
           static_cast<uint32_t>(pixel_translation->shader().type()));
     }
-    disk_entry.edram_rov_used = key_data.edram_rov_used;
-    disk_entry.edram_compute_fallback_mask = key_data.edram_compute_fallback_mask;
     disk_entry.sample_count = key_data.sample_count;
     disk_entry.depth_format = key_data.depth_format;
     disk_entry.stencil_format = key_data.stencil_format;
     std::memcpy(disk_entry.color_formats, key_data.color_formats,
                 sizeof(key_data.color_formats));
-    disk_entry.coverage_format = key_data.coverage_format;
     disk_entry.normalized_color_mask = key_data.normalized_color_mask;
     disk_entry.alpha_to_mask_enable = key_data.alpha_to_mask_enable;
     std::memcpy(disk_entry.blendcontrol, key_data.blendcontrol,
@@ -4835,11 +4595,6 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
   for (uint32_t i = 0; i < 4; ++i) {
     desc->colorAttachments()->object(i)->setPixelFormat(color_formats[i]);
   }
-  if (coverage_format != MTL::PixelFormatInvalid) {
-    desc->colorAttachments()
-        ->object(MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex)
-        ->setPixelFormat(coverage_format);
-  }
   desc->setDepthAttachmentPixelFormat(depth_format);
   desc->setStencilAttachmentPixelFormat(stencil_format);
   desc->setSampleCount(sample_count);
@@ -4856,19 +4611,7 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
       continue;
     }
 
-    if (edram_rov_used) {
-      color_attachment->setWriteMask(MTL::ColorWriteMaskNone);
-      color_attachment->setBlendingEnabled(false);
-      continue;
-    }
-
     uint32_t rt_write_mask = (key_data.normalized_color_mask >> (i * 4)) & 0xF;
-    if (key_data.edram_compute_fallback_mask & (1u << i)) {
-      color_attachment->setWriteMask(
-          rt_write_mask ? MTL::ColorWriteMaskAll : MTL::ColorWriteMaskNone);
-      color_attachment->setBlendingEnabled(false);
-      continue;
-    }
     color_attachment->setWriteMask(ToMetalColorWriteMask(rt_write_mask));
     if (!rt_write_mask) {
       color_attachment->setBlendingEnabled(false);
@@ -4903,12 +4646,6 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
       color_attachment->setDestinationAlphaBlendFactor(dst_alpha);
       color_attachment->setAlphaBlendOperation(op_alpha);
     }
-  }
-  if (coverage_format != MTL::PixelFormatInvalid) {
-    auto* coverage_attachment = desc->colorAttachments()->object(
-        MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex);
-    coverage_attachment->setWriteMask(MTL::ColorWriteMaskAll);
-    coverage_attachment->setBlendingEnabled(false);
   }
 
   // Configure vertex fetch layout for MSC stage-in.
@@ -5054,12 +4791,7 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
   // Create pipeline state
   NS::Error* error = nullptr;
   MTL::RenderPipelineState* pipeline = nullptr;
-  MTL::RenderPipelineReflection* reflection = nullptr;
-  MTL::PipelineOption options = MTL::PipelineOptionNone;
-  if (edram_rov_used) {
-    options = MTL::PipelineOptionArgumentInfo;
-  }
-  pipeline = device_->newRenderPipelineState(desc, options, &reflection, &error);
+  pipeline = device_->newRenderPipelineState(desc, &error);
   desc->release();
 
   if (!pipeline) {
@@ -5076,23 +4808,6 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
   if (record_disk_entry) {
     AppendPipelineDiskCacheEntry(disk_entry);
   }
-  if (edram_rov_used && reflection) {
-    NS::Array* fragment_args = reflection->fragmentArguments();
-    if (fragment_args) {
-      for (NS::UInteger i = 0; i < fragment_args->count(); ++i) {
-        auto* arg =
-            static_cast<MTL::Argument*>(fragment_args->object(i));
-        if (!arg || !arg->name()) {
-          continue;
-        }
-        const char* name = arg->name()->utf8String();
-        if (name && std::strstr(name, "xe_edram")) {
-          XELOGI("Metal ROV: fragment arg '{}' access={}", name,
-                 static_cast<int>(arg->access()));
-        }
-      }
-    }
-  }
 
   // Log pipeline creation for debugging
   static int pipeline_count = 0;
@@ -5101,10 +4816,6 @@ MTL::RenderPipelineState* MetalCommandProcessor::GetOrCreatePipelineState(
          vertex_translation->metal_function() ? "valid" : "null",
          (pixel_translation && pixel_translation->metal_function()) ? "valid"
                                                                     : "null");
-  if (edram_rov_used) {
-    XELOGI("GPU DEBUG: Pipeline #{} uses ROV path (fixed-function blending off)",
-           pipeline_count);
-  }
 
   return pipeline;
 }
@@ -5113,8 +4824,7 @@ MetalCommandProcessor::GeometryPipelineState*
 MetalCommandProcessor::GetOrCreateGeometryPipelineState(
     MetalShader::MetalTranslation* vertex_translation,
     MetalShader::MetalTranslation* pixel_translation,
-    GeometryShaderKey geometry_shader_key, const RegisterFile& regs,
-    uint32_t edram_compute_fallback_mask) {
+    GeometryShaderKey geometry_shader_key, const RegisterFile& regs) {
   if (!vertex_translation) {
     XELOGE("No valid vertex shader translation for geometry pipeline");
     return nullptr;
@@ -5141,7 +4851,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
   MTL::PixelFormat color_formats[4] = {
       MTL::PixelFormatInvalid, MTL::PixelFormatInvalid, MTL::PixelFormatInvalid,
       MTL::PixelFormatInvalid};
-  MTL::PixelFormat coverage_format = MTL::PixelFormatInvalid;
   MTL::PixelFormat depth_format = MTL::PixelFormatInvalid;
   MTL::PixelFormat stencil_format = MTL::PixelFormatInvalid;
   if (render_target_cache_) {
@@ -5182,30 +4891,16 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
             sample_count, static_cast<uint32_t>(depth_tex->sampleCount()));
       }
     }
-    if (render_target_cache_->IsOrderedBlendCoverageActive()) {
-      if (MTL::Texture* coverage_tex =
-              render_target_cache_->GetOrderedBlendCoverageTexture()) {
-        coverage_format = coverage_tex->pixelFormat();
-        if (coverage_tex->sampleCount() > 0) {
-          sample_count = std::max<uint32_t>(
-              sample_count, static_cast<uint32_t>(coverage_tex->sampleCount()));
-        }
-      } else {
-        coverage_format = MTL::PixelFormatR8Unorm;
-      }
-    }
   }
 
   struct GeometryPipelineKey {
     const void* vs;
     const void* ps;
     uint32_t geometry_key;
-    uint32_t edram_compute_fallback_mask;
     uint32_t sample_count;
     uint32_t depth_format;
     uint32_t stencil_format;
     uint32_t color_formats[4];
-    uint32_t coverage_format;
     uint32_t normalized_color_mask;
     uint32_t alpha_to_mask_enable;
     uint32_t blendcontrol[4];
@@ -5216,14 +4911,12 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
                     ? static_cast<const void*>(pixel_library)
                     : static_cast<const void*>(pixel_translation);
   key_data.geometry_key = geometry_shader_key.key;
-  key_data.edram_compute_fallback_mask = edram_compute_fallback_mask;
   key_data.sample_count = sample_count;
   key_data.depth_format = uint32_t(depth_format);
   key_data.stencil_format = uint32_t(stencil_format);
   for (uint32_t i = 0; i < 4; ++i) {
     key_data.color_formats[i] = uint32_t(color_formats[i]);
   }
-  key_data.coverage_format = uint32_t(coverage_format);
   uint32_t pixel_shader_writes_color_targets =
       use_fallback_pixel_shader
           ? 0
@@ -5738,11 +5431,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
   for (uint32_t i = 0; i < 4; ++i) {
     desc->colorAttachments()->object(i)->setPixelFormat(color_formats[i]);
   }
-  if (coverage_format != MTL::PixelFormatInvalid) {
-    desc->colorAttachments()
-        ->object(MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex)
-        ->setPixelFormat(coverage_format);
-  }
   desc->setDepthAttachmentPixelFormat(depth_format);
   desc->setStencilAttachmentPixelFormat(stencil_format);
   desc->setRasterSampleCount(sample_count);
@@ -5757,12 +5445,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
     }
 
     uint32_t rt_write_mask = (key_data.normalized_color_mask >> (i * 4)) & 0xF;
-    if (key_data.edram_compute_fallback_mask & (1u << i)) {
-      color_attachment->setWriteMask(
-          rt_write_mask ? MTL::ColorWriteMaskAll : MTL::ColorWriteMaskNone);
-      color_attachment->setBlendingEnabled(false);
-      continue;
-    }
     color_attachment->setWriteMask(ToMetalColorWriteMask(rt_write_mask));
     if (!rt_write_mask) {
       color_attachment->setBlendingEnabled(false);
@@ -5798,13 +5480,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
       color_attachment->setAlphaBlendOperation(op_alpha);
     }
   }
-  if (coverage_format != MTL::PixelFormatInvalid) {
-    auto* coverage_attachment = desc->colorAttachments()->object(
-        MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex);
-    coverage_attachment->setWriteMask(MTL::ColorWriteMaskAll);
-    coverage_attachment->setBlendingEnabled(false);
-  }
-
   if (!vertex_stage->vertex_output_size_in_bytes ||
       !geometry_stage->max_input_primitives_per_mesh_threadgroup) {
     XELOGE(
@@ -6030,7 +5705,7 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
     MetalShader::MetalTranslation* domain_translation,
     MetalShader::MetalTranslation* pixel_translation,
     const PrimitiveProcessor::ProcessingResult& primitive_processing_result,
-    const RegisterFile& regs, uint32_t edram_compute_fallback_mask) {
+    const RegisterFile& regs) {
   if (!domain_translation) {
     XELOGE("No valid domain shader translation for tessellation pipeline");
     return nullptr;
@@ -6057,7 +5732,6 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
   MTL::PixelFormat color_formats[4] = {
       MTL::PixelFormatInvalid, MTL::PixelFormatInvalid, MTL::PixelFormatInvalid,
       MTL::PixelFormatInvalid};
-  MTL::PixelFormat coverage_format = MTL::PixelFormatInvalid;
   MTL::PixelFormat depth_format = MTL::PixelFormatInvalid;
   MTL::PixelFormat stencil_format = MTL::PixelFormatInvalid;
   if (render_target_cache_) {
@@ -6098,18 +5772,6 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
             sample_count, static_cast<uint32_t>(depth_tex->sampleCount()));
       }
     }
-    if (render_target_cache_->IsOrderedBlendCoverageActive()) {
-      if (MTL::Texture* coverage_tex =
-              render_target_cache_->GetOrderedBlendCoverageTexture()) {
-        coverage_format = coverage_tex->pixelFormat();
-        if (coverage_tex->sampleCount() > 0) {
-          sample_count = std::max<uint32_t>(
-              sample_count, static_cast<uint32_t>(coverage_tex->sampleCount()));
-        }
-      } else {
-        coverage_format = MTL::PixelFormatR8Unorm;
-      }
-    }
   }
 
   struct TessellationPipelineKey {
@@ -6118,12 +5780,10 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
     uint32_t host_vs_type;
     uint32_t tessellation_mode;
     uint32_t host_prim;
-    uint32_t edram_compute_fallback_mask;
     uint32_t sample_count;
     uint32_t depth_format;
     uint32_t stencil_format;
     uint32_t color_formats[4];
-    uint32_t coverage_format;
     uint32_t normalized_color_mask;
     uint32_t alpha_to_mask_enable;
     uint32_t blendcontrol[4];
@@ -6139,14 +5799,12 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
       uint32_t(primitive_processing_result.tessellation_mode);
   key_data.host_prim =
       uint32_t(primitive_processing_result.host_primitive_type);
-  key_data.edram_compute_fallback_mask = edram_compute_fallback_mask;
   key_data.sample_count = sample_count;
   key_data.depth_format = uint32_t(depth_format);
   key_data.stencil_format = uint32_t(stencil_format);
   for (uint32_t i = 0; i < 4; ++i) {
     key_data.color_formats[i] = uint32_t(color_formats[i]);
   }
-  key_data.coverage_format = uint32_t(coverage_format);
   uint32_t pixel_shader_writes_color_targets =
       use_fallback_pixel_shader
           ? 0
@@ -6684,11 +6342,6 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
   for (uint32_t i = 0; i < 4; ++i) {
     desc->colorAttachments()->object(i)->setPixelFormat(color_formats[i]);
   }
-  if (coverage_format != MTL::PixelFormatInvalid) {
-    desc->colorAttachments()
-        ->object(MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex)
-        ->setPixelFormat(coverage_format);
-  }
   desc->setDepthAttachmentPixelFormat(depth_format);
   desc->setStencilAttachmentPixelFormat(stencil_format);
   desc->setRasterSampleCount(sample_count);
@@ -6702,12 +6355,6 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
       continue;
     }
     uint32_t rt_write_mask = (key_data.normalized_color_mask >> (i * 4)) & 0xF;
-    if (key_data.edram_compute_fallback_mask & (1u << i)) {
-      color_attachment->setWriteMask(
-          rt_write_mask ? MTL::ColorWriteMaskAll : MTL::ColorWriteMaskNone);
-      color_attachment->setBlendingEnabled(false);
-      continue;
-    }
     color_attachment->setWriteMask(ToMetalColorWriteMask(rt_write_mask));
     if (!rt_write_mask) {
       color_attachment->setBlendingEnabled(false);
@@ -6743,13 +6390,6 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
       color_attachment->setAlphaBlendOperation(op_alpha);
     }
   }
-  if (coverage_format != MTL::PixelFormatInvalid) {
-    auto* coverage_attachment = desc->colorAttachments()->object(
-        MetalRenderTargetCache::kOrderedBlendCoverageAttachmentIndex);
-    coverage_attachment->setWriteMask(MTL::ColorWriteMaskAll);
-    coverage_attachment->setBlendingEnabled(false);
-  }
-
   IRGeometryTessellationEmulationPipelineDescriptor ir_desc = {};
   ir_desc.stageInLibrary = vertex_stage->stage_in_library;
   ir_desc.vertexLibrary = vertex_stage->library;
@@ -7348,8 +6988,7 @@ MetalCommandProcessor::GetCurrentVertexShaderModification(
 DxbcShaderTranslator::Modification
 MetalCommandProcessor::GetCurrentPixelShaderModification(
     const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
-    reg::RB_DEPTHCONTROL normalized_depth_control,
-    bool ordered_blend_coverage) const {
+    reg::RB_DEPTHCONTROL normalized_depth_control) const {
   const auto& regs = *register_file_;
 
   DxbcShaderTranslator::Modification modification(
@@ -7365,8 +7004,7 @@ MetalCommandProcessor::GetCurrentPixelShaderModification(
           regs.Get<reg::SQ_CONTEXT_MISC>().sc_sample_cntl,
           regs.Get<reg::SQ_INTERPOLATOR_CNTL>().sampling_pattern);
 
-  modification.pixel.coverage_output =
-      ordered_blend_coverage && shader.writes_color_targets();
+  modification.pixel.coverage_output = false;
 
   if (param_gen_pos < xenos::kMaxInterpolators) {
     modification.pixel.param_gen_enable = 1;
@@ -7381,18 +7019,11 @@ MetalCommandProcessor::GetCurrentPixelShaderModification(
   }
 
   using DepthStencilMode = DxbcShaderTranslator::Modification::DepthStencilMode;
-  bool edram_rov_used = render_target_cache_ &&
-                        render_target_cache_->GetPath() ==
-                            RenderTargetCache::Path::kPixelShaderInterlock;
-  if (!edram_rov_used) {
-    if (shader.implicit_early_z_write_allowed() &&
-        (!shader.writes_color_target(0) ||
-         !draw_util::DoesCoverageDependOnAlpha(
-             regs.Get<reg::RB_COLORCONTROL>()))) {
-      modification.pixel.depth_stencil_mode = DepthStencilMode::kEarlyHint;
-    } else {
-      modification.pixel.depth_stencil_mode = DepthStencilMode::kNoModifiers;
-    }
+  if (shader.implicit_early_z_write_allowed() &&
+      (!shader.writes_color_target(0) ||
+       !draw_util::DoesCoverageDependOnAlpha(
+           regs.Get<reg::RB_COLORCONTROL>()))) {
+    modification.pixel.depth_stencil_mode = DepthStencilMode::kEarlyHint;
   } else {
     modification.pixel.depth_stencil_mode = DepthStencilMode::kNoModifiers;
   }
@@ -7413,50 +7044,17 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
   auto rb_alpha_ref = regs.Get<float>(XE_GPU_REG_RB_ALPHA_REF);
   auto rb_colorcontrol = regs.Get<reg::RB_COLORCONTROL>();
   auto rb_depth_info = regs.Get<reg::RB_DEPTH_INFO>();
-  auto rb_stencilrefmask = regs.Get<reg::RB_STENCILREFMASK>();
-  auto rb_stencilrefmask_bf =
-      regs.Get<reg::RB_STENCILREFMASK>(XE_GPU_REG_RB_STENCILREFMASK_BF);
   auto rb_surface_info = regs.Get<reg::RB_SURFACE_INFO>();
   auto vgt_draw_initiator = regs.Get<reg::VGT_DRAW_INITIATOR>();
   uint32_t vgt_indx_offset = regs.Get<reg::VGT_INDX_OFFSET>().indx_offset;
   uint32_t vgt_max_vtx_indx = regs.Get<reg::VGT_MAX_VTX_INDX>().max_indx;
   uint32_t vgt_min_vtx_indx = regs.Get<reg::VGT_MIN_VTX_INDX>().min_indx;
 
-  bool edram_rov_used = render_target_cache_ &&
-                        render_target_cache_->GetPath() ==
-                            RenderTargetCache::Path::kPixelShaderInterlock;
-  uint32_t draw_resolution_scale_x =
-      texture_cache_ ? texture_cache_->draw_resolution_scale_x() : 1;
-  uint32_t draw_resolution_scale_y =
-      texture_cache_ ? texture_cache_->draw_resolution_scale_y() : 1;
-
   // Get color info for each render target
   reg::RB_COLOR_INFO color_infos[4];
-  float rt_clamp[4][4];
-  uint32_t rt_keep_masks[4][2];
   for (uint32_t i = 0; i < 4; ++i) {
     color_infos[i] = regs.Get<reg::RB_COLOR_INFO>(
         reg::RB_COLOR_INFO::rt_register_indices[i]);
-    if (edram_rov_used) {
-      RenderTargetCache::GetPSIColorFormatInfo(
-          color_infos[i].color_format,
-          (normalized_color_mask >> (i * 4)) & 0b1111, rt_clamp[i][0],
-          rt_clamp[i][1], rt_clamp[i][2], rt_clamp[i][3], rt_keep_masks[i][0],
-          rt_keep_masks[i][1]);
-    }
-  }
-
-  bool depth_stencil_enabled = normalized_depth_control.stencil_enable ||
-                               normalized_depth_control.z_enable;
-  if (edram_rov_used && depth_stencil_enabled) {
-    for (uint32_t i = 0; i < 4; ++i) {
-      if (rb_depth_info.depth_base == color_infos[i].color_base &&
-          (rt_keep_masks[i][0] != UINT32_MAX ||
-           rt_keep_masks[i][1] != UINT32_MAX)) {
-        depth_stencil_enabled = false;
-        break;
-      }
-    }
   }
 
   // Build flags
@@ -7504,28 +7102,6 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
     if (color_infos[i].color_format ==
         xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA) {
       flags |= DxbcShaderTranslator::kSysFlag_ConvertColor0ToGamma << i;
-    }
-  }
-
-  if (edram_rov_used && depth_stencil_enabled) {
-    flags |= DxbcShaderTranslator::kSysFlag_ROVDepthStencil;
-    if (normalized_depth_control.z_enable) {
-      flags |= uint32_t(normalized_depth_control.zfunc)
-               << DxbcShaderTranslator::kSysFlag_ROVDepthPassIfLess_Shift;
-      if (normalized_depth_control.z_write_enable) {
-        flags |= DxbcShaderTranslator::kSysFlag_ROVDepthWrite;
-      }
-    } else {
-      flags |= DxbcShaderTranslator::kSysFlag_ROVDepthPassIfLess |
-               DxbcShaderTranslator::kSysFlag_ROVDepthPassIfEqual |
-               DxbcShaderTranslator::kSysFlag_ROVDepthPassIfGreater;
-    }
-    if (normalized_depth_control.stencil_enable) {
-      flags |= DxbcShaderTranslator::kSysFlag_ROVStencilTest;
-    }
-    if (alpha_test_function == xenos::CompareFunction::kAlways &&
-        !rb_colorcontrol.alpha_to_mask_enable) {
-      flags |= DxbcShaderTranslator::kSysFlag_ROVDepthStencilEarlyWrite;
     }
   }
 
@@ -7636,46 +7212,20 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
     // Fixed-point render targets (k_16_16 / k_16_16_16_16) are backed by *_SNORM
     // in the host render targets path. If full-range emulation is requested,
     // remap from -32...32 to -1...1 by dividing the output values by 32.
-    if (render_target_cache_->GetPath() ==
-        RenderTargetCache::Path::kHostRenderTargets) {
-      if (color_infos[i].color_format ==
-          xenos::ColorRenderTargetFormat::k_16_16) {
-        if (!render_target_cache_->IsFixedRG16TruncatedToMinus1To1()) {
-          color_exp_bias -= 5;
-        }
-      } else if (color_infos[i].color_format ==
-                 xenos::ColorRenderTargetFormat::k_16_16_16_16) {
-        if (!render_target_cache_->IsFixedRGBA16TruncatedToMinus1To1()) {
-          color_exp_bias -= 5;
-        }
+    if (color_infos[i].color_format ==
+        xenos::ColorRenderTargetFormat::k_16_16) {
+      if (!render_target_cache_->IsFixedRG16TruncatedToMinus1To1()) {
+        color_exp_bias -= 5;
+      }
+    } else if (color_infos[i].color_format ==
+               xenos::ColorRenderTargetFormat::k_16_16_16_16) {
+      if (!render_target_cache_->IsFixedRGBA16TruncatedToMinus1To1()) {
+        color_exp_bias -= 5;
       }
     }
     auto color_exp_bias_scale = xe::memory::Reinterpret<float>(
         int32_t(0x3F800000 + (color_exp_bias << 23)));
     system_constants_.color_exp_bias[i] = color_exp_bias_scale;
-    if (edram_rov_used) {
-      system_constants_.edram_rt_keep_mask[i][0] = rt_keep_masks[i][0];
-      system_constants_.edram_rt_keep_mask[i][1] = rt_keep_masks[i][1];
-      if (rt_keep_masks[i][0] != UINT32_MAX ||
-          rt_keep_masks[i][1] != UINT32_MAX) {
-        uint32_t edram_tile_dwords_scaled =
-            xenos::kEdramTileWidthSamples * xenos::kEdramTileHeightSamples *
-            (draw_resolution_scale_x * draw_resolution_scale_y);
-        uint32_t rt_base_dwords_scaled =
-            color_infos[i].color_base * edram_tile_dwords_scaled;
-        system_constants_.edram_rt_base_dwords_scaled[i] =
-            rt_base_dwords_scaled;
-        uint32_t format_flags =
-            RenderTargetCache::AddPSIColorFormatFlags(
-                color_infos[i].color_format);
-        system_constants_.edram_rt_format_flags[i] = format_flags;
-        uint32_t blend_factors_ops =
-            regs[reg::RB_BLENDCONTROL::rt_register_indices[i]] & 0x1FFF1FFF;
-        system_constants_.edram_rt_blend_factors_ops[i] = blend_factors_ops;
-        std::memcpy(system_constants_.edram_rt_clamp[i], rt_clamp[i],
-                    4 * sizeof(float));
-      }
-    }
   }
 
   // Blend constants (used by EDRAM and for host blending)
@@ -7687,83 +7237,6 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
       regs.Get<float>(XE_GPU_REG_RB_BLEND_BLUE);
   system_constants_.edram_blend_constant[3] =
       regs.Get<float>(XE_GPU_REG_RB_BLEND_ALPHA);
-
-  if (edram_rov_used) {
-    uint32_t edram_tile_dwords_scaled =
-        xenos::kEdramTileWidthSamples * xenos::kEdramTileHeightSamples *
-        (draw_resolution_scale_x * draw_resolution_scale_y);
-    uint32_t edram_32bpp_tile_pitch_dwords_scaled =
-        ((rb_surface_info.surface_pitch *
-          (rb_surface_info.msaa_samples >= xenos::MsaaSamples::k4X ? 2 : 1)) +
-         (xenos::kEdramTileWidthSamples - 1)) /
-        xenos::kEdramTileWidthSamples * edram_tile_dwords_scaled;
-    system_constants_.edram_32bpp_tile_pitch_dwords_scaled =
-        edram_32bpp_tile_pitch_dwords_scaled;
-    system_constants_.edram_depth_base_dwords_scaled =
-        rb_depth_info.depth_base * edram_tile_dwords_scaled;
-
-    float poly_offset_front_scale = 0.0f, poly_offset_front_offset = 0.0f;
-    float poly_offset_back_scale = 0.0f, poly_offset_back_offset = 0.0f;
-    if (primitive_polygonal) {
-      if (pa_su_sc_mode_cntl.poly_offset_front_enable) {
-        poly_offset_front_scale =
-            regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_SCALE);
-        poly_offset_front_offset =
-            regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_OFFSET);
-      }
-      if (pa_su_sc_mode_cntl.poly_offset_back_enable) {
-        poly_offset_back_scale =
-            regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_BACK_SCALE);
-        poly_offset_back_offset =
-            regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_BACK_OFFSET);
-      }
-    } else if (pa_su_sc_mode_cntl.poly_offset_para_enable) {
-      poly_offset_front_scale =
-          regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_SCALE);
-      poly_offset_front_offset =
-          regs.Get<float>(XE_GPU_REG_PA_SU_POLY_OFFSET_FRONT_OFFSET);
-      poly_offset_back_scale = poly_offset_front_scale;
-      poly_offset_back_offset = poly_offset_front_offset;
-    }
-
-    float poly_offset_scale_factor =
-        xenos::kPolygonOffsetScaleSubpixelUnit *
-        std::max(draw_resolution_scale_x, draw_resolution_scale_y);
-    system_constants_.edram_poly_offset_front_scale =
-        poly_offset_front_scale * poly_offset_scale_factor;
-    system_constants_.edram_poly_offset_front_offset = poly_offset_front_offset;
-    system_constants_.edram_poly_offset_back_scale =
-        poly_offset_back_scale * poly_offset_scale_factor;
-    system_constants_.edram_poly_offset_back_offset = poly_offset_back_offset;
-
-    if (depth_stencil_enabled && normalized_depth_control.stencil_enable) {
-      system_constants_.edram_stencil_front_reference =
-          rb_stencilrefmask.stencilref;
-      system_constants_.edram_stencil_front_read_mask =
-          rb_stencilrefmask.stencilmask;
-      system_constants_.edram_stencil_front_write_mask =
-          rb_stencilrefmask.stencilwritemask;
-      uint32_t stencil_func_ops =
-          (normalized_depth_control.value >> 8) & ((1 << 12) - 1);
-      system_constants_.edram_stencil_front_func_ops = stencil_func_ops;
-
-      if (primitive_polygonal && normalized_depth_control.backface_enable) {
-        system_constants_.edram_stencil_back_reference =
-            rb_stencilrefmask_bf.stencilref;
-        system_constants_.edram_stencil_back_read_mask =
-            rb_stencilrefmask_bf.stencilmask;
-        system_constants_.edram_stencil_back_write_mask =
-            rb_stencilrefmask_bf.stencilwritemask;
-        uint32_t stencil_func_ops_bf =
-            (normalized_depth_control.value >> 20) & ((1 << 12) - 1);
-        system_constants_.edram_stencil_back_func_ops = stencil_func_ops_bf;
-      } else {
-        std::memcpy(system_constants_.edram_stencil_back,
-                    system_constants_.edram_stencil_front,
-                    4 * sizeof(uint32_t));
-      }
-    }
-  }
 
   system_constants_dirty_ = true;
 }
