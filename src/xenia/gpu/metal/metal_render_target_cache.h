@@ -28,9 +28,16 @@ namespace gpu {
 namespace metal {
 
 class MetalCommandProcessor;
+class MetalHeapPool;
 
 class MetalRenderTargetCache final : public gpu::RenderTargetCache {
  public:
+  struct CacheStats {
+    size_t render_target_count = 0;
+    size_t texture_count = 0;
+    uint64_t approx_texture_bytes = 0;
+  };
+
   // Metal-specific render target - defined inside cache class to access
   // protected RenderTarget
   class MetalRenderTarget final : public RenderTarget {
@@ -189,6 +196,8 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   }
   static constexpr uint32_t kOrderedBlendCoverageAttachmentIndex = 4;
 
+  CacheStats GetCacheStats() const;
+
   // Resolve (copy) render targets to shared memory
   bool Resolve(Memory& memory, uint32_t& written_address,
                uint32_t& written_length,
@@ -219,6 +228,8 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   MTL::Device* device_ = nullptr;
   bool raster_order_groups_supported_ = false;
   bool gamma_render_target_as_srgb_ = false;
+
+  std::unique_ptr<MetalHeapPool> render_target_heap_pool_;
 
   // EDRAM buffer (10MB embedded DRAM)
   MTL::Buffer* edram_buffer_ = nullptr;

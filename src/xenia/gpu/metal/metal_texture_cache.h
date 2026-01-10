@@ -32,9 +32,15 @@ namespace metal {
 
 class MetalCommandProcessor;
 class MetalSharedMemory;
+class MetalHeapPool;
 
 class MetalTextureCache : public TextureCache {
  public:
+  struct CacheStats {
+    size_t texture_count = 0;
+    uint64_t total_host_memory_bytes = 0;
+  };
+
   MetalTextureCache(MetalCommandProcessor* command_processor,
                     const RegisterFile& register_file,
                     MetalSharedMemory& shared_memory,
@@ -75,6 +81,8 @@ class MetalTextureCache : public TextureCache {
   MTL::Texture* RequestSwapTexture(uint32_t& width_scaled_out,
                                    uint32_t& height_scaled_out,
                                    xenos::TextureFormat& format_out);
+
+  CacheStats GetCacheStats() const;
 
   union SamplerParameters {
     uint32_t value;
@@ -130,6 +138,8 @@ class MetalTextureCache : public TextureCache {
  private:
   // GPU-based texture loading entry point. Returns true on success.
   bool TryGpuLoadTexture(Texture& texture, bool load_base, bool load_mips);
+  MTL::StorageMode GetCacheTextureStorageMode() const;
+  bool ShouldUploadViaBlit() const;
 
   // Format / load shader mapping for Metal texture loading.
   bool IsDecompressionNeededForKey(TextureKey key) const;
@@ -228,6 +238,10 @@ class MetalTextureCache : public TextureCache {
   Norm16Selection rgba16_selection_;
 
   std::unordered_map<uint32_t, MTL::SamplerState*> sampler_cache_;
+
+  class UploadBufferPool;
+  std::shared_ptr<UploadBufferPool> upload_buffer_pool_;
+  std::unique_ptr<MetalHeapPool> texture_heap_pool_;
 
   std::vector<ScaledResolveBuffer> scaled_resolve_buffers_;
   std::vector<ScaledResolveBuffer> scaled_resolve_retired_buffers_;

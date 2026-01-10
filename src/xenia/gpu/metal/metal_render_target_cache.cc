@@ -8,6 +8,7 @@
  */
 
 #include "xenia/gpu/metal/metal_render_target_cache.h"
+#include "xenia/gpu/gpu_flags.h"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +26,8 @@
 #include "xenia/base/logging.h"
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/gpu_flags.h"
+#include "xenia/gpu/metal/metal_heap_pool.h"
+#include "xenia/gpu/metal/metal_resource_tracker.h"
 #include "xenia/gpu/metal/metal_texture_cache.h"
 #include "xenia/gpu/shaders/bytecode/metal/resolve_fast_32bpp_1x2xmsaa_cs.h"
 #include "xenia/gpu/shaders/bytecode/metal/resolve_fast_32bpp_4xmsaa_cs.h"
@@ -105,6 +108,72 @@ MTL::ComputePipelineState* CreateComputePipelineFromEmbeddedLibrary(
   }
 
   return pipeline;
+}
+
+uint32_t GetEstimatedBytesPerPixel(MTL::PixelFormat format) {
+  switch (format) {
+    case MTL::PixelFormatRGBA8Unorm:
+    case MTL::PixelFormatRGBA8Unorm_sRGB:
+    case MTL::PixelFormatBGRA8Unorm:
+    case MTL::PixelFormatBGRA8Unorm_sRGB:
+    case MTL::PixelFormatR32Float:
+    case MTL::PixelFormatR32Uint:
+    case MTL::PixelFormatR32Sint:
+    case MTL::PixelFormatDepth32Float:
+    case MTL::PixelFormatDepth24Unorm_Stencil8:
+    case MTL::PixelFormatX32_Stencil8:
+      return 4;
+    case MTL::PixelFormatRG16Float:
+    case MTL::PixelFormatRG16Uint:
+    case MTL::PixelFormatRG16Sint:
+      return 4;
+    case MTL::PixelFormatRGBA16Float:
+    case MTL::PixelFormatRGBA16Uint:
+    case MTL::PixelFormatRGBA16Sint:
+    case MTL::PixelFormatRG32Float:
+    case MTL::PixelFormatRG32Uint:
+    case MTL::PixelFormatRG32Sint:
+    case MTL::PixelFormatDepth32Float_Stencil8:
+      return 8;
+    case MTL::PixelFormatR16Float:
+    case MTL::PixelFormatR16Uint:
+    case MTL::PixelFormatR16Sint:
+    case MTL::PixelFormatDepth16Unorm:
+      return 2;
+    default:
+      return 4;
+  }
+}
+
+uint64_t EstimateTextureBytes(MTL::Texture* texture) {
+  if (!texture) {
+    return 0;
+  }
+
+  const uint32_t bytes_per_pixel =
+      GetEstimatedBytesPerPixel(texture->pixelFormat());
+  const uint32_t sample_count =
+      std::max<uint32_t>(1, static_cast<uint32_t>(texture->sampleCount()));
+  const uint32_t mip_count =
+      std::max<uint32_t>(1, static_cast<uint32_t>(texture->mipmapLevelCount()));
+  const uint32_t array_length =
+      std::max<uint32_t>(1, static_cast<uint32_t>(texture->arrayLength()));
+
+  uint64_t total = 0;
+  for (uint32_t level = 0; level < mip_count; ++level) {
+    uint32_t width = std::max<uint32_t>(
+        1, static_cast<uint32_t>(texture->width() >> level));
+    uint32_t height = std::max<uint32_t>(
+        1, static_cast<uint32_t>(texture->height() >> level));
+    uint32_t depth = std::max<uint32_t>(
+        1, static_cast<uint32_t>(texture->depth() >> level));
+    uint64_t level_bytes = uint64_t(width) * uint64_t(height) *
+                           uint64_t(depth) * bytes_per_pixel *
+                           sample_count;
+    total += level_bytes;
+  }
+
+  return total * array_length;
 }
 
 // Packing formats for transferring host RT contents to the EDRAM buffer.
@@ -262,6 +331,7 @@ void LogMetalRenderTargetTopLeftPixels(
     if (!readback_buffer) {
       return;
     }
+    TrackMetalBufferCreated(buffer_size);
 
     bool is_msaa = tex->textureType() == MTL::TextureType2DMultisample;
 
@@ -271,6 +341,8 @@ void LogMetalRenderTargetTopLeftPixels(
         is_msaa ? depth_msaa_pipeline : depth_pipeline);
     encoder->setTexture(tex, 0);
     encoder->setBuffer(readback_buffer, 0, 0);
+    encoder->useResource(tex, MTL::ResourceUsageRead);
+    encoder->useResource(readback_buffer, MTL::ResourceUsageWrite);
 
     struct ReadbackParams {
       uint32_t width;
@@ -298,6 +370,7 @@ void LogMetalRenderTargetTopLeftPixels(
         1u << static_cast<uint32_t>(key.msaa_samples), int(key.is_depth),
         depth_data[0], depth_data[1], depth_data[2], depth_data[3]);
 
+    TrackMetalBufferReleased(readback_buffer->length());
     readback_buffer->release();
     return;
   }
@@ -336,6 +409,7 @@ void LogMetalRenderTargetTopLeftPixels(
   if (!readback_buffer) {
     return;
   }
+  TrackMetalBufferCreated(buffer_size);
 
   MTL::CommandBuffer* cmd = queue->commandBuffer();
   MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
@@ -358,6 +432,7 @@ void LogMetalRenderTargetTopLeftPixels(
       1u << static_cast<uint32_t>(key.msaa_samples), int(key.is_depth),
       pixel_data[0], pixel_data[1], pixel_data[2], pixel_data[3]);
 
+  TrackMetalBufferReleased(readback_buffer->length());
   readback_buffer->release();  // newBuffer returns retained - must release
   // Note: cmd is from commandBuffer() which is autoreleased - don't release
 }
@@ -733,8 +808,10 @@ void ScheduleEdramDumpColorSamples(MTL::CommandBuffer* cmd, MTL::Texture* tex,
   if (!buffer) {
     return;
   }
+  TrackMetalBufferCreated(bytes_per_pixel * uint32_t(sample_coords.size()));
   MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
   if (!blit) {
+    TrackMetalBufferReleased(buffer->length());
     buffer->release();
     return;
   }
@@ -755,6 +832,7 @@ void ScheduleEdramDumpColorSamples(MTL::CommandBuffer* cmd, MTL::Texture* tex,
     const uint8_t* bytes =
         static_cast<const uint8_t*>(buffer->contents());
     if (!bytes) {
+      TrackMetalBufferReleased(buffer->length());
       buffer->release();
       return;
     }
@@ -785,8 +863,10 @@ void ScheduleEdramDumpColorSamples(MTL::CommandBuffer* cmd, MTL::Texture* tex,
           source.b, source.a, packed, rgba8 & 0xFFu, (rgba8 >> 8u) & 0xFFu,
           (rgba8 >> 16u) & 0xFFu, (rgba8 >> 24u) & 0xFFu);
     }
+    TrackMetalBufferReleased(buffer->length());
     buffer->release();
   });
+  TrackMetalBufferReleased(buffer->length());
   buffer->release();
 }
 
@@ -928,26 +1008,32 @@ uint32_t MetalRenderTargetCache::GetMetalEdramDumpFormat(RenderTargetKey key) {
 // MetalRenderTarget implementation
 MetalRenderTargetCache::MetalRenderTarget::~MetalRenderTarget() {
   if (draw_texture_ && draw_texture_ != texture_) {
+    TrackMetalTextureReleased(draw_texture_);
     draw_texture_->release();
     draw_texture_ = nullptr;
   }
   if (transfer_texture_ && transfer_texture_ != texture_) {
+    TrackMetalTextureReleased(transfer_texture_);
     transfer_texture_->release();
     transfer_texture_ = nullptr;
   }
   if (msaa_draw_texture_ && msaa_draw_texture_ != msaa_texture_) {
+    TrackMetalTextureReleased(msaa_draw_texture_);
     msaa_draw_texture_->release();
     msaa_draw_texture_ = nullptr;
   }
   if (msaa_transfer_texture_ && msaa_transfer_texture_ != msaa_texture_) {
+    TrackMetalTextureReleased(msaa_transfer_texture_);
     msaa_transfer_texture_->release();
     msaa_transfer_texture_ = nullptr;
   }
   if (texture_) {
+    TrackMetalTextureReleased(texture_);
     texture_->release();
     texture_ = nullptr;
   }
   if (msaa_texture_) {
+    TrackMetalTextureReleased(msaa_texture_);
     msaa_texture_->release();
     msaa_texture_ = nullptr;
   }
@@ -989,6 +1075,13 @@ bool MetalRenderTargetCache::Initialize() {
 
   gamma_render_target_as_srgb_ = cvars::gamma_render_target_as_srgb;
 
+  if (::cvars::metal_use_heaps) {
+    size_t min_heap_bytes =
+        std::max<int32_t>(0, ::cvars::metal_heap_min_bytes);
+    render_target_heap_pool_ = std::make_unique<MetalHeapPool>(
+        device_, MTL::StorageModePrivate, min_heap_bytes, "XeniaRT");
+  }
+
   // Create the EDRAM buffer.
   //
   // The guest has 10 MiB of EDRAM for samples, but with host resolution
@@ -1011,6 +1104,7 @@ bool MetalRenderTargetCache::Initialize() {
     XELOGE("MetalRenderTargetCache: Failed to create EDRAM buffer");
     return false;
   }
+  TrackMetalBufferCreated(edram_size_bytes);
   edram_buffer_->setLabel(
       NS::String::string("EDRAM Buffer", NS::UTF8StringEncoding));
   if (edram_cpu_visible) {
@@ -1065,6 +1159,7 @@ void MetalRenderTargetCache::Shutdown(bool from_destructor) {
   dummy_color_target_.reset();
   ordered_blend_coverage_active_ = false;
   if (ordered_blend_coverage_texture_) {
+    TrackMetalTextureReleased(ordered_blend_coverage_texture_);
     ordered_blend_coverage_texture_->release();
     ordered_blend_coverage_texture_ = nullptr;
   }
@@ -1130,23 +1225,28 @@ void MetalRenderTargetCache::Shutdown(bool from_destructor) {
     }
   }
   if (transfer_dummy_buffer_) {
+    TrackMetalBufferReleased(transfer_dummy_buffer_->length());
     transfer_dummy_buffer_->release();
     transfer_dummy_buffer_ = nullptr;
   }
   for (size_t i = 0; i < xe::countof(transfer_dummy_color_float_); ++i) {
     if (transfer_dummy_color_float_[i]) {
+      TrackMetalTextureReleased(transfer_dummy_color_float_[i]);
       transfer_dummy_color_float_[i]->release();
       transfer_dummy_color_float_[i] = nullptr;
     }
     if (transfer_dummy_color_uint_[i]) {
+      TrackMetalTextureReleased(transfer_dummy_color_uint_[i]);
       transfer_dummy_color_uint_[i]->release();
       transfer_dummy_color_uint_[i] = nullptr;
     }
     if (transfer_dummy_depth_[i]) {
+      TrackMetalTextureReleased(transfer_dummy_depth_[i]);
       transfer_dummy_depth_[i]->release();
       transfer_dummy_depth_[i] = nullptr;
     }
     if (transfer_dummy_stencil_[i]) {
+      TrackMetalTextureReleased(transfer_dummy_stencil_[i]);
       transfer_dummy_stencil_[i]->release();
       transfer_dummy_stencil_[i] = nullptr;
     }
@@ -1156,12 +1256,18 @@ void MetalRenderTargetCache::Shutdown(bool from_destructor) {
   ShutdownEdramComputeShaders();
 
   if (edram_buffer_) {
+    TrackMetalBufferReleased(edram_buffer_->length());
     edram_buffer_->release();
     edram_buffer_ = nullptr;
   }
 
   // Destroy all render targets
   DestroyAllRenderTargets(!from_destructor);
+
+  if (render_target_heap_pool_) {
+    render_target_heap_pool_->Shutdown();
+    render_target_heap_pool_.reset();
+  }
 
   // Shutdown base class
   if (!from_destructor) {
@@ -2944,11 +3050,14 @@ void MetalRenderTargetCache::BeginFrame() {
 
 bool MetalRenderTargetCache::Update(
     bool is_rasterization_done, reg::RB_DEPTHCONTROL normalized_depth_control,
-    uint32_t normalized_color_mask, const Shader& vertex_shader) {
-  XELOGI("MetalRenderTargetCache::Update called - is_rasterization_done={}",
-         is_rasterization_done);
+    uint32_t normalized_color_mask,
+    const Shader& vertex_shader) {
+  if (::cvars::metal_verbose_logging) {
+    XELOGI("MetalRenderTargetCache::Update called - is_rasterization_done={}",
+           is_rasterization_done);
+  }
 
-  // Call base implementation - this does all the heavy lifting
+  // Use the base class logic to update the current render target setup.
   if (!RenderTargetCache::Update(is_rasterization_done,
                                  normalized_depth_control,
                                  normalized_color_mask, vertex_shader)) {
@@ -2971,29 +3080,33 @@ bool MetalRenderTargetCache::Update(
   RenderTarget* const* accumulated_targets =
       last_update_accumulated_render_targets();
 
-  XELOGI(
-      "MetalRenderTargetCache::Update - Got accumulated targets from base "
-      "class");
+  if (::cvars::metal_verbose_logging) {
+    XELOGI(
+        "MetalRenderTargetCache::Update - Got accumulated targets from base "
+        "class");
+  }
 
   // Debug: Check what we actually got AND verify textures exist
-  for (uint32_t i = 0; i < 5; ++i) {
-    if (accumulated_targets[i]) {
-      MetalRenderTarget* metal_rt =
-          static_cast<MetalRenderTarget*>(accumulated_targets[i]);
-      MTL::Texture* tex = metal_rt->texture();
-      XELOGI(
-          "  accumulated_targets[{}] = {:p} (key 0x{:08X}, texture={:p}, "
-          "{}x{})",
-          i, (void*)accumulated_targets[i], accumulated_targets[i]->key().key,
-          (void*)tex, tex ? tex->width() : 0, tex ? tex->height() : 0);
+  if (::cvars::metal_verbose_logging) {
+    for (uint32_t i = 0; i < 5; ++i) {
+      if (accumulated_targets[i]) {
+        MetalRenderTarget* metal_rt =
+            static_cast<MetalRenderTarget*>(accumulated_targets[i]);
+        MTL::Texture* tex = metal_rt->texture();
+        XELOGI(
+            "  accumulated_targets[{}] = {:p} (key 0x{:08X}, texture={:p}, "
+            "{}x{})",
+            i, (void*)accumulated_targets[i], accumulated_targets[i]->key().key,
+            (void*)tex, tex ? tex->width() : 0, tex ? tex->height() : 0);
 
-      // CRITICAL FIX: Ensure texture exists
-      if (!tex) {
-        XELOGE("  ERROR: MetalRenderTarget has no texture! Need to create it.");
-        // TODO: Create texture here if missing
+        // CRITICAL FIX: Ensure texture exists
+        if (!tex) {
+          XELOGE("  ERROR: MetalRenderTarget has no texture! Need to create it.");
+          // TODO: Create texture here if missing
+        }
+      } else {
+        XELOGI("  accumulated_targets[{}] = nullptr", i);
       }
-    } else {
-      XELOGI("  accumulated_targets[{}] = nullptr", i);
     }
   }
 
@@ -3115,22 +3228,26 @@ RenderTargetCache::RenderTarget* MetalRenderTargetCache::CreateRenderTarget(
         GetColorOwnershipTransferPixelFormat(key.GetColorFormat(), nullptr);
     if (draw_format != resource_format) {
       MTL::Texture* draw_view = texture->newTextureView(draw_format);
+      TrackMetalTextureCreated(draw_view);
       render_target->SetDrawTexture(draw_view);
     }
     if (transfer_format != resource_format) {
       MTL::Texture* transfer_view =
           texture->newTextureView(transfer_format);
+      TrackMetalTextureCreated(transfer_view);
       render_target->SetTransferTexture(transfer_view);
     }
     if (render_target->msaa_texture()) {
       if (draw_format != render_target->msaa_texture()->pixelFormat()) {
         MTL::Texture* msaa_draw_view =
             render_target->msaa_texture()->newTextureView(draw_format);
+        TrackMetalTextureCreated(msaa_draw_view);
         render_target->SetMsaaDrawTexture(msaa_draw_view);
       }
       if (transfer_format != render_target->msaa_texture()->pixelFormat()) {
         MTL::Texture* msaa_transfer_view =
             render_target->msaa_texture()->newTextureView(transfer_format);
+        TrackMetalTextureCreated(msaa_transfer_view);
         render_target->SetMsaaTransferTexture(msaa_transfer_view);
       }
     }
@@ -3279,7 +3396,10 @@ void MetalRenderTargetCache::RestoreEdramSnapshot(const void* snapshot) {
       cmd->waitUntilCompleted();
       // cmd is autoreleased from commandBuffer() - do not release
       staging->release();
-      metal_rt->SetNeedsInitialClear(false);
+      if (metal_rt->needs_initial_clear()) {
+        metal_rt->SetNeedsInitialClear(false);
+        render_pass_descriptor_dirty_ = true;
+      }
 
       XELOGI(
           "MetalRenderTargetCache::RestoreEdramSnapshot: restored snapshot "
@@ -3306,20 +3426,37 @@ void MetalRenderTargetCache::RestoreEdramSnapshot(const void* snapshot) {
 MTL::Texture* MetalRenderTargetCache::CreateColorTexture(
     uint32_t width, uint32_t height, xenos::ColorRenderTargetFormat format,
     uint32_t samples) {
+  MTL::PixelFormat resource_format = GetColorResourcePixelFormat(format);
+  MTL::PixelFormat draw_format = GetColorDrawPixelFormat(format);
+  MTL::PixelFormat transfer_format =
+      GetColorOwnershipTransferPixelFormat(format, nullptr);
+  bool needs_pixel_format_view =
+      draw_format != resource_format || transfer_format != resource_format;
+
   MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
   desc->setWidth(width);
   desc->setHeight(height ? height : 720);  // Default height if not specified
-  desc->setPixelFormat(GetColorResourcePixelFormat(format));
+  desc->setPixelFormat(resource_format);
   desc->setTextureType(samples > 1 ? MTL::TextureType2DMultisample
                                    : MTL::TextureType2D);
   desc->setSampleCount(samples);
-  desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead |
-                 MTL::TextureUsageShaderWrite |
-                 MTL::TextureUsagePixelFormatView);
+  MTL::TextureUsage usage =
+      MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead;
+  if (needs_pixel_format_view) {
+    usage |= MTL::TextureUsagePixelFormatView;
+  }
+  desc->setUsage(usage);
   desc->setStorageMode(MTL::StorageModePrivate);
 
-  MTL::Texture* texture = device_->newTexture(desc);
+  MTL::Texture* texture = nullptr;
+  if (render_target_heap_pool_) {
+    texture = render_target_heap_pool_->CreateTexture(desc);
+  }
+  if (!texture) {
+    texture = device_->newTexture(desc);
+  }
   desc->release();
+  TrackMetalTextureCreated(texture);
 
   // Initial clear is handled on first bind via load actions; avoid
   // synchronous clears here to keep the host RT path fast.
@@ -3337,13 +3474,24 @@ MTL::Texture* MetalRenderTargetCache::CreateDepthTexture(
   desc->setTextureType(samples > 1 ? MTL::TextureType2DMultisample
                                    : MTL::TextureType2D);
   desc->setSampleCount(samples);
-  desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead |
-                 MTL::TextureUsageShaderWrite |
-                 MTL::TextureUsagePixelFormatView);
+  MTL::TextureUsage usage =
+      MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead;
+  if (pixel_format == MTL::PixelFormatDepth32Float_Stencil8 ||
+      pixel_format == MTL::PixelFormatDepth24Unorm_Stencil8) {
+    usage |= MTL::TextureUsagePixelFormatView;
+  }
+  desc->setUsage(usage);
   desc->setStorageMode(MTL::StorageModePrivate);
 
-  MTL::Texture* texture = device_->newTexture(desc);
+  MTL::Texture* texture = nullptr;
+  if (render_target_heap_pool_) {
+    texture = render_target_heap_pool_->CreateTexture(desc);
+  }
+  if (!texture) {
+    texture = device_->newTexture(desc);
+  }
   desc->release();
+  TrackMetalTextureCreated(texture);
 
   // Initial clear is handled on first bind via load actions; avoid
   // synchronous clears here to keep the host RT path fast.
@@ -3469,6 +3617,7 @@ bool MetalRenderTargetCache::EnsureOrderedBlendCoverageTexture(
   }
 
   if (ordered_blend_coverage_texture_) {
+    TrackMetalTextureReleased(ordered_blend_coverage_texture_);
     ordered_blend_coverage_texture_->release();
     ordered_blend_coverage_texture_ = nullptr;
   }
@@ -3488,6 +3637,7 @@ bool MetalRenderTargetCache::EnsureOrderedBlendCoverageTexture(
   desc->setStorageMode(MTL::StorageModePrivate);
   ordered_blend_coverage_texture_ = device_->newTexture(desc);
   desc->release();
+  TrackMetalTextureCreated(ordered_blend_coverage_texture_);
 
   if (!ordered_blend_coverage_texture_) {
     ordered_blend_coverage_width_ = 0;
@@ -3506,9 +3656,11 @@ bool MetalRenderTargetCache::EnsureOrderedBlendCoverageTexture(
 
 MTL::RenderPassDescriptor* MetalRenderTargetCache::GetRenderPassDescriptor(
     uint32_t expected_sample_count) {
-  XELOGI(
-      "MetalRenderTargetCache::GetRenderPassDescriptor - dirty={}, cached={:p}",
-      render_pass_descriptor_dirty_, (void*)cached_render_pass_descriptor_);
+  if (::cvars::metal_verbose_logging) {
+    XELOGI(
+        "MetalRenderTargetCache::GetRenderPassDescriptor - dirty={}, cached={:p}",
+        render_pass_descriptor_dirty_, (void*)cached_render_pass_descriptor_);
+  }
 
   if (!render_pass_descriptor_dirty_ && cached_render_pass_descriptor_) {
     return cached_render_pass_descriptor_;
@@ -3537,16 +3689,18 @@ MTL::RenderPassDescriptor* MetalRenderTargetCache::GetRenderPassDescriptor(
   uint32_t coverage_samples = std::max(1u, expected_sample_count);
 
   // Debug: Log current targets
-  XELOGI("GetRenderPassDescriptor: Current targets state:");
-  XELOGI("  current_depth_target_ = {:p}", (void*)current_depth_target_);
-  for (uint32_t i = 0; i < 4; ++i) {
-    if (current_color_targets_[i]) {
-      MTL::Texture* tex = current_color_targets_[i]->texture();
-      XELOGI("  current_color_targets_[{}] = {:p}, texture={:p} ({}x{})", i,
-             (void*)current_color_targets_[i], (void*)tex,
-             tex ? tex->width() : 0, tex ? tex->height() : 0);
-    } else {
-      XELOGI("  current_color_targets_[{}] = nullptr", i);
+  if (::cvars::metal_verbose_logging) {
+    XELOGI("GetRenderPassDescriptor: Current targets state:");
+    XELOGI("  current_depth_target_ = {:p}", (void*)current_depth_target_);
+    for (uint32_t i = 0; i < 4; ++i) {
+      if (current_color_targets_[i]) {
+        MTL::Texture* tex = current_color_targets_[i]->texture();
+        XELOGI("  current_color_targets_[{}] = {:p}, texture={:p} ({}x{})", i,
+               (void*)current_color_targets_[i], (void*)tex,
+               tex ? tex->width() : 0, tex ? tex->height() : 0);
+      } else {
+        XELOGI("  current_color_targets_[{}] = nullptr", i);
+      }
     }
   }
 
@@ -3807,6 +3961,33 @@ MTL::Texture* MetalRenderTargetCache::GetDummyColorTarget() const {
   return nullptr;
 }
 
+MetalRenderTargetCache::CacheStats MetalRenderTargetCache::GetCacheStats()
+    const {
+  CacheStats stats;
+  std::unordered_set<MTL::Texture*> textures;
+  for (const auto& entry : render_targets()) {
+    auto* render_target = static_cast<MetalRenderTarget*>(entry.second);
+    if (!render_target) {
+      continue;
+    }
+    ++stats.render_target_count;
+    auto add_texture = [&](MTL::Texture* texture) {
+      if (!texture || !textures.insert(texture).second) {
+        return;
+      }
+      stats.approx_texture_bytes += EstimateTextureBytes(texture);
+    };
+    add_texture(render_target->texture());
+    add_texture(render_target->msaa_texture());
+    add_texture(render_target->draw_texture());
+    add_texture(render_target->transfer_texture());
+    add_texture(render_target->msaa_draw_texture());
+    add_texture(render_target->msaa_transfer_texture());
+  }
+  stats.texture_count = textures.size();
+  return stats;
+}
+
 MetalRenderTargetCache::MetalRenderTarget*
 MetalRenderTargetCache::GetColorRenderTarget(uint32_t index) const {
   if (index >= 4) {
@@ -3940,12 +4121,17 @@ void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
     desc->setPixelFormat(texture->pixelFormat());
     desc->setTextureType(MTL::TextureType2D);  // Regular 2D texture
     desc->setSampleCount(1);                   // Non-multisample
-    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead |
-                   MTL::TextureUsageShaderWrite);
+    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     desc->setStorageMode(MTL::StorageModePrivate);
 
-    temp_texture = device_->newTexture(desc);
+    if (render_target_heap_pool_) {
+      temp_texture = render_target_heap_pool_->CreateTexture(desc);
+    }
+    if (!temp_texture) {
+      temp_texture = device_->newTexture(desc);
+    }
     desc->release();
+    TrackMetalTextureCreated(temp_texture);
 
     if (!temp_texture) {
       XELOGE(
@@ -3979,7 +4165,10 @@ void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
   // Create compute encoder
   MTL::ComputeCommandEncoder* encoder = command_buffer->computeCommandEncoder();
   if (!encoder) {
-    if (temp_texture) temp_texture->release();
+    if (temp_texture) {
+      TrackMetalTextureReleased(temp_texture);
+      temp_texture->release();
+    }
     return;
   }
 
@@ -3991,6 +4180,8 @@ void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
 
   // Bind EDRAM buffer
   encoder->setBuffer(edram_buffer_, 0, 0);
+  encoder->useResource(source_texture, MTL::ResourceUsageRead);
+  encoder->useResource(edram_buffer_, MTL::ResourceUsageWrite);
 
   // Create parameter buffers
   uint32_t params[2] = {edram_base, pitch_tiles};
@@ -4010,6 +4201,7 @@ void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
   // encoder is autoreleased - do not release
 
   if (temp_texture) {
+    TrackMetalTextureReleased(temp_texture);
     temp_texture->release();
   }
 
@@ -4089,6 +4281,7 @@ void MetalRenderTargetCache::DumpRenderTargets(
   }
 
   encoder->setBuffer(edram_buffer_, 0, 0);
+  encoder->useResource(edram_buffer_, MTL::ResourceUsageWrite);
 
   uint32_t scale_x = draw_resolution_scale_x();
   uint32_t scale_y = draw_resolution_scale_y();
@@ -4247,6 +4440,10 @@ void MetalRenderTargetCache::DumpRenderTargets(
       encoder->setTexture(tex, 0);
       if (stencil_tex) {
         encoder->setTexture(stencil_tex, 1);
+      }
+      encoder->useResource(tex, MTL::ResourceUsageRead);
+      if (stencil_tex) {
+        encoder->useResource(stencil_tex, MTL::ResourceUsageRead);
       }
       encoder->setBytes(&constants, sizeof(constants), 1);
 
@@ -4588,6 +4785,11 @@ void MetalRenderTargetCache::BlendRenderTargetsToEdram(
           encoder->setTexture(stencil_tex, 1);
         }
         encoder->setBuffer(edram_buffer_, 0, 0);
+        encoder->useResource(tex, MTL::ResourceUsageRead);
+        if (stencil_tex) {
+          encoder->useResource(stencil_tex, MTL::ResourceUsageRead);
+        }
+        encoder->useResource(edram_buffer_, MTL::ResourceUsageWrite);
         encoder->setBytes(&constants, sizeof(constants), 1);
 
         uint32_t groups_x = dispatch.width_tiles * scale_x * 2;
@@ -4636,6 +4838,11 @@ void MetalRenderTargetCache::BlendRenderTargetsToEdram(
         encoder->setTexture(ordered_blend_coverage_texture_, 1);
         encoder->setBuffer(edram_buffer_, 0, 1);
         encoder->setBuffer(edram_buffer_, 0, 2);
+        encoder->useResource(tex, MTL::ResourceUsageRead);
+        encoder->useResource(ordered_blend_coverage_texture_,
+                             MTL::ResourceUsageRead);
+        encoder->useResource(edram_buffer_,
+                             MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         encoder->setBytes(&constants, sizeof(constants), 0);
 
         uint32_t groups_x = dispatch.width_tiles * scale_x;
@@ -4833,6 +5040,7 @@ void MetalRenderTargetCache::DumpRenderTargetToEdramRect(
   }
 
   encoder->setBuffer(edram_buffer_, 0, 0);
+  encoder->useResource(edram_buffer_, MTL::ResourceUsageWrite);
 
   uint32_t scale_x = draw_resolution_scale_x();
   uint32_t scale_y = draw_resolution_scale_y();
@@ -4853,6 +5061,7 @@ void MetalRenderTargetCache::DumpRenderTargetToEdramRect(
 
     encoder->setComputePipelineState(dump_pipeline);
     encoder->setTexture(tex, 0);
+    encoder->useResource(tex, MTL::ResourceUsageRead);
     encoder->setBytes(&constants, sizeof(constants), 1);
 
     uint32_t groups_x = dispatch.width_tiles * scale_x;
@@ -5153,6 +5362,11 @@ void MetalRenderTargetCache::BlendRenderTargetToEdramRect(
     encoder->setTexture(ordered_blend_coverage_texture_, 1);
     encoder->setBuffer(edram_buffer_, 0, 1);
     encoder->setBuffer(edram_buffer_, 0, 2);
+    encoder->useResource(tex, MTL::ResourceUsageRead);
+    encoder->useResource(ordered_blend_coverage_texture_,
+                         MTL::ResourceUsageRead);
+    encoder->useResource(edram_buffer_,
+                         MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     encoder->setBytes(&constants, sizeof(constants), 0);
 
     uint32_t groups_x = dispatch.width_tiles * scale_x;
@@ -6067,132 +6281,133 @@ bool MetalRenderTargetCache::Resolve(Memory& memory, uint32_t& written_address,
         }
       }
 
-        MTL::CommandQueue* queue = command_processor_.GetMetalCommandQueue();
+      MTL::CommandQueue* queue = command_processor_.GetMetalCommandQueue();
 
-        if (!queue) {
-          XELOGE(
-              "MetalRenderTargetCache::Resolve: no command queue for GPU path");
-        } else {
-          bool owns_command_buffer = false;
-          MTL::CommandBuffer* cmd = command_buffer;
+      if (!queue) {
+        XELOGE(
+            "MetalRenderTargetCache::Resolve: no command queue for GPU path");
+      } else {
+        bool owns_command_buffer = false;
+        MTL::CommandBuffer* cmd = command_buffer;
+        if (!cmd) {
+          cmd = queue->commandBuffer();
           if (!cmd) {
-            cmd = queue->commandBuffer();
-            if (!cmd) {
-              XELOGE(
-                  "MetalRenderTargetCache::Resolve: failed to get command "
-                  "buffer for GPU path");
-              cmd = nullptr;
-            }
-            owns_command_buffer = true;
+            XELOGE(
+                "MetalRenderTargetCache::Resolve: failed to get command "
+                "buffer for GPU path");
+            cmd = nullptr;
           }
-          if (cmd) {
-            MTL::ComputeCommandEncoder* encoder = cmd->computeCommandEncoder();
-            if (!encoder) {
-              XELOGE(
-                  "MetalRenderTargetCache::Resolve: failed to get compute "
-                  "encoder for GPU path");
-              // cmd is autoreleased from commandBuffer() - do not release
+          owns_command_buffer = true;
+        }
+        if (cmd) {
+          MTL::ComputeCommandEncoder* encoder = cmd->computeCommandEncoder();
+          if (!encoder) {
+            XELOGE(
+                "MetalRenderTargetCache::Resolve: failed to get compute "
+                "encoder for GPU path");
+            // cmd is autoreleased from commandBuffer() - do not release
+          } else {
+            encoder->setComputePipelineState(pipeline);
+
+            // Buffer 0: push constants
+            if (draw_resolution_scaled) {
+              encoder->setBytes(&copy_constants.dest_relative,
+                                sizeof(copy_constants.dest_relative), 0);
             } else {
-              encoder->setComputePipelineState(pipeline);
-
-              // Buffer 0: push constants
-              if (draw_resolution_scaled) {
-                encoder->setBytes(&copy_constants.dest_relative,
-                                  sizeof(copy_constants.dest_relative), 0);
-              } else {
-                encoder->setBytes(&copy_constants, sizeof(copy_constants), 0);
-              }
-
-              // Buffer 1: destination memory (shared or scaled resolve).
-              encoder->setBuffer(dest_buffer, dest_buffer_offset, 1);
-
-              // Buffer 2: EDRAM source buffer.
-              encoder->setBuffer(edram_buffer_, 0, 2);
-
-              encoder->dispatchThreadgroups(
-                  MTL::Size::Make(group_count_x, group_count_y, 1),
-                  MTL::Size::Make(8, 8, 1));
-
-              encoder->endEncoding();
-              if (owns_command_buffer) {
-                cmd->commit();
-                cmd->waitUntilCompleted();
-              }
-              // cmd is autoreleased from commandBuffer() - do not release
-
-              if (!draw_resolution_scaled && shared_bytes) {
-                uint32_t debug_addr = resolve_info.copy_dest_extent_start;
-                const uint8_t* dst_after = shared_bytes + debug_addr;
-                XELOGI(
-                    "MetalResolve DST after [0..15] @0x{:08X}: "
-                    "{:02X} {:02X} {:02X} {:02X}  {:02X} {:02X} {:02X} {:02X}  "
-                    "{:02X} {:02X} {:02X} {:02X}  {:02X} {:02X} {:02X} {:02X}",
-                    debug_addr, dst_after[0], dst_after[1], dst_after[2],
-                    dst_after[3], dst_after[4], dst_after[5], dst_after[6],
-                    dst_after[7], dst_after[8], dst_after[9], dst_after[10],
-                    dst_after[11], dst_after[12], dst_after[13], dst_after[14],
-                    dst_after[15]);
-              }
-
-              written_address = resolve_info.copy_dest_extent_start;
-              written_length = resolve_info.copy_dest_extent_length;
-
-              // Mark the shared memory range as GPU-written resolve data so
-              // texture caches and trace dumping can see it without an extra
-              // CPU copy. This mirrors D3D12/Vulkan behavior.
-              if (!draw_resolution_scaled) {
-                if (auto* shared_after = command_processor_.shared_memory()) {
-                  shared_after->RangeWrittenByGpu(written_address,
-                                                  written_length, true);
-                }
-              }
-
-              // Mark the range as resolved in the texture cache so that any
-              // textures overlapping this range will be reloaded from the
-              // updated shared memory. This matches D3D12/Vulkan behavior.
-              if (auto* tex_cache = command_processor_.texture_cache()) {
-                tex_cache->MarkRangeAsResolved(written_address, written_length);
-              }
-
-              XELOGI(
-                  "MetalRenderTargetCache::Resolve: GPU path (shader={} ) "
-                  "wrote "
-                  "{} bytes at 0x{:08X}",
-                  int(copy_shader), written_length, written_address);
-
-              bool clear_depth = resolve_info.IsClearingDepth();
-              bool clear_color = resolve_info.IsClearingColor();
-              if (clear_depth || clear_color) {
-                switch (GetPath()) {
-                  case Path::kHostRenderTargets: {
-                    Transfer::Rectangle clear_rectangle;
-                    RenderTarget* clear_targets[2] = {};
-                    std::vector<Transfer> clear_transfers[2];
-                    if (PrepareHostRenderTargetsResolveClear(
-                            resolve_info, clear_rectangle, clear_targets[0],
-                            clear_transfers[0], clear_targets[1],
-                            clear_transfers[1])) {
-                      uint64_t clear_values[2];
-                      clear_values[0] = resolve_info.rb_depth_clear;
-                      clear_values[1] =
-                          resolve_info.rb_color_clear |
-                          (uint64_t(resolve_info.rb_color_clear_lo) << 32);
-                      PerformTransfersAndResolveClears(
-                          2, clear_targets, clear_transfers, clear_values,
-                          &clear_rectangle, command_buffer);
-                    }
-                  } break;
-                  case Path::kPixelShaderInterlock:
-                    // TODO(wmarti): implement ROV/EDRAM clear path for Metal.
-                    break;
-                  default:
-                    break;
-                }
-              }
-              return true;
+              encoder->setBytes(&copy_constants, sizeof(copy_constants), 0);
             }
+
+            // Buffer 1: destination memory (shared or scaled resolve).
+            encoder->setBuffer(dest_buffer, dest_buffer_offset, 1);
+
+            // Buffer 2: EDRAM source buffer.
+            encoder->setBuffer(edram_buffer_, 0, 2);
+            encoder->useResource(dest_buffer, MTL::ResourceUsageWrite);
+            encoder->useResource(edram_buffer_, MTL::ResourceUsageRead);
+
+            encoder->dispatchThreadgroups(
+                MTL::Size::Make(group_count_x, group_count_y, 1),
+                MTL::Size::Make(8, 8, 1));
+
+            encoder->endEncoding();
+            if (owns_command_buffer) {
+              cmd->commit();
+              cmd->waitUntilCompleted();
+            }
+            // cmd is autoreleased from commandBuffer() - do not release
+
+            if (!draw_resolution_scaled && shared_bytes) {
+              uint32_t debug_addr = resolve_info.copy_dest_extent_start;
+              const uint8_t* dst_after = shared_bytes + debug_addr;
+              XELOGI(
+                  "MetalResolve DST after [0..15] @0x{:08X}: "
+                  "{:02X} {:02X} {:02X} {:02X}  {:02X} {:02X} {:02X} {:02X}  "
+                  "{:02X} {:02X} {:02X} {:02X}  {:02X} {:02X} {:02X} {:02X}",
+                  debug_addr, dst_after[0], dst_after[1], dst_after[2],
+                  dst_after[3], dst_after[4], dst_after[5], dst_after[6],
+                  dst_after[7], dst_after[8], dst_after[9], dst_after[10],
+                  dst_after[11], dst_after[12], dst_after[13], dst_after[14],
+                  dst_after[15]);
+            }
+
+            written_address = resolve_info.copy_dest_extent_start;
+            written_length = resolve_info.copy_dest_extent_length;
+
+            // Mark the shared memory range as GPU-written resolve data so
+            // texture caches and trace dumping can see it without an extra
+            // CPU copy. This mirrors D3D12/Vulkan behavior.
+            if (!draw_resolution_scaled) {
+              if (auto* shared_after = command_processor_.shared_memory()) {
+                shared_after->RangeWrittenByGpu(written_address, written_length,
+                                                true);
+              }
+            }
+
+            // Mark the range as resolved in the texture cache so that any
+            // textures overlapping this range will be reloaded from the
+            // updated shared memory. This matches D3D12/Vulkan behavior.
+            if (auto* tex_cache = command_processor_.texture_cache()) {
+              tex_cache->MarkRangeAsResolved(written_address, written_length);
+            }
+
+            XELOGI(
+                "MetalRenderTargetCache::Resolve: GPU path (shader={} ) wrote "
+                "{} bytes at 0x{:08X}",
+                int(copy_shader), written_length, written_address);
+
+            bool clear_depth = resolve_info.IsClearingDepth();
+            bool clear_color = resolve_info.IsClearingColor();
+            if (clear_depth || clear_color) {
+              switch (GetPath()) {
+                case Path::kHostRenderTargets: {
+                  Transfer::Rectangle clear_rectangle;
+                  RenderTarget* clear_targets[2] = {};
+                  std::vector<Transfer> clear_transfers[2];
+                  if (PrepareHostRenderTargetsResolveClear(
+                          resolve_info, clear_rectangle, clear_targets[0],
+                          clear_transfers[0], clear_targets[1],
+                          clear_transfers[1])) {
+                    uint64_t clear_values[2];
+                    clear_values[0] = resolve_info.rb_depth_clear;
+                    clear_values[1] =
+                        resolve_info.rb_color_clear |
+                        (uint64_t(resolve_info.rb_color_clear_lo) << 32);
+                    PerformTransfersAndResolveClears(
+                        2, clear_targets, clear_transfers, clear_values,
+                        &clear_rectangle, command_buffer);
+                  }
+                } break;
+                case Path::kPixelShaderInterlock:
+                  // TODO(wmarti): implement ROV/EDRAM clear path for Metal.
+                  break;
+                default:
+                  break;
+              }
+            }
+            return true;
           }
         }
+      }
     }
   }
 
@@ -6320,6 +6535,8 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
             host_depth_store_pipelines_[pipeline_index]);
         encoder->setBuffer(edram_buffer_, 0, 1);
         encoder->setTexture(depth_texture, 0);
+        encoder->useResource(edram_buffer_, MTL::ResourceUsageWrite);
+        encoder->useResource(depth_texture, MTL::ResourceUsageRead);
         for (uint32_t rect_index = 0; rect_index < rectangle_count;
              ++rect_index) {
           uint32_t group_count_x = 0;
@@ -6360,7 +6577,10 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
     }
 
     auto* dest_metal_rt = static_cast<MetalRenderTarget*>(dest_rt);
-    dest_metal_rt->SetNeedsInitialClear(false);
+    if (dest_metal_rt->needs_initial_clear()) {
+      dest_metal_rt->SetNeedsInitialClear(false);
+      render_pass_descriptor_dirty_ = true;
+    }
     RenderTargetKey dest_key = dest_metal_rt->key();
     bool dest_is_depth = dest_key.is_depth;
 
@@ -6533,6 +6753,35 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
     const std::vector<Transfer>& transfers_for_shaders =
         used_blit ? filtered_transfers : transfers;
 
+    MTL::RenderCommandEncoder* transfer_encoder = nullptr;
+    auto ensure_transfer_encoder = [&]() -> MTL::RenderCommandEncoder* {
+      if (transfer_encoder) {
+        return transfer_encoder;
+      }
+      MTL::RenderPassDescriptor* rp =
+          MTL::RenderPassDescriptor::renderPassDescriptor();
+      if (dest_is_depth) {
+        auto* da = rp->depthAttachment();
+        da->setTexture(dest_texture);
+        da->setLoadAction(MTL::LoadActionLoad);
+        da->setStoreAction(MTL::StoreActionStore);
+        if (dest_pixel_format == MTL::PixelFormatDepth32Float_Stencil8 ||
+            dest_pixel_format == MTL::PixelFormatDepth24Unorm_Stencil8) {
+          auto* sa = rp->stencilAttachment();
+          sa->setTexture(dest_texture);
+          sa->setLoadAction(MTL::LoadActionLoad);
+          sa->setStoreAction(MTL::StoreActionStore);
+        }
+      } else {
+        auto* ca = rp->colorAttachments()->object(0);
+        ca->setTexture(dest_texture);
+        ca->setLoadAction(MTL::LoadActionLoad);
+        ca->setStoreAction(MTL::StoreActionStore);
+      }
+      transfer_encoder = cmd->renderCommandEncoder(rp);
+      return transfer_encoder;
+    };
+
     if (!transfers_for_shaders.empty() && disable_transfer_shaders) {
       static uint32_t transfer_shader_skip_log_count = 0;
       if (transfer_shader_skip_log_count < 8) {
@@ -6641,20 +6890,7 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
         MTL::DepthStencilState* stencil_clear_state =
             GetTransferStencilClearState();
         if (clear_pipeline && stencil_clear_state) {
-          MTL::RenderPassDescriptor* rp =
-              MTL::RenderPassDescriptor::renderPassDescriptor();
-          auto* da = rp->depthAttachment();
-          da->setTexture(dest_texture);
-          da->setLoadAction(MTL::LoadActionLoad);
-          da->setStoreAction(MTL::StoreActionStore);
-          if (dest_pixel_format == MTL::PixelFormatDepth32Float_Stencil8 ||
-              dest_pixel_format == MTL::PixelFormatDepth24Unorm_Stencil8) {
-            auto* sa = rp->stencilAttachment();
-            sa->setTexture(dest_texture);
-            sa->setLoadAction(MTL::LoadActionLoad);
-            sa->setStoreAction(MTL::StoreActionStore);
-          }
-          MTL::RenderCommandEncoder* encoder = cmd->renderCommandEncoder(rp);
+          MTL::RenderCommandEncoder* encoder = ensure_transfer_encoder();
           if (encoder) {
             TransferClearDepthConstants constants = {};
             constants.depth = 0.0f;
@@ -6677,33 +6913,10 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
                                         NS::UInteger(0), NS::UInteger(3));
               }
             }
-            encoder->endEncoding();
           }
         }
       }
-
-      MTL::RenderPassDescriptor* rp =
-          MTL::RenderPassDescriptor::renderPassDescriptor();
-      if (dest_is_depth) {
-        auto* da = rp->depthAttachment();
-        da->setTexture(dest_texture);
-        da->setLoadAction(MTL::LoadActionLoad);
-        da->setStoreAction(MTL::StoreActionStore);
-        if (dest_pixel_format == MTL::PixelFormatDepth32Float_Stencil8 ||
-            dest_pixel_format == MTL::PixelFormatDepth24Unorm_Stencil8) {
-          auto* sa = rp->stencilAttachment();
-          sa->setTexture(dest_texture);
-          sa->setLoadAction(MTL::LoadActionLoad);
-          sa->setStoreAction(MTL::StoreActionStore);
-        }
-      } else {
-        auto* ca = rp->colorAttachments()->object(0);
-        ca->setTexture(dest_texture);
-        ca->setLoadAction(MTL::LoadActionLoad);
-        ca->setStoreAction(MTL::StoreActionStore);
-      }
-
-      MTL::RenderCommandEncoder* encoder = cmd->renderCommandEncoder(rp);
+      MTL::RenderCommandEncoder* encoder = ensure_transfer_encoder();
       if (encoder) {
         for (const auto& invocation : transfer_invocations_) {
           const Transfer& transfer = invocation.transfer;
@@ -6892,7 +7105,6 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
           }
           any_transfers_done = true;
         }
-        encoder->endEncoding();
       }
     }
 
@@ -6917,21 +7129,7 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
                                              dest_sample_count);
         MTL::DepthStencilState* clear_state = GetTransferDepthClearState();
         if (clear_pipeline && clear_state) {
-          MTL::RenderPassDescriptor* clear_rp =
-              MTL::RenderPassDescriptor::renderPassDescriptor();
-          auto* da = clear_rp->depthAttachment();
-          da->setTexture(dest_texture);
-          da->setLoadAction(MTL::LoadActionLoad);
-          da->setStoreAction(MTL::StoreActionStore);
-          if (dest_pixel_format == MTL::PixelFormatDepth32Float_Stencil8 ||
-              dest_pixel_format == MTL::PixelFormatDepth24Unorm_Stencil8) {
-            auto* sa = clear_rp->stencilAttachment();
-            sa->setTexture(dest_texture);
-            sa->setLoadAction(MTL::LoadActionLoad);
-            sa->setStoreAction(MTL::StoreActionStore);
-          }
-          MTL::RenderCommandEncoder* clear_encoder =
-              cmd->renderCommandEncoder(clear_rp);
+          MTL::RenderCommandEncoder* clear_encoder = ensure_transfer_encoder();
           if (clear_encoder) {
             TransferClearDepthConstants constants = {};
             constants.depth = depth_host_clear_value;
@@ -6946,7 +7144,6 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
                                             NS::UInteger(0),
                                             NS::UInteger(3));
             }
-            clear_encoder->endEncoding();
           }
         }
       } else {
@@ -7067,19 +7264,12 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
               GetOrCreateTransferClearPipeline(clear_format, clear_use_uint,
                                                false, dest_sample_count);
           if (clear_pipeline) {
-            MTL::RenderPassDescriptor* clear_rp =
-                MTL::RenderPassDescriptor::renderPassDescriptor();
-            auto* ca = clear_rp->colorAttachments()->object(0);
-            ca->setTexture(clear_texture);
-            ca->setLoadAction(MTL::LoadActionLoad);
-            ca->setStoreAction(MTL::StoreActionStore);
             MTL::RenderCommandEncoder* clear_encoder =
-                cmd->renderCommandEncoder(clear_rp);
+                ensure_transfer_encoder();
             if (clear_encoder) {
               MTL::DepthStencilState* no_depth_state =
                   GetTransferNoDepthStencilState();
               if (!no_depth_state) {
-                clear_encoder->endEncoding();
                 continue;
               }
               clear_encoder->setRenderPipelineState(clear_pipeline);
@@ -7097,11 +7287,14 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
                                               NS::UInteger(0),
                                               NS::UInteger(3));
               }
-              clear_encoder->endEncoding();
             }
           }
         }
       }
+    }
+
+    if (transfer_encoder) {
+      transfer_encoder->endEncoding();
     }
   }
 
@@ -8889,11 +9082,22 @@ MTL::Texture* MetalRenderTargetCache::GetTransferDummyTexture(
   desc->setTextureType(sample_count > 1 ? MTL::TextureType2DMultisample
                                         : MTL::TextureType2D);
   desc->setSampleCount(sample_count ? sample_count : 1);
-  desc->setUsage(MTL::TextureUsageShaderRead |
-                 MTL::TextureUsagePixelFormatView);
+  MTL::TextureUsage usage = MTL::TextureUsageShaderRead;
+  if (format == MTL::PixelFormatDepth32Float_Stencil8 ||
+      format == MTL::PixelFormatDepth24Unorm_Stencil8) {
+    usage |= MTL::TextureUsagePixelFormatView;
+  }
+  desc->setUsage(usage);
   desc->setStorageMode(MTL::StorageModePrivate);
-  MTL::Texture* tex = device_->newTexture(desc);
+  MTL::Texture* tex = nullptr;
+  if (render_target_heap_pool_) {
+    tex = render_target_heap_pool_->CreateTexture(desc);
+  }
+  if (!tex) {
+    tex = device_->newTexture(desc);
+  }
   desc->release();
+  TrackMetalTextureCreated(tex);
   return tex;
 }
 
@@ -8945,6 +9149,9 @@ MTL::Buffer* MetalRenderTargetCache::GetTransferDummyBuffer() {
   if (!transfer_dummy_buffer_ && device_) {
     transfer_dummy_buffer_ =
         device_->newBuffer(sizeof(uint32_t), MTL::ResourceStorageModeShared);
+    if (transfer_dummy_buffer_) {
+      TrackMetalBufferCreated(sizeof(uint32_t));
+    }
     if (transfer_dummy_buffer_) {
       std::memset(transfer_dummy_buffer_->contents(), 0,
                   sizeof(uint32_t));
