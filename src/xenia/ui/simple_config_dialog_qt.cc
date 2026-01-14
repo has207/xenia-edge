@@ -111,21 +111,33 @@ void SimpleConfigDialogQt::SetupUI() {
           &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["framerate_limit"].label_widget, fps_spin);
 
-  // Guest Refresh Rate radio group (controls guest_display_refresh_cap and
-  // use_50Hz_mode)
+  auto* vblank_spin = new QSpinBox(this);
+  vblank_spin->setMinimum(0);
+  vblank_spin->setMaximum(1000);
+  vblank_spin->setSpecialValueText("Unlimited");
+  options_["vblank_frequency"].cvar_name = "vblank_frequency";
+  options_["vblank_frequency"].editor_widget = vblank_spin;
+  options_["vblank_frequency"].label_widget =
+      new QLabel("VBlank Frequency:", this);
+  connect(vblank_spin, QOverload<int>::of(&QSpinBox::valueChanged), this,
+          &SimpleConfigDialogQt::OnValueChanged);
+  graphics_layout->addRow(options_["vblank_frequency"].label_widget, vblank_spin);
+
+  // Guest Refresh Rate radio group (controls guest_display_refresh_cap +
+  // use_50Hz_mode + vblank_frequency)
   auto* guest_refresh_widget = new QWidget(this);
   auto* guest_refresh_layout = new QHBoxLayout(guest_refresh_widget);
   guest_refresh_layout->setContentsMargins(0, 0, 0, 0);
   auto* guest_refresh_group = new QButtonGroup(this);
   auto* uncapped_radio = new QRadioButton("Uncapped", guest_refresh_widget);
   auto* hz50_radio = new QRadioButton("50Hz", guest_refresh_widget);
-  auto* hz60_radio = new QRadioButton("60Hz", guest_refresh_widget);
+  auto* vblank_radio = new QRadioButton("VBlank Frequency", guest_refresh_widget);
   guest_refresh_group->addButton(uncapped_radio, 0);
   guest_refresh_group->addButton(hz50_radio, 1);
-  guest_refresh_group->addButton(hz60_radio, 2);
+  guest_refresh_group->addButton(vblank_radio, 2);
   guest_refresh_layout->addWidget(uncapped_radio);
   guest_refresh_layout->addWidget(hz50_radio);
-  guest_refresh_layout->addWidget(hz60_radio);
+  guest_refresh_layout->addWidget(vblank_radio);
   guest_refresh_layout->addStretch();
   options_["guest_refresh_rate"].cvar_name = "guest_refresh_rate";
   options_["guest_refresh_rate"].editor_widget = guest_refresh_widget;
@@ -461,7 +473,7 @@ void SimpleConfigDialogQt::UpdateUIFromConfigVars() {
         use_50hz = (hz_value == "true");
       }
 
-      // Determine radio selection: 0=Uncapped, 1=50Hz, 2=60Hz
+      // Determine radio selection: 0=Uncapped, 1=50Hz, 2=VBlank Frequency
       int selection = 0;
       if (cap_enabled) {
         selection = use_50hz ? 1 : 2;
@@ -576,7 +588,7 @@ void SimpleConfigDialogQt::SaveConfigChanges() {
     // use_50Hz_mode)
     if (cvar_name == "guest_refresh_rate") {
       int selection = std::stoi(option.pending_value);
-      // 0=Uncapped, 1=50Hz, 2=60Hz
+      // 0=Uncapped, 1=50Hz, 2=VBlank Frequency
       bool cap_enabled = (selection != 0);
       bool use_50hz = (selection == 1);
 
@@ -601,6 +613,9 @@ void SimpleConfigDialogQt::SaveConfigChanges() {
       auto config_var = static_cast<cvar::IConfigVar*>(it->second);
 
       if (cvar_name == "framerate_limit") {
+        toml::value new_value(std::stoull(option.pending_value));
+        config_var->LoadConfigValue(&new_value);
+      } else if (cvar_name == "vblank_frequency") {
         toml::value new_value(std::stoull(option.pending_value));
         config_var->LoadConfigValue(&new_value);
       } else if (cvar_name == "license_mask") {
@@ -720,14 +735,14 @@ std::string SimpleConfigDialogQt::GetEditorValue(QWidget* editor,
   } else if (auto* spin = qobject_cast<QSpinBox*>(editor)) {
     return std::to_string(spin->value());
   } else if (cvar_name == "guest_refresh_rate") {
-    // Find which radio button is checked (0=Uncapped, 1=50Hz, 2=60Hz)
+    // Find which radio button is checked (0=Uncapped, 1=50Hz, 2=VBlank Frequency)
     auto buttons = editor->findChildren<QRadioButton*>();
     for (int i = 0; i < buttons.size(); ++i) {
       if (buttons[i]->isChecked()) {
         return std::to_string(i);
       }
     }
-    return "2";  // Default to 60Hz
+    return "2";  // Default to VBlank Frequency
   }
   return "";
 }

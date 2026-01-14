@@ -26,8 +26,7 @@ DEFINE_path(
 
 DEFINE_bool(guest_display_refresh_cap, true,
             "Control guest vblank timing.\n"
-            "  true: Fixed rate vblanks (50Hz PAL, 60Hz NTSC based on "
-            "use_50Hz_mode).\n"
+            "  true: Fixed rate vblanks.\n"
             "  false: Unlimited vblanks, allows the guest to run as fast as "
             "possible.",
             "GPU");
@@ -35,8 +34,7 @@ DEFINE_bool(guest_display_refresh_cap, true,
 DEFINE_uint64(
     framerate_limit, 0,
     "Host frame rate limit in FPS. 0 = unlimited.\n"
-    "Throttles presentation without affecting guest vblank timing.\n"
-    "Guest vblanks are controlled by use_50Hz_mode (50Hz PAL, 60Hz NTSC).",
+    "Throttles presentation without affecting guest vblank timing.",
     "GPU");
 UPDATE_from_uint64(framerate_limit, 2024, 8, 31, 20, 60);
 
@@ -102,7 +100,18 @@ void SetOcclusionQueryEnable(bool value) {
   OVERRIDE_bool(occlusion_query_enable, value);
 }
 
-uint32_t GetGuestVblankRateHz() { return cvars::use_50Hz_mode ? 50 : 60; }
+DEFINE_uint32(
+    vblank_frequency, 60,
+    "Guest vblank frequency in Hz.",
+    "GPU");
+
+void SetVblankFrequency(uint32_t value) {
+  OVERRIDE_uint32(vblank_frequency, value);
+}
+
+uint32_t GetGuestVblankRateHz() {
+  return cvars::use_50Hz_mode ? 50 : cvars::vblank_frequency;
+}
 
 DEFINE_bool(
     gpu_debug_markers, false,

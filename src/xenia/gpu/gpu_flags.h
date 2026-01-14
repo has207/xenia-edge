@@ -37,8 +37,11 @@ DECLARE_bool(occlusion_query_enable);
 
 void SetOcclusionQueryEnable(bool value);
 
-// Returns the guest vblank rate in Hz (50 for PAL, 60 for NTSC).
-// Based on use_50Hz_mode cvar.
+DECLARE_uint32(vblank_frequency);
+
+void SetVblankFrequency(uint32_t value);
+
+// Returns the guest vblank rate in Hz.
 uint32_t GetGuestVblankRateHz();
 
 DECLARE_bool(disassemble_pm4);
