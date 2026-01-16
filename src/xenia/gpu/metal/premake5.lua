@@ -33,8 +33,6 @@ project("xenia-gpu-metal")
       "dxbc_to_dxil_converter.cc",
       "dxbc_to_dxil_converter.h",
       "ir_runtime_impl.mm",
-      "metal_buffer_cache.cc",
-      "metal_buffer_cache.h",
       "metal_command_processor.cc",
       "metal_command_processor.h",
       "metal_debug_utils.cc",
