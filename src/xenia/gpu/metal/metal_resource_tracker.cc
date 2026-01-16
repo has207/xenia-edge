@@ -19,6 +19,8 @@ std::atomic<uint64_t> g_buffers_created{0};
 std::atomic<uint64_t> g_buffers_released{0};
 std::atomic<uint64_t> g_buffer_bytes_created{0};
 std::atomic<uint64_t> g_buffer_bytes_released{0};
+std::atomic<uint64_t> g_heap_bytes_created{0};
+std::atomic<uint64_t> g_heap_bytes_released{0};
 std::atomic<uint64_t> g_textures_created{0};
 std::atomic<uint64_t> g_textures_released{0};
 std::atomic<uint64_t> g_texture_bytes_created{0};
@@ -101,6 +103,14 @@ void TrackMetalBufferReleased(size_t bytes) {
   g_buffer_bytes_released.fetch_add(bytes, std::memory_order_relaxed);
 }
 
+void TrackMetalHeapCreated(size_t bytes) {
+  g_heap_bytes_created.fetch_add(bytes, std::memory_order_relaxed);
+}
+
+void TrackMetalHeapReleased(size_t bytes) {
+  g_heap_bytes_released.fetch_add(bytes, std::memory_order_relaxed);
+}
+
 void TrackMetalTextureCreated(MTL::Texture* texture) {
   if (!texture) {
     return;
@@ -119,6 +129,10 @@ void TrackMetalTextureReleased(MTL::Texture* texture) {
                                      std::memory_order_relaxed);
 }
 
+uint64_t EstimateMetalTextureBytes(MTL::Texture* texture) {
+  return EstimateTextureBytes(texture);
+}
+
 MetalResourceStats GetMetalResourceStats() {
   MetalResourceStats stats;
   stats.buffers_created = g_buffers_created.load(std::memory_order_relaxed);
@@ -127,6 +141,10 @@ MetalResourceStats GetMetalResourceStats() {
       g_buffer_bytes_created.load(std::memory_order_relaxed);
   stats.buffer_bytes_released =
       g_buffer_bytes_released.load(std::memory_order_relaxed);
+  stats.heap_bytes_created =
+      g_heap_bytes_created.load(std::memory_order_relaxed);
+  stats.heap_bytes_released =
+      g_heap_bytes_released.load(std::memory_order_relaxed);
   stats.textures_created = g_textures_created.load(std::memory_order_relaxed);
   stats.textures_released = g_textures_released.load(std::memory_order_relaxed);
   stats.texture_bytes_created =

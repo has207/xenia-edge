@@ -62,6 +62,22 @@ namespace metal {
 
 namespace {
 
+class ScopedAutoreleasePool {
+ public:
+  ScopedAutoreleasePool() : pool_(NS::AutoreleasePool::alloc()->init()) {}
+  ~ScopedAutoreleasePool() {
+    if (pool_) {
+      pool_->release();
+    }
+  }
+
+  ScopedAutoreleasePool(const ScopedAutoreleasePool&) = delete;
+  ScopedAutoreleasePool& operator=(const ScopedAutoreleasePool&) = delete;
+
+ private:
+  NS::AutoreleasePool* pool_;
+};
+
 MTL::ComputePipelineState* CreateComputePipelineFromEmbeddedLibrary(
     MTL::Device* device, const void* metallib_data, size_t metallib_size,
     const char* debug_name) {
@@ -199,6 +215,7 @@ void LogMetalRenderTargetTopLeftPixels(
   if (!rt || !device || !queue) {
     return;
   }
+  ScopedAutoreleasePool autorelease_pool;
   MTL::Texture* tex = rt->texture();
   if (!tex) {
     return;
@@ -1062,6 +1079,7 @@ bool MetalRenderTargetCache::Initialize() {
       std::memset(edram_contents, 0, edram_size_bytes);
     }
   } else {
+    ScopedAutoreleasePool autorelease_pool;
     MTL::CommandQueue* queue = command_processor_.GetMetalCommandQueue();
     if (queue) {
       MTL::CommandBuffer* cmd = queue->commandBuffer();
@@ -1097,7 +1115,8 @@ void MetalRenderTargetCache::Shutdown(bool from_destructor) {
   }
 
   // Clean up dummy target
-  dummy_color_target_.reset();
+  dummy_color_targets_.clear();
+  dummy_color_target_ = nullptr;
   if (cached_render_pass_descriptor_) {
     cached_render_pass_descriptor_->release();
     cached_render_pass_descriptor_ = nullptr;
@@ -2866,14 +2885,15 @@ void MetalRenderTargetCache::ClearCache() {
 
   // Clear the tracking of which render targets have been cleared
   cleared_render_targets_this_frame_.clear();
+  dummy_color_targets_.clear();
+  dummy_color_target_ = nullptr;
 
   // Call base implementation
   RenderTargetCache::ClearCache();
 }
 
 void MetalRenderTargetCache::BeginFrame() {
-  // Reset dummy target clear flag
-  dummy_color_target_needs_clear_ = true;
+  ++frame_id_;
 
   // Clear the tracking of which render targets have been cleared this frame
   cleared_render_targets_this_frame_.clear();
@@ -3003,12 +3023,14 @@ RenderTargetCache::RenderTarget* MetalRenderTargetCache::CreateRenderTarget(
     if (draw_format != resource_format) {
       MTL::Texture* draw_view = texture->newTextureView(draw_format);
       TrackMetalTextureCreated(draw_view);
+      RecordRenderTargetViewCreated();
       render_target->SetDrawTexture(draw_view);
     }
     if (transfer_format != resource_format) {
       MTL::Texture* transfer_view =
           texture->newTextureView(transfer_format);
       TrackMetalTextureCreated(transfer_view);
+      RecordRenderTargetViewCreated();
       render_target->SetTransferTexture(transfer_view);
     }
     if (render_target->msaa_texture()) {
@@ -3016,12 +3038,14 @@ RenderTargetCache::RenderTarget* MetalRenderTargetCache::CreateRenderTarget(
         MTL::Texture* msaa_draw_view =
             render_target->msaa_texture()->newTextureView(draw_format);
         TrackMetalTextureCreated(msaa_draw_view);
+        RecordRenderTargetViewCreated();
         render_target->SetMsaaDrawTexture(msaa_draw_view);
       }
       if (transfer_format != render_target->msaa_texture()->pixelFormat()) {
         MTL::Texture* msaa_transfer_view =
             render_target->msaa_texture()->newTextureView(transfer_format);
         TrackMetalTextureCreated(msaa_transfer_view);
+        RecordRenderTargetViewCreated();
         render_target->SetMsaaTransferTexture(msaa_transfer_view);
       }
     }
@@ -3116,6 +3140,7 @@ void MetalRenderTargetCache::RestoreEdramSnapshot(const void* snapshot) {
     }
   }
 
+  ScopedAutoreleasePool autorelease_pool;
   MTL::CommandQueue* queue = command_processor_.GetMetalCommandQueue();
   if (!queue) {
     staging->release();
@@ -3188,6 +3213,7 @@ MTL::Texture* MetalRenderTargetCache::CreateColorTexture(
   }
   desc->release();
   TrackMetalTextureCreated(texture);
+  RecordRenderTargetTextureCreated(texture);
 
   // Initial clear is handled on first bind via load actions; avoid
   // synchronous clears here to keep the host RT path fast.
@@ -3223,6 +3249,7 @@ MTL::Texture* MetalRenderTargetCache::CreateDepthTexture(
   }
   desc->release();
   TrackMetalTextureCreated(texture);
+  RecordRenderTargetTextureCreated(texture);
 
   // Initial clear is handled on first bind via load actions; avoid
   // synchronous clears here to keep the host RT path fast.
@@ -3497,46 +3524,81 @@ MTL::RenderPassDescriptor* MetalRenderTargetCache::GetRenderPassDescriptor(
       }
     }
 
-    const bool dummy_matches =
-        dummy_color_target_ && dummy_color_target_->texture() &&
-        dummy_color_target_->texture()->width() == width &&
-        dummy_color_target_->texture()->height() == height &&
-        static_cast<uint32_t>(dummy_color_target_->texture()->sampleCount()) ==
-            samples;
-    if (!dummy_matches) {
-      RenderTargetKey dummy_key;
-      dummy_key.key = 0;
-      dummy_key.is_depth = 0;
-      dummy_key.resource_format = uint32_t(fmt);
-      dummy_key.msaa_samples = xenos::MsaaSamples(samples);
-      dummy_color_target_ = std::make_unique<MetalRenderTarget>(dummy_key);
+    uint64_t dummy_key = 0;
+    if (current_depth_target_) {
+      dummy_key = 0x100000000ull |
+                  uint64_t(current_depth_target_->key().key);
+    } else if (last_real_color_targets_[0]) {
+      dummy_key = 0x200000000ull |
+                  uint64_t(last_real_color_targets_[0]->key().key);
+    } else if (last_real_depth_target_) {
+      dummy_key = 0x300000000ull |
+                  uint64_t(last_real_depth_target_->key().key);
+    } else {
+      dummy_key = uint64_t(width) |
+                  (uint64_t(height) << 20) |
+                  (uint64_t(samples) << 40);
+    }
+    auto& entry = dummy_color_targets_[dummy_key];
+    if (!entry.target || !entry.target->texture()) {
+      RenderTargetKey dummy_rt_key;
+      dummy_rt_key.key = 0;
+      dummy_rt_key.is_depth = 0;
+      dummy_rt_key.resource_format = uint32_t(fmt);
+      dummy_rt_key.msaa_samples = xenos::MsaaSamples(samples);
+      entry.target = std::make_unique<MetalRenderTarget>(dummy_rt_key);
+      entry.last_cleared_frame = frame_id_ - 1;
       MTL::Texture* tex = CreateColorTexture(width, height, fmt, samples);
-      dummy_color_target_->SetTexture(tex);
+      entry.target->SetTexture(tex);
+      RecordDummyTextureCreated(tex);
       if (tex) {
         MTL::PixelFormat resource_format = GetColorResourcePixelFormat(fmt);
         MTL::PixelFormat draw_format = GetColorDrawPixelFormat(fmt);
         MTL::PixelFormat transfer_format =
             GetColorOwnershipTransferPixelFormat(fmt, nullptr);
         if (draw_format != resource_format) {
-          dummy_color_target_->SetDrawTexture(
-              tex->newTextureView(draw_format));
+          entry.target->SetDrawTexture(tex->newTextureView(draw_format));
+          RecordRenderTargetViewCreated();
         }
         if (transfer_format != resource_format) {
-          dummy_color_target_->SetTransferTexture(
+          entry.target->SetTransferTexture(
               tex->newTextureView(transfer_format));
+          RecordRenderTargetViewCreated();
         }
       }
-      dummy_color_target_needs_clear_ = true;
+    }
+
+    entry.last_used_frame = frame_id_;
+    dummy_color_target_ = entry.target.get();
+
+    constexpr size_t kMaxDummyColorTargets = 64;
+    if (dummy_color_targets_.size() > kMaxDummyColorTargets) {
+      uint64_t oldest_key = 0;
+      uint64_t oldest_frame = frame_id_;
+      bool found = false;
+      for (const auto& it : dummy_color_targets_) {
+        if (it.first == dummy_key) {
+          continue;
+        }
+        if (!found || it.second.last_used_frame < oldest_frame) {
+          oldest_frame = it.second.last_used_frame;
+          oldest_key = it.first;
+          found = true;
+        }
+      }
+      if (found) {
+        dummy_color_targets_.erase(oldest_key);
+      }
     }
 
     auto* color_attachment =
         cached_render_pass_descriptor_->colorAttachments()->object(0);
     color_attachment->setTexture(dummy_color_target_->draw_texture());
-    if (dummy_color_target_needs_clear_) {
+    if (entry.last_cleared_frame != frame_id_) {
       color_attachment->setLoadAction(MTL::LoadActionClear);
       color_attachment->setClearColor(
           MTL::ClearColor::Make(0.0, 0.0, 0.0, 0.0));
-      dummy_color_target_needs_clear_ = false;
+      entry.last_cleared_frame = frame_id_;
     } else {
       color_attachment->setLoadAction(MTL::LoadActionLoad);
     }
@@ -3606,7 +3668,44 @@ MetalRenderTargetCache::CacheStats MetalRenderTargetCache::GetCacheStats()
     add_texture(render_target->msaa_transfer_texture());
   }
   stats.texture_count = textures.size();
+  stats.temp_textures_created =
+      temp_textures_created_.load(std::memory_order_relaxed);
+  stats.temp_textures_released =
+      temp_textures_released_.load(std::memory_order_relaxed);
+  stats.render_target_textures_created =
+      render_target_textures_created_.load(std::memory_order_relaxed);
+  stats.render_target_texture_bytes_created =
+      render_target_texture_bytes_created_.load(std::memory_order_relaxed);
+  stats.render_target_views_created =
+      render_target_views_created_.load(std::memory_order_relaxed);
+  stats.dummy_textures_created =
+      dummy_textures_created_.load(std::memory_order_relaxed);
+  stats.dummy_texture_bytes_created =
+      dummy_texture_bytes_created_.load(std::memory_order_relaxed);
   return stats;
+}
+
+void MetalRenderTargetCache::RecordRenderTargetTextureCreated(
+    MTL::Texture* texture) {
+  if (!texture) {
+    return;
+  }
+  render_target_textures_created_.fetch_add(1, std::memory_order_relaxed);
+  render_target_texture_bytes_created_.fetch_add(
+      EstimateMetalTextureBytes(texture), std::memory_order_relaxed);
+}
+
+void MetalRenderTargetCache::RecordRenderTargetViewCreated() {
+  render_target_views_created_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void MetalRenderTargetCache::RecordDummyTextureCreated(MTL::Texture* texture) {
+  if (!texture) {
+    return;
+  }
+  dummy_textures_created_.fetch_add(1, std::memory_order_relaxed);
+  dummy_texture_bytes_created_.fetch_add(EstimateMetalTextureBytes(texture),
+                                         std::memory_order_relaxed);
 }
 
 MetalRenderTargetCache::MetalRenderTarget*
@@ -3740,6 +3839,7 @@ void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
     }
     desc->release();
     TrackMetalTextureCreated(temp_texture);
+    temp_textures_created_.fetch_add(1, std::memory_order_relaxed);
 
     if (!temp_texture) {
       XELOGE(
@@ -3775,6 +3875,7 @@ void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
   if (!encoder) {
     if (temp_texture) {
       TrackMetalTextureReleased(temp_texture);
+      temp_textures_released_.fetch_add(1, std::memory_order_relaxed);
       temp_texture->release();
     }
     return;
@@ -3810,6 +3911,7 @@ void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
 
   if (temp_texture) {
     TrackMetalTextureReleased(temp_texture);
+    temp_textures_released_.fetch_add(1, std::memory_order_relaxed);
     temp_texture->release();
   }
 
@@ -3865,6 +3967,7 @@ void MetalRenderTargetCache::DumpRenderTargets(
     return;
   }
 
+  ScopedAutoreleasePool autorelease_pool;
   bool owns_command_buffer = false;
   MTL::CommandBuffer* cmd = command_buffer;
   if (!cmd) {
@@ -4643,6 +4746,7 @@ bool MetalRenderTargetCache::Resolve(Memory& memory, uint32_t& written_address,
         XELOGE(
             "MetalRenderTargetCache::Resolve: no command queue for GPU path");
       } else {
+        ScopedAutoreleasePool autorelease_pool;
         bool owns_command_buffer = false;
         MTL::CommandBuffer* cmd = command_buffer;
         if (!cmd) {
@@ -7411,6 +7515,7 @@ MTL::Texture* MetalRenderTargetCache::GetTransferDummyTexture(
   }
   desc->release();
   TrackMetalTextureCreated(tex);
+  RecordDummyTextureCreated(tex);
   return tex;
 }
 

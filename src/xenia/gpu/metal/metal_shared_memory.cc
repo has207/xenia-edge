@@ -47,7 +47,7 @@ bool MetalSharedMemory::Initialize() {
                                   MTL::ResourceStorageModeShared, nullptr);
       if (buffer_) {
         use_zero_copy_ = true;
-        METAL_VERBOSE_LOG("Metal shared memory: using bytes-no-copy buffer");
+        XELOGD("Metal shared memory: using bytes-no-copy buffer");
       } else {
         XELOGW("Metal shared memory: bytes-no-copy buffer creation failed");
       }
@@ -72,7 +72,7 @@ bool MetalSharedMemory::Initialize() {
       memcpy(buffer_->contents(), xbox_ram, kBufferSize);
     }
   } else {
-    METAL_VERBOSE_LOG("Metal shared memory: skipping initial copy (zero-copy)");
+    XELOGD("Metal shared memory: skipping initial copy (zero-copy)");
   }
 
 
@@ -90,15 +90,17 @@ bool MetalSharedMemory::UploadRanges(
   if (first_upload) {
     first_upload = false;
     const uint32_t page_size = 1u << page_size_log2();
-    METAL_VERBOSE_LOG("MetalSharedMemory::UploadRanges: page_size={}, {} ranges to upload",
-           page_size, upload_page_ranges.size());
+    XELOGD(
+        "MetalSharedMemory::UploadRanges: page_size={}, {} ranges to upload",
+        page_size, upload_page_ranges.size());
     for (size_t i = 0; i < std::min(size_t(5), upload_page_ranges.size());
          i++) {
       uint32_t start_byte = upload_page_ranges[i].first * page_size;
       uint32_t length_bytes = upload_page_ranges[i].second * page_size;
-      METAL_VERBOSE_LOG("  Range[{}]: page={} count={} -> byte offset=0x{:08X} length={}",
-             i, upload_page_ranges[i].first, upload_page_ranges[i].second,
-             start_byte, length_bytes);
+      XELOGD(
+          "  Range[{}]: page={} count={} -> byte offset=0x{:08X} length={}",
+          i, upload_page_ranges[i].first, upload_page_ranges[i].second,
+          start_byte, length_bytes);
     }
   }
 
@@ -168,7 +170,7 @@ bool MetalSharedMemory::UploadRanges(
     flush_merged_range(merged_start, merged_end);
   }
 
-  METAL_VERBOSE_LOG("MetalSharedMemory::UploadRanges: Copied {} ranges to Metal buffer",
+  XELOGD("MetalSharedMemory::UploadRanges: Copied {} ranges to Metal buffer",
          upload_page_ranges.size());
 
   return true;
@@ -188,5 +190,3 @@ void MetalSharedMemory::Shutdown() {
 }  // namespace metal
 }  // namespace gpu
 }  // namespace xe
-
-#undef METAL_VERBOSE_LOG

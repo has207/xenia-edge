@@ -83,6 +83,20 @@ class MetalTextureCache : public TextureCache {
                                    xenos::TextureFormat& format_out);
 
   CacheStats GetCacheStats() const;
+  size_t GetScaledResolveBufferCount() const;
+  size_t GetScaledResolveRetiredBufferCount() const;
+  uint64_t GetScaledResolveBytes() const;
+  uint64_t GetScaledResolveRetiredBytes() const;
+  size_t GetUploadPoolEntryCount() const;
+  uint64_t GetUploadPoolBytes() const;
+  uint64_t GetSwizzledViewCreated() const;
+  uint64_t GetSwizzledViewReleased() const;
+  uint64_t GetSwizzledViewLive() const;
+  void RecordSwizzledViewCreated();
+  void RecordSwizzledViewReleased(uint64_t count);
+  uint64_t GetCacheTexturesCreated() const;
+  uint64_t GetCacheTextureBytesCreated() const;
+  void RecordCacheTextureCreated(MTL::Texture* texture);
 
   union SamplerParameters {
     uint32_t value;
@@ -175,6 +189,7 @@ class MetalTextureCache : public TextureCache {
                                   bool is_signed);
 
    private:
+    MetalTextureCache& texture_cache_;
     MTL::Texture* metal_texture_;
     std::unordered_map<uint64_t, MTL::Texture*> swizzled_view_cache_;
   };
@@ -241,6 +256,10 @@ class MetalTextureCache : public TextureCache {
 
   class UploadBufferPool;
   std::shared_ptr<UploadBufferPool> upload_buffer_pool_;
+  std::atomic<uint64_t> swizzled_views_created_{0};
+  std::atomic<uint64_t> swizzled_views_released_{0};
+  std::atomic<uint64_t> cache_textures_created_{0};
+  std::atomic<uint64_t> cache_texture_bytes_created_{0};
   std::unique_ptr<MetalHeapPool> texture_heap_pool_;
 
   std::vector<ScaledResolveBuffer> scaled_resolve_buffers_;

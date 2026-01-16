@@ -91,12 +91,6 @@ DEFINE_bool(metal_draw_debug_quad, false,
             "GPU");
 DEFINE_bool(metal_capture_frame, false,
             "Capture Metal swap frames for readback (debug).", "GPU");
-DEFINE_bool(metal_log_memexport, false,
-            "Log Metal memexport draws and ranges (debug).", "GPU");
-DEFINE_bool(metal_readback_memexport, false,
-            "Read back Metal memexport ranges on command buffer completion "
-            "(debug).",
-            "GPU");
 DEFINE_bool(metal_disable_swap_dest_swap, false,
             "Disable forcing RB swap based on resolve dest_swap (debug).",
             "GPU");
@@ -1626,6 +1620,7 @@ void MetalCommandProcessor::PrewarmPipelineBinaryArchive(
 void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                                       uint32_t frontbuffer_width,
                                       uint32_t frontbuffer_height) {
+  ProcessCompletedSubmissions();
   saw_swap_ = true;
   last_swap_ptr_ = frontbuffer_ptr;
   last_swap_width_ = frontbuffer_width;
@@ -2416,10 +2411,8 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 
     // Apply per-draw viewport and scissor so the Metal viewport
     // matches the guest viewport computed by draw_util.
-    draw_util::Scissor scissor = guest_scissor;
-    if (!guest_scissor_valid) {
-      draw_util::GetScissor(regs, scissor);
-    }
+    draw_util::Scissor scissor;
+    draw_util::GetScissor(regs, scissor);
     uint32_t draw_resolution_scale_x =
         texture_cache_ ? texture_cache_->draw_resolution_scale_x() : 1;
     uint32_t draw_resolution_scale_y =
@@ -3368,6 +3361,7 @@ void MetalCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
 }
 
 MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
+  ProcessCompletedSubmissions();
   if (current_command_buffer_) {
     return current_command_buffer_;
   }
@@ -3385,6 +3379,7 @@ MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
     return nullptr;
   }
   created_command_buffers_.fetch_add(1, std::memory_order_relaxed);
+  ++submission_current_;
   const auto start_time = std::chrono::steady_clock::now();
   current_command_buffer_->retain();
   current_command_buffer_->setLabel(
@@ -3410,12 +3405,36 @@ MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
     last_command_buffer_complete_time_ = std::chrono::steady_clock::now();
   });
 
+  if (primitive_processor_) {
+    primitive_processor_->BeginSubmission();
+  }
+  if (texture_cache_) {
+    texture_cache_->BeginSubmission(submission_current_);
+  }
   if (primitive_processor_ && !frame_open_) {
     primitive_processor_->BeginFrame();
+    if (texture_cache_) {
+      texture_cache_->BeginFrame();
+    }
     frame_open_ = true;
   }
 
   return current_command_buffer_;
+}
+
+void MetalCommandProcessor::ProcessCompletedSubmissions() {
+  const uint64_t completed =
+      completed_command_buffers_.load(std::memory_order_relaxed);
+  if (completed <= submission_completed_processed_) {
+    return;
+  }
+  submission_completed_processed_ = completed;
+  if (primitive_processor_) {
+    primitive_processor_->CompletedSubmissionUpdated();
+  }
+  if (texture_cache_) {
+    texture_cache_->CompletedSubmissionUpdated(completed);
+  }
 }
 
 void MetalCommandProcessor::EnsureCommandBufferAutoreleasePool() {
@@ -6569,12 +6588,50 @@ void MetalCommandProcessor::LogCacheStatsIfNeeded() {
   };
 
   MetalTextureCache::CacheStats tex_stats;
+  size_t scaled_resolve_count = 0;
+  size_t scaled_resolve_retired_count = 0;
+  uint64_t scaled_resolve_bytes = 0;
+  uint64_t scaled_resolve_retired_bytes = 0;
+  size_t upload_pool_entries = 0;
+  uint64_t upload_pool_bytes = 0;
+  uint64_t swizzled_views_created = 0;
+  uint64_t swizzled_views_released = 0;
+  uint64_t swizzled_views_live = 0;
+  uint64_t cache_textures_created = 0;
+  uint64_t cache_texture_bytes_created = 0;
   if (texture_cache_) {
     tex_stats = texture_cache_->GetCacheStats();
+    scaled_resolve_count = texture_cache_->GetScaledResolveBufferCount();
+    scaled_resolve_retired_count =
+        texture_cache_->GetScaledResolveRetiredBufferCount();
+    scaled_resolve_bytes = texture_cache_->GetScaledResolveBytes();
+    scaled_resolve_retired_bytes =
+        texture_cache_->GetScaledResolveRetiredBytes();
+    upload_pool_entries = texture_cache_->GetUploadPoolEntryCount();
+    upload_pool_bytes = texture_cache_->GetUploadPoolBytes();
+    swizzled_views_created = texture_cache_->GetSwizzledViewCreated();
+    swizzled_views_released = texture_cache_->GetSwizzledViewReleased();
+    swizzled_views_live = texture_cache_->GetSwizzledViewLive();
+    cache_textures_created = texture_cache_->GetCacheTexturesCreated();
+    cache_texture_bytes_created = texture_cache_->GetCacheTextureBytesCreated();
   }
   MetalRenderTargetCache::CacheStats rt_stats;
+  uint64_t rt_temp_created = 0;
+  uint64_t rt_temp_released = 0;
+  uint64_t rt_textures_created = 0;
+  uint64_t rt_texture_bytes_created = 0;
+  uint64_t rt_views_created = 0;
+  uint64_t rt_dummy_textures_created = 0;
+  uint64_t rt_dummy_texture_bytes_created = 0;
   if (render_target_cache_) {
     rt_stats = render_target_cache_->GetCacheStats();
+    rt_temp_created = rt_stats.temp_textures_created;
+    rt_temp_released = rt_stats.temp_textures_released;
+    rt_textures_created = rt_stats.render_target_textures_created;
+    rt_texture_bytes_created = rt_stats.render_target_texture_bytes_created;
+    rt_views_created = rt_stats.render_target_views_created;
+    rt_dummy_textures_created = rt_stats.dummy_textures_created;
+    rt_dummy_texture_bytes_created = rt_stats.dummy_texture_bytes_created;
   }
   MetalShaderCache::CacheStats shader_stats;
   if (g_metal_shader_cache && g_metal_shader_cache->IsInitialized()) {
@@ -6637,6 +6694,8 @@ void MetalCommandProcessor::LogCacheStatsIfNeeded() {
       last_resource_stats_.buffer_bytes_created;
   resource_delta.buffer_bytes_released -=
       last_resource_stats_.buffer_bytes_released;
+  resource_delta.heap_bytes_created -= last_resource_stats_.heap_bytes_created;
+  resource_delta.heap_bytes_released -= last_resource_stats_.heap_bytes_released;
   resource_delta.textures_created -= last_resource_stats_.textures_created;
   resource_delta.textures_released -= last_resource_stats_.textures_released;
   resource_delta.texture_bytes_created -=
@@ -6645,10 +6704,37 @@ void MetalCommandProcessor::LogCacheStatsIfNeeded() {
       last_resource_stats_.texture_bytes_released;
   last_resource_stats_ = resource_stats;
 
+  const uint64_t cache_textures_created_delta =
+      cache_textures_created - last_cache_textures_created_;
+  const uint64_t cache_texture_bytes_created_delta =
+      cache_texture_bytes_created - last_cache_texture_bytes_created_;
+  const uint64_t rt_textures_created_delta =
+      rt_textures_created - last_rt_textures_created_;
+  const uint64_t rt_texture_bytes_created_delta =
+      rt_texture_bytes_created - last_rt_texture_bytes_created_;
+  const uint64_t rt_views_created_delta =
+      rt_views_created - last_rt_views_created_;
+  const uint64_t rt_dummy_textures_created_delta =
+      rt_dummy_textures_created - last_rt_dummy_textures_created_;
+  const uint64_t rt_dummy_texture_bytes_created_delta =
+      rt_dummy_texture_bytes_created - last_rt_dummy_texture_bytes_created_;
+
+  last_cache_textures_created_ = cache_textures_created;
+  last_cache_texture_bytes_created_ = cache_texture_bytes_created;
+  last_rt_textures_created_ = rt_textures_created;
+  last_rt_texture_bytes_created_ = rt_texture_bytes_created;
+  last_rt_views_created_ = rt_views_created;
+  last_rt_dummy_textures_created_ = rt_dummy_textures_created;
+  last_rt_dummy_texture_bytes_created_ = rt_dummy_texture_bytes_created;
+
   const double buffers_created_mb =
       bytes_to_mb(resource_delta.buffer_bytes_created);
   const double buffers_released_mb =
       bytes_to_mb(resource_delta.buffer_bytes_released);
+  const double heaps_created_mb =
+      bytes_to_mb(resource_delta.heap_bytes_created);
+  const double heaps_released_mb =
+      bytes_to_mb(resource_delta.heap_bytes_released);
   const double textures_created_mb =
       bytes_to_mb(resource_delta.texture_bytes_created);
   const double textures_released_mb =
@@ -6656,6 +6742,9 @@ void MetalCommandProcessor::LogCacheStatsIfNeeded() {
   const double buffers_live_mb =
       bytes_to_mb(resource_stats.buffer_bytes_created -
                   resource_stats.buffer_bytes_released);
+  const double heaps_live_mb =
+      bytes_to_mb(resource_stats.heap_bytes_created -
+                  resource_stats.heap_bytes_released);
   const double textures_live_mb =
       bytes_to_mb(resource_stats.texture_bytes_created -
                   resource_stats.texture_bytes_released);
@@ -6669,24 +6758,46 @@ void MetalCommandProcessor::LogCacheStatsIfNeeded() {
         "MetalCacheStats: textures={} host_mb={:.2f} rts={} rt_textures={} "
         "rt_mb~{:.2f} shaders={} shader_mb={:.2f} pipelines={} geom_pipelines={} "
         "tess_pipelines={} draw_rings={} ring_pool={} shared_mb={:.2f} "
-        "edram_mb={:.2f} cb={} enc={} inflight_cb={} completed_cb={} "
+        "edram_mb={:.2f} rt_temp+={} rt_temp-={} rt_tex+={} rt_tex_mb+={:.2f} "
+        "rt_view+={} rt_dummy_tex+={} rt_dummy_mb+={:.2f} "
+        "cache_tex+={} cache_tex_mb+={:.2f} cb={} enc={} inflight_cb={} "
+        "completed_cb={} "
         "ms_since_cb_done={} cb_created={} cb_completed_delta={} "
         "cb_avg_ms={:.2f} cb_max_ms={:.2f} pools_created={} pools_drained={} "
-        "new_bufs={} buf_mb+={:.2f} buf_mb-={:.2f} new_tex={} tex_mb+={:.2f} "
-        "tex_mb-={:.2f} buf_live_mb={:.2f} tex_live_mb={:.2f}\n",
+        "scaled_resolve_cnt={} scaled_resolve_mb={:.2f} "
+        "scaled_resolve_retired_cnt={} scaled_resolve_retired_mb={:.2f} "
+        "upload_pool_entries={} upload_pool_mb={:.2f} "
+        "swizzled_views_created={} swizzled_views_released={} "
+        "swizzled_views_live={} "
+        "new_bufs={} buf_mb+={:.2f} buf_mb-={:.2f} heap_mb+={:.2f} "
+        "heap_mb-={:.2f} new_tex={} tex_mb+={:.2f} tex_mb-={:.2f} "
+        "buf_live_mb={:.2f} heap_live_mb={:.2f} tex_live_mb={:.2f}\n",
         tex_stats.texture_count, bytes_to_mb(tex_stats.total_host_memory_bytes),
         rt_stats.render_target_count, rt_stats.texture_count,
         bytes_to_mb(rt_stats.approx_texture_bytes), shader_stats.entry_count,
         bytes_to_mb(shader_stats.total_bytes), pipeline_cache_.size(),
         geometry_pipeline_cache_.size(), tessellation_pipeline_cache_.size(),
         command_buffer_draw_rings_.size(), draw_ring_pool_.size(),
-        bytes_to_mb(shared_memory_bytes), bytes_to_mb(edram_bytes), cb_state,
-        enc_state, inflight, completed, ms_since_complete, created,
-        completed_delta, completed_avg_ms, completed_max_ms,
-        pools_created_delta, pools_drained_delta, resource_delta.buffers_created,
-        buffers_created_mb, buffers_released_mb, resource_delta.textures_created,
+        bytes_to_mb(shared_memory_bytes), bytes_to_mb(edram_bytes),
+        rt_temp_created, rt_temp_released, rt_textures_created_delta,
+        bytes_to_mb(rt_texture_bytes_created_delta), rt_views_created_delta,
+        rt_dummy_textures_created_delta,
+        bytes_to_mb(rt_dummy_texture_bytes_created_delta),
+        cache_textures_created_delta,
+        bytes_to_mb(cache_texture_bytes_created_delta),
+        cb_state, enc_state, inflight,
+        completed, ms_since_complete, created, completed_delta,
+        completed_avg_ms, completed_max_ms,
+        pools_created_delta, pools_drained_delta, scaled_resolve_count,
+        bytes_to_mb(scaled_resolve_bytes), scaled_resolve_retired_count,
+        bytes_to_mb(scaled_resolve_retired_bytes), upload_pool_entries,
+        bytes_to_mb(upload_pool_bytes), swizzled_views_created,
+        swizzled_views_released, swizzled_views_live,
+        resource_delta.buffers_created,
+        buffers_created_mb, buffers_released_mb,
+        heaps_created_mb, heaps_released_mb, resource_delta.textures_created,
         textures_created_mb, textures_released_mb, buffers_live_mb,
-        textures_live_mb);
+        heaps_live_mb, textures_live_mb);
   }
 }
 

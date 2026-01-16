@@ -21,6 +21,8 @@ struct MetalResourceStats {
   uint64_t buffers_released = 0;
   uint64_t buffer_bytes_created = 0;
   uint64_t buffer_bytes_released = 0;
+  uint64_t heap_bytes_created = 0;
+  uint64_t heap_bytes_released = 0;
   uint64_t textures_created = 0;
   uint64_t textures_released = 0;
   uint64_t texture_bytes_created = 0;
@@ -29,8 +31,11 @@ struct MetalResourceStats {
 
 void TrackMetalBufferCreated(size_t bytes);
 void TrackMetalBufferReleased(size_t bytes);
+void TrackMetalHeapCreated(size_t bytes);
+void TrackMetalHeapReleased(size_t bytes);
 void TrackMetalTextureCreated(MTL::Texture* texture);
 void TrackMetalTextureReleased(MTL::Texture* texture);
+uint64_t EstimateMetalTextureBytes(MTL::Texture* texture);
 MetalResourceStats GetMetalResourceStats();
 
 }  // namespace metal

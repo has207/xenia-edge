@@ -137,6 +137,7 @@ class MetalCommandProcessor : public CommandProcessor {
   // Command buffer management
   void BeginCommandBuffer();
   void EndCommandBuffer();
+  void ProcessCompletedSubmissions();
   void EnsureDrawRingCapacity();
   void UseRenderEncoderAttachmentHeaps(MTL::RenderPassDescriptor* descriptor);
   void UseRenderEncoderHeap(MTL::Heap* heap);
@@ -499,6 +500,8 @@ class MetalCommandProcessor : public CommandProcessor {
   std::atomic<uint64_t> completed_command_buffers_total_us_{0};
   std::atomic<uint64_t> completed_command_buffers_max_us_{0};
   std::chrono::steady_clock::time_point last_command_buffer_complete_time_{};
+  uint64_t submission_current_ = 0;
+  uint64_t submission_completed_processed_ = 0;
   uint64_t last_completed_command_buffers_ = 0;
   uint64_t last_completed_command_buffers_total_us_ = 0;
   uint64_t autorelease_pools_created_ = 0;
@@ -506,6 +509,13 @@ class MetalCommandProcessor : public CommandProcessor {
   uint64_t last_autorelease_pools_created_ = 0;
   uint64_t last_autorelease_pools_drained_ = 0;
   MetalResourceStats last_resource_stats_{};
+  uint64_t last_cache_textures_created_ = 0;
+  uint64_t last_cache_texture_bytes_created_ = 0;
+  uint64_t last_rt_textures_created_ = 0;
+  uint64_t last_rt_texture_bytes_created_ = 0;
+  uint64_t last_rt_views_created_ = 0;
+  uint64_t last_rt_dummy_textures_created_ = 0;
+  uint64_t last_rt_dummy_texture_bytes_created_ = 0;
 
   // Draw counter for ring-buffer descriptor heap allocation
   // Each draw uses a different region of the descriptor heap to avoid

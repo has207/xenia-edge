@@ -119,6 +119,22 @@ struct MetalLoadConstants {
 };
 static_assert(sizeof(MetalLoadConstants) == 64);
 
+class ScopedAutoreleasePool {
+ public:
+  ScopedAutoreleasePool() : pool_(NS::AutoreleasePool::alloc()->init()) {}
+  ~ScopedAutoreleasePool() {
+    if (pool_) {
+      pool_->release();
+    }
+  }
+
+  ScopedAutoreleasePool(const ScopedAutoreleasePool&) = delete;
+  ScopedAutoreleasePool& operator=(const ScopedAutoreleasePool&) = delete;
+
+ private:
+  NS::AutoreleasePool* pool_;
+};
+
 bool SupportsPixelFormat(MTL::Device* device, MTL::PixelFormat format) {
   if (!device || format == MTL::PixelFormatInvalid) {
     return false;
@@ -259,6 +275,20 @@ class MetalTextureCache::UploadBufferPool
     entries_.clear();
   }
 
+  size_t GetEntryCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return entries_.size();
+  }
+
+  uint64_t GetTotalBytes() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    uint64_t total = 0;
+    for (const Entry& entry : entries_) {
+      total += entry.size;
+    }
+    return total;
+  }
+
  private:
   struct Entry {
     MTL::Buffer* buffer = nullptr;
@@ -266,7 +296,7 @@ class MetalTextureCache::UploadBufferPool
     bool in_use = false;
   };
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::vector<Entry> entries_;
   MTL::Device* device_ = nullptr;
 };
@@ -764,6 +794,7 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
   }
 
   const bool use_blit_upload = ShouldUploadViaBlit();
+  ScopedAutoreleasePool autorelease_pool;
   MTL::CommandBuffer* cmd = queue->commandBuffer();
   if (!cmd) {
     release_buffer_immediate(constants_buffer, constants_buffer_size);
@@ -1186,6 +1217,7 @@ void MetalTextureCache::DumpTextureToFile(MTL::Texture* texture,
   }
   TrackMetalBufferCreated(buffer_size);
 
+  ScopedAutoreleasePool autorelease_pool;
   MTL::CommandBuffer* cmd = queue->commandBuffer();
   if (!cmd) {
     TrackMetalBufferReleased(buffer_size);
@@ -1260,12 +1292,11 @@ bool MetalTextureCache::Initialize() {
   }
 
   upload_buffer_pool_ = std::make_shared<UploadBufferPool>(device);
-  if (::cvars::metal_use_heaps &&
-      GetCacheTextureStorageMode() == MTL::StorageModePrivate) {
+  if (::cvars::metal_use_heaps) {
     size_t min_heap_bytes =
         std::max<int32_t>(0, ::cvars::metal_heap_min_bytes);
     texture_heap_pool_ = std::make_unique<MetalHeapPool>(
-        device, MTL::StorageModePrivate, min_heap_bytes, "XeniaTex");
+        device, GetCacheTextureStorageMode(), min_heap_bytes, "XeniaTex");
   }
 
   InitializeNorm16Selection(device);
@@ -1772,6 +1803,7 @@ MTL::Texture* MetalTextureCache::CreateTexture2D(
     return nullptr;
   }
 
+  RecordCacheTextureCreated(texture);
   return texture;
 }
 
@@ -1814,6 +1846,7 @@ MTL::Texture* MetalTextureCache::CreateTexture3D(uint32_t width,
   }
 
   descriptor->release();
+  TrackMetalTextureCreated(texture);
 
   if (!texture) {
     XELOGE("Metal texture cache: Failed to create 3D texture {}x{}x{}", width,
@@ -1821,6 +1854,7 @@ MTL::Texture* MetalTextureCache::CreateTexture3D(uint32_t width,
     return nullptr;
   }
 
+  RecordCacheTextureCreated(texture);
   return texture;
 }
 
@@ -1862,6 +1896,7 @@ MTL::Texture* MetalTextureCache::CreateTextureCube(uint32_t width,
   }
 
   descriptor->release();
+  TrackMetalTextureCreated(texture);
 
   if (!texture) {
     XELOGE("Metal texture cache: Failed to create Cube texture {}x{}", width,
@@ -1869,6 +1904,7 @@ MTL::Texture* MetalTextureCache::CreateTextureCube(uint32_t width,
     return nullptr;
   }
 
+  RecordCacheTextureCreated(texture);
   return texture;
 }
 
@@ -2074,6 +2110,83 @@ MetalTextureCache::CacheStats MetalTextureCache::GetCacheStats() const {
   stats.total_host_memory_bytes = GetTexturesTotalHostMemoryUsage();
   return stats;
 }
+
+size_t MetalTextureCache::GetScaledResolveBufferCount() const {
+  return scaled_resolve_buffers_.size();
+}
+
+size_t MetalTextureCache::GetScaledResolveRetiredBufferCount() const {
+  return scaled_resolve_retired_buffers_.size();
+}
+
+uint64_t MetalTextureCache::GetScaledResolveBytes() const {
+  uint64_t total = 0;
+  for (const auto& buffer : scaled_resolve_buffers_) {
+    total += buffer.length_scaled;
+  }
+  return total;
+}
+
+uint64_t MetalTextureCache::GetScaledResolveRetiredBytes() const {
+  uint64_t total = 0;
+  for (const auto& buffer : scaled_resolve_retired_buffers_) {
+    total += buffer.length_scaled;
+  }
+  return total;
+}
+
+size_t MetalTextureCache::GetUploadPoolEntryCount() const {
+  return upload_buffer_pool_ ? upload_buffer_pool_->GetEntryCount() : 0;
+}
+
+uint64_t MetalTextureCache::GetUploadPoolBytes() const {
+  return upload_buffer_pool_ ? upload_buffer_pool_->GetTotalBytes() : 0;
+}
+
+uint64_t MetalTextureCache::GetSwizzledViewCreated() const {
+  return swizzled_views_created_.load(std::memory_order_relaxed);
+}
+
+uint64_t MetalTextureCache::GetSwizzledViewReleased() const {
+  return swizzled_views_released_.load(std::memory_order_relaxed);
+}
+
+uint64_t MetalTextureCache::GetSwizzledViewLive() const {
+  const uint64_t created =
+      swizzled_views_created_.load(std::memory_order_relaxed);
+  const uint64_t released =
+      swizzled_views_released_.load(std::memory_order_relaxed);
+  return created >= released ? created - released : 0;
+}
+
+void MetalTextureCache::RecordSwizzledViewCreated() {
+  swizzled_views_created_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void MetalTextureCache::RecordSwizzledViewReleased(uint64_t count) {
+  if (!count) {
+    return;
+  }
+  swizzled_views_released_.fetch_add(count, std::memory_order_relaxed);
+}
+
+uint64_t MetalTextureCache::GetCacheTexturesCreated() const {
+  return cache_textures_created_.load(std::memory_order_relaxed);
+}
+
+uint64_t MetalTextureCache::GetCacheTextureBytesCreated() const {
+  return cache_texture_bytes_created_.load(std::memory_order_relaxed);
+}
+
+void MetalTextureCache::RecordCacheTextureCreated(MTL::Texture* texture) {
+  if (!texture) {
+    return;
+  }
+  cache_textures_created_.fetch_add(1, std::memory_order_relaxed);
+  cache_texture_bytes_created_.fetch_add(
+      EstimateMetalTextureBytes(texture), std::memory_order_relaxed);
+}
+
 
 MTL::Texture* MetalTextureCache::GetTextureForBinding(
     uint32_t fetch_constant, xenos::FetchOpDimension dimension,
@@ -2717,6 +2830,7 @@ bool MetalTextureCache::EnsureScaledResolveBufferRange(uint64_t start_scaled,
       new_buffer->release();
       return false;
     }
+    ScopedAutoreleasePool autorelease_pool;
     MTL::CommandBuffer* cmd = queue->commandBuffer();
     if (!cmd) {
       TrackMetalBufferReleased(new_buffer->length());
@@ -2915,27 +3029,24 @@ bool MetalTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
 MetalTextureCache::MetalTexture::MetalTexture(MetalTextureCache& texture_cache,
                                               const TextureKey& key,
                                               MTL::Texture* metal_texture)
-    : Texture(texture_cache, key), metal_texture_(metal_texture) {
+    : Texture(texture_cache, key),
+      texture_cache_(texture_cache),
+      metal_texture_(metal_texture) {
   if (metal_texture_) {
-    // Calculate host memory usage for base class tracking
-    uint32_t bytes_per_pixel =
-        4;  // Simplified - could be more accurate based on format
-    uint32_t width = key.GetWidth();
-    uint32_t height = key.GetHeight();
-    uint32_t depth = key.GetDepthOrArraySize();
-    uint64_t memory_usage = width * height * depth * bytes_per_pixel;
-
-    SetHostMemoryUsage(memory_usage);
+    SetHostMemoryUsage(EstimateMetalTextureBytes(metal_texture_));
   }
 }
 
 MetalTextureCache::MetalTexture::~MetalTexture() {
+  uint64_t views_released = 0;
   for (auto& entry : swizzled_view_cache_) {
     if (entry.second) {
+      ++views_released;
       TrackMetalTextureReleased(entry.second);
       entry.second->release();
     }
   }
+  texture_cache_.RecordSwizzledViewReleased(views_released);
   if (metal_texture_) {
     TrackMetalTextureReleased(metal_texture_);
     metal_texture_->release();
@@ -3037,6 +3148,7 @@ MTL::Texture* MetalTextureCache::MetalTexture::GetOrCreateView(
   }
 
   TrackMetalTextureCreated(view);
+  texture_cache_.RecordSwizzledViewCreated();
   swizzled_view_cache_.emplace(view_key, view);
   return view;
 }

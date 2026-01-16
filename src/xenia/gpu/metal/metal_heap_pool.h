@@ -40,6 +40,8 @@ class MetalHeapPool {
   MTL::Device* device_ = nullptr;
   MTL::StorageMode storage_mode_ = MTL::StorageModePrivate;
   size_t min_heap_size_ = 0;
+  size_t max_heap_bytes_ = 0;
+  size_t total_heap_bytes_ = 0;
   std::string label_prefix_;
   std::vector<HeapEntry> heaps_;
 };

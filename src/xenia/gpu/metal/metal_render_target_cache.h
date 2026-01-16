@@ -14,6 +14,7 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <atomic>
 
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/render_target_cache.h"
@@ -36,6 +37,13 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
     size_t render_target_count = 0;
     size_t texture_count = 0;
     uint64_t approx_texture_bytes = 0;
+    uint64_t temp_textures_created = 0;
+    uint64_t temp_textures_released = 0;
+    uint64_t render_target_textures_created = 0;
+    uint64_t render_target_texture_bytes_created = 0;
+    uint64_t render_target_views_created = 0;
+    uint64_t dummy_textures_created = 0;
+    uint64_t dummy_texture_bytes_created = 0;
   };
 
   // Metal-specific render target - defined inside cache class to access
@@ -178,6 +186,10 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
       xenos::DepthRenderTargetFormat format) const override;
 
  private:
+  void RecordRenderTargetTextureCreated(MTL::Texture* texture);
+  void RecordRenderTargetViewCreated();
+  void RecordDummyTextureCreated(MTL::Texture* texture);
+
   static uint32_t GetMetalEdramDumpFormat(RenderTargetKey key);
   MTL::Library* GetOrCreateEdramLoadLibrary(bool msaa);
   MTL::RenderPipelineState* GetOrCreateEdramLoadPipeline(
@@ -185,6 +197,14 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
 
   MetalCommandProcessor& command_processor_;
   TraceWriter* trace_writer_;
+
+  std::atomic<uint64_t> temp_textures_created_{0};
+  std::atomic<uint64_t> temp_textures_released_{0};
+  std::atomic<uint64_t> render_target_textures_created_{0};
+  std::atomic<uint64_t> render_target_texture_bytes_created_{0};
+  std::atomic<uint64_t> render_target_views_created_{0};
+  std::atomic<uint64_t> dummy_textures_created_{0};
+  std::atomic<uint64_t> dummy_texture_bytes_created_{0};
 
   // Metal device reference
   MTL::Device* device_ = nullptr;
@@ -388,8 +408,15 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   bool render_pass_descriptor_dirty_ = true;
 
   // Dummy render target for when no render targets are bound
-  mutable std::unique_ptr<MetalRenderTarget> dummy_color_target_;
-  mutable bool dummy_color_target_needs_clear_ = true;
+  struct DummyColorTargetEntry {
+    std::unique_ptr<MetalRenderTarget> target;
+    uint64_t last_used_frame = 0;
+    uint64_t last_cleared_frame = 0;
+  };
+  mutable std::unordered_map<uint64_t, DummyColorTargetEntry>
+      dummy_color_targets_;
+  mutable MetalRenderTarget* dummy_color_target_ = nullptr;
+  uint64_t frame_id_ = 0;
 
   // Track which render targets have been cleared this frame
   std::unordered_set<uint32_t> cleared_render_targets_this_frame_;
