@@ -88,17 +88,10 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
             function_name_.c_str(), NS::UTF8StringEncoding);
         metal_function_ = metal_library_->newFunction(function_name_ns);
         if (metal_function_) {
-          if (cvars::metal_verbose_logging) {
-            XELOGI("MetalShader: Loaded cached metallib (key {:016X})",
-                   shader_cache_key);
-          }
           return true;
         }
         metal_library_->release();
         metal_library_ = nullptr;
-      } else if (error && cvars::metal_verbose_logging) {
-        XELOGI("MetalShader: Failed to load cached metallib: {}",
-               error->localizedDescription()->utf8String());
       }
     }
   }
@@ -198,8 +191,6 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
       if (f) {
         fwrite(dxbc_data.data(), 1, dxbc_data.size(), f);
         fclose(f);
-        XELOGI("DEBUG: Dumped DXBC ({} bytes) to {}", dxbc_data.size(),
-               xe::path_to_utf8(dxbc_path));
       }
     }
 
@@ -213,8 +204,6 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
       if (f) {
         fwrite(dxil_data_.data(), 1, dxil_data_.size(), f);
         fclose(f);
-        XELOGI("DEBUG: Dumped DXIL ({} bytes) to {}", dxil_data_.size(),
-               xe::path_to_utf8(dxil_path));
       }
     }
 
@@ -228,8 +217,6 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
       if (f) {
         fwrite(metallib_data_.data(), 1, metallib_data_.size(), f);
         fclose(f);
-        XELOGI("DEBUG: Dumped MetalLib ({} bytes) to {}", metallib_data_.size(),
-               xe::path_to_utf8(metallib_path));
       }
     }
   }
@@ -257,9 +244,6 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
   // MSC generates functions with specific names based on shader type
   NS::String* function_name = NS::String::string(
       msc_result.function_name.c_str(), NS::UTF8StringEncoding);
-
-  XELOGI("GPU DEBUG: Looking for shader function '{}' in metallib ({} bytes)",
-         msc_result.function_name, metallib_data_.size());
 
   metal_function_ = metal_library_->newFunction(function_name);
 
@@ -295,7 +279,6 @@ bool MetalShader::MetalTranslation::TranslateToMetal(
                                 metallib_data_.data(), metallib_data_.size());
   }
 
-  XELOGI("MetalShader: Successfully created Metal shader function");
   return true;
 }
 

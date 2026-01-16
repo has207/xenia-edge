@@ -11,13 +11,6 @@ namespace xe {
 namespace gpu {
 namespace metal {
 
-#define METAL_VERBOSE_LOG(...)                           \
-  do {                                                   \
-    if (::cvars::metal_verbose_logging) {                  \
-      XELOGI(__VA_ARGS__);                               \
-    }                                                    \
-  } while (false)
-
 MetalSharedMemory::MetalSharedMemory(MetalCommandProcessor& command_processor,
                                      Memory& memory)
     : SharedMemory(memory), command_processor_(command_processor) {}
@@ -41,10 +34,6 @@ bool MetalSharedMemory::Initialize() {
 
   // Create Metal buffer - similar to D3D12's approach
   // On Apple Silicon, ResourceStorageModeShared gives CPU/GPU access
-  METAL_VERBOSE_LOG("Creating Metal shared memory buffer: size={}MB", kBufferSize >> 20);
-  fflush(stdout);
-  fflush(stderr);
-
   void* xbox_ram = memory().TranslatePhysical(0);
   if (!xbox_ram) {
     XELOGE("Metal shared memory: Xbox RAM is null");
@@ -70,9 +59,6 @@ bool MetalSharedMemory::Initialize() {
   if (!buffer_) {
     buffer_ = device->newBuffer(kBufferSize, MTL::ResourceStorageModeShared);
   }
-  XELOGI("Metal buffer allocated: {}", buffer_ ? "success" : "failed");
-  fflush(stdout);
-  fflush(stderr);
   if (!buffer_) {
     XELOGE("Failed to create Metal shared memory buffer");
     return false;
@@ -82,22 +68,13 @@ bool MetalSharedMemory::Initialize() {
   // For trace dump, do initial full copy; UploadRanges handles incremental
   // updates for normal runs.
   if (!use_zero_copy_) {
-    XELOGI("xbox_ram={}, about to copy 512MB", xbox_ram ? "valid" : "null");
-    fflush(stdout);
-    fflush(stderr);
     if (xbox_ram) {
       memcpy(buffer_->contents(), xbox_ram, kBufferSize);
-      XELOGI("Copied Xbox memory to Metal buffer (initial sync)");
-      fflush(stdout);
-      fflush(stderr);
     }
   } else {
     METAL_VERBOSE_LOG("Metal shared memory: skipping initial copy (zero-copy)");
   }
 
-  XELOGI("Metal shared memory initialized successfully");
-  fflush(stdout);
-  fflush(stderr);
 
   return true;
 }
