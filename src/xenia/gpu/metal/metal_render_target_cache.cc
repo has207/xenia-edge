@@ -5942,7 +5942,7 @@ float XeFloat7e3To32(uint f10) {
     exponent = uint(int(1) - int(mantissa_lzcnt));
     mantissa = (mantissa << mantissa_lzcnt) & 0x7Fu;
   }
-  uint f32 = ((exponent + 124u) << 23u) | (mantissa << 3u);
+  uint f32 = ((exponent + 124u) << 23u) | (mantissa << 16u);
   return as_type<float>(f32);
 }
 
