@@ -82,7 +82,8 @@ bool MetalSharedMemory::Initialize() {
 void MetalSharedMemory::ClearCache() { SharedMemory::ClearCache(); }
 
 bool MetalSharedMemory::UploadRanges(
-    const std::vector<std::pair<uint32_t, uint32_t>>& upload_page_ranges) {
+    const std::pair<uint32_t, uint32_t>* upload_page_ranges,
+    uint32_t num_upload_ranges) {
   // Copy modified ranges from Xbox memory to Metal buffer when not using
   // bytes-no-copy shared memory.
 
@@ -90,11 +91,9 @@ bool MetalSharedMemory::UploadRanges(
   if (first_upload) {
     first_upload = false;
     const uint32_t page_size = 1u << page_size_log2();
-    XELOGD(
-        "MetalSharedMemory::UploadRanges: page_size={}, {} ranges to upload",
-        page_size, upload_page_ranges.size());
-    for (size_t i = 0; i < std::min(size_t(5), upload_page_ranges.size());
-         i++) {
+    XELOGD("MetalSharedMemory::UploadRanges: page_size={}, {} ranges to upload",
+           page_size, num_upload_ranges);
+    for (uint32_t i = 0; i < std::min(5u, num_upload_ranges); i++) {
       uint32_t start_byte = upload_page_ranges[i].first * page_size;
       uint32_t length_bytes = upload_page_ranges[i].second * page_size;
       XELOGD(
@@ -104,7 +103,7 @@ bool MetalSharedMemory::UploadRanges(
     }
   }
 
-  if (!buffer_ || upload_page_ranges.empty()) {
+  if (!buffer_ || num_upload_ranges == 0) {
     return true;
   }
 
@@ -131,13 +130,14 @@ bool MetalSharedMemory::UploadRanges(
       return;
     }
     uint32_t length = end - start;
-    MakeRangeValid(start, length, false, false);
+    MakeRangeValid(start, length, false);
     if (!use_zero_copy_) {
       memcpy(buffer_data + start, xbox_data + start, length);
     }
   };
 
-  for (const auto& range : upload_page_ranges) {
+  for (uint32_t i = 0; i < num_upload_ranges; ++i) {
+    const auto& range = upload_page_ranges[i];
     uint32_t start = range.first * page_size;
     uint32_t end = start + range.second * page_size;
     if (start >= kBufferSize) {
@@ -171,7 +171,7 @@ bool MetalSharedMemory::UploadRanges(
   }
 
   XELOGD("MetalSharedMemory::UploadRanges: Copied {} ranges to Metal buffer",
-         upload_page_ranges.size());
+         num_upload_ranges);
 
   return true;
 }
