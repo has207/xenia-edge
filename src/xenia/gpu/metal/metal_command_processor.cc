@@ -6355,6 +6355,14 @@ MetalCommandProcessor::GetCurrentPixelShaderModification(
     modification.pixel.depth_stencil_mode = DepthStencilMode::kNoModifiers;
   }
 
+  // Initialize MIN/MAX blend pre-multiply factors to kOne (no pre-multiply).
+  // These must be explicitly set, as zero-initialized bits would be kZero
+  // which causes the shader to multiply output color by zero (black).
+  modification.pixel.rt0_blend_rgb_factor_for_premult =
+      xenos::BlendFactor::kOne;
+  modification.pixel.rt0_blend_a_factor_for_premult =
+      xenos::BlendFactor::kOne;
+
   return modification;
 }
 
