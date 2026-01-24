@@ -49,6 +49,11 @@ namespace metal {
 class MetalGraphicsSystem;
 
 class MetalCommandProcessor : public CommandProcessor {
+ protected:
+#define OVERRIDING_BASE_CMDPROCESSOR
+#include "../pm4_command_processor_declare.h"
+#undef OVERRIDING_BASE_CMDPROCESSOR
+
  public:
   explicit MetalCommandProcessor(MetalGraphicsSystem* graphics_system,
                                  kernel::KernelState* kernel_state);
@@ -56,6 +61,9 @@ class MetalCommandProcessor : public CommandProcessor {
 
   void TracePlaybackWroteMemory(uint32_t base_ptr, uint32_t length) override;
   void RestoreEdramSnapshot(const void* snapshot) override;
+  void ClearCaches() override;
+  void InvalidateGpuMemory() override;
+  void ClearReadbackBuffers() override;
 
   // Track memory regions written by IssueCopy (resolve) so trace playback
   // can skip overwriting them with stale data from the trace file.
@@ -71,6 +79,7 @@ class MetalCommandProcessor : public CommandProcessor {
   MTL::CommandBuffer* GetCurrentCommandBuffer() const {
     return current_command_buffer_;
   }
+  uint32_t current_draw_index() const { return current_draw_index_; }
   MTL::CommandBuffer* EnsureCommandBuffer();
   void EndRenderEncoder();
   void ResetRenderEncoderResourceUsage();
@@ -91,67 +100,66 @@ class MetalCommandProcessor : public CommandProcessor {
  protected:
  bool SetupContext() override;
  void ShutdownContext() override;
- void InitializeShaderStorage(const std::filesystem::path& cache_root,
-                              uint32_t title_id, bool blocking) override;
+ void InitializeShaderStorage(
+     const std::filesystem::path& cache_root, uint32_t title_id, bool blocking,
+     std::function<void()> completion_callback = nullptr) override;
 
-  // Flush pending GPU work before entering wait state.
-  // This ensures Metal command buffers are submitted and completed before
-  // the autorelease pool is drained, preventing hangs from deferred
-  // deallocation.
-  void PrepareForWait() override;
+ // Flush pending GPU work before entering wait state.
+ // This ensures Metal command buffers are submitted and completed before
+ // the autorelease pool is drained, preventing hangs from deferred
+ // deallocation.
+ void PrepareForWait() override;
 
-  // Use base class WriteRegister - don't override with empty implementation!
-  // The base class stores values in register_file_->values[] which we need.
-  void OnGammaRamp256EntryTableValueWritten() override;
-  void OnGammaRampPWLValueWritten() override;
+ // Use base class WriteRegister - don't override with empty implementation!
+ // The base class stores values in register_file_->values[] which we need.
+ void OnGammaRamp256EntryTableValueWritten() override;
+ void OnGammaRampPWLValueWritten() override;
 
-  void IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
-                 uint32_t frontbuffer_height) override;
+ void IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
+                uint32_t frontbuffer_height) override;
 
-  Shader* LoadShader(xenos::ShaderType shader_type, uint32_t guest_address,
-                     const uint32_t* host_address,
-                     uint32_t dword_count) override;
+ Shader* LoadShader(xenos::ShaderType shader_type, uint32_t guest_address,
+                    const uint32_t* host_address,
+                    uint32_t dword_count) override;
 
-  bool IssueDraw(xenos::PrimitiveType primitive_type, uint32_t index_count,
-                 IndexBufferInfo* index_buffer_info,
-                 bool major_mode_explicit) override;
-  bool IssueCopy() override;
-  void WriteRegister(uint32_t index, uint32_t value) override;
+ bool IssueDraw(xenos::PrimitiveType primitive_type, uint32_t index_count,
+                IndexBufferInfo* index_buffer_info,
+                bool major_mode_explicit) override;
+ bool IssueCopy() override;
+ void WriteRegister(uint32_t index, uint32_t value) override;
 
- private:
-  // Initialize shader translation pipeline
-  bool InitializeShaderTranslation();
+private:
+ // Initialize shader translation pipeline
+ bool InitializeShaderTranslation();
 
-  // Request shared-memory ranges needed for the current draw, mirroring
-  // D3D12/Vulkan behavior (vertex buffers, memexport streams).
-  bool RequestSharedMemoryRangesForCurrentDraw(MetalShader* vertex_shader,
-                                               MetalShader* pixel_shader,
-                                               bool memexport_used_vertex,
-                                               bool memexport_used_pixel,
-                                               bool* any_data_resolved_out);
+ // Request shared-memory ranges needed for the current draw, mirroring
+ // D3D12/Vulkan behavior (vertex buffers, memexport streams).
+ bool RequestSharedMemoryRangesForCurrentDraw(MetalShader* vertex_shader,
+                                              MetalShader* pixel_shader,
+                                              bool memexport_used_vertex,
+                                              bool memexport_used_pixel,
+                                              bool* any_data_resolved_out);
 
-  // Command buffer management
-  void BeginCommandBuffer();
-  void EndCommandBuffer();
-  void ProcessCompletedSubmissions();
-  void EnsureDrawRingCapacity();
-  void UseRenderEncoderAttachmentHeaps(MTL::RenderPassDescriptor* descriptor);
-  void UseRenderEncoderHeap(MTL::Heap* heap);
+ // Command buffer management
+ void BeginCommandBuffer();
+ void EndCommandBuffer();
+ void ProcessCompletedSubmissions();
+ void EnsureDrawRingCapacity();
+ void UseRenderEncoderAttachmentHeaps(MTL::RenderPassDescriptor* descriptor);
+ void UseRenderEncoderHeap(MTL::Heap* heap);
 
-  // Pipeline state management
-  MTL::RenderPipelineState* GetOrCreatePipelineState(
-      MetalShader::MetalTranslation* vertex_translation,
-      MetalShader::MetalTranslation* pixel_translation,
-      const RegisterFile& regs);
+ // Pipeline state management
+ MTL::RenderPipelineState* GetOrCreatePipelineState(
+     MetalShader::MetalTranslation* vertex_translation,
+     MetalShader::MetalTranslation* pixel_translation,
+     const RegisterFile& regs);
 
-  struct GeometryVertexStageState {
-    MTL::Library* library = nullptr;
-    MTL::Library* stage_in_library = nullptr;
-    std::string function_name;
-    uint32_t vertex_output_size_in_bytes = 0;
-    std::string input_layout_json;
-    std::string input_summary;
-  };
+ struct GeometryVertexStageState {
+   MTL::Library* library = nullptr;
+   MTL::Library* stage_in_library = nullptr;
+   std::string function_name;
+   uint32_t vertex_output_size_in_bytes = 0;
+ };
 
   struct GeometryShaderStageState {
     MTL::Library* library = nullptr;

@@ -20,7 +20,6 @@
 #include <dispatch/dispatch.h>
 #include <atomic>
 #include <filesystem>
-#include <fstream>
 #include <limits>
 #include <cstring>
 #include <unordered_set>
@@ -32,6 +31,7 @@
 #include "third_party/metal-cpp/Foundation/NSURL.hpp"
 #include "third_party/metal-cpp/Metal/MTLEvent.hpp"
 
+#include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/assert.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/filesystem.h"
@@ -77,6 +77,8 @@ using BYTE = uint8_t;
 
 // IR Converter bind points (from metal_irconverter_runtime.h)
 // kIRDescriptorHeapBindPoint = 0
+
+DECLARE_bool(clear_memory_page_state);
 // kIRSamplerHeapBindPoint = 1
 // kIRArgumentBufferBindPoint = 2
 // kIRArgumentBufferDrawArgumentsBindPoint = 4
@@ -442,6 +444,23 @@ void MetalCommandProcessor::RestoreEdramSnapshot(const void* snapshot) {
   render_target_cache_->RestoreEdramSnapshot(snapshot);
 }
 
+void MetalCommandProcessor::ClearCaches() {
+  CommandProcessor::ClearCaches();
+  // TODO(wmarti): Add cache_clear_requested_ flag like D3D12 for deferred
+  // clearing of pipeline caches, texture caches, etc.
+}
+
+void MetalCommandProcessor::InvalidateGpuMemory() {
+  if (shared_memory_) {
+    shared_memory_->InvalidateAllPages();
+  }
+}
+
+void MetalCommandProcessor::ClearReadbackBuffers() {
+  // TODO(wmarti): Implement readback buffer clearing when memexport readback
+  // is added. See D3D12's readback_buffers_ and memexport_readback_buffers_.
+}
+
 ui::metal::MetalProvider& MetalCommandProcessor::GetMetalProvider() const {
   return *static_cast<ui::metal::MetalProvider*>(graphics_system_->provider());
 }
@@ -578,8 +597,6 @@ bool MetalCommandProcessor::SetupContext() {
     XELOGE("Failed to initialize shader translation");
     return false;
   }
-  ProbeGeometryMetallib(device_);
-
   if (mesh_shader_supported_) {
     uint64_t tess_tables_size = IRRuntimeTessellatorTablesSize();
   tessellator_tables_buffer_ =
@@ -733,17 +750,31 @@ bool MetalCommandProcessor::SetupContext() {
 
 bool MetalCommandProcessor::InitializeShaderTranslation() {
   // Initialize DXBC shader translator (use Apple vendor ID for Metal)
-  // Parameters: vendor_id, bindless_resources_used,
-  //             gamma_render_target_as_srgb, msaa_2x_supported,
-  //             draw_resolution_scale_x, draw_resolution_scale_y
+  // Must query render_target_cache_ for actual runtime parameters.
+  // Metal doesn't use ROV (rasterizer ordered views) path.
+  bool edram_rov_used = false;
+
+  // gamma_render_target_as_unorm8: When true, shaders include code to convert
+  // linear -> gamma for 8-bit gamma render targets. When false, we use 16-bit
+  // UNORM format where hardware handles gamma implicitly.
+  bool gamma_render_target_as_unorm8 =
+      !(edram_rov_used || render_target_cache_->gamma_render_target_as_unorm16());
+
+  XELOGI(
+      "DxbcShaderTranslator init: gamma_as_unorm8={}, msaa_2x={}, scale={}x{}",
+      gamma_render_target_as_unorm8, render_target_cache_->msaa_2x_supported(),
+      render_target_cache_->draw_resolution_scale_x(),
+      render_target_cache_->draw_resolution_scale_y());
+
   shader_translator_ = std::make_unique<DxbcShaderTranslator>(
       ui::GraphicsProvider::GpuVendorID::kApple,
       false,  // bindless_resources_used - not using bindless for now
-      false,
-      ::cvars::gamma_render_target_as_srgb,
-      true,   // msaa_2x_supported - Metal supports MSAA
-      1,      // draw_resolution_scale_x - 1x for now
-      1);     // draw_resolution_scale_y - 1x for now
+      edram_rov_used,
+      gamma_render_target_as_unorm8,
+      render_target_cache_->msaa_2x_supported(),
+      render_target_cache_->draw_resolution_scale_x(),
+      render_target_cache_->draw_resolution_scale_y(),
+      false);  // force_emit_source_map
 
   // Initialize DXBC to DXIL converter
   dxbc_to_dxil_converter_ = std::make_unique<DxbcToDxilConverter>();
@@ -972,10 +1003,14 @@ void MetalCommandProcessor::ShutdownContext() {
 }
 
 void MetalCommandProcessor::InitializeShaderStorage(
-    const std::filesystem::path& cache_root, uint32_t title_id,
-    bool blocking) {
-  CommandProcessor::InitializeShaderStorage(cache_root, title_id, blocking);
+    const std::filesystem::path& cache_root, uint32_t title_id, bool blocking,
+    std::function<void()> completion_callback) {
+  CommandProcessor::InitializeShaderStorage(cache_root, title_id, blocking,
+                                            nullptr);
   InitializeShaderStorageInternal(cache_root, title_id, blocking);
+  if (completion_callback) {
+    completion_callback();
+  }
 }
 
 bool MetalCommandProcessor::InitializeShaderStorageInternal(
@@ -1460,6 +1495,9 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
     primitive_processor_->EndFrame();
     frame_open_ = false;
   }
+  if (shared_memory_ && ::cvars::clear_memory_page_state) {
+    shared_memory_->SetSystemPageBlocksValidWithGpuDataWritten();
+  }
 
   // Push the rendered frame to the presenter's guest output mailbox
   // This is required for trace dumps to capture the output. Use the
@@ -1638,7 +1676,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       draw_util::IsRasterizationPotentiallyDone(regs, primitive_polygonal);
   MetalShader* pixel_shader = nullptr;
   if (is_rasterization_done) {
-    if (edram_mode == xenos::ModeControl::kColorDepth) {
+    if (edram_mode == xenos::EdramMode::kColorDepth) {
       pixel_shader = static_cast<MetalShader*>(active_pixel_shader());
       if (pixel_shader) {
         if (!pixel_shader->is_ucode_analyzed()) {
@@ -2052,27 +2090,28 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     bool convert_z_to_float24 =
         host_render_targets_used &&
         ::cvars::depth_float24_convert_in_pixel_shader;
-    draw_util::GetHostViewportInfo(
-        regs, 1, 1,     // draw resolution scale x/y
-        true,           // origin_bottom_left (Metal NDC Y is up, like D3D)
-        kViewportBoundsMax,  // x_max
-        kViewportBoundsMax,  // y_max
-        false,          // allow_reverse_z
-        depth_control,  // normalized_depth_control
-        convert_z_to_float24,          // convert_z_to_float24
-        host_render_targets_used,      // full_float24_in_0_to_1
-        pixel_shader && pixel_shader->writes_depth(),
-        // pixel_shader_writes_depth
-        viewport_info);
+    uint32_t draw_resolution_scale_x =
+        texture_cache_ ? texture_cache_->draw_resolution_scale_x() : 1;
+    uint32_t draw_resolution_scale_y =
+        texture_cache_ ? texture_cache_->draw_resolution_scale_y() : 1;
+    draw_util::GetViewportInfoArgs gviargs{};
+    gviargs.Setup(
+        draw_resolution_scale_x, draw_resolution_scale_y,
+        texture_cache_ ? texture_cache_->draw_resolution_scale_x_divisor()
+                       : divisors::MagicDiv(1),
+        texture_cache_ ? texture_cache_->draw_resolution_scale_y_divisor()
+                       : divisors::MagicDiv(1),
+        true, kViewportBoundsMax, kViewportBoundsMax, false, depth_control,
+        convert_z_to_float24, host_render_targets_used,
+        pixel_shader && pixel_shader->writes_depth());
+    gviargs.SetupRegisterValues(regs);
+    draw_util::GetHostViewportInfo(&gviargs, viewport_info);
 
     // Apply per-draw viewport and scissor so the Metal viewport
     // matches the guest viewport computed by draw_util.
     draw_util::Scissor scissor;
     draw_util::GetScissor(regs, scissor);
-    uint32_t draw_resolution_scale_x =
-        texture_cache_ ? texture_cache_->draw_resolution_scale_x() : 1;
-    uint32_t draw_resolution_scale_y =
-        texture_cache_ ? texture_cache_->draw_resolution_scale_y() : 1;
+    // draw_resolution_scale_x/y already computed above for viewport.
     scissor.offset[0] *= draw_resolution_scale_x;
     scissor.offset[1] *= draw_resolution_scale_y;
     scissor.extent[0] *= draw_resolution_scale_x;
@@ -2216,10 +2255,11 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                 &regs.values[XE_GPU_REG_SHADER_CONSTANT_BOOL_000_031],
                 kBoolLoopConstantsSize);
 
-    // b3: Fetch constants at offset 12288 (3 * kCBVSize)
-    // Xbox 360 has 96 vertex fetch constants (indices 0-95), each 6 DWORDs
+    // b3: Fetch constants at offset 12288 (3 * kCBVSize).
+    // 32 fetch groups * 6 DWORDs = 192 DWORDs (same data as 96 vertex fetches).
     const size_t kFetchConstantOffset = 3 * kCBVSize;
-    const size_t kFetchConstantCount = 96 * 6;  // 576 DWORDs = 2304 bytes
+    const size_t kFetchConstantCount =
+        xenos::kTextureFetchConstantCount * 6;  // 192 DWORDs = 768 bytes
     std::memcpy(uniforms_vertex + kFetchConstantOffset,
                 &regs.values[XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0],
                 kFetchConstantCount * sizeof(uint32_t));
@@ -2336,8 +2376,9 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       textures_for_encoder[textures_for_encoder_count++] = texture;
     };
 
-    auto bind_shader_textures = [&](MetalShader* shader,
-                                    IRDescriptorTableEntry* stage_res_entries) {
+    auto bind_shader_textures =
+        [&](const char* stage, MetalShader* shader,
+            IRDescriptorTableEntry* stage_res_entries) {
       if (!shader || !texture_cache_) {
         return;
       }
@@ -2389,8 +2430,9 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       }
     };
 
-    auto bind_shader_samplers = [&](MetalShader* shader,
-                                    IRDescriptorTableEntry* stage_smp_entries) {
+    auto bind_shader_samplers =
+        [&](const char* stage, MetalShader* shader,
+            IRDescriptorTableEntry* stage_smp_entries) {
       if (!shader || !texture_cache_) {
         return;
       }
@@ -5565,8 +5607,6 @@ MetalCommandProcessor::GetCurrentPixelShaderModification(
           regs.Get<reg::SQ_CONTEXT_MISC>().sc_sample_cntl,
           regs.Get<reg::SQ_INTERPOLATOR_CNTL>().sampling_pattern);
 
-  modification.pixel.coverage_output = false;
-
   if (param_gen_pos < xenos::kMaxInterpolators) {
     modification.pixel.param_gen_enable = 1;
     modification.pixel.param_gen_interpolator = param_gen_pos;
@@ -5667,10 +5707,12 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
            << DxbcShaderTranslator::kSysFlag_AlphaPassIfLess_Shift;
 
   // Gamma conversion flags for render targets
-  for (uint32_t i = 0; i < 4; ++i) {
-    if (color_infos[i].color_format ==
-        xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA) {
-      flags |= DxbcShaderTranslator::kSysFlag_ConvertColor0ToGamma << i;
+  if (!render_target_cache_->gamma_render_target_as_unorm16()) {
+    for (uint32_t i = 0; i < 4; ++i) {
+      if (color_infos[i].color_format ==
+          xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA) {
+        flags |= DxbcShaderTranslator::kSysFlag_ConvertColor0ToGamma << i;
+      }
     }
   }
 
@@ -5727,20 +5769,34 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
         float(pa_su_point_size.width) * (2.0f / 16.0f);
     system_constants_.point_constant_diameter[1] =
         float(pa_su_point_size.height) * (2.0f / 16.0f);
-    // Screen to NDC radius conversion
+    // Screen to NDC radius conversion.
+    // 2 because 1 in the NDC is half of the viewport's axis, 0.5 for diameter
+    // to radius conversion to avoid multiplying the per-vertex diameter by an
+    // additional constant in the shader. Include draw_resolution_scale to
+    // match D3D12 behavior.
+    uint32_t point_draw_resolution_scale_x =
+        render_target_cache_ ? render_target_cache_->draw_resolution_scale_x()
+                             : 1;
+    uint32_t point_draw_resolution_scale_y =
+        render_target_cache_ ? render_target_cache_->draw_resolution_scale_y()
+                             : 1;
     system_constants_.point_screen_diameter_to_ndc_radius[0] =
-        1.0f / std::max(viewport_info.xy_extent[0], uint32_t(1));
+        (/* 0.5f * 2.0f * */ float(point_draw_resolution_scale_x)) /
+        std::max(viewport_info.xy_extent[0], uint32_t(1));
     system_constants_.point_screen_diameter_to_ndc_radius[1] =
-        1.0f / std::max(viewport_info.xy_extent[1], uint32_t(1));
+        (/* 0.5f * 2.0f * */ float(point_draw_resolution_scale_y)) /
+        std::max(viewport_info.xy_extent[1], uint32_t(1));
   }
 
-  // Texture signedness / gamma and resolved flags (mirror D3D12 logic).
-  if (texture_cache_ && used_texture_mask) {
-    uint32_t textures_resolved = 0;
-    uint32_t textures_remaining = used_texture_mask;
-    uint32_t texture_index;
-    while (xe::bit_scan_forward(textures_remaining, &texture_index)) {
-      textures_remaining &= ~(uint32_t(1) << texture_index);
+  // Texture signedness / resolution scaling (mirror D3D12 logic).
+  // Always update textures_resolution_scaled, even when used_texture_mask is 0,
+  // to avoid stale values from previous draws.
+  uint32_t textures_resolution_scaled = 0;
+  uint32_t textures_remaining = used_texture_mask;
+  uint32_t texture_index;
+  while (xe::bit_scan_forward(textures_remaining, &texture_index)) {
+    textures_remaining &= ~(uint32_t(1) << texture_index);
+    if (texture_cache_) {
       uint32_t& texture_signs_uint =
           system_constants_.texture_swizzled_signs[texture_index >> 2];
       uint32_t texture_signs_shift = (texture_index & 3) * 8;
@@ -5751,12 +5807,13 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
       uint32_t texture_signs_mask = uint32_t(0xFF) << texture_signs_shift;
       texture_signs_uint =
           (texture_signs_uint & ~texture_signs_mask) | texture_signs_shifted;
-      textures_resolved |=
-          uint32_t(texture_cache_->IsActiveTextureResolved(texture_index))
+      textures_resolution_scaled |=
+          uint32_t(
+              texture_cache_->IsActiveTextureResolutionScaled(texture_index))
           << texture_index;
     }
-    system_constants_.textures_resolved = textures_resolved;
   }
+  system_constants_.textures_resolution_scaled = textures_resolution_scaled;
 
   // Sample count log2 for alpha to mask
   uint32_t sample_count_log2_x =
