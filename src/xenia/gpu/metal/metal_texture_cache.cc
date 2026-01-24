@@ -164,14 +164,17 @@ bool SupportsPixelFormat(MTL::Device* device, MTL::PixelFormat format) {
 bool AreDimensionsCompatible(xenos::FetchOpDimension shader_dimension,
                              xenos::DataDimension texture_dimension) {
   switch (shader_dimension) {
+    case xenos::FetchOpDimension::k1D:
+    case xenos::FetchOpDimension::k2D:
+      return texture_dimension == xenos::DataDimension::k1D ||
+             texture_dimension == xenos::DataDimension::k2DOrStacked ||
+             texture_dimension == xenos::DataDimension::k3D;
     case xenos::FetchOpDimension::k3DOrStacked:
-      return texture_dimension == xenos::DataDimension::k3D ||
-             texture_dimension == xenos::DataDimension::k2DOrStacked;
+      return texture_dimension == xenos::DataDimension::k3D;
     case xenos::FetchOpDimension::kCube:
       return texture_dimension == xenos::DataDimension::kCube;
     default:
-      return texture_dimension == xenos::DataDimension::k2DOrStacked ||
-             texture_dimension == xenos::DataDimension::k1D;
+      return false;
   }
 }
 
@@ -574,6 +577,7 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
   const texture_util::TextureGuestLayout& guest_layout = texture.guest_layout();
   xenos::DataDimension dimension = key.dimension;
   bool is_3d = dimension == xenos::DataDimension::k3D;
+  bool is_3d_tiling = is_3d || texture.force_load_3d_tiling();
 
   uint32_t width = key.GetWidth();
   uint32_t height = key.GetHeight();
@@ -784,6 +788,7 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
 
   uint32_t base_guest_address = key.base_page << 12;
   uint32_t mips_guest_address = key.mip_page << 12;
+
   size_t constants_size = xe::align(sizeof(MetalLoadConstants), size_t(16));
   size_t dispatch_count = stored_levels.size() * size_t(array_size);
   size_t constants_buffer_size = constants_size * dispatch_count;
@@ -863,11 +868,8 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
       }
       level_guest_offset += mip_offset;
     }
-
-    uint32_t guest_pitch_aligned = level_guest_layout.row_pitch_bytes;
-    if (key.tiled) {
-      guest_pitch_aligned /= bytes_per_block;
-    }
+    // Use guest layout pitch (blocks) - new XeSL expects blocks for both tiled and linear
+    uint32_t guest_pitch_aligned = level_guest_layout.row_pitch_bytes / bytes_per_block;
 
     uint32_t size_blocks_x =
         (stored_level.width_texels + (block_width - 1)) / block_width;
@@ -890,7 +892,7 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
     for (uint32_t slice = 0; slice < array_size; ++slice) {
       MetalLoadConstants constants = {};
       constants.is_tiled_3d_endian_scale = uint32_t(key.tiled) |
-                                           (uint32_t(is_3d) << 1) |
+                                           (uint32_t(is_3d_tiling) << 1) |
                                            (uint32_t(key.endianness) << 2) |
                                            (texture_resolution_scale_x << 4) |
                                            (texture_resolution_scale_y << 7);
@@ -1346,11 +1348,11 @@ bool MetalTextureCache::InitializeLoadPipelines() {
       return nullptr;
     }
     NS::String* fn_name =
-        NS::String::string("xesl_entry", NS::UTF8StringEncoding);
+        NS::String::string("entry_xe", NS::UTF8StringEncoding);
     MTL::Function* fn = lib->newFunction(fn_name);
     if (!fn) {
       XELOGE(
-          "MetalTextureCache: texture_load metallib missing xesl_entry "
+          "MetalTextureCache: texture_load metallib missing entry_xe "
           "function");
       lib->release();
       return nullptr;
@@ -2225,8 +2227,7 @@ MTL::Texture* MetalTextureCache::GetTextureForBinding(
           fetch.swizzle, fetch.dword_0, fetch.dword_1, fetch.dword_2,
           fetch.dword_3, fetch.dword_4, fetch.dword_5);
       if (decoded_key.is_valid) {
-        const FormatInfo* format_info = FormatInfo::Get(decoded_key.format);
-        const char* format_name = format_info ? format_info->name : "unknown";
+        const char* format_name = FormatInfo::GetName(decoded_key.format);
         XELOGW(
             "GetTextureForBinding: Decoded fetch {} -> format={} ({}), "
             "size={}x{}x{}, pitch={}, mips={}, tiled={}, packed_mips={}, "
@@ -2283,10 +2284,23 @@ MTL::Texture* MetalTextureCache::GetTextureForBinding(
 
   texture->MarkAsUsed();
   auto* metal_texture = static_cast<MetalTexture*>(texture);
-  MTL::Texture* result =
-      metal_texture ? metal_texture->GetOrCreateView(binding->host_swizzle,
-                                                     dimension, is_signed)
-                    : nullptr;
+  MTL::Texture* result = nullptr;
+  const bool use_3d_as_2d =
+      binding->key.dimension == xenos::DataDimension::k3D &&
+      (dimension == xenos::FetchOpDimension::k1D ||
+       dimension == xenos::FetchOpDimension::k2D);
+  if (metal_texture) {
+    if (use_3d_as_2d) {
+      result = metal_texture->GetOrCreate3DAs2DView(binding->host_swizzle,
+                                                    dimension, is_signed);
+      if (!result) {
+        return get_null_texture_for_dimension();
+      }
+    } else {
+      result = metal_texture->GetOrCreateView(binding->host_swizzle, dimension,
+                                              is_signed);
+    }
+  }
   return result ? result : get_null_texture_for_dimension();
 }
 
@@ -3028,8 +3042,9 @@ bool MetalTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
 // MetalTexture implementation
 MetalTextureCache::MetalTexture::MetalTexture(MetalTextureCache& texture_cache,
                                               const TextureKey& key,
-                                              MTL::Texture* metal_texture)
-    : Texture(texture_cache, key),
+                                              MTL::Texture* metal_texture,
+                                              bool track_usage)
+    : Texture(texture_cache, key, track_usage),
       texture_cache_(texture_cache),
       metal_texture_(metal_texture) {
   if (metal_texture_) {
@@ -3151,6 +3166,49 @@ MTL::Texture* MetalTextureCache::MetalTexture::GetOrCreateView(
   texture_cache_.RecordSwizzledViewCreated();
   swizzled_view_cache_.emplace(view_key, view);
   return view;
+}
+
+MTL::Texture* MetalTextureCache::MetalTexture::GetOrCreate3DAs2DView(
+    uint32_t host_swizzle, xenos::FetchOpDimension dimension, bool is_signed) {
+  if (!metal_texture_ || key().dimension != xenos::DataDimension::k3D) {
+    return nullptr;
+  }
+  if (!::cvars::gpu_3d_to_2d_texture) {
+    return nullptr;
+  }
+
+  if (!texture_3d_as_2d_) {
+    TextureKey key_2d = key();
+    key_2d.depth_or_array_size_minus_1 = 0;
+    key_2d.mip_max_level = 0;
+
+    uint32_t width = key_2d.GetWidth();
+    uint32_t height = key_2d.GetHeight();
+    if (key_2d.scaled_resolve && texture_cache_.IsDrawResolutionScaled()) {
+      width *= texture_cache_.draw_resolution_scale_x();
+      height *= texture_cache_.draw_resolution_scale_y();
+    }
+
+    MTL::TextureSwizzleChannels metal_swizzle =
+        ToMetalTextureSwizzle(xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA);
+    MTL::Texture* texture_2d = texture_cache_.CreateTexture2D(
+        width, height, 1, metal_texture_->pixelFormat(), metal_swizzle, 1);
+    if (!texture_2d) {
+      XELOGE("MetalTexture: Failed to create 3D-as-2D wrapper texture");
+      return nullptr;
+    }
+
+    texture_3d_as_2d_ = std::make_unique<MetalTexture>(
+        texture_cache_, key_2d, texture_2d, false);
+    texture_3d_as_2d_->SetForceLoad3DTiling(true);
+    if (!texture_cache_.LoadTextureData(*texture_3d_as_2d_)) {
+      XELOGE("MetalTexture: Failed to load 3D-as-2D texture data");
+      texture_3d_as_2d_.reset();
+      return nullptr;
+    }
+  }
+
+  return texture_3d_as_2d_->GetOrCreateView(host_swizzle, dimension, is_signed);
 }
 
 }  // namespace metal

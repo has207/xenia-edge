@@ -180,17 +180,21 @@ class MetalTextureCache : public TextureCache {
   class MetalTexture : public Texture {
    public:
     MetalTexture(MetalTextureCache& texture_cache, const TextureKey& key,
-                 MTL::Texture* metal_texture);
+                 MTL::Texture* metal_texture, bool track_usage = true);
     ~MetalTexture() override;
 
     MTL::Texture* metal_texture() const { return metal_texture_; }
     MTL::Texture* GetOrCreateView(uint32_t host_swizzle,
                                   xenos::FetchOpDimension dimension,
                                   bool is_signed);
+    MTL::Texture* GetOrCreate3DAs2DView(uint32_t host_swizzle,
+                                        xenos::FetchOpDimension dimension,
+                                        bool is_signed);
 
    private:
     MetalTextureCache& texture_cache_;
     MTL::Texture* metal_texture_;
+    std::unique_ptr<MetalTexture> texture_3d_as_2d_;
     std::unordered_map<uint64_t, MTL::Texture*> swizzled_view_cache_;
   };
 
