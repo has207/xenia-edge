@@ -42,13 +42,15 @@
 #include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/graphics_system.h"
-#include "xenia/gpu/metal/metal_shader_converter.h"
-#include "xenia/gpu/metal/metal_shader_cache.h"
-#include "xenia/gpu/metal/metal_resource_tracker.h"
+#include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/metal/metal_graphics_system.h"
+#include "xenia/gpu/metal/metal_resource_tracker.h"
+#include "xenia/gpu/metal/metal_shader_cache.h"
+#include "xenia/gpu/metal/metal_shader_converter.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/xenos.h"
-#include "third_party/fmt/include/fmt/format.h"
+#include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/user_module.h"
 using BYTE = uint8_t;
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_quad_hs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_triangle_hs.h"
@@ -85,18 +87,7 @@ namespace xe {
 namespace gpu {
 namespace metal {
 
-DEFINE_bool(metal_draw_debug_quad, false,
-            "Draw a full-screen debug quad instead of guest draws (Metal "
-            "backend bring-up).",
-            "GPU");
-DEFINE_bool(metal_capture_frame, false,
-            "Capture Metal swap frames for readback (debug).", "GPU");
-DEFINE_bool(metal_disable_swap_dest_swap, false,
-            "Disable forcing RB swap based on resolve dest_swap (debug).",
-            "GPU");
-
 namespace {
-
 void LogMetalErrorDetails(const char* label, NS::Error* error) {
   if (!error) {
     return;
@@ -123,27 +114,6 @@ void LogMetalErrorDetails(const char* label, NS::Error* error) {
     XELOGE("{}: userInfo={}", label,
            info_desc ? info_desc->utf8String() : "<null>");
   }
-}
-
-const char* GetGeometryShaderTypeName(PipelineGeometryShader type) {
-  switch (type) {
-    case PipelineGeometryShader::kPointList:
-      return "point";
-    case PipelineGeometryShader::kRectangleList:
-      return "rect";
-    case PipelineGeometryShader::kQuadList:
-      return "quad";
-    default:
-      return "unknown";
-  }
-}
-
-bool ShouldDumpGeometryShaders() {
-  const char* env = std::getenv("XENIA_GEOMETRY_SHADER_DUMP");
-  if (!env || !*env) {
-    return false;
-  }
-  return std::strcmp(env, "0") != 0;
 }
 
 constexpr uint32_t kPipelineDiskCacheMagic = 0x43504D58;  // 'XMPC'
@@ -181,48 +151,6 @@ static_assert(sizeof(PipelineDiskCacheHeader) == 16,
 static_assert(sizeof(PipelineDiskCacheEntryHeader) == 8,
               "Unexpected pipeline disk cache entry header size.");
 
-const char* GetShaderDumpDir() {
-  const char* dump_dir = std::getenv("XENIA_SHADER_DUMP_DIR");
-  if (dump_dir && *dump_dir) {
-    return dump_dir;
-  }
-  return "/tmp";
-}
-
-bool WriteDumpFile(const std::string& path, const void* data, size_t size) {
-  if (!data || !size) {
-    return false;
-  }
-  std::filesystem::path fs_path = xe::to_path(path);
-  if (!xe::filesystem::CreateParentFolder(fs_path)) {
-    return false;
-  }
-  FILE* file = xe::filesystem::OpenFile(fs_path, "wb");
-  if (!file) {
-    return false;
-  }
-  fwrite(data, 1, size, file);
-  fclose(file);
-  return true;
-}
-
-bool WriteDumpText(const std::string& path, const std::string& text) {
-  if (text.empty()) {
-    return false;
-  }
-  std::filesystem::path fs_path = xe::to_path(path);
-  if (!xe::filesystem::CreateParentFolder(fs_path)) {
-    return false;
-  }
-  FILE* file = xe::filesystem::OpenFile(fs_path, "wb");
-  if (!file) {
-    return false;
-  }
-  fwrite(text.data(), 1, text.size(), file);
-  fclose(file);
-  return true;
-}
-
 bool ShaderUsesVertexFetch(const Shader& shader) {
   if (!shader.vertex_bindings().empty()) {
     return true;
@@ -236,112 +164,6 @@ bool ShaderUsesVertexFetch(const Shader& shader) {
   }
   return false;
 }
-
-void DumpGeometryArtifact(const char* dump_dir, int dump_id,
-                          PipelineGeometryShader type, uint32_t key,
-                          const char* suffix, const void* data, size_t size) {
-  if (!dump_dir || !suffix) {
-    return;
-  }
-  char filename[512];
-  std::snprintf(filename, sizeof(filename), "%s/geometry_%d_%s_%08X_%s",
-                dump_dir, dump_id, GetGeometryShaderTypeName(type), key, suffix);
-  WriteDumpFile(filename, data, size);
-}
-
-void DumpGeometryText(const char* dump_dir, int dump_id,
-                      PipelineGeometryShader type, uint32_t key,
-                      const char* suffix, const std::string& text) {
-  if (!dump_dir || !suffix) {
-    return;
-  }
-  char filename[512];
-  std::snprintf(filename, sizeof(filename), "%s/geometry_%d_%s_%08X_%s",
-                dump_dir, dump_id, GetGeometryShaderTypeName(type), key, suffix);
-  WriteDumpText(filename, text);
-}
-
-uint64_t HashBytes(const void* data, size_t size) {
-  if (!data || !size) {
-    return 0;
-  }
-  return XXH3_64bits(data, size);
-}
-
-bool ReadFileToVector(const char* path, std::vector<uint8_t>& out_data) {
-  if (!path || !*path) {
-    return false;
-  }
-  std::ifstream file(path, std::ios::binary);
-  if (!file) {
-    return false;
-  }
-  file.seekg(0, std::ios::end);
-  std::streamsize size = file.tellg();
-  if (size <= 0) {
-    return false;
-  }
-  file.seekg(0, std::ios::beg);
-  out_data.resize(static_cast<size_t>(size));
-  if (!file.read(reinterpret_cast<char*>(out_data.data()), size)) {
-    out_data.clear();
-    return false;
-  }
-  return true;
-}
-
-void ProbeGeometryMetallib(MTL::Device* device) {
-  const char* path = std::getenv("XENIA_GEOMETRY_METALLIB_PROBE");
-  if (!path || !*path || !device) {
-    return;
-  }
-  std::vector<uint8_t> data;
-  if (!ReadFileToVector(path, data)) {
-    XELOGE("Geometry probe: failed to read metallib {}", path);
-    return;
-  }
-  NS::Error* error = nullptr;
-  dispatch_data_t lib_data = dispatch_data_create(
-      data.data(), data.size(), nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
-  MTL::Library* library = device->newLibrary(lib_data, &error);
-  dispatch_release(lib_data);
-  if (!library) {
-    LogMetalErrorDetails("Geometry probe: failed to create library", error);
-    return;
-  }
-  NS::String* fn_name = NS::String::string("main", NS::UTF8StringEncoding);
-  MTL::Function* fn_no_constants = library->newFunction(fn_name);
-  if (fn_no_constants) {
-    fn_no_constants->release();
-  } else {
-    XELOGE("Geometry probe: newFunction(main) failed without constants");
-  }
-
-  int32_t output_size = 64;
-  if (const char* env = std::getenv("XENIA_GEOMETRY_OUTPUT_SIZE")) {
-    output_size = std::atoi(env);
-  }
-  bool tessellation_enabled = false;
-  MTL::FunctionConstantValues* fc =
-      MTL::FunctionConstantValues::alloc()->init();
-  fc->setConstantValue(&tessellation_enabled, MTL::DataTypeBool,
-                       NS::String::string("tessellationEnabled",
-                                          NS::UTF8StringEncoding));
-  fc->setConstantValue(&output_size, MTL::DataTypeInt,
-                       NS::String::string("vertex_shader_output_size_fc",
-                                          NS::UTF8StringEncoding));
-  error = nullptr;
-  MTL::Function* fn_constants = library->newFunction(fn_name, fc, &error);
-  if (fn_constants) {
-    fn_constants->release();
-  } else {
-    LogMetalErrorDetails(
-        "Geometry probe: newFunction(main) failed with constants", error);
-  }
-  fc->release();
-  library->release();
-}
-
 
 MTL::CompareFunction ToMetalCompareFunction(xenos::CompareFunction compare) {
   static const MTL::CompareFunction kCompareMap[8] = {
@@ -524,12 +346,6 @@ MetalCommandProcessor::~MetalCommandProcessor() {
     }
   }
   depth_stencil_state_cache_.clear();
-
-  // Release debug pipeline
-  if (debug_pipeline_) {
-    debug_pipeline_->release();
-    debug_pipeline_ = nullptr;
-  }
 
   // Release IR Converter runtime buffers and resources
   if (null_buffer_) {
@@ -1722,13 +1538,6 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
       }
     }
     bool force_swap_rb = has_swap_dest_swap && swap_dest_swap;
-    if (force_swap_rb && cvars::metal_disable_swap_dest_swap) {
-      static uint32_t swap_dest_disable_log_count = 0;
-      if (swap_dest_disable_log_count < 8) {
-        ++swap_dest_disable_log_count;
-      }
-      force_swap_rb = false;
-    }
 
     if (!source_texture) {
       static bool missing_swap_logged = false;
@@ -1743,9 +1552,6 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
           [](ui::Presenter::GuestOutputRefreshContext&) -> bool {
             return false;
           });
-      if (cvars::metal_capture_frame) {
-        CaptureCurrentFrame();
-      }
       return;
     }
 
@@ -1772,107 +1578,6 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
     }
   }
 
-  // Also capture internally for backwards compatibility
-  if (cvars::metal_capture_frame) {
-    CaptureCurrentFrame();
-  }
-}
-
-void MetalCommandProcessor::CaptureCurrentFrame() {
-  if (!device_) {
-    return;
-  }
-
-  // Choose a color render target to capture from the cache.
-  MTL::Texture* capture_texture = nullptr;
-  if (render_target_cache_) {
-    capture_texture = render_target_cache_->GetLastRealColorTarget(0);
-    if (!capture_texture) {
-      capture_texture = render_target_cache_->GetColorTarget(0);
-    }
-  }
-  if (!capture_texture) {
-    return;
-  }
-
-  // Only capture common 32bpp color targets for now.
-  const MTL::PixelFormat capture_format = capture_texture->pixelFormat();
-  if (capture_format != MTL::PixelFormatBGRA8Unorm &&
-      capture_format != MTL::PixelFormatRGBA8Unorm) {
-    XELOGD("CaptureCurrentFrame: skipping capture of pixel format {}",
-           static_cast<uint32_t>(capture_format));
-    return;
-  }
-
-  const uint32_t capture_width = static_cast<uint32_t>(capture_texture->width());
-  const uint32_t capture_height =
-      static_cast<uint32_t>(capture_texture->height());
-
-  // Create a staging buffer for readback
-  size_t bytes_per_row = size_t(capture_width) * 4;  // 32bpp
-  size_t buffer_size = bytes_per_row * size_t(capture_height);
-
-  MTL::Buffer* staging_buffer =
-      device_->newBuffer(buffer_size, MTL::ResourceStorageModeShared);
-
-  if (!staging_buffer) {
-    XELOGE("Failed to create staging buffer for frame capture");
-    return;
-  }
-  TrackMetalBufferCreated(buffer_size);
-
-  // Create a blit command buffer
-  MTL::CommandBuffer* blit_cmd = command_queue_->commandBuffer();
-  MTL::BlitCommandEncoder* blit = blit_cmd->blitCommandEncoder();
-
-  blit->copyFromTexture(
-      capture_texture, 0, 0, MTL::Origin(0, 0, 0),
-      MTL::Size(capture_width, capture_height, 1), staging_buffer, 0,
-      bytes_per_row, 0);
-
-  blit->endEncoding();
-  // Note: blitCommandEncoder() returns autoreleased object - don't release
-  blit_cmd->commit();
-  blit_cmd->waitUntilCompleted();
-
-  // Copy data from staging buffer
-  captured_width_ = capture_width;
-  captured_height_ = capture_height;
-  captured_frame_data_.resize(buffer_size);
-
-  uint8_t* src = static_cast<uint8_t*>(staging_buffer->contents());
-
-  if (capture_format == MTL::PixelFormatBGRA8Unorm) {
-    // Convert BGRA to RGBA.
-    for (size_t i = 0; i < buffer_size; i += 4) {
-      captured_frame_data_[i + 0] = src[i + 2];  // R from B
-      captured_frame_data_[i + 1] = src[i + 1];  // G
-      captured_frame_data_[i + 2] = src[i + 0];  // B from R
-      captured_frame_data_[i + 3] = src[i + 3];  // A
-    }
-  } else {
-    std::memcpy(captured_frame_data_.data(), src, buffer_size);
-  }
-
-  TrackMetalBufferReleased(staging_buffer->length());
-  staging_buffer->release();
-  // Note: blit_cmd is from commandBuffer() which is autoreleased - don't
-  // release
-
-  has_captured_frame_ = true;
-  XELOGD("Captured frame: {}x{}", captured_width_, captured_height_);
-}
-
-bool MetalCommandProcessor::GetLastCapturedFrame(uint32_t& width,
-                                                 uint32_t& height,
-                                                 std::vector<uint8_t>& data) {
-  if (!has_captured_frame_) {
-    return false;
-  }
-  width = captured_width_;
-  height = captured_height_;
-  data = captured_frame_data_;
-  return true;
 }
 
 Shader* MetalCommandProcessor::LoadShader(xenos::ShaderType shader_type,
@@ -1908,12 +1613,11 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                                       IndexBufferInfo* index_buffer_info,
                                       bool major_mode_explicit) {
   const RegisterFile& regs = *register_file_;
-  LogCacheStatsIfNeeded();
   uint32_t normalized_color_mask = 0;
 
   // Check for copy mode
-  xenos::ModeControl edram_mode = regs.Get<reg::RB_MODECONTROL>().edram_mode;
-  if (edram_mode == xenos::ModeControl::kCopy) {
+  xenos::EdramMode edram_mode = regs.Get<reg::RB_MODECONTROL>().edram_mode;
+  if (edram_mode == xenos::EdramMode::kCopy) {
     return IssueCopy();
   }
 
@@ -1984,13 +1688,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   bool tessellation_enabled =
       vgt_output_path_cntl.path_select ==
       xenos::VGTOutputPath::kTessellationEnable;
-  if (tessellation_enabled) {
-    ++tessellation_enabled_draws_;
-  }
-  if (primitive_processing_result.IsTessellated()) {
-    ++tessellated_draws_;
-  }
-
   bool use_tessellation_emulation = false;
   if (primitive_processing_result.IsTessellated()) {
     if (!mesh_shader_supported_) {
@@ -2015,20 +1712,14 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     use_tessellation_emulation = true;
   }
 
-  // The DXBC->DXIL->Metal pipeline currently only supports the "normal" guest
-  // vertex shader path (and domain shaders are skipped above). Some
-  // PrimitiveProcessor fallback host vertex shader types require additional
-  // translator/runtime support and can't be executed yet.
   // Configure render targets via MetalRenderTargetCache, similar to D3D12.
-  // D3D12 passes `is_rasterization_done` when there is an actual draw to
-  // perform (after primitive processing). For this Metal path we currently
-  // always treat IssueDraw as doing rasterization so the render-target cache
-  // will create and bind the appropriate host render targets.
   if (render_target_cache_) {
     auto normalized_depth_control = draw_util::GetNormalizedDepthControl(regs);
+    uint32_t ps_writes_color_targets =
+        pixel_shader ? pixel_shader->writes_color_targets() : 0;
     normalized_color_mask =
         pixel_shader ? draw_util::GetNormalizedColorMask(
-                           regs, pixel_shader->writes_color_targets())
+                           regs, ps_writes_color_targets)
                      : 0;
     if (!render_target_cache_->Update(is_rasterization_done,
                                       normalized_depth_control,
@@ -2044,41 +1735,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   // Begin command buffer if needed (will use cache-provided render targets).
   BeginCommandBuffer();
   EnsureDrawRingCapacity();
-  if (cvars::metal_draw_debug_quad) {
-    if (!debug_pipeline_) {
-      if (!CreateDebugPipeline()) {
-        return false;
-      }
-    }
-    current_render_encoder_->setRenderPipelineState(debug_pipeline_);
-    // Override viewport/scissor to the full render target.
-    uint32_t rt_width = render_target_width_;
-    uint32_t rt_height = render_target_height_;
-    if (render_target_cache_) {
-      if (MTL::Texture* rt0_tex = render_target_cache_->GetColorTarget(0)) {
-        rt_width = uint32_t(rt0_tex->width());
-        rt_height = uint32_t(rt0_tex->height());
-      }
-    }
-    MTL::Viewport viewport;
-    viewport.originX = 0.0;
-    viewport.originY = 0.0;
-    viewport.width = double(rt_width);
-    viewport.height = double(rt_height);
-    viewport.znear = 0.0;
-    viewport.zfar = 1.0;
-    current_render_encoder_->setViewport(viewport);
-    MTL::ScissorRect scissor;
-    scissor.x = 0;
-    scissor.y = 0;
-    scissor.width = rt_width;
-    scissor.height = rt_height;
-    current_render_encoder_->setScissorRect(scissor);
-    current_render_encoder_->drawPrimitives(MTL::PrimitiveTypeTriangle,
-                                            NS::UInteger(0), NS::UInteger(6));
-    ++current_draw_index_;
-    return true;
-  }
 
   MTL::RenderPipelineState* pipeline = nullptr;
   // Select per-draw shader modifications (mirrors D3D12 PipelineCache).
@@ -2446,12 +2102,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     mtl_scissor.y = scissor.offset[1];
     mtl_scissor.width = scissor.extent[0];
     mtl_scissor.height = scissor.extent[1];
-    if (::cvars::metal_force_full_scissor_on_swap_resolve) {
-      mtl_scissor.x = 0;
-      mtl_scissor.y = 0;
-      mtl_scissor.width = vp_width;
-      mtl_scissor.height = vp_height;
-    }
     current_render_encoder_->setScissorRect(mtl_scissor);
 
     ApplyRasterizerState(primitive_polygonal);
@@ -2765,10 +2415,10 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       }
     };
 
-    bind_shader_textures(vertex_shader, res_entries_vertex);
-    bind_shader_textures(pixel_shader, res_entries_pixel);
-    bind_shader_samplers(vertex_shader, smp_entries_vertex);
-    bind_shader_samplers(pixel_shader, smp_entries_pixel);
+    bind_shader_textures("VS", vertex_shader, res_entries_vertex);
+    bind_shader_textures("PS", pixel_shader, res_entries_pixel);
+    bind_shader_samplers("VS", vertex_shader, smp_entries_vertex);
+    bind_shader_samplers("PS", pixel_shader, smp_entries_pixel);
 
     for (uint32_t i = 0; i < textures_for_encoder_count; ++i) {
       UseRenderEncoderResource(textures_for_encoder[i],
@@ -2889,7 +2539,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                                                  kIRSamplerHeapBindPoint);
     }
 
-    XELOGD("Bound IR Converter resources: res_heap, smp_heap, top_level_ab");
   }
 
   // Bind vertex buffers / descriptors.
@@ -3249,8 +2898,7 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   if (memexport_used && shared_memory_) {
     for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
       shared_memory_->RangeWrittenByGpu(
-          memexport_range.base_address_dwords << 2, memexport_range.size_bytes,
-          false);
+          memexport_range.base_address_dwords << 2, memexport_range.size_bytes);
     }
   }
 
@@ -3378,31 +3026,12 @@ MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
     XELOGE("EnsureCommandBuffer: failed to create command buffer");
     return nullptr;
   }
-  created_command_buffers_.fetch_add(1, std::memory_order_relaxed);
   ++submission_current_;
-  const auto start_time = std::chrono::steady_clock::now();
   current_command_buffer_->retain();
   current_command_buffer_->setLabel(
       NS::String::string("XeniaCommandBuffer", NS::UTF8StringEncoding));
-  inflight_command_buffers_.fetch_add(1, std::memory_order_relaxed);
-  current_command_buffer_->addCompletedHandler([this, start_time](
-                                                    MTL::CommandBuffer*) {
-    const auto end_time = std::chrono::steady_clock::now();
-    const uint64_t elapsed_us =
-        std::chrono::duration_cast<std::chrono::microseconds>(end_time -
-                                                              start_time)
-            .count();
-    completed_command_buffers_total_us_.fetch_add(elapsed_us,
-                                                  std::memory_order_relaxed);
-    uint64_t max_us =
-        completed_command_buffers_max_us_.load(std::memory_order_relaxed);
-    while (elapsed_us > max_us &&
-           !completed_command_buffers_max_us_.compare_exchange_weak(
-               max_us, elapsed_us, std::memory_order_relaxed)) {
-    }
-    inflight_command_buffers_.fetch_sub(1, std::memory_order_relaxed);
+  current_command_buffer_->addCompletedHandler([this](MTL::CommandBuffer*) {
     completed_command_buffers_.fetch_add(1, std::memory_order_relaxed);
-    last_command_buffer_complete_time_ = std::chrono::steady_clock::now();
   });
 
   if (primitive_processor_) {
@@ -3442,7 +3071,6 @@ void MetalCommandProcessor::EnsureCommandBufferAutoreleasePool() {
     return;
   }
   command_buffer_autorelease_pool_ = NS::AutoreleasePool::alloc()->init();
-  ++autorelease_pools_created_;
 }
 
 void MetalCommandProcessor::DrainCommandBufferAutoreleasePool() {
@@ -3451,7 +3079,6 @@ void MetalCommandProcessor::DrainCommandBufferAutoreleasePool() {
   }
   command_buffer_autorelease_pool_->release();
   command_buffer_autorelease_pool_ = nullptr;
-  ++autorelease_pools_drained_;
 }
 
 void MetalCommandProcessor::EndRenderEncoder() {
@@ -4313,13 +3940,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
     return &it->second;
   }
 
-  const bool dump_geometry = ShouldDumpGeometryShaders();
-  const char* geometry_dump_dir = dump_geometry ? GetShaderDumpDir() : nullptr;
-  static int geometry_dump_counter = 0;
-  const int geometry_dump_id = dump_geometry ? geometry_dump_counter++ : -1;
-  const PipelineGeometryShader geometry_dump_type = geometry_shader_key.type;
-  const uint32_t geometry_dump_key = geometry_shader_key.key;
-
   auto get_vertex_stage = [&]() -> GeometryVertexStageState* {
     auto vertex_it = geometry_vertex_stage_cache_.find(vertex_translation);
     if (vertex_it != geometry_vertex_stage_cache_.end()) {
@@ -4516,35 +4136,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
       input_layout.desc_1_0.numElements = element_count;
     }
 
-    std::string input_summary;
-    {
-      std::ostringstream summary;
-      summary << "inputs=" << vertex_reflection.vertex_inputs.size()
-              << " attrs=" << attribute_map.size();
-      if (!vertex_reflection.vertex_inputs.empty()) {
-        summary << " [";
-        for (size_t i = 0; i < vertex_reflection.vertex_inputs.size(); ++i) {
-          const auto& input = vertex_reflection.vertex_inputs[i];
-          if (i) {
-            summary << "; ";
-          }
-          summary << input.name << "#" << int(input.attribute_index);
-        }
-        summary << "]";
-      }
-      input_summary = summary.str();
-    }
-
-    std::string layout_json_storage;
-    if (input_layout.desc_1_0.numElements) {
-      const char* layout_json =
-          IRInputLayoutDescriptor1CopyJSONString(&input_layout.desc_1_0);
-      if (layout_json) {
-        layout_json_storage = layout_json;
-      }
-      IRInputLayoutDescriptor1ReleaseString(layout_json);
-    }
-
     // Second pass: synthesize stage-in using the input layout.
     std::vector<uint8_t> stage_in_metallib;
     if (!metal_shader_converter_->ConvertWithStageEx(
@@ -4562,32 +4153,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
           vertex_reflection.vertex_input_count,
           vertex_reflection.vertex_output_size_in_bytes);
       return nullptr;
-    }
-
-    if (dump_geometry && geometry_dump_id >= 0) {
-      DumpGeometryArtifact(geometry_dump_dir, geometry_dump_id,
-                           geometry_dump_type, geometry_dump_key, "vs.dxil",
-                           dxil_data.data(), dxil_data.size());
-      DumpGeometryArtifact(geometry_dump_dir, geometry_dump_id,
-                           geometry_dump_type, geometry_dump_key, "vs.metallib",
-                           vertex_result.metallib_data.data(),
-                           vertex_result.metallib_data.size());
-      DumpGeometryArtifact(geometry_dump_dir, geometry_dump_id,
-                           geometry_dump_type, geometry_dump_key,
-                           "vs_stagein.metallib", stage_in_metallib.data(),
-                           stage_in_metallib.size());
-      std::string layout_json =
-          layout_json_storage.empty()
-              ? std::string("{\"InputElements\":[],\"SemanticNames\":[]}\n")
-              : layout_json_storage;
-      DumpGeometryText(geometry_dump_dir, geometry_dump_id,
-                       geometry_dump_type, geometry_dump_key,
-                       "vs_layout.json", layout_json);
-      if (!input_summary.empty()) {
-        DumpGeometryText(geometry_dump_dir, geometry_dump_id,
-                         geometry_dump_type, geometry_dump_key,
-                         "vs_input_summary.txt", input_summary);
-      }
     }
 
     NS::Error* error = nullptr;
@@ -4625,8 +4190,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
     state.function_name = vertex_result.function_name;
     state.vertex_output_size_in_bytes =
         vertex_reflection.vertex_output_size_in_bytes;
-    state.input_layout_json = std::move(layout_json_storage);
-    state.input_summary = std::move(input_summary);
     if (state.vertex_output_size_in_bytes == 0) {
       XELOGE(
           "Geometry VS: reflection returned zero output size "
@@ -4683,29 +4246,6 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
       XELOGE("Geometry GS: DXIL to Metal conversion failed: {}",
              geometry_result.error_message);
       return nullptr;
-    }
-    if (dump_geometry && geometry_dump_id >= 0) {
-      DumpGeometryArtifact(geometry_dump_dir, geometry_dump_id,
-                           geometry_dump_type, geometry_dump_key, "gs.dxbc",
-                           dxbc_bytes.data(), dxbc_bytes.size());
-      DumpGeometryArtifact(geometry_dump_dir, geometry_dump_id,
-                           geometry_dump_type, geometry_dump_key, "gs.dxil",
-                           dxil_data.data(), dxil_data.size());
-      DumpGeometryArtifact(geometry_dump_dir, geometry_dump_id,
-                           geometry_dump_type, geometry_dump_key,
-                           "gs.metallib", geometry_result.metallib_data.data(),
-                           geometry_result.metallib_data.size());
-      std::ostringstream info;
-      info << "function_name=" << geometry_result.function_name << "\n";
-      info << "has_mesh_stage=" << geometry_result.has_mesh_stage << "\n";
-      info << "has_geometry_stage=" << geometry_result.has_geometry_stage
-           << "\n";
-      info << "gs_max_input_primitives_per_mesh_threadgroup="
-           << geometry_reflection.gs_max_input_primitives_per_mesh_threadgroup
-           << "\n";
-      DumpGeometryText(geometry_dump_dir, geometry_dump_id,
-                       geometry_dump_type, geometry_dump_key, "gs_info.txt",
-                       info.str());
     }
     if (!geometry_result.has_mesh_stage && !geometry_result.has_geometry_stage) {
       XELOGE(
@@ -4851,176 +4391,7 @@ MetalCommandProcessor::GetOrCreateGeometryPipelineState(
     XELOGE("Failed to create geometry pipeline state: {}",
            error ? error->localizedDescription()->utf8String()
                  : "unknown error");
-    {
-      static bool logged_materialize_probe = false;
-      if (!logged_materialize_probe && geometry_stage && geometry_stage->library) {
-        logged_materialize_probe = true;
-        NS::Error* probe_error = nullptr;
-        MTL::Function* probe_no_constants =
-            geometry_stage->library->newFunction(
-                NS::String::string(geometry_stage->function_name.c_str(),
-                                   NS::UTF8StringEncoding));
-        if (!probe_no_constants && probe_error) {
-          LogMetalErrorDetails("Geometry pipeline probe: geometry function (no constants)",
-                               probe_error);
-        } else if (probe_no_constants) {
-          probe_no_constants->release();
-        }
-
-        // UInt4-by-index probe (matches MSC function-constant register-space rule).
-        MTL::FunctionConstantValues* probe_fc =
-            MTL::FunctionConstantValues::alloc()->init();
-        const uint32_t tessellation_enabled_u4[4] = {0, 0, 0, 0};
-        const uint32_t output_size_u4[4] = {
-            static_cast<uint32_t>(vertex_stage->vertex_output_size_in_bytes), 0,
-            0, 0};
-        probe_fc->setConstantValue(tessellation_enabled_u4, MTL::DataTypeUInt4,
-                                   NS::UInteger(0));
-        probe_fc->setConstantValue(output_size_u4, MTL::DataTypeUInt4,
-                                   NS::UInteger(1));
-        probe_error = nullptr;
-        MTL::Function* probe_uint4 =
-            geometry_stage->library->newFunction(
-                NS::String::string(geometry_stage->function_name.c_str(),
-                                   NS::UTF8StringEncoding),
-                probe_fc, &probe_error);
-        if (!probe_uint4 && probe_error) {
-          LogMetalErrorDetails(
-              "Geometry pipeline probe: geometry function (UInt4 by index)",
-              probe_error);
-        } else if (probe_uint4) {
-          probe_uint4->release();
-        }
-        probe_fc->release();
-      }
-    }
-    if (dump_geometry && geometry_dump_id >= 0) {
-      XELOGE(
-          "Geometry pipeline failure: geom_dump_id={} type={} key={:#010x}",
-          geometry_dump_id, GetGeometryShaderTypeName(geometry_dump_type),
-          geometry_dump_key);
-    }
     LogMetalErrorDetails("Geometry pipeline error", error);
-    XELOGE("Geometry pipeline debug: VS={} GS={} PS={}",
-           vertex_stage->function_name, geometry_stage->function_name,
-           pixel_function ? pixel_function : "<null>");
-    XELOGE("Geometry pipeline debug: vs_output={} gs_max_input={}",
-           vertex_stage->vertex_output_size_in_bytes,
-           geometry_stage->max_input_primitives_per_mesh_threadgroup);
-    auto log_library_functions = [](const char* label, MTL::Library* lib) {
-      if (!lib) {
-        XELOGE("Geometry pipeline debug: {} library is null", label);
-        return;
-      }
-      NS::Array* names = lib->functionNames();
-      if (!names || !names->count()) {
-        XELOGE("Geometry pipeline debug: {} library has no functions", label);
-        return;
-      }
-      XELOGE("Geometry pipeline debug: {} library functions:", label);
-      for (NS::UInteger i = 0; i < names->count(); ++i) {
-        auto* name = static_cast<NS::String*>(names->object(i));
-        XELOGE("  - {}", name->utf8String());
-      }
-    };
-    log_library_functions("stage-in", vertex_stage->stage_in_library);
-    log_library_functions("vertex", vertex_stage->library);
-    log_library_functions("geometry", geometry_stage->library);
-    log_library_functions("fragment", pixel_library);
-    auto log_materialization = [&]() {
-      static bool logged = false;
-      if (logged) {
-        return;
-      }
-      logged = true;
-
-      // Stage-in function.
-      if (vertex_stage->stage_in_library) {
-        NS::Array* names = vertex_stage->stage_in_library->functionNames();
-        if (names && names->count()) {
-          auto* name = static_cast<NS::String*>(names->object(0));
-          MTL::Function* fn =
-              vertex_stage->stage_in_library->newFunction(name);
-          if (!fn) {
-            XELOGE(
-                "Geometry pipeline debug: stage-in function creation failed");
-          } else {
-            fn->release();
-          }
-        } else {
-          XELOGE("Geometry pipeline debug: stage-in library has no functions");
-        }
-      }
-
-      // Vertex object function.
-      if (vertex_stage->library) {
-        MTL::FunctionConstantValues* fc =
-            MTL::FunctionConstantValues::alloc()->init();
-        bool tessellation_enabled = false;
-        fc->setConstantValue(&tessellation_enabled, MTL::DataTypeBool,
-                             NS::String::string("tessellationEnabled",
-                                                NS::UTF8StringEncoding));
-        std::string vertex_name =
-            vertex_stage->function_name + ".dxil_irconverter_object_shader";
-        NS::Error* err = nullptr;
-        MTL::Function* fn = vertex_stage->library->newFunction(
-            NS::String::string(vertex_name.c_str(), NS::UTF8StringEncoding), fc,
-            &err);
-        if (!fn) {
-          LogMetalErrorDetails("Geometry pipeline debug: vertex function", err);
-        } else {
-          fn->release();
-        }
-        fc->release();
-      }
-
-      // Geometry function.
-      if (geometry_stage->library) {
-        MTL::FunctionConstantValues* fc =
-            MTL::FunctionConstantValues::alloc()->init();
-        bool tessellation_enabled = false;
-        int32_t output_size =
-            static_cast<int32_t>(vertex_stage->vertex_output_size_in_bytes);
-        fc->setConstantValue(&tessellation_enabled, MTL::DataTypeBool,
-                             NS::String::string("tessellationEnabled",
-                                                NS::UTF8StringEncoding));
-        fc->setConstantValue(&output_size, MTL::DataTypeInt,
-                             NS::String::string("vertex_shader_output_size_fc",
-                                                NS::UTF8StringEncoding));
-        NS::Error* err = nullptr;
-        MTL::Function* fn = geometry_stage->library->newFunction(
-            NS::String::string(geometry_stage->function_name.c_str(),
-                               NS::UTF8StringEncoding),
-            fc, &err);
-        if (!fn) {
-          LogMetalErrorDetails("Geometry pipeline debug: geometry function",
-                               err);
-        } else {
-          fn->release();
-        }
-        fc->release();
-      }
-
-      // Fragment function.
-      if (pixel_library && pixel_function) {
-        MTL::Function* fn = pixel_library->newFunction(
-            NS::String::string(pixel_function, NS::UTF8StringEncoding));
-        if (!fn) {
-          XELOGE("Geometry pipeline debug: fragment function creation failed");
-        } else {
-          fn->release();
-        }
-      }
-    };
-    log_materialization();
-    if (!vertex_stage->input_summary.empty()) {
-      XELOGE("Geometry pipeline debug: VS input summary: {}",
-             vertex_stage->input_summary);
-    }
-    if (!vertex_stage->input_layout_json.empty()) {
-      XELOGE("Geometry pipeline debug: VS input layout: {}",
-             vertex_stage->input_layout_json);
-    }
     return nullptr;
   }
 
@@ -5792,128 +5163,6 @@ MetalCommandProcessor::GetOrCreateTessellationPipelineState(
   return &inserted_it->second;
 }
 
-bool MetalCommandProcessor::CreateDebugPipeline() {
-  if (debug_pipeline_) {
-    return true;  // Already created
-  }
-
-  // Simple vertex shader that outputs position directly
-  const char* vertex_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    
-    struct VertexOut {
-      float4 position [[position]];
-      float4 color;
-    };
-    
-    vertex VertexOut debug_vertex(uint vid [[vertex_id]]) {
-      // Output a full-screen quad using 6 vertices (2 triangles)
-      float2 positions[6] = {
-        float2(-1.0, -1.0),
-        float2( 1.0, -1.0),
-        float2(-1.0,  1.0),
-        float2(-1.0,  1.0),
-        float2( 1.0, -1.0),
-        float2( 1.0,  1.0)
-      };
-      
-      float4 colors[6] = {
-        float4(1.0, 0.0, 0.0, 1.0),  // Red
-        float4(0.0, 1.0, 0.0, 1.0),  // Green
-        float4(0.0, 0.0, 1.0, 1.0),  // Blue
-        float4(0.0, 0.0, 1.0, 1.0),  // Blue
-        float4(0.0, 1.0, 0.0, 1.0),  // Green
-        float4(1.0, 1.0, 0.0, 1.0)   // Yellow
-      };
-      
-      VertexOut out;
-      out.position = float4(positions[vid], 0.0, 1.0);
-      out.color = colors[vid];
-      return out;
-    }
-  )";
-
-  const char* fragment_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    
-    struct VertexOut {
-      float4 position [[position]];
-      float4 color;
-    };
-    
-    fragment float4 debug_fragment(VertexOut in [[stage_in]]) {
-      return in.color;
-    }
-  )";
-
-  NS::Error* error = nullptr;
-
-  // Compile vertex shader
-  MTL::CompileOptions* options = MTL::CompileOptions::alloc()->init();
-  MTL::Library* vertex_lib = device_->newLibrary(
-      NS::String::string(vertex_source, NS::UTF8StringEncoding), options,
-      &error);
-  if (!vertex_lib) {
-    XELOGE("Failed to compile debug vertex shader: {}",
-           error ? error->localizedDescription()->utf8String() : "unknown");
-    options->release();
-    return false;
-  }
-
-  MTL::Library* fragment_lib = device_->newLibrary(
-      NS::String::string(fragment_source, NS::UTF8StringEncoding), options,
-      &error);
-  if (!fragment_lib) {
-    XELOGE("Failed to compile debug fragment shader: {}",
-           error ? error->localizedDescription()->utf8String() : "unknown");
-    vertex_lib->release();
-    options->release();
-    return false;
-  }
-  options->release();
-
-  MTL::Function* vertex_fn = vertex_lib->newFunction(
-      NS::String::string("debug_vertex", NS::UTF8StringEncoding));
-  MTL::Function* fragment_fn = fragment_lib->newFunction(
-      NS::String::string("debug_fragment", NS::UTF8StringEncoding));
-
-  if (!vertex_fn || !fragment_fn) {
-    XELOGE("Failed to get debug shader functions");
-    if (vertex_fn) vertex_fn->release();
-    if (fragment_fn) fragment_fn->release();
-    vertex_lib->release();
-    fragment_lib->release();
-    return false;
-  }
-
-  MTL::RenderPipelineDescriptor* desc =
-      MTL::RenderPipelineDescriptor::alloc()->init();
-  desc->setVertexFunction(vertex_fn);
-  desc->setFragmentFunction(fragment_fn);
-  desc->colorAttachments()->object(0)->setPixelFormat(
-      MTL::PixelFormatBGRA8Unorm);
-  desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
-  desc->setStencilAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
-
-  debug_pipeline_ = device_->newRenderPipelineState(desc, &error);
-
-  desc->release();
-  vertex_fn->release();
-  fragment_fn->release();
-  vertex_lib->release();
-  fragment_lib->release();
-
-  if (!debug_pipeline_) {
-    XELOGE("Failed to create debug pipeline: {}",
-           error ? error->localizedDescription()->utf8String() : "unknown");
-    return false;
-  }
-
-  return true;
-}
-
 bool MetalCommandProcessor::EnsureDepthOnlyPixelShader() {
   if (depth_only_pixel_library_) {
     return true;
@@ -5963,21 +5212,6 @@ bool MetalCommandProcessor::EnsureDepthOnlyPixelShader() {
     return false;
   }
   return true;
-}
-
-void MetalCommandProcessor::DrawDebugQuad() {
-  if (!debug_pipeline_) {
-    if (!CreateDebugPipeline()) {
-      return;
-    }
-  }
-
-  BeginCommandBuffer();
-
-  current_render_encoder_->setRenderPipelineState(debug_pipeline_);
-  current_render_encoder_->drawPrimitives(MTL::PrimitiveTypeTriangle,
-                                          NS::UInteger(0), NS::UInteger(6));
-
 }
 
 bool MetalCommandProcessor::CreateIRConverterBuffers() {
@@ -6576,240 +5810,9 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
   system_constants_dirty_ = true;
 }
 
-void MetalCommandProcessor::LogCacheStatsIfNeeded() {
-  if (!::cvars::metal_log_cache_stats) {
-    return;
-  }
-
-  const int32_t interval_seconds =
-      std::max<int32_t>(1, ::cvars::metal_log_cache_stats_interval_seconds);
-  const auto now = std::chrono::steady_clock::now();
-  if (last_cache_stats_log_time_ != std::chrono::steady_clock::time_point() &&
-      now - last_cache_stats_log_time_ <
-          std::chrono::seconds(interval_seconds)) {
-    return;
-  }
-  last_cache_stats_log_time_ = now;
-
-  auto bytes_to_mb = [](uint64_t bytes) -> double {
-    return double(bytes) / (1024.0 * 1024.0);
-  };
-
-  MetalTextureCache::CacheStats tex_stats;
-  size_t scaled_resolve_count = 0;
-  size_t scaled_resolve_retired_count = 0;
-  uint64_t scaled_resolve_bytes = 0;
-  uint64_t scaled_resolve_retired_bytes = 0;
-  size_t upload_pool_entries = 0;
-  uint64_t upload_pool_bytes = 0;
-  uint64_t swizzled_views_created = 0;
-  uint64_t swizzled_views_released = 0;
-  uint64_t swizzled_views_live = 0;
-  uint64_t cache_textures_created = 0;
-  uint64_t cache_texture_bytes_created = 0;
-  if (texture_cache_) {
-    tex_stats = texture_cache_->GetCacheStats();
-    scaled_resolve_count = texture_cache_->GetScaledResolveBufferCount();
-    scaled_resolve_retired_count =
-        texture_cache_->GetScaledResolveRetiredBufferCount();
-    scaled_resolve_bytes = texture_cache_->GetScaledResolveBytes();
-    scaled_resolve_retired_bytes =
-        texture_cache_->GetScaledResolveRetiredBytes();
-    upload_pool_entries = texture_cache_->GetUploadPoolEntryCount();
-    upload_pool_bytes = texture_cache_->GetUploadPoolBytes();
-    swizzled_views_created = texture_cache_->GetSwizzledViewCreated();
-    swizzled_views_released = texture_cache_->GetSwizzledViewReleased();
-    swizzled_views_live = texture_cache_->GetSwizzledViewLive();
-    cache_textures_created = texture_cache_->GetCacheTexturesCreated();
-    cache_texture_bytes_created = texture_cache_->GetCacheTextureBytesCreated();
-  }
-  MetalRenderTargetCache::CacheStats rt_stats;
-  uint64_t rt_temp_created = 0;
-  uint64_t rt_temp_released = 0;
-  uint64_t rt_textures_created = 0;
-  uint64_t rt_texture_bytes_created = 0;
-  uint64_t rt_views_created = 0;
-  uint64_t rt_dummy_textures_created = 0;
-  uint64_t rt_dummy_texture_bytes_created = 0;
-  if (render_target_cache_) {
-    rt_stats = render_target_cache_->GetCacheStats();
-    rt_temp_created = rt_stats.temp_textures_created;
-    rt_temp_released = rt_stats.temp_textures_released;
-    rt_textures_created = rt_stats.render_target_textures_created;
-    rt_texture_bytes_created = rt_stats.render_target_texture_bytes_created;
-    rt_views_created = rt_stats.render_target_views_created;
-    rt_dummy_textures_created = rt_stats.dummy_textures_created;
-    rt_dummy_texture_bytes_created = rt_stats.dummy_texture_bytes_created;
-  }
-  MetalShaderCache::CacheStats shader_stats;
-  if (g_metal_shader_cache && g_metal_shader_cache->IsInitialized()) {
-    shader_stats = g_metal_shader_cache->GetStats();
-  }
-  uint64_t shared_memory_bytes = 0;
-  if (shared_memory_) {
-    if (auto* buffer = shared_memory_->GetBuffer()) {
-      shared_memory_bytes = buffer->length();
-    }
-  }
-  uint64_t edram_bytes = 0;
-  if (render_target_cache_) {
-    if (auto* edram_buffer = render_target_cache_->GetEdramBuffer()) {
-      edram_bytes = edram_buffer->length();
-    }
-  }
-  const char* cb_state = current_command_buffer_ ? "yes" : "no";
-  const char* enc_state = current_render_encoder_ ? "yes" : "no";
-  const int32_t inflight =
-      inflight_command_buffers_.load(std::memory_order_relaxed);
-  const uint64_t completed =
-      completed_command_buffers_.load(std::memory_order_relaxed);
-  const uint64_t created =
-      created_command_buffers_.load(std::memory_order_relaxed);
-  const uint64_t completed_total_us =
-      completed_command_buffers_total_us_.load(std::memory_order_relaxed);
-  const uint64_t completed_max_us =
-      completed_command_buffers_max_us_.load(std::memory_order_relaxed);
-  const uint64_t completed_delta = completed - last_completed_command_buffers_;
-  const uint64_t completed_total_us_delta =
-      completed_total_us - last_completed_command_buffers_total_us_;
-  const double completed_avg_ms =
-      completed_delta
-          ? (double(completed_total_us_delta) / 1000.0) /
-                double(completed_delta)
-          : 0.0;
-  const double completed_max_ms = double(completed_max_us) / 1000.0;
-  const uint64_t pools_created_delta =
-      autorelease_pools_created_ - last_autorelease_pools_created_;
-  const uint64_t pools_drained_delta =
-      autorelease_pools_drained_ - last_autorelease_pools_drained_;
-  last_completed_command_buffers_ = completed;
-  last_completed_command_buffers_total_us_ = completed_total_us;
-  last_autorelease_pools_created_ = autorelease_pools_created_;
-  last_autorelease_pools_drained_ = autorelease_pools_drained_;
-  int64_t ms_since_complete = -1;
-  if (last_command_buffer_complete_time_ !=
-      std::chrono::steady_clock::time_point()) {
-    ms_since_complete =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - last_command_buffer_complete_time_)
-            .count();
-  }
-  MetalResourceStats resource_stats = GetMetalResourceStats();
-  MetalResourceStats resource_delta = resource_stats;
-  resource_delta.buffers_created -= last_resource_stats_.buffers_created;
-  resource_delta.buffers_released -= last_resource_stats_.buffers_released;
-  resource_delta.buffer_bytes_created -=
-      last_resource_stats_.buffer_bytes_created;
-  resource_delta.buffer_bytes_released -=
-      last_resource_stats_.buffer_bytes_released;
-  resource_delta.heap_bytes_created -= last_resource_stats_.heap_bytes_created;
-  resource_delta.heap_bytes_released -= last_resource_stats_.heap_bytes_released;
-  resource_delta.textures_created -= last_resource_stats_.textures_created;
-  resource_delta.textures_released -= last_resource_stats_.textures_released;
-  resource_delta.texture_bytes_created -=
-      last_resource_stats_.texture_bytes_created;
-  resource_delta.texture_bytes_released -=
-      last_resource_stats_.texture_bytes_released;
-  last_resource_stats_ = resource_stats;
-
-  const uint64_t cache_textures_created_delta =
-      cache_textures_created - last_cache_textures_created_;
-  const uint64_t cache_texture_bytes_created_delta =
-      cache_texture_bytes_created - last_cache_texture_bytes_created_;
-  const uint64_t rt_textures_created_delta =
-      rt_textures_created - last_rt_textures_created_;
-  const uint64_t rt_texture_bytes_created_delta =
-      rt_texture_bytes_created - last_rt_texture_bytes_created_;
-  const uint64_t rt_views_created_delta =
-      rt_views_created - last_rt_views_created_;
-  const uint64_t rt_dummy_textures_created_delta =
-      rt_dummy_textures_created - last_rt_dummy_textures_created_;
-  const uint64_t rt_dummy_texture_bytes_created_delta =
-      rt_dummy_texture_bytes_created - last_rt_dummy_texture_bytes_created_;
-
-  last_cache_textures_created_ = cache_textures_created;
-  last_cache_texture_bytes_created_ = cache_texture_bytes_created;
-  last_rt_textures_created_ = rt_textures_created;
-  last_rt_texture_bytes_created_ = rt_texture_bytes_created;
-  last_rt_views_created_ = rt_views_created;
-  last_rt_dummy_textures_created_ = rt_dummy_textures_created;
-  last_rt_dummy_texture_bytes_created_ = rt_dummy_texture_bytes_created;
-
-  const double buffers_created_mb =
-      bytes_to_mb(resource_delta.buffer_bytes_created);
-  const double buffers_released_mb =
-      bytes_to_mb(resource_delta.buffer_bytes_released);
-  const double heaps_created_mb =
-      bytes_to_mb(resource_delta.heap_bytes_created);
-  const double heaps_released_mb =
-      bytes_to_mb(resource_delta.heap_bytes_released);
-  const double textures_created_mb =
-      bytes_to_mb(resource_delta.texture_bytes_created);
-  const double textures_released_mb =
-      bytes_to_mb(resource_delta.texture_bytes_released);
-  const double buffers_live_mb =
-      bytes_to_mb(resource_stats.buffer_bytes_created -
-                  resource_stats.buffer_bytes_released);
-  const double heaps_live_mb =
-      bytes_to_mb(resource_stats.heap_bytes_created -
-                  resource_stats.heap_bytes_released);
-  const double textures_live_mb =
-      bytes_to_mb(resource_stats.texture_bytes_created -
-                  resource_stats.texture_bytes_released);
-
-  std::filesystem::path log_path = "scratch/logs/metal_cache_stats.log";
-  std::error_code ec;
-  std::filesystem::create_directories(log_path.parent_path(), ec);
-  std::ofstream log_file(log_path, std::ios::app);
-  if (log_file.is_open()) {
-    log_file << fmt::format(
-        "MetalCacheStats: textures={} host_mb={:.2f} rts={} rt_textures={} "
-        "rt_mb~{:.2f} shaders={} shader_mb={:.2f} pipelines={} geom_pipelines={} "
-        "tess_pipelines={} draw_rings={} ring_pool={} shared_mb={:.2f} "
-        "edram_mb={:.2f} rt_temp+={} rt_temp-={} rt_tex+={} rt_tex_mb+={:.2f} "
-        "rt_view+={} rt_dummy_tex+={} rt_dummy_mb+={:.2f} "
-        "cache_tex+={} cache_tex_mb+={:.2f} cb={} enc={} inflight_cb={} "
-        "completed_cb={} "
-        "ms_since_cb_done={} cb_created={} cb_completed_delta={} "
-        "cb_avg_ms={:.2f} cb_max_ms={:.2f} pools_created={} pools_drained={} "
-        "scaled_resolve_cnt={} scaled_resolve_mb={:.2f} "
-        "scaled_resolve_retired_cnt={} scaled_resolve_retired_mb={:.2f} "
-        "upload_pool_entries={} upload_pool_mb={:.2f} "
-        "swizzled_views_created={} swizzled_views_released={} "
-        "swizzled_views_live={} "
-        "new_bufs={} buf_mb+={:.2f} buf_mb-={:.2f} heap_mb+={:.2f} "
-        "heap_mb-={:.2f} new_tex={} tex_mb+={:.2f} tex_mb-={:.2f} "
-        "buf_live_mb={:.2f} heap_live_mb={:.2f} tex_live_mb={:.2f}\n",
-        tex_stats.texture_count, bytes_to_mb(tex_stats.total_host_memory_bytes),
-        rt_stats.render_target_count, rt_stats.texture_count,
-        bytes_to_mb(rt_stats.approx_texture_bytes), shader_stats.entry_count,
-        bytes_to_mb(shader_stats.total_bytes), pipeline_cache_.size(),
-        geometry_pipeline_cache_.size(), tessellation_pipeline_cache_.size(),
-        command_buffer_draw_rings_.size(), draw_ring_pool_.size(),
-        bytes_to_mb(shared_memory_bytes), bytes_to_mb(edram_bytes),
-        rt_temp_created, rt_temp_released, rt_textures_created_delta,
-        bytes_to_mb(rt_texture_bytes_created_delta), rt_views_created_delta,
-        rt_dummy_textures_created_delta,
-        bytes_to_mb(rt_dummy_texture_bytes_created_delta),
-        cache_textures_created_delta,
-        bytes_to_mb(cache_texture_bytes_created_delta),
-        cb_state, enc_state, inflight,
-        completed, ms_since_complete, created, completed_delta,
-        completed_avg_ms, completed_max_ms,
-        pools_created_delta, pools_drained_delta, scaled_resolve_count,
-        bytes_to_mb(scaled_resolve_bytes), scaled_resolve_retired_count,
-        bytes_to_mb(scaled_resolve_retired_bytes), upload_pool_entries,
-        bytes_to_mb(upload_pool_bytes), swizzled_views_created,
-        swizzled_views_released, swizzled_views_live,
-        resource_delta.buffers_created,
-        buffers_created_mb, buffers_released_mb,
-        heaps_created_mb, heaps_released_mb, resource_delta.textures_created,
-        textures_created_mb, textures_released_mb, buffers_live_mb,
-        heaps_live_mb, textures_live_mb);
-  }
-}
-
-
+#define COMMAND_PROCESSOR MetalCommandProcessor
+#include "../pm4_command_processor_implement.h"
+#undef COMMAND_PROCESSOR
 
 }  // namespace metal
 }  // namespace gpu

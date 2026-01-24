@@ -82,10 +82,6 @@ class MetalCommandProcessor : public CommandProcessor {
   // Get current render pass descriptor (for render target binding)
   MTL::RenderPassDescriptor* GetCurrentRenderPassDescriptor();
 
-  // Get last captured frame data (for trace dump)
-  bool GetLastCapturedFrame(uint32_t& width, uint32_t& height,
-                            std::vector<uint8_t>& data);
-
   // Force issue a swap to push render target to presenter (for trace dumps)
   void ForceIssueSwap();
   bool HasSeenSwap() const { return saw_swap_; }
@@ -222,10 +218,6 @@ class MetalCommandProcessor : public CommandProcessor {
                               reg::RB_DEPTHCONTROL normalized_depth_control);
   void ApplyRasterizerState(bool primitive_polygonal);
 
-  // Debug rendering
-  bool CreateDebugPipeline();
-  void DrawDebugQuad();
-
   bool EnsureDepthOnlyPixelShader();
 
   struct PipelineDiskCacheVertexAttribute {
@@ -328,14 +320,6 @@ class MetalCommandProcessor : public CommandProcessor {
       const Shader& shader, uint32_t interpolator_mask, uint32_t param_gen_pos,
       reg::RB_DEPTHCONTROL normalized_depth_control) const;
 
-  // Debug logging utilities
-  void DumpUniformsBuffer();
-  void LogInterpolators(MetalShader* vertex_shader, MetalShader* pixel_shader);
-  void LogCacheStatsIfNeeded();
-
-  // Frame capture
-  void CaptureCurrentFrame();
-
   // Metal device and command queue (from provider)
   MTL::Device* device_ = nullptr;
   MTL::CommandQueue* command_queue_ = nullptr;
@@ -431,15 +415,7 @@ class MetalCommandProcessor : public CommandProcessor {
                      DepthStencilStateKey::Hasher>
       depth_stencil_state_cache_;
 
-  // Debug pipeline for testing
-  MTL::RenderPipelineState* debug_pipeline_ = nullptr;
   bool mesh_shader_supported_ = false;
-
-  // Frame capture data
-  bool has_captured_frame_ = false;
-  uint32_t captured_width_ = 0;
-  uint32_t captured_height_ = 0;
-  std::vector<uint8_t> captured_frame_data_;
 
   // Texture cache for guest texture uploads
   std::unique_ptr<MetalTextureCache> texture_cache_;
@@ -480,7 +456,6 @@ class MetalCommandProcessor : public CommandProcessor {
   // Fixed-function dynamic state cached per render encoder.
   float ff_blend_factor_[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   bool ff_blend_factor_valid_ = false;
-  std::chrono::steady_clock::time_point last_cache_stats_log_time_{};
 
   std::filesystem::path shader_storage_root_;
   std::filesystem::path shader_storage_local_root_;
@@ -494,37 +469,14 @@ class MetalCommandProcessor : public CommandProcessor {
   MTL::BinaryArchive* pipeline_binary_archive_ = nullptr;
   bool pipeline_binary_archive_dirty_ = false;
 
-  std::atomic<int32_t> inflight_command_buffers_{0};
   std::atomic<uint64_t> completed_command_buffers_{0};
-  std::atomic<uint64_t> created_command_buffers_{0};
-  std::atomic<uint64_t> completed_command_buffers_total_us_{0};
-  std::atomic<uint64_t> completed_command_buffers_max_us_{0};
-  std::chrono::steady_clock::time_point last_command_buffer_complete_time_{};
   uint64_t submission_current_ = 0;
   uint64_t submission_completed_processed_ = 0;
-  uint64_t last_completed_command_buffers_ = 0;
-  uint64_t last_completed_command_buffers_total_us_ = 0;
-  uint64_t autorelease_pools_created_ = 0;
-  uint64_t autorelease_pools_drained_ = 0;
-  uint64_t last_autorelease_pools_created_ = 0;
-  uint64_t last_autorelease_pools_drained_ = 0;
-  MetalResourceStats last_resource_stats_{};
-  uint64_t last_cache_textures_created_ = 0;
-  uint64_t last_cache_texture_bytes_created_ = 0;
-  uint64_t last_rt_textures_created_ = 0;
-  uint64_t last_rt_texture_bytes_created_ = 0;
-  uint64_t last_rt_views_created_ = 0;
-  uint64_t last_rt_dummy_textures_created_ = 0;
-  uint64_t last_rt_dummy_texture_bytes_created_ = 0;
 
   // Draw counter for ring-buffer descriptor heap allocation
   // Each draw uses a different region of the descriptor heap to avoid
   // overwriting previous draws' descriptors before GPU execution
   uint32_t current_draw_index_ = 0;
-  uint64_t tessellation_enabled_draws_ = 0;
-  uint64_t tessellated_draws_ = 0;
-  bool logged_tessellation_enable_ = false;
-  bool logged_tessellated_draw_ = false;
 
   // Memexport tracking for shared memory invalidation.
   std::vector<draw_util::MemExportRange> memexport_ranges_;
