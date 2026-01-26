@@ -261,7 +261,7 @@ class MetalTextureCache::UploadBufferPool
       return;
     }
     std::shared_ptr<UploadBufferPool> self = shared_from_this();
-    cmd->addCompletedHandler([self, buffer](MTL::CommandBuffer*) {
+    cmd->addCompletedHandler(^(MTL::CommandBuffer*) {
       self->ReleaseImmediate(buffer);
     });
   }
@@ -775,7 +775,7 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
       buffer_pool->ReleaseAfter(cmd, buffer);
       return;
     }
-    cmd->addCompletedHandler([buffer, size](MTL::CommandBuffer*) {
+    cmd->addCompletedHandler(^(MTL::CommandBuffer*) {
       TrackMetalBufferReleased(size);
       buffer->release();
     });
@@ -973,12 +973,8 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
       uint32_t level_height_scaled =
           level_height_unscaled * texture_resolution_scale_y;
 
-      uint32_t upload_width = level_width_scaled;
-      uint32_t upload_height = level_height_scaled;
-      if (host_block_compressed) {
-        upload_width = xe::round_up(upload_width, host_block_width);
-        upload_height = xe::round_up(upload_height, host_block_height);
-      }
+      const uint32_t upload_width_texels = level_width_scaled;
+      const uint32_t upload_height_texels = level_height_scaled;
 
       uint32_t packed_offset_blocks_x = 0;
       uint32_t packed_offset_blocks_y = 0;
@@ -989,9 +985,14 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
             packed_offset_blocks_y, packed_offset_z);
       }
 
-      uint32_t upload_blocks_x = upload_width / host_block_width;
+      uint32_t upload_blocks_x =
+          xe::round_up(upload_width_texels, host_block_width) /
+          host_block_width;
+      uint32_t upload_blocks_y =
+          xe::round_up(upload_height_texels, host_block_height) /
+          host_block_height;
       uint32_t upload_row_bytes = upload_blocks_x * bytes_per_host_block;
-      uint32_t upload_row_count = upload_height / host_block_height;
+      uint32_t upload_row_count = upload_blocks_y;
       uint32_t blit_row_pitch = xe::align(upload_row_bytes, blit_alignment);
       size_t blit_bytes_per_image =
           size_t(blit_row_pitch) * upload_row_count;
@@ -1053,7 +1054,8 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
 
           blit->copyFromBuffer(
               staging_buffer, 0, blit_row_pitch, blit_bytes_per_image,
-              MTL::Size::Make(upload_width, upload_height, level_depth),
+              MTL::Size::Make(upload_width_texels, upload_height_texels,
+                              level_depth),
               mtl_texture, is_3d ? 0 : slice, level,
               MTL::Origin::Make(0, 0, 0));
 
@@ -1062,7 +1064,8 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
           blit->copyFromBuffer(
               dest_buffer, source_offset_bytes, stored_layout->row_pitch_bytes,
               bytes_per_image,
-              MTL::Size::Make(upload_width, upload_height, level_depth),
+              MTL::Size::Make(upload_width_texels, upload_height_texels,
+                              level_depth),
               mtl_texture, is_3d ? 0 : slice, level,
               MTL::Origin::Make(0, 0, 0));
         }
@@ -1073,8 +1076,9 @@ bool MetalTextureCache::TryGpuLoadTexture(Texture& texture, bool load_base,
     release_buffer_after(cmd, constants_buffer, constants_buffer_size);
     release_buffer_after(cmd, dest_buffer, size_t(dest_buffer_size));
     cmd->retain();
-    cmd->addCompletedHandler(
-        [](MTL::CommandBuffer* cb) { cb->release(); });
+    cmd->addCompletedHandler(^(MTL::CommandBuffer* cb) {
+      cb->release();
+    });
     cmd->commit();
   } else {
     cmd->commit();
