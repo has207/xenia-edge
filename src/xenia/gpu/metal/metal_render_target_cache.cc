@@ -98,10 +98,10 @@ MTL::ComputePipelineState* CreateComputePipelineFromEmbeddedLibrary(
   }
 
   // XeSL compute entrypoint name used in the embedded metallibs.
-  NS::String* fn_name = NS::String::string("xesl_entry", NS::UTF8StringEncoding);
+  NS::String* fn_name = NS::String::string("entry_xe", NS::UTF8StringEncoding);
   MTL::Function* fn = lib->newFunction(fn_name);
   if (!fn) {
-    XELOGE("Metal: {} missing xesl_entry", debug_name);
+    XELOGE("Metal: {} missing entry_xe", debug_name);
     lib->release();
     return nullptr;
   }
