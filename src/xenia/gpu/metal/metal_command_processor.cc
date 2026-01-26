@@ -555,8 +555,6 @@ bool MetalCommandProcessor::SetupContext() {
 
   bool supports_apple7 = device_->supportsFamily(MTL::GPUFamilyApple7);
   bool supports_mac2 = device_->supportsFamily(MTL::GPUFamilyMac2);
-  bool supports_metal3 = device_->supportsFamily(MTL::GPUFamilyMetal3);
-  bool supports_metal4 = device_->supportsFamily(MTL::GPUFamilyMetal4);
   mesh_shader_supported_ = supports_apple7 || supports_mac2;
 
   draw_ring_count_ =
@@ -1722,10 +1720,6 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         Shader::HostVertexShaderType::kVertex;
   }
 
-  auto vgt_output_path_cntl = regs.Get<reg::VGT_OUTPUT_PATH_CNTL>();
-  bool tessellation_enabled =
-      vgt_output_path_cntl.path_select ==
-      xenos::VGTOutputPath::kTessellationEnable;
   bool use_tessellation_emulation = false;
   if (primitive_processing_result.IsTessellated()) {
     if (!mesh_shader_supported_) {
@@ -5649,7 +5643,6 @@ void MetalCommandProcessor::UpdateSystemConstantValues(
   const RegisterFile& regs = *register_file_;
   auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
   auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
-  auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
   auto rb_alpha_ref = regs.Get<float>(XE_GPU_REG_RB_ALPHA_REF);
   auto rb_colorcontrol = regs.Get<reg::RB_COLORCONTROL>();
   auto rb_depth_info = regs.Get<reg::RB_DEPTH_INFO>();
