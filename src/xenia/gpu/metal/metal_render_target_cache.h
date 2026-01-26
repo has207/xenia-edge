@@ -126,6 +126,20 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
     return !cvars::snorm16_render_target_full_range;
   }
 
+  // Whether 2x MSAA is supported on this device.
+  bool msaa_2x_supported() const { return msaa_2x_supported_; }
+
+  // Whether gamma render targets use UNORM16 storage (separate from sRGB).
+  // When true, gamma correction is done in shaders rather than via sRGB format.
+  bool gamma_render_target_as_unorm16() const {
+    return gamma_render_target_as_unorm16_;
+  }
+
+  bool IsGammaFormatHostStorageSeparate() const override;
+
+  // Check if the render target key uses a 64bpp format.
+  bool IsKey64bpp(RenderTargetKey key) const;
+
   void ClearCache() override;
   void BeginFrame() override;
 
@@ -209,6 +223,7 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   // Metal device reference
   MTL::Device* device_ = nullptr;
   bool gamma_render_target_as_srgb_ = false;
+  bool gamma_render_target_as_unorm16_ = false;
 
   std::unique_ptr<MetalHeapPool> render_target_heap_pool_;
 
@@ -422,8 +437,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   std::unordered_set<uint32_t> cleared_render_targets_this_frame_;
 
   // Debug helper to log a small region of the current color RT0.
-  void LogCurrentColorRT0Pixels(const char* tag);
-
   // Helper methods
   MTL::Texture* CreateColorTexture(uint32_t width, uint32_t height,
                                    xenos::ColorRenderTargetFormat format,

@@ -13,8 +13,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -55,6 +55,11 @@
 #include "xenia/gpu/texture_info.h"
 #include "xenia/gpu/texture_util.h"
 #include "xenia/gpu/xenos.h"
+
+DEFINE_bool(
+    metal_allow_gamma_unorm16, false,
+    "Allow gamma_render_target_as_unorm16 on Metal despite known issues",
+    "GPU");
 
 namespace xe {
 namespace gpu {
@@ -198,233 +203,15 @@ enum class MetalEdramDumpFormat : uint32_t {
   kColorR32Float = 5,
   kColorRGBA16Snorm = 6,
   kColorRGBA16Float = 7,
-  kColorRG32Float = 8,
+  kColorRGBA16Unorm = 8,
+  kColorRG32Float = 9,
   kDepthD24S8 = 16,
   kDepthD24FS8 = 17,
 };
 
 constexpr uint32_t kMetalEdramDumpFlagHasStencil = 1u << 0;
 constexpr uint32_t kMetalEdramDumpFlagDepthRound = 1u << 1;
-
-// Section 6.1: Debug helper to read back a tiny region of a Metal render target
-// texture and log its contents. This is intended only for debugging, not for
-// production.
-void LogMetalRenderTargetTopLeftPixels(
-    MetalRenderTargetCache::MetalRenderTarget* rt, const char* tag,
-    MTL::Device* device, MTL::CommandQueue* queue) {
-  if (!rt || !device || !queue) {
-    return;
-  }
-  ScopedAutoreleasePool autorelease_pool;
-  MTL::Texture* tex = rt->texture();
-  if (!tex) {
-    return;
-  }
-
-  uint32_t width = static_cast<uint32_t>(tex->width());
-  uint32_t height = static_cast<uint32_t>(tex->height());
-  if (!width || !height) {
-    return;
-  }
-
-  // Check if this is a depth/stencil texture and read back via a tiny compute
-  // shader to avoid render-pass conversion.
-  MTL::PixelFormat format = tex->pixelFormat();
-  bool is_depth_stencil = format == MTL::PixelFormatDepth32Float_Stencil8 ||
-                          format == MTL::PixelFormatDepth32Float ||
-                          format == MTL::PixelFormatDepth16Unorm ||
-                          format == MTL::PixelFormatDepth24Unorm_Stencil8 ||
-                          format == MTL::PixelFormatX32_Stencil8;
-  if (is_depth_stencil) {
-    static MTL::Device* cached_device = nullptr;
-    static MTL::ComputePipelineState* depth_pipeline = nullptr;
-    static MTL::ComputePipelineState* depth_msaa_pipeline = nullptr;
-
-    if (cached_device != device) {
-      if (depth_pipeline) {
-        depth_pipeline->release();
-        depth_pipeline = nullptr;
-      }
-      if (depth_msaa_pipeline) {
-        depth_msaa_pipeline->release();
-        depth_msaa_pipeline = nullptr;
-      }
-      cached_device = device;
-    }
-
-    if (!depth_pipeline || !depth_msaa_pipeline) {
-      static const char* kDepthReadbackMSL = R"(
-        #include <metal_stdlib>
-        using namespace metal;
-
-        struct ReadbackParams {
-          uint width;
-          uint height;
-          uint sample;
-          uint pad;
-        };
-
-        kernel void readback_depth(
-            depth2d<float, access::read> src [[texture(0)]],
-            device float* out [[buffer(0)]],
-            constant ReadbackParams& params [[buffer(1)]],
-            uint2 gid [[thread_position_in_grid]]) {
-          if (gid.x >= params.width || gid.y >= params.height) {
-            return;
-          }
-          float d = src.read(gid);
-          out[gid.y * params.width + gid.x] = d;
-        }
-
-        kernel void readback_depth_ms(
-            depth2d_ms<float, access::read> src [[texture(0)]],
-            device float* out [[buffer(0)]],
-            constant ReadbackParams& params [[buffer(1)]],
-            uint2 gid [[thread_position_in_grid]]) {
-          if (gid.x >= params.width || gid.y >= params.height) {
-            return;
-          }
-          float d = src.read(gid, params.sample);
-          out[gid.y * params.width + gid.x] = d;
-        }
-      )";
-
-      NS::Error* error = nullptr;
-      auto src_str =
-          NS::String::string(kDepthReadbackMSL, NS::UTF8StringEncoding);
-      MTL::Library* lib = device->newLibrary(src_str, nullptr, &error);
-      if (!lib) {
-        XELOGE(
-            "{}: failed to compile depth readback MSL: {}", tag,
-            error && error->localizedDescription()
-                ? error->localizedDescription()->utf8String()
-                : "unknown error");
-        return;
-      }
-
-      NS::String* fn_depth =
-          NS::String::string("readback_depth", NS::UTF8StringEncoding);
-      NS::String* fn_depth_ms =
-          NS::String::string("readback_depth_ms", NS::UTF8StringEncoding);
-      MTL::Function* depth_fn = lib->newFunction(fn_depth);
-      MTL::Function* depth_ms_fn = lib->newFunction(fn_depth_ms);
-      if (depth_fn) {
-        depth_pipeline = device->newComputePipelineState(depth_fn, &error);
-        depth_fn->release();
-      }
-      if (depth_ms_fn) {
-        depth_msaa_pipeline = device->newComputePipelineState(depth_ms_fn,
-                                                             &error);
-        depth_ms_fn->release();
-      }
-      lib->release();
-      if (!depth_pipeline || !depth_msaa_pipeline) {
-        XELOGE("{}: failed to create depth readback pipelines", tag);
-        if (depth_pipeline) {
-          depth_pipeline->release();
-          depth_pipeline = nullptr;
-        }
-        if (depth_msaa_pipeline) {
-          depth_msaa_pipeline->release();
-          depth_msaa_pipeline = nullptr;
-        }
-        return;
-      }
-    }
-
-    uint32_t read_width = std::min<uint32_t>(width, 4u);
-    uint32_t read_height = std::min<uint32_t>(height, 4u);
-    uint32_t pixel_count = read_width * read_height;
-    uint32_t buffer_size = pixel_count * sizeof(float);
-
-    MTL::Buffer* readback_buffer =
-        device->newBuffer(buffer_size, MTL::ResourceStorageModeShared);
-    if (!readback_buffer) {
-      return;
-    }
-    TrackMetalBufferCreated(buffer_size);
-
-    bool is_msaa = tex->textureType() == MTL::TextureType2DMultisample;
-
-    MTL::CommandBuffer* cmd = queue->commandBuffer();
-    MTL::ComputeCommandEncoder* encoder = cmd->computeCommandEncoder();
-    encoder->setComputePipelineState(
-        is_msaa ? depth_msaa_pipeline : depth_pipeline);
-    encoder->setTexture(tex, 0);
-    encoder->setBuffer(readback_buffer, 0, 0);
-    encoder->useResource(tex, MTL::ResourceUsageRead);
-    encoder->useResource(readback_buffer, MTL::ResourceUsageWrite);
-
-    struct ReadbackParams {
-      uint32_t width;
-      uint32_t height;
-      uint32_t sample;
-      uint32_t pad;
-    } params = {read_width, read_height, 0u, 0u};
-
-    encoder->setBytes(&params, sizeof(params), 1);
-    MTL::Size threads_per_group = MTL::Size::Make(4, 4, 1);
-    MTL::Size threadgroups =
-        MTL::Size::Make((read_width + 3) / 4, (read_height + 3) / 4, 1);
-    encoder->dispatchThreadgroups(threadgroups, threads_per_group);
-    encoder->endEncoding();
-    cmd->commit();
-    cmd->waitUntilCompleted();
-
-    float* depth_data = static_cast<float*>(readback_buffer->contents());
-
-    TrackMetalBufferReleased(readback_buffer->length());
-    readback_buffer->release();
-    return;
-  }
-
-  // Check if this is a multisample texture
-  if (tex->textureType() == MTL::TextureType2DMultisample) {
-    return;
-  }
-
-  // Use a blit to read back data, supporting Private storage mode
-  uint32_t read_width = std::min<uint32_t>(width, 4u);
-  uint32_t read_height = std::min<uint32_t>(height, 4u);
-  uint32_t bytes_per_pixel = 4;  // Assumption for 32bpp formats.
-  // Adjust bytes per pixel based on format if needed, but 4 covers most 32bpp
-  // cases
-  if (format == MTL::PixelFormatRG16Float ||
-      format == MTL::PixelFormatRG16Snorm ||
-      format == MTL::PixelFormatRGBA8Unorm) {
-    bytes_per_pixel = 4;
-  } else if (format == MTL::PixelFormatRGBA16Float ||
-             format == MTL::PixelFormatRGBA16Snorm) {
-    bytes_per_pixel = 8;
-  }
-
-  uint32_t row_pitch = read_width * bytes_per_pixel;
-  uint32_t buffer_size = row_pitch * read_height;
-
-  MTL::Buffer* readback_buffer =
-      device->newBuffer(buffer_size, MTL::ResourceStorageModeShared);
-  if (!readback_buffer) {
-    return;
-  }
-  TrackMetalBufferCreated(buffer_size);
-
-  MTL::CommandBuffer* cmd = queue->commandBuffer();
-  MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
-
-  blit->copyFromTexture(tex, 0, 0, MTL::Origin::Make(0, 0, 0),
-                        MTL::Size::Make(read_width, read_height, 1),
-                        readback_buffer, 0, row_pitch, 0);
-
-  blit->endEncoding();
-  cmd->commit();
-  cmd->waitUntilCompleted();
-
-  uint32_t* pixel_data = static_cast<uint32_t*>(readback_buffer->contents());
-
-  TrackMetalBufferReleased(readback_buffer->length());
-  readback_buffer->release();  // newBuffer returns retained - must release
-  // Note: cmd is from commandBuffer() which is autoreleased - don't release
-}
+constexpr uint32_t kMetalEdramDumpFlagGammaAsLinear = 1u << 2;
 
 struct DebugColor {
   float r;
@@ -739,112 +526,6 @@ bool DecodeColorTexel(MTL::PixelFormat format, const uint8_t* bytes,
   return false;
 }
 
-void ScheduleEdramDumpColorSamples(MTL::CommandBuffer* cmd, MTL::Texture* tex,
-                                   uint32_t rt_key_value,
-                                   uint32_t dump_format) {
-  if (!::cvars::metal_log_edram_dump_color_samples || !cmd || !tex) {
-    return;
-  }
-  static uint32_t log_count = 0;
-  if (log_count >= 8) {
-    return;
-  }
-  ++log_count;
-
-  uint32_t bytes_per_pixel = 0;
-  switch (tex->pixelFormat()) {
-    case MTL::PixelFormatRGBA16Float:
-    case MTL::PixelFormatRG32Float:
-      bytes_per_pixel = 8;
-      break;
-    case MTL::PixelFormatRG16Float:
-    case MTL::PixelFormatR32Float:
-    case MTL::PixelFormatRGBA8Unorm:
-    case MTL::PixelFormatBGRA8Unorm:
-    case MTL::PixelFormatRGB10A2Unorm:
-    case MTL::PixelFormatBGR10A2Unorm:
-      bytes_per_pixel = 4;
-      break;
-    default:
-      return;
-  }
-
-  uint32_t width = uint32_t(tex->width());
-  uint32_t height = uint32_t(tex->height());
-  std::array<std::pair<uint32_t, uint32_t>, 2> sample_coords = {
-      std::make_pair(538u, 205u),
-      std::make_pair(623u, 68u),
-  };
-  const char* sample_labels[2] = {"tl", "mid"};
-
-  uint32_t max_x = width ? width - 1u : 0u;
-  uint32_t max_y = height ? height - 1u : 0u;
-  for (auto& coord : sample_coords) {
-    coord.first = std::min(coord.first, max_x);
-    coord.second = std::min(coord.second, max_y);
-  }
-
-  MTL::Device* device = cmd->device();
-  if (!device) {
-    return;
-  }
-  MTL::Buffer* buffer = device->newBuffer(
-      bytes_per_pixel * uint32_t(sample_coords.size()),
-      MTL::ResourceStorageModeShared);
-  if (!buffer) {
-    return;
-  }
-  TrackMetalBufferCreated(bytes_per_pixel * uint32_t(sample_coords.size()));
-  MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
-  if (!blit) {
-    TrackMetalBufferReleased(buffer->length());
-    buffer->release();
-    return;
-  }
-  for (size_t i = 0; i < sample_coords.size(); ++i) {
-    blit->copyFromTexture(
-        tex, 0, 0,
-        MTL::Origin::Make(sample_coords[i].first, sample_coords[i].second, 0),
-        MTL::Size::Make(1, 1, 1), buffer,
-        uint32_t(i) * bytes_per_pixel, bytes_per_pixel, 0);
-  }
-  blit->endEncoding();
-
-  buffer->retain();
-  MTL::PixelFormat format = tex->pixelFormat();
-  cmd->addCompletedHandler([buffer, bytes_per_pixel, format, dump_format,
-                            rt_key_value, sample_coords, sample_labels](
-                               MTL::CommandBuffer*) {
-    const uint8_t* bytes =
-        static_cast<const uint8_t*>(buffer->contents());
-    if (!bytes) {
-      TrackMetalBufferReleased(buffer->length());
-      buffer->release();
-      return;
-    }
-    for (size_t i = 0; i < sample_coords.size(); ++i) {
-      const uint8_t* sample_bytes = bytes + i * bytes_per_pixel;
-      DebugColor source = {};
-      uint32_t packed = 0;
-      if (!DecodeColorTexel(format, sample_bytes, &source)) {
-        continue;
-      }
-      if (!PackColor32bpp(dump_format, source, &packed)) {
-        continue;
-      }
-      DebugColor unpacked = {};
-      if (!UnpackColor32bpp(dump_format, packed, &unpacked)) {
-        continue;
-      }
-      uint32_t rgba8 = PackR8G8B8A8Unorm(unpacked);
-    }
-    TrackMetalBufferReleased(buffer->length());
-    buffer->release();
-  });
-  TrackMetalBufferReleased(buffer->length());
-  buffer->release();
-}
-
 size_t MsaaSamplesToIndex(xenos::MsaaSamples samples) {
   switch (samples) {
     case xenos::MsaaSamples::k1X:
@@ -938,6 +619,18 @@ constexpr TransferModeInfo kTransferModeInfos[] = {
 };
 
 }  // namespace
+
+bool MetalRenderTargetCache::IsKey64bpp(RenderTargetKey key) const {
+  // For host texture storage and transfers, gamma-as-unorm16 uses RGBA16Unorm
+  // which is 64bpp. This is needed for correct transfer calculations.
+  // NOTE: EDRAM dump path needs special handling - the EDRAM buffer is still
+  // 32bpp even when host storage is 64bpp. See DumpRenderTargets.
+  return key.Is64bpp() ||
+         (!key.is_depth &&
+          key.GetColorFormat() ==
+              xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA &&
+          gamma_render_target_as_unorm16_);
+}
 
 uint32_t MetalRenderTargetCache::GetMetalEdramDumpFormat(RenderTargetKey key) {
   if (key.is_depth) {
@@ -1037,9 +730,18 @@ bool MetalRenderTargetCache::Initialize() {
     return false;
   }
 
+  // 2x msaa and unorm16 support virtually guarunteed as minimum OS target /
+  // Metal version currently is MacOS 15 / Metal 3
   msaa_2x_supported_ = device_->supportsTextureSampleCount(2);
 
-  gamma_render_target_as_srgb_ = cvars::gamma_render_target_as_srgb;
+  gamma_render_target_as_unorm16_ = ::cvars::gamma_render_target_as_unorm16 &&
+                                    ::cvars::metal_allow_gamma_unorm16;
+  if (::cvars::gamma_render_target_as_unorm16 &&
+      !::cvars::metal_allow_gamma_unorm16) {
+    XELOGW(
+        "Metal: gamma_render_target_as_unorm16 disabled due to known issues; "
+        "set --metal_allow_gamma_unorm16=true to force");
+  }
 
   if (::cvars::metal_use_heaps) {
     size_t min_heap_bytes =
@@ -1061,7 +763,7 @@ bool MetalRenderTargetCache::Initialize() {
       size_t(xenos::kEdramTileHeightSamples) * size_t(scale_x) *
       size_t(scale_y);
   const size_t edram_size_bytes = edram_dwords * sizeof(uint32_t);
-  const bool edram_cpu_visible = cvars::metal_debug_edram_cpu_visible;
+  const bool edram_cpu_visible = false;
   const MTL::ResourceOptions edram_storage_mode =
       edram_cpu_visible ? MTL::ResourceStorageModeShared
                         : MTL::ResourceStorageModePrivate;
@@ -1421,11 +1123,30 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
-constant uint kDumpFlagHasStencil = 1;
-constant uint kDumpFlagDepthRound = 2;
+constant uint kDumpFlagHasStencil = 1;  // bit 0
+constant uint kDumpFlagDepthRound = 2;  // bit 1
+constant uint kDumpFlagGammaAsLinear = 4;  // bit 2: source is linear, needs PWL gamma encode
+
+// PWL gamma encode: linear -> gamma (for gamma RTs stored as linear RGBA16Unorm)
+inline float XeLinearToPWLGamma(float value) {
+  float clamped = clamp(value, 0.0f, 1.0f);
+  float scale, offset;
+  if (clamped >= (128.0f / 1023.0f)) {
+    if (clamped >= (512.0f / 1023.0f)) { scale = 1023.0f / 8.0f; offset = 128.0f / 255.0f; }
+    else { scale = 1023.0f / 4.0f; offset = 64.0f / 255.0f; }
+  } else {
+    if (clamped >= (64.0f / 1023.0f)) { scale = 1023.0f / 2.0f; offset = 32.0f / 255.0f; }
+    else { scale = 1023.0f; offset = 0.0f; }
+  }
+  return trunc(clamped * scale) * (1.0f / 255.0f) + offset;
+}
+inline float3 XeLinearToPWLGamma3(float3 v) {
+  return float3(XeLinearToPWLGamma(v.r), XeLinearToPWLGamma(v.g), XeLinearToPWLGamma(v.b));
+}
 
 inline uint XePackUnorm(float value, float scale) {
   return uint(clamp(value, 0.0f, 1.0f) * scale + 0.5f);
@@ -1533,6 +1254,11 @@ kernel void edram_dump_color_32bpp_1xmsaa(
 
   float4 color = source.read(source_coord);
 
+  // If source is a linear RGBA16Unorm gamma RT, convert to PWL gamma encoding
+  if (constants.flags & kDumpFlagGammaAsLinear) {
+    color.rgb = XeLinearToPWLGamma3(color.rgb);
+  }
+
   uint packed = XePackColor32bpp(constants.format, color);
 
   edram[edram_index] = packed;
@@ -1593,11 +1319,30 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
-constant uint kDumpFlagHasStencil = 1;
-constant uint kDumpFlagDepthRound = 2;
+constant uint kDumpFlagHasStencil = 1;  // bit 0
+constant uint kDumpFlagDepthRound = 2;  // bit 1
+constant uint kDumpFlagGammaAsLinear = 4;  // bit 2: source is linear, needs PWL gamma encode
+
+// PWL gamma encode: linear -> gamma (for gamma RTs stored as linear RGBA16Unorm)
+inline float XeLinearToPWLGamma(float value) {
+  float clamped = clamp(value, 0.0f, 1.0f);
+  float scale, offset;
+  if (clamped >= (128.0f / 1023.0f)) {
+    if (clamped >= (512.0f / 1023.0f)) { scale = 1023.0f / 8.0f; offset = 128.0f / 255.0f; }
+    else { scale = 1023.0f / 4.0f; offset = 64.0f / 255.0f; }
+  } else {
+    if (clamped >= (64.0f / 1023.0f)) { scale = 1023.0f / 2.0f; offset = 32.0f / 255.0f; }
+    else { scale = 1023.0f; offset = 0.0f; }
+  }
+  return trunc(clamped * scale) * (1.0f / 255.0f) + offset;
+}
+inline float3 XeLinearToPWLGamma3(float3 v) {
+  return float3(XeLinearToPWLGamma(v.r), XeLinearToPWLGamma(v.g), XeLinearToPWLGamma(v.b));
+}
 
 inline uint XePackUnorm(float value, float scale) {
   return uint(clamp(value, 0.0f, 1.0f) * scale + 0.5f);
@@ -1708,6 +1453,11 @@ kernel void edram_dump_color_32bpp_2xmsaa(
 
   float4 color = source.read(pixel_coord, sample_id);
 
+  // If source is a linear RGBA16Unorm gamma RT, convert to PWL gamma encoding
+  if (constants.flags & kDumpFlagGammaAsLinear) {
+    color.rgb = XeLinearToPWLGamma3(color.rgb);
+  }
+
   uint packed = XePackColor32bpp(constants.format, color);
 
   edram[edram_index] = packed;
@@ -1767,11 +1517,30 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
-constant uint kDumpFlagHasStencil = 1;
-constant uint kDumpFlagDepthRound = 2;
+constant uint kDumpFlagHasStencil = 1;  // bit 0
+constant uint kDumpFlagDepthRound = 2;  // bit 1
+constant uint kDumpFlagGammaAsLinear = 4;  // bit 2: source is linear, needs PWL gamma encode
+
+// PWL gamma encode: linear -> gamma (for gamma RTs stored as linear RGBA16Unorm)
+inline float XeLinearToPWLGamma(float value) {
+  float clamped = clamp(value, 0.0f, 1.0f);
+  float scale, offset;
+  if (clamped >= (128.0f / 1023.0f)) {
+    if (clamped >= (512.0f / 1023.0f)) { scale = 1023.0f / 8.0f; offset = 128.0f / 255.0f; }
+    else { scale = 1023.0f / 4.0f; offset = 64.0f / 255.0f; }
+  } else {
+    if (clamped >= (64.0f / 1023.0f)) { scale = 1023.0f / 2.0f; offset = 32.0f / 255.0f; }
+    else { scale = 1023.0f; offset = 0.0f; }
+  }
+  return trunc(clamped * scale) * (1.0f / 255.0f) + offset;
+}
+inline float3 XeLinearToPWLGamma3(float3 v) {
+  return float3(XeLinearToPWLGamma(v.r), XeLinearToPWLGamma(v.g), XeLinearToPWLGamma(v.b));
+}
 
 inline uint XePackUnorm(float value, float scale) {
   return uint(clamp(value, 0.0f, 1.0f) * scale + 0.5f);
@@ -1884,6 +1653,11 @@ kernel void edram_dump_color_32bpp_4xmsaa(
 
   float4 color = source.read(pixel_coord, sample_id);
 
+  // If source is a linear RGBA16Unorm gamma RT, convert to PWL gamma encoding
+  if (constants.flags & kDumpFlagGammaAsLinear) {
+    color.rgb = XeLinearToPWLGamma3(color.rgb);
+  }
+
   uint packed = XePackColor32bpp(constants.format, color);
 
   edram[edram_index] = packed;
@@ -1943,7 +1717,8 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
 constant uint kDumpFlagHasStencil = 1;
@@ -2087,7 +1862,8 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
 constant uint kDumpFlagHasStencil = 1;
@@ -2229,7 +2005,8 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
 constant uint kDumpFlagHasStencil = 1;
@@ -2369,7 +2146,8 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
 constant uint kDumpFlagHasStencil = 1;
@@ -2380,6 +2158,10 @@ inline uint XePackSnorm16(float value) {
   float bias = clamped >= 0.0f ? 0.5f : -0.5f;
   int packed = int(clamped * 32767.0f + bias);
   return uint(packed) & 0xFFFFu;
+}
+
+inline uint XePackUnorm(float value, float scale) {
+  return uint(clamp(value, 0.0f, 1.0f) * scale + 0.5f);
 }
 
 uint2 XePackColor64bpp(uint format, float4 color) {
@@ -2396,6 +2178,15 @@ uint2 XePackColor64bpp(uint format, float4 color) {
     case kDumpFormatColorRGBA16Float: {
       uint rg = as_type<uint>(half2(color.rg));
       uint ba = as_type<uint>(half2(color.ba));
+      return uint2(rg, ba);
+    }
+    case kDumpFormatColorRGBA16Unorm: {
+      uint r = XePackUnorm(color.r, 65535.0f);
+      uint g = XePackUnorm(color.g, 65535.0f);
+      uint b = XePackUnorm(color.b, 65535.0f);
+      uint a = XePackUnorm(color.a, 65535.0f);
+      uint rg = r | (g << 16u);
+      uint ba = b | (a << 16u);
       return uint2(rg, ba);
     }
     case kDumpFormatColorRG32Float: {
@@ -2499,7 +2290,8 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
 constant uint kDumpFlagHasStencil = 1;
@@ -2510,6 +2302,10 @@ inline uint XePackSnorm16(float value) {
   float bias = clamped >= 0.0f ? 0.5f : -0.5f;
   int packed = int(clamped * 32767.0f + bias);
   return uint(packed) & 0xFFFFu;
+}
+
+inline uint XePackUnorm(float value, float scale) {
+  return uint(clamp(value, 0.0f, 1.0f) * scale + 0.5f);
 }
 
 uint2 XePackColor64bpp(uint format, float4 color) {
@@ -2526,6 +2322,15 @@ uint2 XePackColor64bpp(uint format, float4 color) {
     case kDumpFormatColorRGBA16Float: {
       uint rg = as_type<uint>(half2(color.rg));
       uint ba = as_type<uint>(half2(color.ba));
+      return uint2(rg, ba);
+    }
+    case kDumpFormatColorRGBA16Unorm: {
+      uint r = XePackUnorm(color.r, 65535.0f);
+      uint g = XePackUnorm(color.g, 65535.0f);
+      uint b = XePackUnorm(color.b, 65535.0f);
+      uint a = XePackUnorm(color.a, 65535.0f);
+      uint rg = r | (g << 16u);
+      uint ba = b | (a << 16u);
       return uint2(rg, ba);
     }
     case kDumpFormatColorRG32Float: {
@@ -2632,7 +2437,8 @@ constant uint kDumpFormatColorRG16Float = 4;
 constant uint kDumpFormatColorR32Float = 5;
 constant uint kDumpFormatColorRGBA16Snorm = 6;
 constant uint kDumpFormatColorRGBA16Float = 7;
-constant uint kDumpFormatColorRG32Float = 8;
+constant uint kDumpFormatColorRGBA16Unorm = 8;
+constant uint kDumpFormatColorRG32Float = 9;
 constant uint kDumpFormatDepthD24S8 = 16;
 constant uint kDumpFormatDepthD24FS8 = 17;
 constant uint kDumpFlagHasStencil = 1;
@@ -2643,6 +2449,10 @@ inline uint XePackSnorm16(float value) {
   float bias = clamped >= 0.0f ? 0.5f : -0.5f;
   int packed = int(clamped * 32767.0f + bias);
   return uint(packed) & 0xFFFFu;
+}
+
+inline uint XePackUnorm(float value, float scale) {
+  return uint(clamp(value, 0.0f, 1.0f) * scale + 0.5f);
 }
 
 uint2 XePackColor64bpp(uint format, float4 color) {
@@ -2659,6 +2469,15 @@ uint2 XePackColor64bpp(uint format, float4 color) {
     case kDumpFormatColorRGBA16Float: {
       uint rg = as_type<uint>(half2(color.rg));
       uint ba = as_type<uint>(half2(color.ba));
+      return uint2(rg, ba);
+    }
+    case kDumpFormatColorRGBA16Unorm: {
+      uint r = XePackUnorm(color.r, 65535.0f);
+      uint g = XePackUnorm(color.g, 65535.0f);
+      uint b = XePackUnorm(color.b, 65535.0f);
+      uint a = XePackUnorm(color.a, 65535.0f);
+      uint rg = r | (g << 16u);
+      uint ba = b | (a << 16u);
       return uint2(rg, ba);
     }
     case kDumpFormatColorRG32Float: {
@@ -2983,6 +2802,10 @@ uint32_t MetalRenderTargetCache::GetMaxRenderTargetHeight() const {
   return 16384;
 }
 
+bool MetalRenderTargetCache::IsGammaFormatHostStorageSeparate() const {
+  return gamma_render_target_as_unorm16_;
+}
+
 RenderTargetCache::RenderTarget* MetalRenderTargetCache::CreateRenderTarget(
     RenderTargetKey key) {
   // Calculate dimensions
@@ -3260,9 +3083,11 @@ MTL::PixelFormat MetalRenderTargetCache::GetColorResourcePixelFormat(
     xenos::ColorRenderTargetFormat format) const {
   switch (format) {
     case xenos::ColorRenderTargetFormat::k_8_8_8_8:
-    case xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA:
-      // Match D3D12/Vulkan and texture cache mapping (RGBA for 8888).
       return MTL::PixelFormatRGBA8Unorm;
+    case xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA:
+      // Updated to suport unorm16 for gamma render targets.
+      return gamma_render_target_as_unorm16_ ? MTL::PixelFormatRGBA16Unorm
+                                             : MTL::PixelFormatRGBA8Unorm;
     case xenos::ColorRenderTargetFormat::k_2_10_10_10:
     case xenos::ColorRenderTargetFormat::k_2_10_10_10_AS_10_10_10_10:
       return MTL::PixelFormatRGB10A2Unorm;
@@ -3292,11 +3117,6 @@ MTL::PixelFormat MetalRenderTargetCache::GetColorResourcePixelFormat(
 MTL::PixelFormat MetalRenderTargetCache::GetColorDrawPixelFormat(
     xenos::ColorRenderTargetFormat format) const {
   switch (format) {
-    case xenos::ColorRenderTargetFormat::k_8_8_8_8:
-      return MTL::PixelFormatRGBA8Unorm;
-    case xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA:
-      return gamma_render_target_as_srgb_ ? MTL::PixelFormatRGBA8Unorm_sRGB
-                                          : MTL::PixelFormatRGBA8Unorm;
     case xenos::ColorRenderTargetFormat::k_16_16:
       return MTL::PixelFormatRG16Snorm;
     case xenos::ColorRenderTargetFormat::k_16_16_16_16:
@@ -3780,17 +3600,12 @@ MTL::Texture* MetalRenderTargetCache::GetColorRenderTargetTexture(
   key.msaa_samples = samples;
   key.is_depth = 0;
   xenos::ColorRenderTargetFormat resource_format =
-      format == xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA
+      (format == xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA &&
+       !gamma_render_target_as_unorm16_)
           ? xenos::ColorRenderTargetFormat::k_8_8_8_8
           : xenos::GetStorageColorFormat(format);
   key.resource_format = uint32_t(resource_format);
   return GetRenderTargetTexture(key);
-}
-
-void MetalRenderTargetCache::LogCurrentColorRT0Pixels(const char* tag) {
-  // Section 6.3: Wrapper method to call the debug helper for current color RT0.
-  LogMetalRenderTargetTopLeftPixels(current_color_targets_[0], tag, device_,
-                                    command_processor_.GetMetalCommandQueue());
 }
 
 void MetalRenderTargetCache::StoreTiledData(MTL::CommandBuffer* command_buffer,
@@ -3932,14 +3747,11 @@ void MetalRenderTargetCache::DumpRenderTargets(
 
   XELOGGPU("MetalRenderTargetCache::DumpRenderTargets: {} rectangles to dump",
            rectangles.size());
-
   if (rectangles.empty()) {
     XELOGW(
         "MetalRenderTargetCache::DumpRenderTargets: no rectangles for base={} "
         "row_length_used={} rows={} pitch={}",
         dump_base, dump_row_length_used, dump_rows, dump_pitch);
-    LogOwnershipRangesAround(
-        dump_base, "MetalRenderTargetCache::DumpRenderTargets");
     return;
   }
 
@@ -3992,10 +3804,6 @@ void MetalRenderTargetCache::DumpRenderTargets(
   uint32_t scale_x = draw_resolution_scale_x();
   uint32_t scale_y = draw_resolution_scale_y();
 
-  MTL::Texture* log_texture = nullptr;
-  uint32_t log_key_value = 0;
-  uint32_t log_dump_format = 0;
-
   for (const ResolveCopyDumpRectangle& rect : rectangles) {
     auto* rt = static_cast<MetalRenderTarget*>(rect.render_target);
     if (!rt) {
@@ -4023,8 +3831,8 @@ void MetalRenderTargetCache::DumpRenderTargets(
     uint32_t dump_flags = 0;
     MTL::Texture* stencil_tex = nullptr;
     if (key.is_depth) {
-      if (!cvars::depth_float24_convert_in_pixel_shader &&
-          cvars::depth_float24_round) {
+      if (!::cvars::depth_float24_convert_in_pixel_shader &&
+          ::cvars::depth_float24_round) {
         dump_flags |= kMetalEdramDumpFlagDepthRound;
       }
       stencil_tex = tex->newTextureView(MTL::PixelFormatX32_Stencil8);
@@ -4037,9 +3845,20 @@ void MetalRenderTargetCache::DumpRenderTargets(
     // - 32bpp vs 64bpp (key.Is64bpp())
     // - color vs depth (key.is_depth)
     // - MSAA sample count (key.msaa_samples)
-    // This mirrors D3D12/Vulkan dump pipeline selection.
+    // This mirrors D3D12's dump pipeline selection: use key.Is64bpp() directly,
+    // NOT IsKey64bpp() which includes gamma-as-unorm16. The EDRAM buffer is
+    // always 32bpp for gamma formats; only the host texture storage is 64bpp.
     MTL::ComputePipelineState* dump_pipeline = nullptr;
     bool is_64bpp = key.Is64bpp();
+
+    // If this is a gamma RT stored as linear RGBA16Unorm, we need to encode
+    // to PWL gamma when dumping. Set the flag for the dump shader.
+    if (!key.is_depth &&
+        key.GetColorFormat() ==
+            xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA &&
+        gamma_render_target_as_unorm16_) {
+      dump_flags |= kMetalEdramDumpFlagGammaAsLinear;
+    }
 
     if (!key.is_depth) {
       // Color render target
@@ -4121,14 +3940,6 @@ void MetalRenderTargetCache::DumpRenderTargets(
       continue;
     }
 
-    if (!log_texture && ::cvars::metal_log_edram_dump_color_samples &&
-        !key.is_depth && !is_64bpp &&
-        key.msaa_samples == xenos::MsaaSamples::k1X) {
-      log_texture = tex;
-      log_key_value = key.key;
-      log_dump_format = dump_format;
-    }
-
     for (uint32_t i = 0; i < dispatch_count; ++i) {
       const ResolveCopyDumpRectangle::Dispatch& dispatch = dispatches[i];
 
@@ -4174,10 +3985,6 @@ void MetalRenderTargetCache::DumpRenderTargets(
   }
 
   encoder->endEncoding();
-  if (log_texture) {
-    ScheduleEdramDumpColorSamples(cmd, log_texture, log_key_value,
-                                  log_dump_format);
-  }
   if (owns_command_buffer) {
     cmd->commit();
     cmd->waitUntilCompleted();
@@ -4530,16 +4337,6 @@ bool MetalRenderTargetCache::Resolve(Memory& memory, uint32_t& written_address,
   uint32_t resolve_width = coord.width_div_8 * 8;
   uint32_t resolve_height = resolve_info.height_div_8 * 8;
 
-  // Section 6.2: Inspect source render target before DumpRenderTargets.
-  // If this shows non-zero pixels but EDRAM is zero after DumpRenderTargets,
-  // the bug is in the Metal dump shaders (bindings or address math).
-  // If this shows zeros, the render target textures never received valid data.
-  if (src_rt) {
-    LogMetalRenderTargetTopLeftPixels(
-        src_rt, "MetalResolve SRC_RT before DumpRenderTargets", device_,
-        command_processor_.GetMetalCommandQueue());
-  }
-
   // Compute the EDRAM tile span for this resolve.
   uint32_t dump_base, dump_row_length_used, dump_rows, dump_pitch;
   resolve_info.GetCopyEdramTileSpan(dump_base, dump_row_length_used, dump_rows,
@@ -4556,18 +4353,8 @@ bool MetalRenderTargetCache::Resolve(Memory& memory, uint32_t& written_address,
   // Match D3D12/Vulkan: dump host RT ownership into EDRAM, then resolve
   // from EDRAM to shared memory. Resolve-time blend fallback is not correct
   // because blending state is per-draw, not per-resolve.
-  if (cvars::metal_disable_resolve_edram_dump) {
-    static uint32_t disable_dump_log_count = 0;
-    if (disable_dump_log_count < 8) {
-      ++disable_dump_log_count;
-      XELOGW(
-          "MetalResolve: EDRAM dump disabled via "
-          "metal_disable_resolve_edram_dump");
-    }
-  } else {
-    DumpRenderTargets(dump_base, dump_row_length_used, dump_rows, dump_pitch,
-                      command_buffer);
-  }
+  DumpRenderTargets(dump_base, dump_row_length_used, dump_rows, dump_pitch,
+                    command_buffer);
 
   uint32_t dest_base = resolve_info.copy_dest_base;
   uint32_t dest_local_start = resolve_info.copy_dest_extent_start - dest_base;
@@ -4674,8 +4461,7 @@ bool MetalRenderTargetCache::Resolve(Memory& memory, uint32_t& written_address,
           copy_constants.dest_relative.dest_coordinate_info
               .pitch_aligned_div_32
           << 5;
-      if (!cvars::metal_disable_resolve_pitch_override &&
-          dest_pitch_pixels < resolve_width) {
+      if (dest_pitch_pixels < resolve_width) {
         uint32_t new_pitch_pixels = (resolve_width + 31) & ~31u;
         XELOGW(
             "MetalResolve: overriding dest pitch {} -> {} "
@@ -4804,8 +4590,8 @@ bool MetalRenderTargetCache::Resolve(Memory& memory, uint32_t& written_address,
             // CPU copy. This mirrors D3D12/Vulkan behavior.
             if (!draw_resolution_scaled) {
               if (auto* shared_after = command_processor_.shared_memory()) {
-                shared_after->RangeWrittenByGpu(written_address, written_length,
-                                                true);
+                shared_after->RangeWrittenByGpu(written_address,
+                                                written_length);
               }
             }
 
@@ -4909,11 +4695,10 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
       xenos::kEdramTileWidthSamples * draw_resolution_scale_x();
   uint32_t tile_height_samples =
       xenos::kEdramTileHeightSamples * draw_resolution_scale_y();
-  uint32_t depth_round =
-      (!cvars::depth_float24_convert_in_pixel_shader &&
-       cvars::depth_float24_round)
-          ? 1u
-          : 0u;
+  uint32_t depth_round = (!::cvars::depth_float24_convert_in_pixel_shader &&
+                          ::cvars::depth_float24_round)
+                             ? 1u
+                             : 0u;
 
   // Host depth store pass (dest depth where host depth source == dest).
   bool host_depth_store_dispatched = false;
@@ -5146,7 +4931,7 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
         Transfer::Rectangle rectangles[Transfer::kMaxRectanglesWithCutout];
         uint32_t rectangle_count = transfer.GetRectangles(
             dest_key.base_tiles, dest_key.pitch_tiles_at_32bpp,
-            dest_key.msaa_samples, dest_key.Is64bpp(), rectangles,
+            dest_key.msaa_samples, IsKey64bpp(dest_key), rectangles,
             resolve_clear_rectangle);
         if (!rectangle_count) {
           continue;
@@ -5180,8 +4965,7 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
       blit_encoder->endEncoding();
     }
 
-    const bool disable_transfer_shaders =
-        cvars::metal_disable_transfer_shaders;
+    const bool disable_transfer_shaders = false;
     const std::vector<Transfer>& transfers_for_shaders =
         used_blit ? filtered_transfers : transfers;
 
@@ -5334,7 +5118,7 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
               Transfer::Rectangle rectangles[Transfer::kMaxRectanglesWithCutout];
               uint32_t rectangle_count = transfer.GetRectangles(
                   dest_key.base_tiles, dest_key.GetPitchTiles(),
-                  dest_key.msaa_samples, dest_key.Is64bpp(), rectangles,
+                  dest_key.msaa_samples, IsKey64bpp(dest_key), rectangles,
                   resolve_clear_rectangle);
               for (uint32_t rect_index = 0; rect_index < rectangle_count;
                    ++rect_index) {
@@ -5468,8 +5252,11 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
           constants.dest_is_depth = dest_key.is_depth ? 1 : 0;
           constants.source_is_uint = source_is_uint ? 1 : 0;
           constants.dest_is_uint = dest_is_uint ? 1 : 0;
+          // Don't treat gamma-as-unorm16 as 64bpp for source coordinate math.
+          // It's 64bpp in storage, but represents a single pixel, not two
+          // packed 32bpp halves.
           constants.source_is_64bpp = source_key.Is64bpp() ? 1 : 0;
-          constants.dest_is_64bpp = dest_key.Is64bpp() ? 1 : 0;
+          constants.dest_is_64bpp = IsKey64bpp(dest_key) ? 1 : 0;
           constants.source_msaa_samples =
               MsaaSamplesToCount(source_key.msaa_samples);
           constants.dest_msaa_samples =
@@ -5487,7 +5274,7 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
           Transfer::Rectangle rectangles[Transfer::kMaxRectanglesWithCutout];
           uint32_t rectangle_count = transfer.GetRectangles(
               dest_key.base_tiles, dest_key.GetPitchTiles(),
-              dest_key.msaa_samples, dest_key.Is64bpp(), rectangles,
+              dest_key.msaa_samples, IsKey64bpp(dest_key), rectangles,
               resolve_clear_rectangle);
           if (!rectangle_count) {
             continue;
@@ -5583,11 +5370,22 @@ void MetalRenderTargetCache::PerformTransfersAndResolveClears(
         TransferClearColorUintConstants uint_constants = {};
         bool clear_via_drawing = false;
         switch (dest_key.GetColorFormat()) {
-          case xenos::ColorRenderTargetFormat::k_8_8_8_8:
+          case xenos::ColorRenderTargetFormat::k_8_8_8_8: {
+            for (uint32_t j = 0; j < 4; ++j) {
+              float_constants.color[j] =
+                  ((clear_value >> (j * 8)) & 0xFF) * (1.0f / 0xFF);
+            }
+          } break;
           case xenos::ColorRenderTargetFormat::k_8_8_8_8_GAMMA: {
             for (uint32_t j = 0; j < 4; ++j) {
               float_constants.color[j] =
                   ((clear_value >> (j * 8)) & 0xFF) * (1.0f / 0xFF);
+            }
+            if (gamma_render_target_as_unorm16_) {
+              for (uint32_t j = 0; j < 3; ++j) {
+                float_constants.color[j] =
+                    xenos::PWLGammaToLinear(float_constants.color[j]);
+              }
             }
           } break;
           case xenos::ColorRenderTargetFormat::k_2_10_10_10:
@@ -5841,6 +5639,8 @@ MTL::RenderPipelineState* MetalRenderTargetCache::GetOrCreateTransferPipelines(
                 uint32_t(xenos::DepthRenderTargetFormat::kD24S8));
   append_define(source, "XE_FMT_D24FS8",
                 uint32_t(xenos::DepthRenderTargetFormat::kD24FS8));
+  append_define(source, "XE_GAMMA_RT_AS_UNORM16",
+                gamma_render_target_as_unorm16_ ? 1 : 0);
 
   static const char kTransferShaderSource[] = R"METAL(
 #include <metal_stdlib>
@@ -5906,6 +5706,75 @@ inline uint XeRoundToNearestEven(float value) {
 
 inline uint XePackUnorm(float value, float scale) {
   return uint(clamp(value, 0.0f, 1.0f) * scale + 0.5f);
+}
+
+inline float XeSaturateNoNaN(float value) {
+  float clamped = clamp(value, 0.0f, 1.0f);
+  return (clamped == clamped) ? clamped : 0.0f;
+}
+
+inline float XeTruncToFloat(float value) {
+  return trunc(value);
+}
+
+inline float XePWLGammaToLinear(float value) {
+  float clamped = XeSaturateNoNaN(value);
+  float scale;
+  float offset;
+  if (clamped >= (96.0f / 255.0f)) {
+    if (clamped >= (192.0f / 255.0f)) {
+      scale = 8.0f / 1024.0f;
+      offset = -1024.0f;
+    } else {
+      scale = 4.0f / 1024.0f;
+      offset = -256.0f;
+    }
+  } else {
+    if (clamped >= (64.0f / 255.0f)) {
+      scale = 2.0f / 1024.0f;
+      offset = -64.0f;
+    } else {
+      scale = 1.0f / 1024.0f;
+      offset = 0.0f;
+    }
+  }
+  float linear = clamped * (255.0f * 1024.0f) * scale + offset;
+  linear += XeTruncToFloat(linear * scale);
+  return linear * (1.0f / 1023.0f);
+}
+
+inline float XeLinearToPWLGamma(float value) {
+  float clamped = XeSaturateNoNaN(value);
+  float scale;
+  float offset;
+  if (clamped >= (128.0f / 1023.0f)) {
+    if (clamped >= (512.0f / 1023.0f)) {
+      scale = 1023.0f / 8.0f;
+      offset = 128.0f / 255.0f;
+    } else {
+      scale = 1023.0f / 4.0f;
+      offset = 64.0f / 255.0f;
+    }
+  } else {
+    if (clamped >= (64.0f / 1023.0f)) {
+      scale = 1023.0f / 2.0f;
+      offset = 32.0f / 255.0f;
+    } else {
+      scale = 1023.0f;
+      offset = 0.0f;
+    }
+  }
+  return XeTruncToFloat(clamped * scale) * (1.0f / 255.0f) + offset;
+}
+
+inline float3 XePWLGammaToLinear3(float3 v) {
+  return float3(XePWLGammaToLinear(v.r), XePWLGammaToLinear(v.g),
+                XePWLGammaToLinear(v.b));
+}
+
+inline float3 XeLinearToPWLGamma3(float3 v) {
+  return float3(XeLinearToPWLGamma(v.r), XeLinearToPWLGamma(v.g),
+                XeLinearToPWLGamma(v.b));
 }
 
 uint XePreClampedFloat32To7e3(float value) {
@@ -6450,8 +6319,20 @@ fragment TransferColorOut transfer_ps(
     }
   #else
     switch (constants.source_format) {
+      case XE_FMT_8_8_8_8_GAMMA: {
+#if XE_GAMMA_RT_AS_UNORM16
+        float4 gamma_color0 = source_color0;
+        float4 gamma_color1 = source_color1;
+        gamma_color0.rgb = XeLinearToPWLGamma3(gamma_color0.rgb);
+        gamma_color1.rgb = XeLinearToPWLGamma3(gamma_color1.rgb);
+        packed64.x = XePackColorRGBA8(gamma_color0);
+        packed64.y = XePackColorRGBA8(gamma_color1);
+#else
+        packed64.x = XePackColorRGBA8(source_color0);
+        packed64.y = XePackColorRGBA8(source_color1);
+#endif
+      } break;
       case XE_FMT_8_8_8_8:
-      case XE_FMT_8_8_8_8_GAMMA:
         packed64.x = XePackColorRGBA8(source_color0);
         packed64.y = XePackColorRGBA8(source_color1);
         break;
@@ -6559,31 +6440,49 @@ fragment TransferColorOut transfer_ps(
   #else
     switch (constants.source_format) {
       case XE_FMT_8_8_8_8:
-      case XE_FMT_8_8_8_8_GAMMA:
+      case XE_FMT_8_8_8_8_GAMMA: {
+        float4 color = source_color0;
+#if XE_GAMMA_RT_AS_UNORM16
+        if (constants.source_format == XE_FMT_8_8_8_8_GAMMA &&
+            (constants.dest_format == XE_FMT_8_8_8_8 ||
+             constants.dest_format == XE_FMT_8_8_8_8_GAMMA) &&
+            constants.dest_format != constants.source_format) {
+          if (constants.dest_format == XE_FMT_8_8_8_8) {
+            color.rgb = XeLinearToPWLGamma3(color.rgb);
+          } else {
+            color.rgb = XePWLGammaToLinear3(color.rgb);
+          }
+        }
+#endif
 #if !XE_TRANSFER_DEST_IS_UINT
         if (constants.dest_format == XE_FMT_8_8_8_8 ||
             constants.dest_format == XE_FMT_8_8_8_8_GAMMA) {
-          out_color = source_color0;
+          out_color = color;
           wrote_direct = true;
         } else
 #endif
         {
+#if XE_GAMMA_RT_AS_UNORM16
+          if (constants.source_format == XE_FMT_8_8_8_8_GAMMA) {
+            color.rgb = XeLinearToPWLGamma3(color.rgb);
+          }
+#endif
           uint packed_component_offset = 0u;
           if (constants.dest_is_depth != 0u) {
             packed_component_offset = 1u;
           }
-          packed32 = XePackUnorm(
-              source_color0[packed_component_offset], 255.0f);
+          packed32 =
+              XePackUnorm(color[packed_component_offset], 255.0f);
           if (constants.dest_is_depth == 0u) {
-            packed32 |= XePackUnorm(source_color0[packed_component_offset + 1],
+            packed32 |= XePackUnorm(color[packed_component_offset + 1],
                                     255.0f) << 8u;
-            packed32 |= XePackUnorm(source_color0[packed_component_offset + 2],
+            packed32 |= XePackUnorm(color[packed_component_offset + 2],
                                     255.0f) << 16u;
-            packed32 |= XePackUnorm(source_color0[packed_component_offset + 3],
+            packed32 |= XePackUnorm(color[packed_component_offset + 3],
                                     255.0f) << 24u;
           }
         }
-        break;
+      } break;
       case XE_FMT_2_10_10_10:
       case XE_FMT_2_10_10_10_AS_10_10_10_10:
 #if !XE_TRANSFER_DEST_IS_UINT
@@ -6653,8 +6552,7 @@ fragment TransferColorOut transfer_ps(
 
     if (!wrote_direct) {
       switch (constants.dest_format) {
-        case XE_FMT_8_8_8_8:
-        case XE_FMT_8_8_8_8_GAMMA: {
+        case XE_FMT_8_8_8_8: {
 #if XE_TRANSFER_DEST_IS_UINT
           out_color = uint4(packed32, 0u, 0u, 0u);
 #else
@@ -6663,6 +6561,21 @@ fragment TransferColorOut transfer_ps(
               float((packed32 >> 8u) & 0xFFu) * (1.0f / 255.0f),
               float((packed32 >> 16u) & 0xFFu) * (1.0f / 255.0f),
               float((packed32 >> 24u) & 0xFFu) * (1.0f / 255.0f));
+#endif
+        } break;
+        case XE_FMT_8_8_8_8_GAMMA: {
+#if XE_TRANSFER_DEST_IS_UINT
+          out_color = uint4(packed32, 0u, 0u, 0u);
+#else
+          float4 color = float4(
+              float((packed32 >> 0u) & 0xFFu) * (1.0f / 255.0f),
+              float((packed32 >> 8u) & 0xFFu) * (1.0f / 255.0f),
+              float((packed32 >> 16u) & 0xFFu) * (1.0f / 255.0f),
+              float((packed32 >> 24u) & 0xFFu) * (1.0f / 255.0f));
+#if XE_GAMMA_RT_AS_UNORM16
+          color.rgb = XePWLGammaToLinear3(color.rgb);
+#endif
+          out_color = color;
 #endif
         } break;
         case XE_FMT_2_10_10_10:
@@ -7027,6 +6940,12 @@ fragment TransferDepthOut transfer_ps(
   switch (constants.source_format) {
     case XE_FMT_8_8_8_8:
     case XE_FMT_8_8_8_8_GAMMA: {
+      float4 color = source_color0;
+      if (constants.source_format == XE_FMT_8_8_8_8_GAMMA) {
+#if XE_GAMMA_RT_AS_UNORM16 || XE_TRANSFER_OUTPUT_STENCIL_BIT
+        color.rgb = XeLinearToPWLGamma3(color.rgb);
+#endif
+      }
       uint packed_component_offset = 0u;
       if (constants.dest_is_depth != 0u) {
         packed_component_offset = 1u;
@@ -7034,13 +6953,13 @@ fragment TransferDepthOut transfer_ps(
         packed_only_depth = true;
 #endif
       }
-      packed = XePackUnorm(source_color0[packed_component_offset], 255.0f);
+      packed = XePackUnorm(color[packed_component_offset], 255.0f);
       if (constants.dest_is_depth == 0u) {
-        packed |= XePackUnorm(source_color0[packed_component_offset + 1],
+        packed |= XePackUnorm(color[packed_component_offset + 1],
                               255.0f) << 8u;
-        packed |= XePackUnorm(source_color0[packed_component_offset + 2],
+        packed |= XePackUnorm(color[packed_component_offset + 2],
                               255.0f) << 16u;
-        packed |= XePackUnorm(source_color0[packed_component_offset + 3],
+        packed |= XePackUnorm(color[packed_component_offset + 3],
                               255.0f) << 24u;
       }
     } break;
@@ -7585,9 +7504,9 @@ MTL::DepthStencilState* MetalRenderTargetCache::GetTransferDepthStencilState(
   }
   MTL::DepthStencilDescriptor* desc =
       MTL::DepthStencilDescriptor::alloc()->init();
-  desc->setDepthCompareFunction(
-      cvars::depth_transfer_not_equal_test ? MTL::CompareFunctionNotEqual
-                                           : MTL::CompareFunctionAlways);
+  desc->setDepthCompareFunction(::cvars::depth_transfer_not_equal_test
+                                    ? MTL::CompareFunctionNotEqual
+                                    : MTL::CompareFunctionAlways);
   desc->setDepthWriteEnabled(depth_write);
   transfer_depth_state_ = device_->newDepthStencilState(desc);
   desc->release();
