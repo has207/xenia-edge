@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2025 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -88,9 +88,9 @@ bool DxbcToDxilConverter::Initialize() {
   dxilconv_path_ = "linked";
   is_available_ = true;
   if (extra_options && *extra_options) {
-    XELOGI("DxbcToDxilConverter: Using extra options: {}", extra_options);
+    XELOGD("DxbcToDxilConverter: Using extra options: {}", extra_options);
   } else if (extra_options && !*extra_options) {
-    XELOGI("DxbcToDxilConverter: Extra options disabled via env");
+    XELOGD("DxbcToDxilConverter: Extra options disabled via env");
   } else {
     XELOGI(
         "DxbcToDxilConverter: Using default extra options: "

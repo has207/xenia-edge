@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2025 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -16,6 +16,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -37,6 +38,7 @@
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
 #include "xenia/base/xxhash.h"
 #include "xenia/gpu/draw_util.h"
@@ -47,9 +49,11 @@
 #include "xenia/gpu/metal/metal_shader_converter.h"
 #include "xenia/gpu/packet_disassembler.h"
 #include "xenia/gpu/registers.h"
+#include "xenia/gpu/texture_info.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
+#include "xenia/ui/metal/metal_gpu_completion_timeline.h"
 using BYTE = uint8_t;
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_quad_hs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/adaptive_triangle_hs.h"
@@ -63,6 +67,7 @@ using BYTE = uint8_t;
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/discrete_triangle_3cp_hs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/tessellation_adaptive_vs.h"
 #include "xenia/gpu/shaders/bytecode/d3d12_5_1/tessellation_indexed_vs.h"
+#include "xenia/gpu/shaders/bytecode/metal/resolve_downscale_cs.h"
 #include "xenia/ui/metal/metal_presenter.h"
 
 #ifndef DISPATCH_DATA_DESTRUCTOR_NONE
@@ -77,6 +82,7 @@ using BYTE = uint8_t;
 // kIRDescriptorHeapBindPoint = 0
 
 DECLARE_bool(clear_memory_page_state);
+DECLARE_bool(submit_on_primary_buffer_end);
 // kIRSamplerHeapBindPoint = 1
 // kIRArgumentBufferBindPoint = 2
 // kIRArgumentBufferDrawArgumentsBindPoint = 4
@@ -114,6 +120,47 @@ void LogMetalErrorDetails(const char* label, NS::Error* error) {
     XELOGE("{}: userInfo={}", label,
            info_desc ? info_desc->utf8String() : "<null>");
   }
+}
+
+MTL::ComputePipelineState* CreateComputePipelineFromEmbeddedLibrary(
+    MTL::Device* device, const void* metallib_data, size_t metallib_size,
+    const char* debug_name) {
+  if (!device || !metallib_data || !metallib_size) {
+    return nullptr;
+  }
+
+  NS::Error* error = nullptr;
+  dispatch_data_t data = dispatch_data_create(
+      metallib_data, metallib_size, nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+  MTL::Library* lib = device->newLibrary(data, &error);
+  dispatch_release(data);
+  if (!lib) {
+    XELOGE("Metal: failed to create {} library: {}", debug_name,
+           error ? error->localizedDescription()->utf8String() : "unknown");
+    return nullptr;
+  }
+
+  // XeSL compute entrypoint name used in the embedded metallibs.
+  NS::String* fn_name = NS::String::string("entry_xe", NS::UTF8StringEncoding);
+  MTL::Function* fn = lib->newFunction(fn_name);
+  if (!fn) {
+    XELOGE("Metal: {} missing entry_xe", debug_name);
+    lib->release();
+    return nullptr;
+  }
+
+  MTL::ComputePipelineState* pipeline =
+      device->newComputePipelineState(fn, &error);
+  fn->release();
+  lib->release();
+
+  if (!pipeline) {
+    XELOGE("Metal: failed to create {} pipeline: {}", debug_name,
+           error ? error->localizedDescription()->utf8String() : "unknown");
+    return nullptr;
+  }
+
+  return pipeline;
 }
 
 constexpr uint32_t kPipelineDiskCacheMagic = 0x43504D58;  // 'XMPC'
@@ -273,6 +320,61 @@ MTL::BlendFactor ToMetalBlendFactorAlpha(xenos::BlendFactor blend_factor) {
   return kBlendFactorAlphaMap[uint32_t(blend_factor) & 0x1F];
 }
 
+void DownscaleResolveTileData(const uint8_t* source, uint8_t* dest,
+                              uint32_t tile_count, uint32_t pixel_size_log2,
+                              uint32_t scale_x, uint32_t scale_y,
+                              bool half_pixel_offset) {
+  if (!source || !dest || tile_count == 0) {
+    return;
+  }
+  const uint32_t pixel_size = 1u << pixel_size_log2;
+  const uint32_t scale_xy = scale_x * scale_y;
+  const uint32_t tile_size_1x = 32u * 32u * pixel_size;
+  const uint32_t tile_size_scaled = tile_size_1x * scale_xy;
+  const uint32_t block_sample_offset =
+      (half_pixel_offset && scale_xy > 1u)
+          ? ((scale_x >> 1u) + (scale_y >> 1u) * scale_x)
+          : 0u;
+  const uint32_t block_sample_offset_bytes = block_sample_offset * pixel_size;
+  const uint32_t src_pixel_stride = pixel_size * scale_xy;
+
+  for (uint32_t tile_index = 0; tile_index < tile_count; ++tile_index) {
+    const uint8_t* src_tile =
+        source + tile_index * tile_size_scaled + block_sample_offset_bytes;
+    uint8_t* dst_tile = dest + tile_index * tile_size_1x;
+    for (uint32_t pixel_index = 0; pixel_index < 32u * 32u; ++pixel_index) {
+      const uint32_t src_offset = pixel_index * src_pixel_stride;
+      const uint32_t dst_offset = pixel_index * pixel_size;
+      switch (pixel_size_log2) {
+        case 0: {
+          dst_tile[dst_offset] = src_tile[src_offset];
+          break;
+        }
+        case 1: {
+          uint16_t value;
+          std::memcpy(&value, src_tile + src_offset, sizeof(value));
+          std::memcpy(dst_tile + dst_offset, &value, sizeof(value));
+          break;
+        }
+        case 2: {
+          uint32_t value;
+          std::memcpy(&value, src_tile + src_offset, sizeof(value));
+          std::memcpy(dst_tile + dst_offset, &value, sizeof(value));
+          break;
+        }
+        case 3: {
+          uint64_t value;
+          std::memcpy(&value, src_tile + src_offset, sizeof(value));
+          std::memcpy(dst_tile + dst_offset, &value, sizeof(value));
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 MetalCommandProcessor::MetalCommandProcessor(
@@ -401,6 +503,115 @@ MetalCommandProcessor::DrawRingBuffers::~DrawRingBuffers() {
   }
 }
 
+void MetalCommandProcessor::UpdateDebugMarkersEnabled() {
+  // Enable debug markers if the CVAR is set (RenderDoc auto-detect disabled on
+  // macOS).
+  debug_markers_enabled_ = IsGpuDebugMarkersEnabled();
+}
+
+void MetalCommandProcessor::PushDebugMarker(const char* format, ...) {
+  if (!debug_markers_enabled_) {
+    return;
+  }
+  char label[256];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(label, sizeof(label), format, args);
+  va_end(args);
+  auto* ns_label = NS::String::string(label, NS::UTF8StringEncoding);
+  if (current_render_encoder_) {
+    current_render_encoder_->pushDebugGroup(ns_label);
+    debug_marker_stack_.push_back(DebugMarkerTarget::kRenderEncoder);
+  } else if (current_command_buffer_) {
+    current_command_buffer_->pushDebugGroup(ns_label);
+    debug_marker_stack_.push_back(DebugMarkerTarget::kCommandBuffer);
+  }
+}
+
+void MetalCommandProcessor::PopDebugMarker() {
+  if (!debug_markers_enabled_ || debug_marker_stack_.empty()) {
+    return;
+  }
+  DebugMarkerTarget target = debug_marker_stack_.back();
+  debug_marker_stack_.pop_back();
+  if (target == DebugMarkerTarget::kRenderEncoder) {
+    if (current_render_encoder_) {
+      current_render_encoder_->popDebugGroup();
+    }
+  } else {
+    if (current_command_buffer_) {
+      current_command_buffer_->popDebugGroup();
+    }
+  }
+}
+
+void MetalCommandProcessor::InsertDebugMarker(const char* format, ...) {
+  if (!debug_markers_enabled_) {
+    return;
+  }
+  char label[256];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(label, sizeof(label), format, args);
+  va_end(args);
+  auto* ns_label = NS::String::string(label, NS::UTF8StringEncoding);
+  if (current_render_encoder_) {
+    current_render_encoder_->insertDebugSignpost(ns_label);
+  } else if (current_command_buffer_) {
+    current_command_buffer_->pushDebugGroup(ns_label);
+    current_command_buffer_->popDebugGroup();
+  }
+}
+
+void MetalCommandProcessor::RequestCapture() {
+  capture_requested_.store(true, std::memory_order_release);
+}
+
+void MetalCommandProcessor::MaybeStartCapture() {
+  if (!capture_requested_.exchange(false, std::memory_order_acq_rel)) {
+    return;
+  }
+  if (!command_queue_) {
+    XELOGW("Metal capture requested but command queue is not ready");
+    return;
+  }
+  capture_manager_ = MTL::CaptureManager::sharedCaptureManager();
+  if (!capture_manager_) {
+    XELOGW("Metal capture manager not available");
+    return;
+  }
+  auto* descriptor = MTL::CaptureDescriptor::alloc()->init();
+  descriptor->setCaptureObject(command_queue_);
+  descriptor->setDestination(MTL::CaptureDestinationGPUTraceDocument);
+
+  const char* capture_dir = std::getenv("XENIA_GPU_CAPTURE_DIR");
+  std::string filename =
+      capture_dir ? (std::string(capture_dir) + "/metal_capture.gputrace")
+                  : std::string("./metal_capture.gputrace");
+  auto* url = NS::URL::fileURLWithPath(
+      NS::String::string(filename.c_str(), NS::UTF8StringEncoding));
+  descriptor->setOutputURL(url);
+
+  NS::Error* error = nullptr;
+  if (capture_manager_->startCapture(descriptor, &error)) {
+    capture_active_ = true;
+    XELOGI("Metal capture started: {}", filename);
+  } else {
+    XELOGE("Metal capture start failed: {} (set MTL_CAPTURE_ENABLED=1)",
+           error ? error->localizedDescription()->utf8String() : "unknown");
+  }
+  descriptor->release();
+}
+
+void MetalCommandProcessor::StopCaptureIfActive() {
+  if (!capture_active_ || !capture_manager_) {
+    return;
+  }
+  capture_manager_->stopCapture();
+  capture_active_ = false;
+  XELOGI("Metal capture completed");
+}
+
 void MetalCommandProcessor::TracePlaybackWroteMemory(uint32_t base_ptr,
                                                      uint32_t length) {
   if (shared_memory_) {
@@ -445,12 +656,56 @@ void MetalCommandProcessor::InvalidateGpuMemory() {
 }
 
 void MetalCommandProcessor::ClearReadbackBuffers() {
-  // TODO(wmarti): Implement readback buffer clearing when memexport readback
-  // is added. See D3D12's readback_buffers_ and memexport_readback_buffers_.
+  for (auto& entry : readback_buffers_) {
+    ReadbackBuffer& rb = entry.second;
+    for (size_t i = 0; i < 2; ++i) {
+      if (rb.buffers[i]) {
+        rb.buffers[i]->release();
+        rb.buffers[i] = nullptr;
+      }
+      rb.sizes[i] = 0;
+      rb.submission_ids[i] = 0;
+    }
+    rb.current_index = 0;
+    rb.last_used_frame = 0;
+  }
+  readback_buffers_.clear();
+}
+
+void MetalCommandProcessor::EvictOldReadbackBuffers(
+    std::unordered_map<uint64_t, ReadbackBuffer>& buffer_map) {
+  if (frame_current_ <= kReadbackBufferEvictionAgeFrames) {
+    return;
+  }
+
+  for (auto it = buffer_map.begin(); it != buffer_map.end();) {
+    if (it->second.last_used_frame <
+        frame_current_ - kReadbackBufferEvictionAgeFrames) {
+      for (int i = 0; i < 2; ++i) {
+        if (it->second.buffers[i]) {
+          it->second.buffers[i]->release();
+        }
+      }
+      it = buffer_map.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 ui::metal::MetalProvider& MetalCommandProcessor::GetMetalProvider() const {
   return *static_cast<ui::metal::MetalProvider*>(graphics_system_->provider());
+}
+
+uint64_t MetalCommandProcessor::GetCurrentSubmission() const {
+  return completion_timeline_ ? completion_timeline_->GetUpcomingSubmission()
+                              : 1;
+}
+
+uint64_t MetalCommandProcessor::GetCompletedSubmission() const {
+  return completion_timeline_
+             ? completion_timeline_->GetCompletedSubmissionFromLastUpdate()
+             : 0;
 }
 
 void MetalCommandProcessor::MarkResolvedMemory(uint32_t base_ptr,
@@ -522,6 +777,12 @@ bool MetalCommandProcessor::SetupContext() {
     return false;
   }
 
+  // Check if debug markers should be enabled (CVAR).
+  UpdateDebugMarkersEnabled();
+  if (debug_markers_enabled_) {
+    XELOGI("GPU debug markers enabled for Metal debug tools");
+  }
+
   const ui::metal::MetalProvider& provider = GetMetalProvider();
   device_ = provider.GetDevice();
   command_queue_ = provider.GetCommandQueue();
@@ -541,6 +802,18 @@ bool MetalCommandProcessor::SetupContext() {
         "MetalCommandProcessor: SharedEvent unavailable; falling back to "
         "waitUntilCompleted");
   }
+
+  completion_timeline_ = ui::metal::MetalGPUCompletionTimeline::Create(device_);
+  if (!completion_timeline_) {
+    XELOGE("MetalCommandProcessor: Failed to create completion timeline");
+    return false;
+  }
+  submission_open_ = false;
+  submission_completed_processed_ = 0;
+  frame_open_ = false;
+  frame_current_ = 1;
+  frame_completed_ = 0;
+  std::fill_n(closed_frame_submissions_, kQueueFrames, 0);
 
   bool supports_apple7 = device_->supportsFamily(MTL::GPUFamilyApple7);
   bool supports_mac2 = device_->supportsFamily(MTL::GPUFamilyMac2);
@@ -563,8 +836,26 @@ bool MetalCommandProcessor::SetupContext() {
     return false;
   }
 
-  texture_cache_ = std::make_unique<MetalTextureCache>(this, *register_file_,
-                                                       *shared_memory_, 1, 1);
+  // Get the draw resolution scale for the render target cache and the texture
+  // cache (match D3D12/Vulkan behavior).
+  uint32_t draw_resolution_scale_x = 1;
+  uint32_t draw_resolution_scale_y = 1;
+  bool draw_resolution_scale_not_clamped =
+      TextureCache::GetConfigDrawResolutionScale(draw_resolution_scale_x,
+                                                 draw_resolution_scale_y);
+  if (!draw_resolution_scale_not_clamped) {
+    XELOGW(
+        "The requested draw resolution scale is not supported by the emulator "
+        "or config, reducing to {}x{}",
+        draw_resolution_scale_x, draw_resolution_scale_y);
+  }
+  XELOGI("Metal: draw resolution scale {}x{} (supported={})",
+         draw_resolution_scale_x, draw_resolution_scale_y,
+         draw_resolution_scale_not_clamped);
+
+  texture_cache_ = std::make_unique<MetalTextureCache>(
+      this, *register_file_, *shared_memory_, draw_resolution_scale_x,
+      draw_resolution_scale_y);
   if (!texture_cache_->Initialize()) {
     XELOGE("Failed to initialize Metal texture cache");
     return false;
@@ -572,10 +863,18 @@ bool MetalCommandProcessor::SetupContext() {
 
   // Initialize render target cache
   render_target_cache_ = std::make_unique<MetalRenderTargetCache>(
-      *register_file_, *memory_, &trace_writer_, 1, 1, *this);
+      *register_file_, *memory_, &trace_writer_, draw_resolution_scale_x,
+      draw_resolution_scale_y, *this);
   if (!render_target_cache_->Initialize()) {
     XELOGE("Failed to initialize Metal render target cache");
     return false;
+  }
+
+  resolve_downscale_pipeline_ = CreateComputePipelineFromEmbeddedLibrary(
+      device_, resolve_downscale_cs_metallib,
+      sizeof(resolve_downscale_cs_metallib), "resolve_downscale");
+  if (!resolve_downscale_pipeline_) {
+    XELOGW("MetalCommandProcessor: resolve downscale pipeline unavailable");
   }
 
   // Initialize shader translation pipeline
@@ -814,31 +1113,21 @@ void MetalCommandProcessor::PrepareForWait() {
   // By submitting and waiting for all GPU work now, we ensure clean pool
   // drainage.
 
-  if (current_render_encoder_) {
-    current_render_encoder_->endEncoding();
-    current_render_encoder_->release();
-    current_render_encoder_ = nullptr;
-  }
+  EndRenderEncoder();
 
-  if (current_command_buffer_) {
-    uint64_t wait_value = 0;
-    if (wait_shared_event_) {
-      wait_value = ++wait_shared_event_value_;
-      current_command_buffer_->encodeSignalEvent(wait_shared_event_,
-                                                 wait_value);
+  if (submission_open_ || current_command_buffer_) {
+    uint64_t submission_to_wait =
+        current_command_buffer_ ? GetCurrentSubmission() : 0;
+    if (!submission_open_) {
+      XELOGW(
+          "MetalCommandProcessor::PrepareForWait: command buffer without "
+          "open submission");
+      submission_open_ = true;
     }
-    ScheduleDrawRingRelease(current_command_buffer_);
-    current_command_buffer_->commit();
-    if (wait_shared_event_) {
-      wait_shared_event_->waitUntilSignaledValue(
-          wait_value, std::numeric_limits<uint64_t>::max());
-    } else {
-      current_command_buffer_->waitUntilCompleted();
+    EndSubmission(false);
+    if (submission_to_wait) {
+      CheckSubmissionCompletion(submission_to_wait);
     }
-    current_command_buffer_->release();
-    current_command_buffer_ = nullptr;
-    SetActiveDrawRing(nullptr);
-    current_draw_index_ = 0;
   }
   DrainCommandBufferAutoreleasePool();
 
@@ -875,32 +1164,21 @@ void MetalCommandProcessor::PrepareForWait() {
 }
 
 void MetalCommandProcessor::ShutdownContext() {
-  // End any active render encoder before shutdown
-  if (current_render_encoder_) {
-    current_render_encoder_->endEncoding();
-    // Don't release yet - wait until command buffer completes
-  }
+  EndRenderEncoder();
 
-  // Submit and wait for any pending command buffer
-  if (current_command_buffer_) {
-    uint64_t wait_value = 0;
-    if (wait_shared_event_) {
-      wait_value = ++wait_shared_event_value_;
-      current_command_buffer_->encodeSignalEvent(wait_shared_event_,
-                                                 wait_value);
+  if (submission_open_ || current_command_buffer_) {
+    uint64_t submission_to_wait =
+        current_command_buffer_ ? GetCurrentSubmission() : 0;
+    if (!submission_open_) {
+      XELOGW(
+          "MetalCommandProcessor::ShutdownContext: command buffer without "
+          "open submission");
+      submission_open_ = true;
     }
-    ScheduleDrawRingRelease(current_command_buffer_);
-    current_command_buffer_->commit();
-    if (wait_shared_event_) {
-      wait_shared_event_->waitUntilSignaledValue(
-          wait_value, std::numeric_limits<uint64_t>::max());
-    } else {
-      current_command_buffer_->waitUntilCompleted();
+    EndSubmission(false);
+    if (submission_to_wait) {
+      CheckSubmissionCompletion(submission_to_wait);
     }
-    current_command_buffer_->release();
-    current_command_buffer_ = nullptr;
-    SetActiveDrawRing(nullptr);
-    current_draw_index_ = 0;
   }
 
   // Even if we have no active command buffer at this point, there may be
@@ -938,6 +1216,17 @@ void MetalCommandProcessor::ShutdownContext() {
   }
   DrainCommandBufferAutoreleasePool();
 
+  ClearReadbackBuffers();
+  if (resolve_downscale_buffer_) {
+    resolve_downscale_buffer_->release();
+    resolve_downscale_buffer_ = nullptr;
+    resolve_downscale_buffer_size_ = 0;
+  }
+  if (resolve_downscale_pipeline_) {
+    resolve_downscale_pipeline_->release();
+    resolve_downscale_pipeline_ = nullptr;
+  }
+
   {
     std::lock_guard<std::mutex> lock(draw_ring_mutex_);
     active_draw_ring_.reset();
@@ -964,6 +1253,12 @@ void MetalCommandProcessor::ShutdownContext() {
   }
   depth_only_pixel_function_name_.clear();
   frame_open_ = false;
+  frame_current_ = 1;
+  frame_completed_ = 0;
+  std::fill_n(closed_frame_submissions_, kQueueFrames, 0);
+  submission_open_ = false;
+  submission_completed_processed_ = 0;
+  completion_timeline_.reset();
 
   shader_cache_.clear();
   shared_memory_.reset();
@@ -1447,27 +1742,7 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
   last_swap_ptr_ = frontbuffer_ptr;
   last_swap_width_ = frontbuffer_width;
   last_swap_height_ = frontbuffer_height;
-
-  // End any active render encoder
-  EndRenderEncoder();
-
-  // Submit and wait for command buffer
-  if (current_command_buffer_) {
-    ScheduleDrawRingRelease(current_command_buffer_);
-    current_command_buffer_->commit();
-    current_command_buffer_->release();
-    current_command_buffer_ = nullptr;
-    SetActiveDrawRing(nullptr);
-    current_draw_index_ = 0;
-  }
-
-  if (primitive_processor_ && frame_open_) {
-    primitive_processor_->EndFrame();
-    frame_open_ = false;
-  }
-  if (shared_memory_ && ::cvars::clear_memory_page_state) {
-    shared_memory_->SetSystemPageBlocksValidWithGpuDataWritten();
-  }
+  EndSubmission(true);
 
   // Push the rendered frame to the presenter's guest output mailbox
   // This is required for trace dumps to capture the output. Use the
@@ -1566,8 +1841,9 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
       uint32_t source_height = output_height;
       bool force_swap_rb_copy = force_swap_rb;
       bool use_pwl_gamma_ramp_copy = use_pwl_gamma_ramp;
+      auto aspect = graphics_system_->GetScaledAspectRatio();
       presenter->RefreshGuestOutput(
-          output_width, output_height, 1280, 720,  // Display aspect ratio
+          output_width, output_height, aspect.first, aspect.second,
           [source_texture, metal_presenter, source_width, source_height,
            force_swap_rb_copy, use_pwl_gamma_ramp_copy](
               ui::Presenter::GuestOutputRefreshContext& context) -> bool {
@@ -1575,12 +1851,26 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
                 static_cast<ui::metal::MetalGuestOutputRefreshContext&>(
                     context);
             context.SetIs8bpc(!use_pwl_gamma_ramp_copy);
-            return metal_presenter->CopyTextureToGuestOutput(
+            uint64_t submission_id = 0;
+            bool copy_ok = metal_presenter->CopyTextureToGuestOutput(
                 source_texture, metal_context.resource_uav_capable(),
                 source_width, source_height, force_swap_rb_copy,
-                use_pwl_gamma_ramp_copy);
+                use_pwl_gamma_ramp_copy, &submission_id);
+            if (submission_id) {
+              metal_context.SetSubmissionId(submission_id);
+            }
+            return copy_ok;
           });
     }
+  }
+
+  StopCaptureIfActive();
+}
+
+void MetalCommandProcessor::OnPrimaryBufferEnd() {
+  if (cvars::submit_on_primary_buffer_end && submission_open_ &&
+      CanEndSubmissionImmediately()) {
+    EndSubmission(false);
   }
 }
 
@@ -1618,6 +1908,10 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
                                       bool major_mode_explicit) {
   const RegisterFile& regs = *register_file_;
   uint32_t normalized_color_mask = 0;
+
+  if (!BeginSubmission(true)) {
+    return false;
+  }
 
   // Check for copy mode
   xenos::EdramMode edram_mode = regs.Get<reg::RB_MODECONTROL>().edram_mode;
@@ -2889,6 +3183,10 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
 }
 
 bool MetalCommandProcessor::IssueCopy() {
+  if (!BeginSubmission(true)) {
+    return false;
+  }
+
   // Finish any in-flight rendering so the render target contents are
   // available to the render target cache, similar to D3D12's
   // D3D12CommandProcessor::IssueCopy.
@@ -2899,18 +3197,10 @@ bool MetalCommandProcessor::IssueCopy() {
   }
 
   if (!current_command_buffer_) {
-    if (!command_queue_) {
-      XELOGE("MetalCommandProcessor::IssueCopy: no command queue");
+    if (!EnsureCommandBuffer()) {
+      XELOGE("MetalCommandProcessor::IssueCopy: no command buffer");
       return false;
     }
-    // Note: commandBuffer() returns an autoreleased object, we must retain it.
-    current_command_buffer_ = command_queue_->commandBuffer();
-    if (!current_command_buffer_) {
-      XELOGE(
-          "MetalCommandProcessor::IssueCopy: failed to create command buffer");
-      return false;
-    }
-    current_command_buffer_->retain();
     current_command_buffer_->setLabel(
         NS::String::string("XeniaCopyCommandBuffer", NS::UTF8StringEncoding));
   }
@@ -2929,14 +3219,57 @@ bool MetalCommandProcessor::IssueCopy() {
     return false;
   }
 
+  ReadbackResolveMode readback_mode = GetReadbackResolveMode();
+  bool do_readback = (readback_mode != ReadbackResolveMode::kDisabled);
+  bool readback_scaled = false;
+  bool readback_scaled_gpu = false;
+  bool use_gpu_downscale = false;
+  bool readback_scheduled = false;
+  ReadbackBuffer* readback_buffer = nullptr;
+  uint32_t write_index = 0;
+  uint32_t read_index = 0;
+  bool use_delayed_sync = false;
+  bool wait_for_completion = false;
+  bool should_copy = false;
+  bool is_cache_miss = false;
+  uint32_t source_length = 0;
+  uint32_t readback_length = 0;
+  uint32_t tile_count = 0;
+  uint32_t pixel_size_log2 = 0;
+  uint32_t scale_x = 1;
+  uint32_t scale_y = 1;
+  bool half_pixel_offset = false;
+  uint32_t source_offset_bytes = 0;
+  uint64_t scaled_range_offset_bytes = 0;
+  uint64_t readback_base_offset_bytes = 0;
+  uint64_t scaled_copy_length = 0;
+  size_t source_buffer_binding_offset = 0;
+  uint64_t source_offset_bytes_log = 0;
+
+  if (do_readback) {
+    // Early check: if destination memory is not accessible, skip readback.
+    VirtualHeap* physical_heap = memory_->GetPhysicalHeap();
+    bool memory_accessible = false;
+    if (physical_heap) {
+      HeapAllocationInfo alloc_info;
+      if (physical_heap->QueryRegionInfo(written_address, &alloc_info) &&
+          (alloc_info.state & kMemoryAllocationCommit) &&
+          (alloc_info.protect & kMemoryProtectWrite)) {
+        uint32_t end_address = written_address + written_length;
+        uint32_t region_end = alloc_info.base_address + alloc_info.region_size;
+        if (end_address <= region_end) {
+          memory_accessible = true;
+        }
+      }
+    }
+    if (!memory_accessible) {
+      do_readback = false;
+    }
+  }
+
   if (!written_length) {
     // Commit any in-flight work so ordering matches D3D12 submission behavior.
-    ScheduleDrawRingRelease(current_command_buffer_);
-    current_command_buffer_->commit();
-    current_command_buffer_->release();
-    current_command_buffer_ = nullptr;
-    SetActiveDrawRing(nullptr);
-    current_draw_index_ = 0;
+    EndSubmission(false);
     return true;
   }
 
@@ -2944,27 +3277,320 @@ bool MetalCommandProcessor::IssueCopy() {
   // with stale MemoryRead commands from the trace file.
   MarkResolvedMemory(written_address, written_length);
 
-  // The resolve writes into guest memory via the shared memory buffer.
-  // Any cached views of this memory (especially textures sourced from it)
-  // must be invalidated, otherwise subsequent render-to-texture / postprocess
-  // passes will sample stale host textures and produce corrupted output.
-  //   if (shared_memory_) {
-  //     shared_memory_->MemoryInvalidationCallback(written_address,
-  //     written_length, true);
-  //   }
-  //   if (primitive_processor_) {
-  //     primitive_processor_->MemoryInvalidationCallback(written_address,
-  //     written_length, true);
-  //   }
+  if (do_readback) {
+    MTL::Buffer* source_buffer = nullptr;
+    size_t source_offset = 0;
+    size_t source_length_size_t = 0;
+
+    if (texture_cache_ && texture_cache_->IsDrawResolutionScaled()) {
+      readback_scaled = true;
+      auto* metal_texture_cache =
+          static_cast<MetalTextureCache*>(texture_cache_.get());
+      if (!metal_texture_cache ||
+          !metal_texture_cache->GetCurrentScaledResolveBuffer(
+              source_buffer, source_offset, source_length_size_t)) {
+        XELOGE("MetalResolveReadback: failed to get scaled resolve buffer");
+        do_readback = false;
+      } else {
+        scale_x = texture_cache_->draw_resolution_scale_x();
+        scale_y = texture_cache_->draw_resolution_scale_y();
+        uint64_t scale_area = uint64_t(scale_x) * uint64_t(scale_y);
+        uint64_t range_start_scaled =
+            metal_texture_cache->GetCurrentScaledResolveRangeStartScaled();
+        if (scale_area && (range_start_scaled % scale_area) == 0) {
+          uint64_t range_start_unscaled = range_start_scaled / scale_area;
+          if (written_address >= range_start_unscaled) {
+            scaled_range_offset_bytes =
+                (uint64_t(written_address) - range_start_unscaled) * scale_area;
+          }
+        }
+        if (scaled_range_offset_bytes > source_length_size_t) {
+          XELOGE("MetalResolveReadback: scaled range offset out of bounds");
+          do_readback = false;
+        } else {
+          readback_base_offset_bytes = scaled_range_offset_bytes;
+        }
+      }
+    } else {
+      source_buffer = shared_memory_ ? shared_memory_->GetBuffer() : nullptr;
+      source_offset = written_address;
+      source_length_size_t = written_length;
+      source_offset_bytes_log = source_offset;
+    }
+
+    if (do_readback) {
+      if (!source_buffer || source_length_size_t == 0) {
+        do_readback = false;
+      } else if (source_length_size_t > std::numeric_limits<uint32_t>::max()) {
+        XELOGE("MetalResolveReadback: source length too large ({})",
+               source_length_size_t);
+        do_readback = false;
+      } else if (source_offset + source_length_size_t >
+                 size_t(source_buffer->length())) {
+        XELOGE("MetalResolveReadback: source range out of bounds");
+        do_readback = false;
+      }
+    }
+
+    if (do_readback) {
+      source_length = uint32_t(source_length_size_t);
+      uint64_t scaled_available_bytes = source_length_size_t;
+      if (readback_scaled) {
+        if (scaled_range_offset_bytes >= source_length_size_t) {
+          XELOGE("MetalResolveReadback: scaled range offset exceeds length");
+          do_readback = false;
+        } else {
+          scaled_available_bytes =
+              source_length_size_t - scaled_range_offset_bytes;
+        }
+      }
+      uint64_t resolve_key =
+          MakeReadbackResolveKey(written_address, written_length);
+      ReadbackBuffer& rb = readback_buffers_[resolve_key];
+      rb.last_used_frame = frame_current_;
+      readback_buffer = &rb;
+      write_index = rb.current_index;
+      use_delayed_sync = (readback_mode == ReadbackResolveMode::kFast ||
+                          readback_mode == ReadbackResolveMode::kSome);
+      read_index = use_delayed_sync ? (1u - write_index) : write_index;
+
+      readback_length = source_length;
+      if (readback_scaled) {
+        auto copy_dest_info = register_file_->Get<reg::RB_COPY_DEST_INFO>();
+        const FormatInfo* format_info =
+            FormatInfo::Get(uint32_t(copy_dest_info.copy_dest_format));
+        uint32_t bits_per_pixel = format_info->bits_per_pixel;
+        xe::bit_scan_forward(bits_per_pixel >> 3, &pixel_size_log2);
+        uint32_t bytes_per_pixel = 1u << pixel_size_log2;
+        uint32_t tile_size_1x = 32u * 32u * bytes_per_pixel;
+        tile_count = written_length / tile_size_1x;
+        half_pixel_offset = cvars::readback_resolve_half_pixel_offset &&
+                            (scale_x > 1 || scale_y > 1);
+        uint64_t tile_size_scaled =
+            uint64_t(tile_size_1x) * uint64_t(scale_x) * uint64_t(scale_y);
+        uint64_t required_scaled = uint64_t(tile_count) * tile_size_scaled;
+        if (required_scaled > scaled_available_bytes) {
+          tile_count = uint32_t(scaled_available_bytes / tile_size_scaled);
+          required_scaled = uint64_t(tile_count) * tile_size_scaled;
+        }
+        if (tile_count == 0) {
+          do_readback = false;
+        }
+
+        uint64_t source_offset_bytes_64 =
+            uint64_t(source_offset) + scaled_range_offset_bytes;
+        source_offset_bytes_log = source_offset_bytes_64;
+        if (do_readback && tile_count != 0 && resolve_downscale_pipeline_) {
+          uint32_t downscale_buffer_size =
+              AlignReadbackBufferSize(written_length);
+          if (downscale_buffer_size > resolve_downscale_buffer_size_) {
+            if (resolve_downscale_buffer_) {
+              resolve_downscale_buffer_->release();
+              resolve_downscale_buffer_ = nullptr;
+              resolve_downscale_buffer_size_ = 0;
+            }
+            if (device_) {
+              resolve_downscale_buffer_ = device_->newBuffer(
+                  downscale_buffer_size, MTL::ResourceStorageModePrivate);
+              if (resolve_downscale_buffer_) {
+                resolve_downscale_buffer_size_ = downscale_buffer_size;
+              }
+            }
+          }
+          if (resolve_downscale_buffer_) {
+            use_gpu_downscale = true;
+            readback_length = written_length;
+            source_buffer_binding_offset =
+                size_t(source_offset_bytes_64 & ~uint64_t(3));
+            source_offset_bytes =
+                uint32_t(source_offset_bytes_64 -
+                         uint64_t(source_buffer_binding_offset));
+          }
+        }
+        if (do_readback && !use_gpu_downscale) {
+          scaled_copy_length = required_scaled;
+          if (scaled_copy_length > std::numeric_limits<uint32_t>::max()) {
+            XELOGE("MetalResolveReadback: scaled copy length too large ({})",
+                   scaled_copy_length);
+            do_readback = false;
+          } else {
+            readback_length = uint32_t(scaled_copy_length);
+            source_offset = size_t(source_offset_bytes_64);
+            readback_base_offset_bytes = 0;
+          }
+        }
+      }
+
+      uint32_t aligned_size = AlignReadbackBufferSize(readback_length);
+      if (aligned_size > rb.sizes[write_index]) {
+        if (!device_) {
+          XELOGE("MetalResolveReadback: missing Metal device");
+          do_readback = false;
+        }
+      }
+      if (do_readback && aligned_size > rb.sizes[write_index]) {
+        if (rb.buffers[write_index]) {
+          rb.buffers[write_index]->release();
+          rb.buffers[write_index] = nullptr;
+        }
+        rb.buffers[write_index] =
+            device_->newBuffer(aligned_size, MTL::ResourceStorageModeShared);
+        rb.sizes[write_index] = aligned_size;
+        rb.submission_ids[write_index] = 0;
+      }
+      if (do_readback && !rb.buffers[write_index]) {
+        XELOGE("MetalResolveReadback: failed to allocate readback buffer");
+        do_readback = false;
+      } else if (do_readback) {
+        if (readback_scaled && use_gpu_downscale) {
+          MTL::ComputeCommandEncoder* compute =
+              current_command_buffer_->computeCommandEncoder();
+          if (!compute) {
+            XELOGE("MetalResolveReadback: failed to create compute encoder");
+            do_readback = false;
+          } else {
+            struct ResolveDownscaleConstants {
+              uint32_t scale_x;
+              uint32_t scale_y;
+              uint32_t pixel_size_log2;
+              uint32_t tile_count;
+              uint32_t source_offset_bytes;
+              uint32_t half_pixel_offset;
+            } constants;
+            constants.scale_x = scale_x;
+            constants.scale_y = scale_y;
+            constants.pixel_size_log2 = pixel_size_log2;
+            constants.tile_count = tile_count;
+            constants.source_offset_bytes = source_offset_bytes;
+            constants.half_pixel_offset = half_pixel_offset ? 1u : 0u;
+
+            compute->setComputePipelineState(resolve_downscale_pipeline_);
+            compute->setBytes(&constants, sizeof(constants), 0);
+            compute->setBuffer(source_buffer, source_buffer_binding_offset, 1);
+            compute->setBuffer(resolve_downscale_buffer_, 0, 2);
+            compute->useResource(source_buffer, MTL::ResourceUsageRead);
+            compute->useResource(resolve_downscale_buffer_,
+                                 MTL::ResourceUsageWrite);
+            compute->dispatchThreadgroups(MTL::Size::Make(tile_count, 1, 1),
+                                          MTL::Size::Make(32, 32, 1));
+            compute->endEncoding();
+
+            MTL::BlitCommandEncoder* blit =
+                current_command_buffer_->blitCommandEncoder();
+            if (!blit) {
+              XELOGE("MetalResolveReadback: failed to create blit encoder");
+              do_readback = false;
+            } else {
+              blit->copyFromBuffer(resolve_downscale_buffer_, 0,
+                                   rb.buffers[write_index], 0, readback_length);
+              blit->endEncoding();
+              rb.submission_ids[write_index] = GetCurrentSubmission();
+              readback_scheduled = true;
+              readback_scaled_gpu = true;
+            }
+          }
+        } else {
+          MTL::BlitCommandEncoder* blit =
+              current_command_buffer_->blitCommandEncoder();
+          if (!blit) {
+            XELOGE("MetalResolveReadback: failed to create blit encoder");
+            do_readback = false;
+          } else {
+            blit->copyFromBuffer(source_buffer, source_offset,
+                                 rb.buffers[write_index], 0, readback_length);
+            blit->endEncoding();
+            rb.submission_ids[write_index] = GetCurrentSubmission();
+            readback_scheduled = true;
+          }
+        }
+      }
+
+      ProcessCompletedSubmissions();
+      if (readback_scheduled && use_delayed_sync) {
+        if (rb.buffers[read_index] == nullptr ||
+            readback_length > rb.sizes[read_index] ||
+            rb.submission_ids[read_index] == 0 ||
+            rb.submission_ids[read_index] > submission_completed_processed_) {
+          is_cache_miss = true;
+          read_index = write_index;
+        }
+      }
+
+      wait_for_completion = !use_delayed_sync || is_cache_miss;
+      should_copy =
+          (readback_mode == ReadbackResolveMode::kSome) ? is_cache_miss : true;
+      if (readback_scaled && tile_count == 0) {
+        should_copy = false;
+        wait_for_completion = false;
+      }
+    }
+  }
 
   // Submit the command buffer without waiting - the resolve writes are now
   // ordered in the same submission as the preceding draws.
-  ScheduleDrawRingRelease(current_command_buffer_);
-  current_command_buffer_->commit();
-  current_command_buffer_->release();
-  current_command_buffer_ = nullptr;
-  SetActiveDrawRing(nullptr);
-  current_draw_index_ = 0;
+  uint64_t submission_to_wait = 0;
+  bool defer_submission =
+      readback_scheduled && use_delayed_sync && !wait_for_completion;
+  if (readback_scheduled && wait_for_completion) {
+    submission_to_wait = GetCurrentSubmission();
+  }
+  if (!defer_submission) {
+    EndSubmission(false);
+    if (submission_to_wait) {
+      CheckSubmissionCompletion(submission_to_wait);
+    }
+  }
+
+  if (readback_scheduled && should_copy && readback_buffer &&
+      readback_buffer->buffers[read_index]) {
+    static uint32_t readback_log_count = 0;
+    if (readback_log_count < 8) {
+      ++readback_log_count;
+      XELOGI(
+          "MetalResolveReadback: addr=0x{:08X} len={} scaled={} gpu={} "
+          "scale={}x{} pix_log2={} tiles={} src_off={} "
+          "scaled_off={} src_len={}",
+          written_address, written_length, readback_scaled ? 1 : 0,
+          readback_scaled_gpu ? 1 : 0, scale_x, scale_y, pixel_size_log2,
+          tile_count, source_offset_bytes_log, scaled_range_offset_bytes,
+          source_length);
+    }
+    const uint8_t* readback_bytes = static_cast<const uint8_t*>(
+        readback_buffer->buffers[read_index]->contents());
+    uint8_t* dest_ptr = memory_->TranslatePhysical(written_address);
+    if (readback_bytes && dest_ptr) {
+      if (readback_scaled) {
+        if (readback_scaled_gpu) {
+          memory::vastcpy(dest_ptr, const_cast<uint8_t*>(readback_bytes),
+                          written_length);
+        } else {
+          const uint8_t* readback_base = readback_bytes;
+          if (readback_base_offset_bytes < readback_length) {
+            readback_base += readback_base_offset_bytes;
+          }
+          DownscaleResolveTileData(readback_base, dest_ptr, tile_count,
+                                   pixel_size_log2, scale_x, scale_y,
+                                   half_pixel_offset);
+        }
+        // Scaled resolve data isn't in shared memory; invalidate so CPU memory
+        // becomes authoritative and shared memory uploads on demand.
+        if (shared_memory_) {
+          shared_memory_->MemoryInvalidationCallback(written_address,
+                                                     written_length, true);
+        }
+        if (primitive_processor_) {
+          primitive_processor_->MemoryInvalidationCallback(
+              written_address, written_length, true);
+        }
+      } else {
+        memory::vastcpy(dest_ptr, const_cast<uint8_t*>(readback_bytes),
+                        written_length);
+      }
+    }
+  }
+  if (readback_scheduled && readback_buffer) {
+    readback_buffer->current_index = 1u - readback_buffer->current_index;
+  }
 
   return true;
 }
@@ -2990,9 +3616,12 @@ void MetalCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
 }
 
 MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
-  ProcessCompletedSubmissions();
   if (current_command_buffer_) {
     return current_command_buffer_;
+  }
+  if (!submission_open_) {
+    XELOGE("EnsureCommandBuffer: no open submission");
+    return nullptr;
   }
   if (!command_queue_) {
     XELOGE("EnsureCommandBuffer: no command queue");
@@ -3007,34 +3636,29 @@ MTL::CommandBuffer* MetalCommandProcessor::EnsureCommandBuffer() {
     XELOGE("EnsureCommandBuffer: failed to create command buffer");
     return nullptr;
   }
-  ++submission_current_;
   current_command_buffer_->retain();
   current_command_buffer_->setLabel(
       NS::String::string("XeniaCommandBuffer", NS::UTF8StringEncoding));
-  current_command_buffer_->addCompletedHandler([this](MTL::CommandBuffer*) {
-    completed_command_buffers_.fetch_add(1, std::memory_order_relaxed);
-  });
-
-  if (primitive_processor_) {
-    primitive_processor_->BeginSubmission();
-  }
-  if (texture_cache_) {
-    texture_cache_->BeginSubmission(submission_current_);
-  }
-  if (primitive_processor_ && !frame_open_) {
-    primitive_processor_->BeginFrame();
-    if (texture_cache_) {
-      texture_cache_->BeginFrame();
-    }
-    frame_open_ = true;
-  }
 
   return current_command_buffer_;
 }
 
 void MetalCommandProcessor::ProcessCompletedSubmissions() {
+  CheckSubmissionCompletion(0);
+}
+
+void MetalCommandProcessor::CheckSubmissionCompletion(
+    uint64_t await_submission) {
+  if (!completion_timeline_) {
+    return;
+  }
+  if (await_submission) {
+    completion_timeline_->AwaitSubmissionAndUpdateCompleted(await_submission);
+  } else {
+    completion_timeline_->UpdateCompletedSubmission();
+  }
   const uint64_t completed =
-      completed_command_buffers_.load(std::memory_order_relaxed);
+      completion_timeline_->GetCompletedSubmissionFromLastUpdate();
   if (completed <= submission_completed_processed_) {
     return;
   }
@@ -3046,6 +3670,108 @@ void MetalCommandProcessor::ProcessCompletedSubmissions() {
     texture_cache_->CompletedSubmissionUpdated(completed);
   }
 }
+
+bool MetalCommandProcessor::BeginSubmission(bool is_guest_command) {
+  bool is_opening_frame = is_guest_command && !frame_open_;
+  if (submission_open_ && !is_opening_frame) {
+    return true;
+  }
+
+  MaybeStartCapture();
+
+  uint64_t await_submission = 0;
+  if (is_opening_frame) {
+    await_submission = closed_frame_submissions_[frame_current_ % kQueueFrames];
+  }
+  CheckSubmissionCompletion(await_submission);
+
+  if (is_opening_frame) {
+    frame_completed_ =
+        std::max(frame_current_, uint64_t(kQueueFrames)) - kQueueFrames;
+    for (uint64_t frame = frame_completed_ + 1; frame < frame_current_;
+         ++frame) {
+      if (closed_frame_submissions_[frame % kQueueFrames] >
+          GetCompletedSubmission()) {
+        break;
+      }
+      frame_completed_ = frame;
+    }
+  }
+
+  if (!submission_open_) {
+    submission_open_ = true;
+    if (!EnsureCommandBuffer()) {
+      submission_open_ = false;
+      return false;
+    }
+    if (primitive_processor_) {
+      primitive_processor_->BeginSubmission();
+    }
+    if (texture_cache_) {
+      texture_cache_->BeginSubmission(GetCurrentSubmission());
+    }
+  }
+
+  if (is_opening_frame) {
+    frame_open_ = true;
+    if (primitive_processor_) {
+      primitive_processor_->BeginFrame();
+    }
+    if (texture_cache_) {
+      texture_cache_->BeginFrame();
+    }
+    if (render_target_cache_) {
+      render_target_cache_->BeginFrame();
+    }
+  }
+
+  return true;
+}
+
+bool MetalCommandProcessor::EndSubmission(bool is_swap) {
+  bool is_closing_frame = is_swap && frame_open_;
+
+  if (is_closing_frame) {
+    if (primitive_processor_) {
+      primitive_processor_->EndFrame();
+    }
+  }
+
+  if (submission_open_) {
+    EndRenderEncoder();
+
+    if (!current_command_buffer_) {
+      XELOGW("MetalCommandProcessor::EndSubmission: missing command buffer");
+    } else {
+      if (completion_timeline_) {
+        completion_timeline_->SignalAndAdvance(current_command_buffer_);
+      }
+      ScheduleDrawRingRelease(current_command_buffer_);
+      current_command_buffer_->commit();
+      current_command_buffer_->release();
+      current_command_buffer_ = nullptr;
+    }
+    SetActiveDrawRing(nullptr);
+    current_draw_index_ = 0;
+
+    submission_open_ = false;
+    DrainCommandBufferAutoreleasePool();
+  }
+
+  if (is_closing_frame) {
+    if (shared_memory_ && ::cvars::clear_memory_page_state) {
+      shared_memory_->SetSystemPageBlocksValidWithGpuDataWritten();
+    }
+    frame_open_ = false;
+    closed_frame_submissions_[frame_current_++ % kQueueFrames] =
+        GetCurrentSubmission() - 1;
+    EvictOldReadbackBuffers(readback_buffers_);
+  }
+
+  return true;
+}
+
+bool MetalCommandProcessor::CanEndSubmissionImmediately() const { return true; }
 
 void MetalCommandProcessor::EnsureCommandBufferAutoreleasePool() {
   if (command_buffer_autorelease_pool_) {
@@ -3176,11 +3902,15 @@ void MetalCommandProcessor::BeginCommandBuffer() {
     }
   }
 
+  bool render_pass_dirty = render_target_cache_ &&
+                           render_target_cache_->IsRenderPassDescriptorDirty();
+
   // If the render pass configuration has changed since the current render
   // encoder was created (e.g. dummy RT0 -> real RTs, depth/stencil binding),
   // restart the render encoder with the updated descriptor.
   if (current_render_encoder_ &&
-      current_render_pass_descriptor_ != pass_descriptor) {
+      (current_render_pass_descriptor_ != pass_descriptor ||
+       render_pass_dirty)) {
     EndRenderEncoder();
   }
 
@@ -3201,24 +3931,39 @@ void MetalCommandProcessor::BeginCommandBuffer() {
     UseRenderEncoderAttachmentHeaps(pass_descriptor);
   }
 
-  // Derive viewport/scissor from the actual bound render target rather than
-  // a hard-coded 1280x720. Prefer color RT 0 from the MetalRenderTargetCache,
-  // falling back to depth (depth-only passes) and then legacy
-  // render_target_width_/height_ when needed.
+  // Derive viewport/scissor from the actual bound render pass attachments.
   uint32_t rt_width = render_target_width_;
   uint32_t rt_height = render_target_height_;
-  if (render_target_cache_) {
-    MTL::Texture* pass_size_texture = render_target_cache_->GetColorTarget(0);
+  MTL::Texture* pass_size_texture = nullptr;
+  if (pass_descriptor) {
+    if (auto* color_attachments = pass_descriptor->colorAttachments()) {
+      if (auto* attachment = color_attachments->object(0)) {
+        pass_size_texture = attachment->texture();
+      }
+    }
+    if (!pass_size_texture) {
+      if (auto* depth_attachment = pass_descriptor->depthAttachment()) {
+        pass_size_texture = depth_attachment->texture();
+      }
+    }
+    if (!pass_size_texture) {
+      if (auto* stencil_attachment = pass_descriptor->stencilAttachment()) {
+        pass_size_texture = stencil_attachment->texture();
+      }
+    }
+  }
+  if (!pass_size_texture && render_target_cache_) {
+    pass_size_texture = render_target_cache_->GetColorTarget(0);
     if (!pass_size_texture) {
       pass_size_texture = render_target_cache_->GetDepthTarget();
     }
     if (!pass_size_texture) {
       pass_size_texture = render_target_cache_->GetDummyColorTarget();
     }
-    if (pass_size_texture) {
-      rt_width = static_cast<uint32_t>(pass_size_texture->width());
-      rt_height = static_cast<uint32_t>(pass_size_texture->height());
-    }
+  }
+  if (pass_size_texture) {
+    rt_width = static_cast<uint32_t>(pass_size_texture->width());
+    rt_height = static_cast<uint32_t>(pass_size_texture->height());
   }
 
   // Set viewport
@@ -3248,19 +3993,7 @@ void MetalCommandProcessor::EnsureDrawRingCapacity() {
   current_draw_index_ = 0;
 }
 
-void MetalCommandProcessor::EndCommandBuffer() {
-  EndRenderEncoder();
-
-  if (current_command_buffer_) {
-    ScheduleDrawRingRelease(current_command_buffer_);
-    current_command_buffer_->commit();
-    current_command_buffer_->release();
-    current_command_buffer_ = nullptr;
-    SetActiveDrawRing(nullptr);
-    current_draw_index_ = 0;
-  }
-  DrainCommandBufferAutoreleasePool();
-}
+void MetalCommandProcessor::EndCommandBuffer() { EndSubmission(false); }
 
 void MetalCommandProcessor::ApplyDepthStencilState(
     bool primitive_polygonal, reg::RB_DEPTHCONTROL normalized_depth_control) {

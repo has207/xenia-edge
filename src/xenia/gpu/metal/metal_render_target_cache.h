@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2025 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -10,6 +10,7 @@
 #ifndef XENIA_GPU_METAL_METAL_RENDER_TARGET_CACHE_H_
 #define XENIA_GPU_METAL_METAL_RENDER_TARGET_CACHE_H_
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -53,13 +54,23 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
     MTL::Texture* msaa_transfer_texture() const {
       return msaa_transfer_texture_ ? msaa_transfer_texture_ : msaa_texture_;
     }
+    MTL::Texture* stencil_view() const { return stencil_view_; }
+    void SetStencilView(MTL::Texture* view) { stencil_view_ = view; }
 
     void SetTemporarySortIndex(uint32_t index) {
       temporary_sort_index_ = index;
     }
     uint32_t temporary_sort_index() const { return temporary_sort_index_; }
 
-    void SetTexture(MTL::Texture* texture) { texture_ = texture; }
+    void SetTexture(MTL::Texture* texture) {
+      if (texture_ != texture) {
+        if (stencil_view_) {
+          stencil_view_->release();
+          stencil_view_ = nullptr;
+        }
+        texture_ = texture;
+      }
+    }
     void SetMsaaTexture(MTL::Texture* texture) { msaa_texture_ = texture; }
     void SetDrawTexture(MTL::Texture* texture) { draw_texture_ = texture; }
     void SetTransferTexture(MTL::Texture* texture) {
@@ -86,6 +97,7 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
     MTL::Texture* transfer_texture_ = nullptr;
     MTL::Texture* msaa_draw_texture_ = nullptr;
     MTL::Texture* msaa_transfer_texture_ = nullptr;
+    MTL::Texture* stencil_view_ = nullptr;
     uint32_t temporary_sort_index_ = UINT32_MAX;
     bool needs_initial_clear_ = true;
   };
@@ -223,7 +235,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   MTL::ComputePipelineState* edram_dump_color_32bpp_1xmsaa_pipeline_ = nullptr;
   MTL::ComputePipelineState* edram_dump_color_32bpp_2xmsaa_pipeline_ = nullptr;
   MTL::ComputePipelineState* edram_dump_color_32bpp_4xmsaa_pipeline_ = nullptr;
-  // EDRAM blend compute shaders (host RT -> EDRAM with blend/keep mask).
   // Color, 64bpp.
   MTL::ComputePipelineState* edram_dump_color_64bpp_1xmsaa_pipeline_ = nullptr;
   MTL::ComputePipelineState* edram_dump_color_64bpp_2xmsaa_pipeline_ = nullptr;
@@ -260,8 +271,6 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   // Host depth store compute shaders (1x/2x/4x MSAA).
   MTL::ComputePipelineState* host_depth_store_pipelines_[3] = {};
 
-  // Per-draw ordered-blend coverage attachment.
-
   // Transfer shaders (host RT ownership transfers) - modeled after D3D12.
 
   // TransferMode list mirrors D3D12RenderTargetCache::TransferMode so logs and
@@ -284,6 +293,7 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
     xenos::MsaaSamples host_depth_source_msaa_samples;
     uint32_t source_resource_format;
     uint32_t dest_resource_format;
+    uint32_t dest_sample_id_from_sample;
     uint32_t host_depth_source_is_copy;
 
     bool operator==(const TransferShaderKey& other) const {
@@ -294,6 +304,7 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
                  other.host_depth_source_msaa_samples &&
              source_resource_format == other.source_resource_format &&
              dest_resource_format == other.dest_resource_format &&
+             dest_sample_id_from_sample == other.dest_sample_id_from_sample &&
              host_depth_source_is_copy == other.host_depth_source_is_copy;
     }
     bool operator!=(const TransferShaderKey& other) const {
@@ -320,6 +331,9 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
       if (dest_resource_format != other.dest_resource_format) {
         return dest_resource_format < other.dest_resource_format;
       }
+      if (dest_sample_id_from_sample != other.dest_sample_id_from_sample) {
+        return dest_sample_id_from_sample < other.dest_sample_id_from_sample;
+      }
       return host_depth_source_is_copy < other.host_depth_source_is_copy;
     }
 
@@ -331,7 +345,8 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
         h ^= (size_t(key.host_depth_source_msaa_samples) << 12);
         h ^= (size_t(key.source_resource_format) << 16);
         h ^= (size_t(key.dest_resource_format) << 24);
-        h ^= (size_t(key.host_depth_source_is_copy) << 28);
+        h ^= (size_t(key.dest_sample_id_from_sample) << 28);
+        h ^= (size_t(key.host_depth_source_is_copy) << 29);
         return h ^ (h >> 16);
       }
     };
@@ -369,10 +384,22 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   std::unordered_map<TransferShaderKey, MTL::RenderPipelineState*,
                      TransferShaderKey::Hasher>
       transfer_pipelines_;
+  std::unordered_map<TransferShaderKey, MTL::RenderPipelineState*,
+                     TransferShaderKey::Hasher>
+      transfer_tile_pipelines_;
   std::vector<TransferInvocation> transfer_invocations_;
   MTL::Library* transfer_library_ = nullptr;
   std::unordered_map<uint32_t, MTL::RenderPipelineState*>
       transfer_clear_pipelines_;
+  static constexpr uint32_t kTransferInstanceBufferCount = 3;
+  std::array<MTL::Buffer*, kTransferInstanceBufferCount>
+      transfer_tile_instance_buffers_ = {};
+  std::array<size_t, kTransferInstanceBufferCount>
+      transfer_tile_instance_buffer_sizes_ = {};
+  std::array<std::vector<MTL::Buffer*>, kTransferInstanceBufferCount>
+      transfer_tile_instance_retired_buffers_ = {};
+  uint64_t transfer_tile_instance_buffer_frame_id_ = 0;
+  size_t transfer_tile_instance_buffer_offset_ = 0;
   MTL::DepthStencilState* transfer_depth_state_ = nullptr;
   MTL::DepthStencilState* transfer_depth_state_none_ = nullptr;
   MTL::DepthStencilState* transfer_depth_clear_state_ = nullptr;
@@ -400,6 +427,7 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   // Render pass descriptor cache
   MTL::RenderPassDescriptor* cached_render_pass_descriptor_ = nullptr;
   bool render_pass_descriptor_dirty_ = true;
+  uint32_t cached_render_pass_descriptor_sample_count_ = 0;
 
   // Dummy render target for when no render targets are bound
   struct DummyColorTargetEntry {
@@ -423,6 +451,7 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   MTL::Texture* CreateDepthTexture(uint32_t width, uint32_t height,
                                    xenos::DepthRenderTargetFormat format,
                                    uint32_t samples);
+  MTL::Texture* GetStencilTextureView(MetalRenderTarget* render_target);
 
   MTL::PixelFormat GetColorResourcePixelFormat(
       xenos::ColorRenderTargetFormat format) const;
@@ -441,7 +470,7 @@ class MetalRenderTargetCache final : public gpu::RenderTargetCache {
   // D3D12RenderTargetCache::GetOrCreateTransferPipelines.
   MTL::RenderPipelineState* GetOrCreateTransferPipelines(
       const TransferShaderKey& key, MTL::PixelFormat dest_format,
-      bool dest_is_uint);
+      bool dest_is_uint, bool tile_instanced);
   MTL::RenderPipelineState* GetOrCreateTransferClearPipeline(
       MTL::PixelFormat dest_format, bool dest_is_uint, bool is_depth,
       uint32_t sample_count);

@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2025 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -93,9 +93,6 @@
 #include "xenia/gpu/texture_util.h"
 #include "xenia/gpu/xenos.h"
 
-DEFINE_bool(metal_texture_dump_png, false,
-            "Dump some loaded Metal textures as PNG to scratch/gpu (debug).",
-            "GPU");
 DEFINE_bool(metal_force_bc_decompress, false,
             "Force BC1/2/3/5/DXN decompression to RGBA8/RG8 (debug).", "GPU");
 
@@ -1971,55 +1968,6 @@ bool MetalTextureCache::UpdateTextureCube(MTL::Texture* texture,
   return true;
 }
 
-bool MetalTextureCache::ConvertTextureData(const void* src_data, void* dst_data,
-                                           uint32_t width, uint32_t height,
-                                           xenos::TextureFormat src_format,
-                                           MTL::PixelFormat dst_format) {
-  // TODO: Implement proper Xbox 360 texture format conversion
-  // For now, just copy data directly
-  if (src_data && dst_data) {
-    uint32_t size = width * height * 4;  // Assume 4 bytes per pixel
-    std::memcpy(dst_data, src_data, size);
-    return true;
-  }
-  return false;
-}
-
-MTL::Texture* MetalTextureCache::CreateDebugTexture(uint32_t width,
-                                                    uint32_t height) {
-  MTL::TextureSwizzleChannels rgba = {
-      MTL::TextureSwizzleRed, MTL::TextureSwizzleGreen, MTL::TextureSwizzleBlue,
-      MTL::TextureSwizzleAlpha};
-  MTL::Texture* texture =
-      CreateTexture2D(width, height, 1, MTL::PixelFormatRGBA8Unorm, rgba);
-  if (!texture) {
-    XELOGE("Failed to create debug texture");
-    return nullptr;
-  }
-
-  // Create checkerboard pattern data
-  std::vector<uint32_t> pixels(width * height);
-  uint32_t checker_size = 32;  // Size of each checker square
-
-  for (uint32_t y = 0; y < height; y++) {
-    for (uint32_t x = 0; x < width; x++) {
-      bool is_white = ((x / checker_size) + (y / checker_size)) % 2 == 0;
-      // Use green/purple pattern to distinguish from pink error color
-      if (is_white) {
-        pixels[y * width + x] = 0xFF00FF00;  // Green (RGBA)
-      } else {
-        pixels[y * width + x] = 0xFF8000FF;  // Purple (RGBA)
-      }
-    }
-  }
-
-  // Upload texture data
-  MTL::Region region = MTL::Region::Make2D(0, 0, width, height);
-  texture->replaceRegion(region, 0, pixels.data(), width * 4);
-
-  return texture;
-}
-
 MTL::Texture* MetalTextureCache::CreateNullTexture2D() {
   SCOPE_profile_cpu_f("gpu");
 
@@ -2781,17 +2729,21 @@ bool MetalTextureCache::EnsureScaledResolveBufferRange(uint64_t start_scaled,
       NS::String::string("XeniaScaledResolveBuffer", NS::UTF8StringEncoding));
 
   if (!overlap_indices.empty()) {
-    MTL::CommandQueue* queue = command_processor_->GetMetalCommandQueue();
-    if (!queue) {
-      new_buffer->release();
-      return false;
-    }
-    ScopedAutoreleasePool autorelease_pool;
-    MTL::CommandBuffer* cmd = queue->commandBuffer();
+    MTL::CommandBuffer* cmd = command_processor_->GetCurrentCommandBuffer();
     if (!cmd) {
-      new_buffer->release();
-      return false;
+      MTL::CommandQueue* queue = command_processor_->GetMetalCommandQueue();
+      if (!queue) {
+        new_buffer->release();
+        return false;
+      }
+      ScopedAutoreleasePool autorelease_pool;
+      cmd = queue->commandBuffer();
+      if (!cmd) {
+        new_buffer->release();
+        return false;
+      }
     }
+
     MTL::BlitCommandEncoder* blit = cmd->blitCommandEncoder();
     if (!blit) {
       new_buffer->release();
@@ -2809,8 +2761,10 @@ bool MetalTextureCache::EnsureScaledResolveBufferRange(uint64_t start_scaled,
     }
 
     blit->endEncoding();
-    cmd->commit();
-    cmd->waitUntilCompleted();
+    if (cmd != command_processor_->GetCurrentCommandBuffer()) {
+      cmd->commit();
+      cmd->waitUntilCompleted();
+    }
   }
 
   std::vector<ScaledResolveBuffer> new_buffers;

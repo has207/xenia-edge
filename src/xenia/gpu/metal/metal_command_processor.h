@@ -2,7 +2,7 @@
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
  ******************************************************************************
- * Copyright 2025 Ben Vanik. All rights reserved.                             *
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
  * Released under the BSD license - see LICENSE in the root for more details. *
  ******************************************************************************
  */
@@ -10,6 +10,7 @@
 #ifndef XENIA_GPU_METAL_METAL_COMMAND_PROCESSOR_H_
 #define XENIA_GPU_METAL_METAL_COMMAND_PROCESSOR_H_
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -40,6 +41,14 @@ namespace MTL {
 class Heap;
 class SharedEvent;
 }  // namespace MTL
+
+namespace xe {
+namespace ui {
+namespace metal {
+class MetalGPUCompletionTimeline;
+}  // namespace metal
+}  // namespace ui
+}  // namespace xe
 
 namespace xe {
 namespace gpu {
@@ -78,7 +87,19 @@ class MetalCommandProcessor : public CommandProcessor {
   MTL::CommandBuffer* GetCurrentCommandBuffer() const {
     return current_command_buffer_;
   }
+
+  // Debug marker methods - public so subsystems can annotate their operations.
+  void UpdateDebugMarkersEnabled();
+  void PushDebugMarker(const char* format, ...);
+  void PopDebugMarker();
+  void InsertDebugMarker(const char* format, ...);
+  bool debug_markers_enabled() const { return debug_markers_enabled_; }
+  void RequestCapture();
   uint32_t current_draw_index() const { return current_draw_index_; }
+  uint64_t GetCurrentSubmission() const;
+  uint64_t GetCompletedSubmission() const;
+  uint64_t GetCurrentFrame() const { return frame_current_; }
+  uint64_t GetCompletedFrame() const { return frame_completed_; }
   MTL::CommandBuffer* EnsureCommandBuffer();
   void EndRenderEncoder();
   void ResetRenderEncoderResourceUsage();
@@ -116,6 +137,7 @@ class MetalCommandProcessor : public CommandProcessor {
 
   void IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbuffer_width,
                  uint32_t frontbuffer_height) override;
+  void OnPrimaryBufferEnd() override;
 
   Shader* LoadShader(xenos::ShaderType shader_type, uint32_t guest_address,
                      const uint32_t* host_address,
@@ -143,6 +165,12 @@ class MetalCommandProcessor : public CommandProcessor {
   void BeginCommandBuffer();
   void EndCommandBuffer();
   void ProcessCompletedSubmissions();
+  void CheckSubmissionCompletion(uint64_t await_submission);
+  bool BeginSubmission(bool is_guest_command);
+  bool EndSubmission(bool is_swap);
+  void MaybeStartCapture();
+  void StopCaptureIfActive();
+  bool CanEndSubmissionImmediately() const;
   void EnsureDrawRingCapacity();
   void UseRenderEncoderAttachmentHeaps(MTL::RenderPassDescriptor* descriptor);
   void UseRenderEncoderHeap(MTL::Heap* heap);
@@ -354,7 +382,6 @@ class MetalCommandProcessor : public CommandProcessor {
   // Shared memory for Xbox 360 memory access
   std::unique_ptr<MetalSharedMemory> shared_memory_;
   std::unique_ptr<MetalPrimitiveProcessor> primitive_processor_;
-  bool frame_open_ = false;
 
   bool saw_swap_ = false;
   uint32_t last_swap_ptr_ = 0;
@@ -476,9 +503,23 @@ class MetalCommandProcessor : public CommandProcessor {
   MTL::BinaryArchive* pipeline_binary_archive_ = nullptr;
   bool pipeline_binary_archive_dirty_ = false;
 
-  std::atomic<uint64_t> completed_command_buffers_{0};
-  uint64_t submission_current_ = 0;
+  static constexpr uint32_t kQueueFrames = 3;
+
+  std::unique_ptr<ui::metal::MetalGPUCompletionTimeline> completion_timeline_;
+  bool submission_open_ = false;
   uint64_t submission_completed_processed_ = 0;
+
+  bool frame_open_ = false;
+  uint64_t frame_current_ = 1;
+  uint64_t frame_completed_ = 0;
+  uint64_t closed_frame_submissions_[kQueueFrames] = {};
+
+  enum class DebugMarkerTarget {
+    kCommandBuffer,
+    kRenderEncoder,
+  };
+  bool debug_markers_enabled_ = false;
+  std::vector<DebugMarkerTarget> debug_marker_stack_;
 
   // Draw counter for ring-buffer descriptor heap allocation
   // Each draw uses a different region of the descriptor heap to avoid
@@ -491,6 +532,23 @@ class MetalCommandProcessor : public CommandProcessor {
   bool gamma_ramp_256_entry_table_up_to_date_ = false;
   bool gamma_ramp_pwl_up_to_date_ = false;
 
+  // Resolve downscale compute shader for scaled resolution readback.
+  MTL::ComputePipelineState* resolve_downscale_pipeline_ = nullptr;
+  MTL::Buffer* resolve_downscale_buffer_ = nullptr;
+  uint32_t resolve_downscale_buffer_size_ = 0;
+
+  // Per-resolve double-buffered readback for delayed sync.
+  struct ReadbackBuffer {
+    MTL::Buffer* buffers[2] = {nullptr, nullptr};
+    uint32_t sizes[2] = {0, 0};
+    uint64_t submission_ids[2] = {0, 0};
+    uint32_t current_index = 0;
+    uint64_t last_used_frame = 0;
+  };
+  void EvictOldReadbackBuffers(
+      std::unordered_map<uint64_t, ReadbackBuffer>& buffer_map);
+  std::unordered_map<uint64_t, ReadbackBuffer> readback_buffers_;
+
   // Track memory regions written by IssueCopy (resolve) during trace playback.
 
   // This prevents the trace player from overwriting resolved data with stale
@@ -500,6 +558,10 @@ class MetalCommandProcessor : public CommandProcessor {
     uint32_t length;
   };
   std::vector<ResolvedRange> resolved_memory_ranges_;
+
+  std::atomic<bool> capture_requested_{false};
+  MTL::CaptureManager* capture_manager_ = nullptr;
+  bool capture_active_ = false;
 };
 
 }  // namespace metal
