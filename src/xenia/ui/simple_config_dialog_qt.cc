@@ -142,16 +142,26 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["vsync"].cvar_name = "vsync";
   options_["vsync"].editor_widget = vsync_check;
   options_["vsync"].label_widget = new QLabel("VSync:", this);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
   connect(vsync_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
+#else
+  connect(vsync_check, &QCheckBox::stateChanged, this,
+          &SimpleConfigDialogQt::OnValueChanged);
+#endif
   graphics_layout->addRow(options_["vsync"].label_widget, vsync_check);
 
   auto* fullscreen_check = new QCheckBox(this);
   options_["fullscreen"].cvar_name = "fullscreen";
   options_["fullscreen"].editor_widget = fullscreen_check;
   options_["fullscreen"].label_widget = new QLabel("Full Screen:", this);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
   connect(fullscreen_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
+#else
+  connect(fullscreen_check, &QCheckBox::stateChanged, this,
+          &SimpleConfigDialogQt::OnValueChanged);
+#endif
   graphics_layout->addRow(options_["fullscreen"].label_widget,
                           fullscreen_check);
 
@@ -159,8 +169,13 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["present_letterbox"].cvar_name = "present_letterbox";
   options_["present_letterbox"].editor_widget = letterbox_check;
   options_["present_letterbox"].label_widget = new QLabel("Letterbox:", this);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
   connect(letterbox_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
+#else
+  connect(letterbox_check, &QCheckBox::stateChanged, this,
+          &SimpleConfigDialogQt::OnValueChanged);
+#endif
   graphics_layout->addRow(options_["present_letterbox"].label_widget,
                           letterbox_check);
 
@@ -203,8 +218,13 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["use_dedicated_xma_thread"].editor_widget = xma_thread_check;
   options_["use_dedicated_xma_thread"].label_widget =
       new QLabel("Dedicated Thread:", this);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
   connect(xma_thread_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
+#else
+  connect(xma_thread_check, &QCheckBox::stateChanged, this,
+          &SimpleConfigDialogQt::OnValueChanged);
+#endif
   audio_layout->addRow(options_["use_dedicated_xma_thread"].label_widget,
                        xma_thread_check);
 
@@ -229,8 +249,13 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["discord"].cvar_name = "discord";
   options_["discord"].editor_widget = discord_check;
   options_["discord"].label_widget = new QLabel("Discord Rich Presence:", this);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
   connect(discord_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
+#else
+  connect(discord_check, &QCheckBox::stateChanged, this,
+          &SimpleConfigDialogQt::OnValueChanged);
+#endif
   other_layout->addRow(options_["discord"].label_widget, discord_check);
 
   auto* language_combo = new QComboBox(this);

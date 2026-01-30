@@ -9,6 +9,7 @@
 
 #include "xenia/ui/context_menu_widget_qt.h"
 
+#include <QApplication>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QKeyEvent>

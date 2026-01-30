@@ -272,8 +272,13 @@ QWidget* ConfigDialogQt::CreateEditorWidget(ConfigVarInfo* var_info) {
     // Boolean checkbox
     auto* checkbox = new QCheckBox();
     checkbox->setChecked(var_info->pending_value == "true");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     connect(checkbox, &QCheckBox::checkStateChanged, this,
             &ConfigDialogQt::OnValueChanged);
+#else
+    connect(checkbox, &QCheckBox::stateChanged, this,
+            &ConfigDialogQt::OnValueChanged);
+#endif
 
 #if XE_PLATFORM_LINUX
     // Disable Linux-specific options if the required tools aren't installed

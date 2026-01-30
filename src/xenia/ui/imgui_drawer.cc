@@ -604,7 +604,7 @@ void ImGuiDrawer::SetImmediateDrawer(ImmediateDrawer* new_immediate_drawer) {
   if (immediate_drawer_) {
     GetIO().Fonts->TexID = reinterpret_cast<ImTextureID>(nullptr);
     font_texture_.reset();
-    locked_achievement_icon_.reset();
+
     notification_icon_textures_.clear();
   }
   immediate_drawer_ = new_immediate_drawer;

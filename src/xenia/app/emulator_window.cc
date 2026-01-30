@@ -54,6 +54,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if XE_PLATFORM_MAC
+#include <crt_externs.h>
+#include <spawn.h>
+#define environ (*_NSGetEnviron())
+#endif
 #endif
 
 #if XE_PLATFORM_LINUX
@@ -71,6 +76,7 @@
 #ifdef None
 #undef None
 #endif
+
 #ifdef Success
 #undef Success
 #endif
@@ -482,21 +488,72 @@ void EmulatorWindow::OnEmulatorInitialized() {
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 #else
+#if XE_PLATFORM_MAC
+    // Build arg_storage first, then create argv pointers.
+    // This avoids dangling pointers from vector reallocation.
+    std::vector<std::string> arg_storage;
+    arg_storage.push_back(executable_path.string());
+
+    if (!cvars::config.empty()) {
+      arg_storage.push_back("--config=" + cvars::config);
+    }
+    // Append to log file instead of overwriting
+    arg_storage.push_back("--log_append=true");
+    // Preserve return_to_ui through the title-to-title chain
+    if (cvars::return_to_ui) {
+      arg_storage.push_back("--return_to_ui=true");
+    }
+    // Preserve fullscreen state
+    if (window_->IsFullscreen()) {
+      arg_storage.push_back("--fullscreen=true");
+    }
+    if (!launch_module.empty()) {
+      arg_storage.push_back("--launch_module=" + launch_module);
+    }
+    if (launch_flags != 0) {
+      arg_storage.push_back(fmt::format("--launch_flags={}", launch_flags));
+    }
+    if (!launch_data.empty()) {
+      arg_storage.push_back("--launch_data=" + launch_data);
+    }
+    if (!host_path.empty()) {
+      arg_storage.push_back(host_path);
+    }
+
+    // Now build argv from the stable storage
+    std::vector<char*> argv;
+    argv.reserve(arg_storage.size() + 1);
+    for (auto& arg : arg_storage) {
+      argv.push_back(arg.data());
+    }
+    argv.push_back(nullptr);
+
+    pid_t pid = 0;
+    int spawn_result = posix_spawn(&pid, executable_path.c_str(), nullptr,
+                                   nullptr, argv.data(), environ);
+    if (spawn_result != 0) {
+      XELOGE("Failed to spawn process: {}", spawn_result);
+      return;
+    }
+#else
     pid_t pid = fork();
     if (pid == 0) {
       // Child process
+#if XE_PLATFORM_LINUX
       if (cvars::use_mangohud) {
         setenv("MANGOHUD", "1", 1);
       }
-
+#endif  // XE_PLATFORM_LINUX
       std::vector<std::string> arg_storage;
       std::vector<const char*> argv;
 
+#if XE_PLATFORM_LINUX
       std::string gamemode_cmd;
       if (cvars::use_gamemode) {
         gamemode_cmd = "gamemoderun";
         argv.push_back(gamemode_cmd.c_str());
       }
+#endif  // XE_PLATFORM_LINUX
       arg_storage.push_back(executable_path.string());
       argv.push_back(arg_storage.back().c_str());
 
@@ -535,16 +592,21 @@ void EmulatorWindow::OnEmulatorInitialized() {
       }
       argv.push_back(nullptr);
 
+#if XE_PLATFORM_LINUX
       if (cvars::use_gamemode) {
         execvp(gamemode_cmd.c_str(), const_cast<char**>(argv.data()));
       } else {
         execv(executable_path.c_str(), const_cast<char**>(argv.data()));
       }
+#else
+      execv(executable_path.c_str(), const_cast<char**>(argv.data()));
+#endif  // XE_PLATFORM_LINUX
       std::exit(1);
     } else if (pid < 0) {
       XELOGE("Failed to fork process");
       return;
     }
+#endif  // XE_PLATFORM_MAC
 #endif
     // Exit directly - don't go through window close path which would
     // spawn a UI process if return_to_ui is set
@@ -593,16 +655,43 @@ void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
         XELOGE("Failed to spawn UI process: {}", GetLastError());
       }
 #else
+#if XE_PLATFORM_MAC
+      // Build arg_storage first, then create argv pointers to avoid
+      // dangling pointers from vector reallocation.
+      std::vector<std::string> arg_storage;
+      arg_storage.push_back(executable_path.string());
+
+      if (!cvars::config.empty()) {
+        arg_storage.push_back("--config=" + cvars::config);
+      }
+
+      std::vector<char*> argv;
+      argv.reserve(arg_storage.size() + 1);
+      for (auto& arg : arg_storage) {
+        argv.push_back(arg.data());
+      }
+      argv.push_back(nullptr);
+
+      pid_t pid = 0;
+      int spawn_result = posix_spawn(&pid, executable_path.c_str(), nullptr,
+                                     nullptr, argv.data(), environ);
+      if (spawn_result == 0) {
+        XELOGI("Spawned UI process");
+      } else {
+        XELOGE("Failed to spawn UI process: {}", spawn_result);
+      }
+#else
       pid_t pid = fork();
       if (pid == 0) {
         // Child process - become UI
         std::vector<const char*> argv;
+#if XE_PLATFORM_LINUX
         std::string gamemode_cmd;
-
         if (cvars::use_gamemode) {
           gamemode_cmd = "gamemoderun";
           argv.push_back(gamemode_cmd.c_str());
         }
+#endif  // XE_PLATFORM_LINUX
         argv.push_back(executable_path.c_str());
 
         std::string config_arg;
@@ -612,17 +701,22 @@ void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
         }
         argv.push_back(nullptr);
 
+#if XE_PLATFORM_LINUX
         if (cvars::use_gamemode) {
           execvp(gamemode_cmd.c_str(), const_cast<char**>(argv.data()));
         } else {
           execv(executable_path.c_str(), const_cast<char**>(argv.data()));
         }
+#else
+        execv(executable_path.c_str(), const_cast<char**>(argv.data()));
+#endif  // XE_PLATFORM_LINUX
         std::exit(1);
       } else if (pid > 0) {
         XELOGI("Spawned UI process");
       } else {
         XELOGE("Failed to fork UI process");
       }
+#endif  // XE_PLATFORM_MAC
 #endif
     }
 
@@ -2374,18 +2468,55 @@ void EmulatorWindow::LaunchTitleInNewProcess(
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
 #else
+#if XE_PLATFORM_MAC
+  // Build arg_storage first, then create argv pointers to avoid
+  // dangling pointers from vector reallocation.
+  std::vector<std::string> arg_storage;
+  arg_storage.push_back(executable_path.string());
+
+  // Pass the config file if one is being used
+  if (!cvars::config.empty()) {
+    arg_storage.push_back("--config=" + cvars::config);
+  }
+
+  // Tell game process to return to UI when it exits
+  arg_storage.push_back("--return_to_ui=true");
+
+  // Add the target game file
+  if (!path_to_file.empty()) {
+    arg_storage.push_back(path_to_file.string());
+  }
+
+  std::vector<char*> argv;
+  argv.reserve(arg_storage.size() + 1);
+  for (auto& arg : arg_storage) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+
+  pid_t pid = 0;
+  int spawn_result = posix_spawn(&pid, executable_path.c_str(), nullptr,
+                                 nullptr, argv.data(), environ);
+  if (spawn_result != 0) {
+    XELOGE("Failed to spawn process: {}", spawn_result);
+    return;
+  }
+#else
   // On Linux/Unix, use fork/exec for proper process creation
   pid_t pid = fork();
 
   if (pid == 0) {
     // Child process
 
+#if XE_PLATFORM_LINUX
     // Set MangoHUD environment variable if enabled
     if (cvars::use_mangohud) {
       setenv("MANGOHUD", "1", 1);
     }
+#endif  // XE_PLATFORM_LINUX
 
     std::vector<const char*> argv;
+#if XE_PLATFORM_LINUX
     std::string gamemode_cmd;
 
     // If GameMode is enabled, use gamemoderun as the executable
@@ -2396,6 +2527,9 @@ void EmulatorWindow::LaunchTitleInNewProcess(
     } else {
       argv.push_back(executable_path.c_str());
     }
+#else
+    argv.push_back(executable_path.c_str());
+#endif  // XE_PLATFORM_LINUX
 
     // Pass the config file if one is being used
     std::string config_arg;
@@ -2416,22 +2550,28 @@ void EmulatorWindow::LaunchTitleInNewProcess(
     argv.push_back(nullptr);
 
     // Execute the new process
+#if XE_PLATFORM_LINUX
     if (cvars::use_gamemode) {
       // Use execvp to search PATH for gamemoderun
       execvp(gamemode_cmd.c_str(), const_cast<char**>(argv.data()));
     } else {
       execv(executable_path.c_str(), const_cast<char**>(argv.data()));
     }
-
     // If exec returns, it failed
     XELOGE("Failed to execute: {}",
            cvars::use_gamemode ? gamemode_cmd : executable_path.string());
+#else
+    execv(executable_path.c_str(), const_cast<char**>(argv.data()));
+    // If exec returns, it failed
+    XELOGE("Failed to execute: {}", executable_path.string());
+#endif  // XE_PLATFORM_LINUX
     std::exit(1);
   } else if (pid < 0) {
     // Fork failed
     XELOGE("Failed to fork process");
     return;
   }
+#endif  // XE_PLATFORM_MAC
 #endif
 
   XELOGI("Launched title in new process: {}", path_to_file.string());

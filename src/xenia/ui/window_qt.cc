@@ -39,6 +39,8 @@
 #include "xenia/ui/surface_gnulinux.h"
 #elif defined(XE_PLATFORM_WIN32)
 #include "xenia/ui/surface_win.h"
+#elif defined(XE_PLATFORM_MAC)
+#include "xenia/ui/surface_mac.h"
 #endif
 
 #if defined(XE_PLATFORM_LINUX)
@@ -634,6 +636,17 @@ std::unique_ptr<Surface> QtWindow::CreateSurfaceImpl(
       return nullptr;
     }
     return std::make_unique<Win32HwndSurface>(qt_context.hinstance(), hwnd);
+  }
+  return nullptr;
+#elif defined(XE_PLATFORM_MAC)
+  if (allowed_types & Surface::kTypeFlag_MacNSView) {
+    // On macOS, Qt's winId() returns an NSView*
+    NSView* view = reinterpret_cast<NSView*>(game_qwindow_->winId());
+    if (!view) {
+      XELOGE("CreateSurfaceImpl: Invalid NSView");
+      return nullptr;
+    }
+    return std::make_unique<MacNSViewSurface>(view);
   }
   return nullptr;
 #else

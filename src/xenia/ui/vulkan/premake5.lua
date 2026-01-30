@@ -1,6 +1,10 @@
 project_root = "../../../.."
 include(project_root.."/tools/build")
 
+if os.istarget("macosx") then
+  return
+end
+
 group("src")
 project("xenia-ui-vulkan")
   uuid("4933d81e-1c2c-4d5d-b104-3c0eb9dc2f00")
@@ -16,7 +20,7 @@ project("xenia-ui-vulkan")
   })
 
   -- Include SPIRV-Tools from Vulkan SDK
-  filter("platforms:Windows")
+  filter("platforms:Windows-*")
     includedirs({
       "$(VULKAN_SDK)/Include",
     })
@@ -28,7 +32,7 @@ project("xenia-ui-vulkan")
       "SPIRV-Tools.lib",
     })
 
-  filter("platforms:Linux")
+  filter("platforms:Linux-*")
     links({
       "SPIRV-Tools-opt",
       "SPIRV-Tools",
@@ -88,7 +92,7 @@ if enableMiscSubprojects then
         "xenia-cpu-backend-x64",
       })
 
-    filter("platforms:Linux")
+    filter("platforms:Linux-*")
       links({
         "X11",
         "xcb",

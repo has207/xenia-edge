@@ -16,6 +16,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "xenia/base/cvar.h"
 #include "xenia/base/filesystem.h"
@@ -39,9 +42,35 @@ DECLARE_path(custom_font_path);
 DECLARE_uint32(font_size);
 
 int main(int argc, char** argv) {
+#if XE_PLATFORM_MAC
+  // Strip macOS/Xcode-injected flags that aren't valid cvars.
+  std::vector<std::string> filtered_args;
+  filtered_args.reserve(argc);
+  for (int i = 0; i < argc; ++i) {
+    std::string_view arg(argv[i]);
+    if (arg.rfind("-NSDocumentRevisionsDebugMode", 0) == 0 ||
+        arg.rfind("-ApplePersistenceIgnoreState", 0) == 0 ||
+        arg.rfind("-YES", 0) == 0 || arg.rfind("YES", 0) == 0) {
+      continue;
+    }
+    filtered_args.emplace_back(argv[i]);
+  }
+  std::vector<char*> filtered_argv_vec;
+  filtered_argv_vec.reserve(filtered_args.size());
+  for (auto& s : filtered_args) {
+    filtered_argv_vec.push_back(const_cast<char*>(s.c_str()));
+  }
+  int filtered_argc = static_cast<int>(filtered_argv_vec.size());
+  char** filtered_argv = filtered_argv_vec.data();
+#else
+  int filtered_argc = argc;
+  char** filtered_argv = argv;
+#endif
+
   // Parse arguments early to determine if this is a game or UI process
   // Must happen before QApplication creation for QT_QPA_PLATFORM to take effect
-  cvar::ParseLaunchArguments(argc, argv, "[Path to .iso/.xex]", {"target"});
+  cvar::ParseLaunchArguments(filtered_argc, filtered_argv,
+                             "[Path to .iso/.xex]", {"target"});
 
   bool is_game_process = !cvars::target.empty();
 
@@ -57,7 +86,7 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  QApplication qt_app(argc, argv);
+  QApplication qt_app(filtered_argc, filtered_argv);
 
   // Force Fusion style to ensure consistent styling across platforms
   qt_app.setStyle("Fusion");

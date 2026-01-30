@@ -12,21 +12,32 @@ project("xenia-ui")
   local_platform_files()
   removefiles({
     "*_demo.cc",
+    "windowed_app_main_*.cc",
   })
+
+  filter("platforms:Mac-*")
+    files({
+      "surface_mac.mm",
+    })
+    removefiles({
+      "renderdoc_api.cc",
+      "renderdoc_api.h",
+    })
+  filter({})
   if os.istarget("android") then
     filter("platforms:Android-*")
       -- Exports JNI functions.
       wholelib("On")
   end
 
-  filter("platforms:Windows")
+  filter("platforms:Windows-*")
     links({
       "dwmapi",
       "dxgi",
       "winmm",
     })
 
-  filter("platforms:Linux")
+  filter("platforms:Linux-*")
     links({
       "xcb",
       "X11",
