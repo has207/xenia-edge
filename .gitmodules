@@ -46,10 +46,11 @@
 	url = https://github.com/fmtlib/fmt.git
 [submodule "third_party/disruptorplus"]
 	path = third_party/disruptorplus
-	url = https://github.com/xenia-canary/disruptorplus.git
+	url = https://github.com/wmarti/disruptorplus-xenia-mac.git
 [submodule "third_party/DirectXShaderCompiler"]
 	path = third_party/DirectXShaderCompiler
-	url = https://github.com/microsoft/DirectXShaderCompiler.git
+	url = https://github.com/wmarti/DirectXShaderCompiler.git
+	branch = dxbc2dxil-perf
 [submodule "third_party/premake-cmake"]
 	path = third_party/premake-cmake
 	url = https://github.com/JoelLinn/premake-cmake.git
@@ -61,7 +62,8 @@
 	url = https://github.com/Cyan4973/xxHash.git
 [submodule "third_party/FFmpeg"]
 	path = third_party/FFmpeg
-	url = https://github.com/xenia-canary/FFmpeg_radixsplit.git
+	url = https://github.com/wmarti/FFmpeg.git
+	branch = macos-unified
 [submodule "third_party/premake-androidndk"]
 	path = third_party/premake-androidndk
 	url = https://github.com/Triang3l/premake-androidndk.git
@@ -111,6 +113,15 @@
 [submodule "third_party/DirectX-Headers"]
 	path = third_party/DirectX-Headers
 	url = https://github.com/microsoft/DirectX-Headers.git
+[submodule "third_party/oaknut"]
+	path = third_party/oaknut
+	url = https://github.com/merryhime/oaknut.git
+[submodule "third_party/metal-cpp"]
+	path = third_party/metal-cpp
+	url = https://github.com/wmarti/metal-cpp.git
+[submodule "third_party/metal-shader-converter"]
+	path = third_party/metal-shader-converter
+	url = https://github.com/wmarti/metal-shader-converter.git
 [submodule "third_party/asio"]
 	path = third_party/asio
 	url = https://github.com/chriskohlhoff/asio.git
