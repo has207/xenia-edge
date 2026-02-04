@@ -5,7 +5,7 @@ project("asio")
   language("C++")
 
   includedirs({
-    "asio/include",
+    "third_party/asio/include",
   })
 
   defines({
@@ -20,7 +20,7 @@ project("asio")
   filter({})
 
   files({
-    "asio/asio/include/asio.hpp",
+    "third_party/asio/include/asio.hpp",
   })
 
   warnings("Off")
