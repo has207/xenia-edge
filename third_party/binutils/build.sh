@@ -9,7 +9,19 @@ echo "Building binutils from snapshot version $SNAPSHOT_VERSION..."
 
 echo ""
 echo "Ensure you have the following packages installed:"
-echo "  build-essential texinfo flex bison"
+if [[ "$(uname)" == "Darwin" ]]; then
+  echo "  bison flex texinfo (e.g. via Homebrew)"
+  if command -v brew >/dev/null 2>&1; then
+    for tool in bison flex texinfo; do
+      prefix="$(brew --prefix "$tool" 2>/dev/null || true)"
+      if [[ -n "$prefix" ]]; then
+        export PATH="$prefix/bin:$PATH"
+      fi
+    done
+  fi
+else
+  echo "  build-essential texinfo flex bison"
+fi
 
 echo ""
 echo "Removing old output..."
