@@ -18,6 +18,11 @@ project("xenia-gpu-d3d12")
   files({
     "../shaders/bytecode/d3d12_5_1/*.h",
   })
+  filter("system:windows")
+    includedirs({
+      project_root.."/third_party/DirectXShaderCompiler/include",
+    })
+  filter({})
 
 if enableMiscSubprojects then
   group("src")
