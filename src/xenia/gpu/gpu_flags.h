@@ -33,6 +33,16 @@ DECLARE_int32(query_occlusion_sample_lower_threshold);
 
 DECLARE_int32(query_occlusion_sample_upper_threshold);
 
+DECLARE_bool(metal_shader_disk_cache);
+DECLARE_bool(metal_pipeline_binary_archive);
+DECLARE_bool(metal_pipeline_disk_cache);
+DECLARE_int32(metal_draw_ring_count);
+DECLARE_bool(metal_use_heaps);
+DECLARE_bool(metal_shared_memory_zero_copy);
+DECLARE_int32(metal_heap_min_bytes);
+DECLARE_bool(metal_texture_cache_use_private);
+DECLARE_bool(metal_texture_upload_via_blit);
+
 DECLARE_bool(occlusion_query_enable);
 
 void SetOcclusionQueryEnable(bool value);
@@ -40,8 +50,6 @@ void SetOcclusionQueryEnable(bool value);
 // Returns the guest vblank rate in Hz (50 for PAL, 60 for NTSC).
 // Based on use_50Hz_mode cvar.
 uint32_t GetGuestVblankRateHz();
-
-DECLARE_int32(anisotropic_override);
 
 DECLARE_bool(disassemble_pm4);
 
@@ -61,6 +69,8 @@ DECLARE_bool(async_shader_compilation);
 DECLARE_bool(readback_resolve_half_pixel_offset);
 
 DECLARE_bool(gpu_3d_to_2d_texture);
+
+DECLARE_int32(anisotropic_override);
 
 #define XE_GPU_FINE_GRAINED_DRAW_SCOPES 1
 

@@ -68,7 +68,7 @@ project("xenia-gpu-metal")
       "/usr/local/include/metal_irconverter_runtime"
     }
 
-    defines { "METAL_SHADER_CONVERTER_AVAILABLE" }
+    defines { "METAL_SHADER_CONVERTER_AVAILABLE", "IR_RUNTIME_METALCPP" }
 
     libdirs     { metal_converter_libdir }
     runpathdirs {
@@ -167,7 +167,7 @@ project("xenia-gpu-metal-trace-viewer")
       "/usr/local/include/metal_irconverter_runtime"
     }
 
-    defines { "METAL_SHADER_CONVERTER_AVAILABLE" }
+    defines { "METAL_SHADER_CONVERTER_AVAILABLE", "IR_RUNTIME_METALCPP" }
 
     links {
       "Cocoa.framework",
@@ -291,7 +291,7 @@ project("xenia-gpu-metal-trace-dump")
       "/usr/local/include/metal_irconverter_runtime"
     }
 
-    defines { "METAL_SHADER_CONVERTER_AVAILABLE" }
+    defines { "METAL_SHADER_CONVERTER_AVAILABLE", "IR_RUNTIME_METALCPP" }
 
     links {
       "Cocoa.framework",

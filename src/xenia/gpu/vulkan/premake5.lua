@@ -1,6 +1,10 @@
 project_root = "../../../.."
 include(project_root.."/tools/build")
 
+if os.istarget("macosx") then
+  return
+end
+
 group("src")
 project("xenia-gpu-vulkan")
   uuid("717590b4-f579-4162-8f23-0624e87d6cca")
@@ -21,7 +25,7 @@ project("xenia-gpu-vulkan")
   })
 
   -- Include SPIRV-Tools headers from Vulkan SDK for Windows
-  filter("platforms:Windows")
+  filter("platforms:Windows-*")
     includedirs({
       "$(VULKAN_SDK)/Include",
     })
@@ -82,14 +86,14 @@ if enableMiscSubprojects then
         "xenia-cpu-backend-x64",
       })
 
-    filter("platforms:Linux")
+    filter("platforms:Linux-*")
       links({
         "X11",
         "xcb",
         "X11-xcb",
       })
 
-    filter("platforms:Windows")
+    filter("platforms:Windows-*")
       -- Only create the .user file if it doesn't already exist.
       local user_file = project_root.."/build/xenia-gpu-vulkan-trace-viewer.vcxproj.user"
       if not os.isfile(user_file) then
@@ -149,14 +153,14 @@ if enableMiscSubprojects then
         "xenia-cpu-backend-x64",
       })
 
-    filter("platforms:Linux")
+    filter("platforms:Linux-*")
       links({
         "X11",
         "xcb",
         "X11-xcb",
       })
 
-    filter("platforms:Windows")
+    filter("platforms:Windows-*")
       -- Only create the .user file if it doesn't already exist.
       local user_file = project_root.."/build/xenia-gpu-vulkan-trace-dump.vcxproj.user"
       if not os.isfile(user_file) then

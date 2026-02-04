@@ -1,4 +1,12 @@
 project_root = "../../.."
+local metal_converter_libdir =
+    path.getabsolute(path.join(project_root, "third_party/metal-shader-converter/lib"))
+local dxilconv_libdir_arm64 =
+    path.getabsolute(path.join(project_root,
+                               "third_party/DirectXShaderCompiler/build_dxilconv_macos/lib"))
+local dxilconv_libdir_x86_64 =
+    path.getabsolute(path.join(project_root,
+                               "third_party/DirectXShaderCompiler/build_dxilconv_macos_x86_64/lib"))
 include(project_root.."/tools/build")
 
 group("src")
@@ -13,13 +21,11 @@ project("xenia-app")
     "xenia-cpu",
     "xenia-gpu",
     "xenia-gpu-null",
-    "xenia-gpu-vulkan",
     "xenia-hid",
     "xenia-hid-nop",
     "xenia-kernel",
     "xenia-patcher",
     "xenia-ui",
-    "xenia-ui-vulkan",
     "xenia-vfs",
   })
   links({
@@ -90,6 +96,12 @@ project("xenia-app")
     })
     linkoptions({"/ENTRY:mainCRTStartup"})
 
+  filter("not system:macosx")
+    links({
+      "xenia-gpu-vulkan",
+      "xenia-ui-vulkan",
+    })
+
   filter({"architecture:x86_64", "files:../base/main_init_"..platform_suffix..".cc"})
     vectorextensions("SSE2")  -- Disable AVX for main_init_win.cc so our AVX check doesn't use AVX instructions.
 
@@ -123,6 +135,37 @@ project("xenia-app")
     })
 
   filter("platforms:Windows")
+
+  filter("system:macosx")
+    links({
+      "xenia-gpu-metal",
+      "xenia-ui-metal",
+      "dxilconv",
+      "metalirconverter",
+      "Cocoa.framework",
+      "CoreFoundation.framework",
+      "CoreServices.framework",
+      "Foundation.framework",
+      "Metal.framework",
+      "MetalFX.framework",
+      "MetalKit.framework",
+      "QuartzCore.framework",
+      "SDL2",
+    })
+    linkoptions({
+      "-ldxilconv",
+      "-lLLVMDxcSupport",
+    })
+    libdirs({
+      metal_converter_libdir,
+      "/opt/homebrew/opt/sdl2/lib",
+      "/usr/local/opt/sdl2/lib",
+    })
+  filter({"system:macosx", "architecture:arm64"})
+    libdirs({ dxilconv_libdir_arm64 })
+  filter({"system:macosx", "architecture:x86_64"})
+    libdirs({ dxilconv_libdir_x86_64 })
+  filter({})
 
   if enableMiscSubprojects then
     filter({"platforms:Windows", SINGLE_LIBRARY_FILTER})

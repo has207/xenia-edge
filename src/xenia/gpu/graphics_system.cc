@@ -83,6 +83,29 @@ GraphicsSystem::GraphicsSystem() : frame_limiter_worker_running_(false) {
 
 GraphicsSystem::~GraphicsSystem() = default;
 
+bool GraphicsSystem::EnsurePresenterForCapture() {
+  if (presenter_) {
+    return true;
+  }
+  if (!provider_) {
+    return false;
+  }
+  if (app_context_) {
+    app_context_->CallInUIThreadSynchronous([this]() {
+      presenter_ = provider_->CreatePresenter(
+          [this](bool is_responsible, bool statically_from_ui_thread) {
+            OnHostGpuLossFromAnyThread(is_responsible);
+          });
+    });
+  } else {
+    presenter_ = provider_->CreatePresenter(
+        [this](bool is_responsible, bool statically_from_ui_thread) {
+          OnHostGpuLossFromAnyThread(is_responsible);
+        });
+  }
+  return presenter_ != nullptr;
+}
+
 X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
                                kernel::KernelState* kernel_state,
                                ui::WindowedAppContext* app_context,
@@ -154,8 +177,7 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
     // Linux uses full sleep duration due to scheduler quantum issues
 #if XE_PLATFORM_WIN32
             constexpr double duration_scalar = 0.90;
-#endif
-#if XE_PLATFORM_LINUX
+#else
             constexpr double duration_scalar = 1.0;
 #endif
 
