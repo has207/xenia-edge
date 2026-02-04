@@ -197,7 +197,6 @@ class BaseHeap {
   // range.
   xe::memory::PageAccess QueryRangeAccess(uint32_t low_address,
                                           uint32_t high_address);
-
   bool Save(ByteStream* stream);
   bool Restore(ByteStream* stream);
 
@@ -285,8 +284,12 @@ class PhysicalHeap : public BaseHeap {
   uint32_t GetPhysicalAddress(uint32_t address) const;
 
   uint32_t SystemPagenumToGuestPagenum(uint32_t num) const {
-    return ((num << system_page_shift_) - host_address_offset()) >>
-           page_size_shift_;
+    uint32_t system_base = num << system_page_shift_;
+    uint32_t offset = host_address_offset();
+    if (system_base < offset) {
+      return 0;
+    }
+    return (system_base - offset) >> page_size_shift_;
   }
 
   uint32_t GuestPagenumToSystemPagenum(uint32_t num) {
@@ -527,7 +530,6 @@ class Memory {
 
   // Gets the physical base heap.
   VirtualHeap* GetPhysicalHeap();
-
   void GetHeapsPageStatsSummary(const BaseHeap* const* provided_heaps,
                                 size_t heaps_count, uint32_t& unreserved_pages,
                                 uint32_t& reserved_pages, uint32_t& used_pages,
@@ -543,6 +545,9 @@ class Memory {
                                          void* context);
 
  private:
+#if XE_PLATFORM_MAC
+  int MapViewsMac();
+#endif
   int MapViews(uint8_t* mapping_base);
   void UnmapViews();
 
@@ -554,7 +559,6 @@ class Memory {
   static bool AccessViolationCallbackThunk(
       global_unique_lock_type global_lock_locked_once, void* context,
       void* host_address, bool is_write);
-
   std::filesystem::path file_name_;
   uint32_t system_page_size_ = 0;
   uint32_t system_allocation_granularity_ = 0;

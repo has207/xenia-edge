@@ -18,9 +18,6 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/platform.h"
 
-DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
-DEFINE_bool(mount_cache, false, "Enable cache mount", "Storage");
-
 #define CATCH_CONFIG_RUNNER
 #include "third_party/catch/single_include/catch2/catch.hpp"
 

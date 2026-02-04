@@ -10,6 +10,7 @@
 #ifndef XENIA_XBOX_H_
 #define XENIA_XBOX_H_
 
+#include <cstdint>
 #include <map>
 #include <string>
 

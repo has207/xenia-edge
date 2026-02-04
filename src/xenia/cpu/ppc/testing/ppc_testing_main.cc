@@ -28,17 +28,16 @@
 
 #if XE_ARCH_AMD64
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#elif XE_ARCH_ARM64
+#include "xenia/cpu/backend/a64/a64_backend.h"
 #endif  // XE_ARCH
 
 #if XE_COMPILER_MSVC
 #include "xenia/base/platform_win.h"
-#else
+#elif !XE_PLATFORM_MAC
 #include <sys/wait.h>
 #include <unistd.h>
 #endif  // XE_COMPILER_MSVC
-
-DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
-DEFINE_bool(mount_cache, false, "Enable cache mount", "Storage");
 
 DEFINE_path(test_path, "src/xenia/cpu/ppc/testing/",
             "Directory scanned for test files.", "Other");
@@ -237,12 +236,11 @@ class TestRunner {
   }
 
   bool Setup(TestSuite& suite) {
-    // Reset thread state first so it can properly deinitialize with the
-    // existing processor before we destroy the processor.
-    thread_state_.reset();
-
     // Reset memory.
     memory_->Reset();
+
+    // Release prior thread state before resetting the processor/backend.
+    thread_state_.reset();
 
     std::unique_ptr<xe::cpu::backend::Backend> backend;
     if (!backend) {
@@ -250,11 +248,17 @@ class TestRunner {
       if (cvars::cpu == "x64") {
         backend.reset(new xe::cpu::backend::x64::X64Backend());
       }
+#elif XE_ARCH_ARM64
+      if (cvars::cpu == "a64") {
+        backend.reset(new xe::cpu::backend::a64::A64Backend());
+      }
 #endif  // XE_ARCH
       if (cvars::cpu == "any") {
         if (!backend) {
 #if XE_ARCH_AMD64
           backend.reset(new xe::cpu::backend::x64::X64Backend());
+#elif XE_ARCH_ARM64
+          backend.reset(new xe::cpu::backend::a64::A64Backend());
 #endif  // XE_ARCH
         }
       }
@@ -262,7 +266,14 @@ class TestRunner {
 
     // Setup a fresh processor.
     processor_.reset(new Processor(memory_.get(), nullptr));
-    processor_->Setup(std::move(backend));
+    if (!backend) {
+      XELOGE("No CPU backend available for tests");
+      return false;
+    }
+    if (!processor_->Setup(std::move(backend))) {
+      XELOGE("Failed to initialize processor backend");
+      return false;
+    }
     processor_->set_debug_info_flags(DebugInfoFlags::kDebugInfoAll);
 
     // Load the binary module.
@@ -453,7 +464,7 @@ int filter(unsigned int code) {
 }
 #endif  // XE_COMPILER_MSVC
 
-#if !XE_COMPILER_MSVC
+#if !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
 // Run test in isolated child process to catch crashes
 enum class TestResult {
   kPassed,
@@ -549,7 +560,7 @@ TestResult RunTestInChildProcess(TestSuite& test_suite, TestCase& test_case) {
   fflush(stderr);
   return TestResult::kFailed;
 }
-#endif  // !XE_COMPILER_MSVC
+#endif  // !XE_COMPILER_MSVC && !XE_PLATFORM_MAC
 
 void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
                       TestCase& test_case, int& failed_count,
@@ -575,6 +586,24 @@ void ProtectedRunTest(TestSuite& test_suite, TestRunner& runner,
   } __except (filter(GetExceptionCode())) {
     fprintf(stderr, "  [%s] FAILED (UNSUPPORTED INSTRUCTION)\n",
             test_case.name.c_str());
+    fflush(stderr);
+    ++failed_count;
+  }
+#elif XE_PLATFORM_MAC
+  fprintf(stdout, "  - %s\n", test_case.name.c_str());
+  fflush(stdout);
+  if (!runner.Setup(test_suite)) {
+    fprintf(stderr, "  [%s] FAILED SETUP\n", test_case.name.c_str());
+    fflush(stderr);
+    ++failed_count;
+    return;
+  }
+  if (runner.Run(test_case)) {
+    ++passed_count;
+    fprintf(stdout, "    PASS\n");
+    fflush(stdout);
+  } else {
+    fprintf(stderr, "  [%s] FAILED\n", test_case.name.c_str());
     fflush(stderr);
     ++failed_count;
   }
@@ -659,10 +688,10 @@ bool RunTests(const std::string_view test_name) {
     XELOGI("{} test cases skipped based on skip list.", skipped_count);
   }
 
-#if XE_COMPILER_MSVC
+#if XE_COMPILER_MSVC || XE_PLATFORM_MAC
   // On Windows, use a single shared test runner
   TestRunner runner;
-  // Run tests serially on Windows
+  // Run tests serially on Windows/macOS
   for (auto& [test_suite, test_case] : all_tests) {
     ProtectedRunTest(*test_suite, runner, *test_case, failed_count,
                      passed_count);
