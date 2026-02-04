@@ -117,6 +117,9 @@
 [submodule "third_party/metal-shader-converter"]
 	path = third_party/metal-shader-converter
 	url = https://github.com/wmarti/metal-shader-converter.git
+[submodule "third_party/oaknut"]
+	path = third_party/oaknut
+	url = https://github.com/merryhime/oaknut.git
 [submodule "third_party/asio"]
 	path = third_party/asio
 	url = https://github.com/chriskohlhoff/asio.git
