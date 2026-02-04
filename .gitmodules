@@ -111,6 +111,9 @@
 [submodule "third_party/DirectX-Headers"]
 	path = third_party/DirectX-Headers
 	url = https://github.com/microsoft/DirectX-Headers.git
+[submodule "third_party/oaknut"]
+	path = third_party/oaknut
+	url = https://github.com/merryhime/oaknut.git
 [submodule "third_party/asio"]
 	path = third_party/asio
 	url = https://github.com/chriskohlhoff/asio.git
