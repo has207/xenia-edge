@@ -31,8 +31,8 @@ jobs:
       - name: Lint
         run: ./xenia-build.py lint --all
 
-  build-linux:
-    name: Build Linux
+  build-linux-x86_64:
+    name: Build Linux x86_64
     needs: lint
     runs-on: ubuntu-24.04
     steps:
@@ -46,6 +46,17 @@ jobs:
         with:
           path: tools/build/bin/premake5
           key: ${{ runner.os }}-premake5-${{ hashFiles('third_party/premake-core/**') }}
+
+      - name: Cache build output
+        id: cache-build
+        uses: actions/cache@v3
+        with:
+          path: |
+            build/obj
+            build/bin/Linux-x86_64/Release/*.a
+          key: ${{ runner.os }}-x86_64-build-${{ hashFiles('src/**', 'premake5.lua', 'third_party/**/*.lua') }}
+          restore-keys: |
+            ${{ runner.os }}-x86_64-build-
 
       - name: Cache Qt6
         id: cache-qt-linux
@@ -66,11 +77,15 @@ jobs:
             ${{ runner.os }}-linuxdeploy-
 
       - name: Cache submodules
-        id: cache-submodules
+        id: cache-submodules-linux
         uses: actions/cache@v3
         with:
-          path: third_party
-          key: ${{ runner.os }}-submodules-${{ hashFiles('.gitmodules') }}-${{ hashFiles('.git/modules/third_party/*/HEAD') }}
+          path: |
+            third_party
+            .git/modules/third_party
+          key: ${{ runner.os }}-${{ runner.arch }}-submodules-${{ hashFiles('.gitmodules') }}-${{ hashFiles('.git/modules/third_party/*/HEAD') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-submodules-
 
       - name: Cache Vulkan SDK
         id: cache-vulkan-sdk-linux
@@ -129,14 +144,15 @@ jobs:
           which spirv-opt && spirv-opt --version || echo "Warning: spirv-opt not found"
           which spirv-dis || echo "Warning: spirv-dis not found"
 
-          # Update submodules if not cached
-          if [ '${{ steps.cache-submodules.outputs.cache-hit }}' != 'true' ]; then
-            git submodule update --init --depth=1 -j$(getconf _NPROCESSORS_ONLN) $(grep -oP '(?<=path = )(?!third_party\/(DirectXShaderCompiler|premake-(androidndk|export-compile-commands))).+' .gitmodules)
-          fi
+          # Always update submodules so .git/modules is present even on cache hit
+          git submodule update --init --depth=1 -j$(getconf _NPROCESSORS_ONLN) $(grep -oP '(?<=path = )(?!third_party\/(DirectXShaderCompiler|premake-(androidndk|export-compile-commands))).+' .gitmodules)
 
+          # Always run premake to regenerate cmake files (lua files may have changed)
           if [ '${{ steps.cache-premake5.outputs.cache-hit }}' != 'true' ]; then
             ./xenia-build.py premake
             cp third_party/premake-core/bin/release/premake5 tools/build/bin
+          else
+            ./xenia-build.py premake
           fi
 
           # Fetch data repos (game-patches, optimized-settings)
@@ -145,11 +161,14 @@ jobs:
         env:
           CC: clang-21
           CXX: clang++-21
-        run: ./xenia-build.py build --config=Release
+        run: |
+          # Clear cmake cache to ensure fresh build with updated files
+          rm -rf build/build_release
+          ./xenia-build.py build --config=Release
       - name: Prepare artifacts
         id: prepare_artifacts
         run: |
-          binary=build/bin/Linux/Release/xenia_edge
+          binary=build/bin/Linux-x86_64/Release/xenia_edge
           if [ $(stat -c%s $binary) -le 100000 ]; then
             echo "::error::Binary is too small."
           fi
@@ -182,7 +201,7 @@ jobs:
           # Copy all necessary files (excluding build artifacts) next to the binary in AppDir
           mkdir -p artifacts/xenia_edge/usr/bin
           # Copy directories (optimized_settings, game_patches, etc.)
-          find build/bin/Linux/Release -maxdepth 1 -type d ! -name Release -exec cp -r {} artifacts/xenia_edge/usr/bin/ \;
+          find build/bin/Linux-x86_64/Release -maxdepth 1 -type d ! -name Release -exec cp -r {} artifacts/xenia_edge/usr/bin/ \;
           # Copy any additional runtime files if needed (currently just directories are copied)
 
           # Run linuxdeploy with Qt plugin to deploy all Qt dependencies and create AppImage
@@ -213,12 +232,408 @@ jobs:
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@main
         with:
-          name: xenia_edge_linux
+          name: xenia_edge_linux_x86_64
           path: artifacts/release
           if-no-files-found: error
 
-  build-windows:
-    name: Build Windows
+  build-macos-arm64:
+    name: Build macOS ARM64
+    needs: lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Cache premake5
+        id: cache-premake5
+        uses: actions/cache@main
+        with:
+          path: tools/build/bin/premake5
+          key: ${{ runner.os }}-premake5-${{ hashFiles('third_party/premake-core/**') }}
+
+      - name: Cache build output
+        id: cache-build
+        uses: actions/cache@v3
+        with:
+          path: |
+            build/obj
+            build/bin/Mac-ARM64/Release/*.a
+          key: ${{ runner.os }}-ARM64-build-${{ hashFiles('src/**', 'premake5.lua', 'third_party/**/*.lua') }}
+          restore-keys: |
+            ${{ runner.os }}-ARM64-build-
+
+      - name: Cache Qt6
+        id: cache-qt-macos
+        uses: actions/cache@v3
+        with:
+          path: ~/Qt
+          key: ${{ runner.os }}-qt6-6.10.1
+          restore-keys: |
+            ${{ runner.os }}-qt6-
+
+      - name: Cache submodules
+        id: cache-submodules-macos
+        uses: actions/cache@v3
+        with:
+          path: |
+            third_party
+            .git/modules/third_party
+          key: ${{ runner.os }}-${{ runner.arch }}-submodules-${{ hashFiles('.gitmodules') }}-${{ hashFiles('.git/modules/third_party/*/HEAD') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-submodules-
+
+      - name: Setup
+        run: |
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge 5 ]; then
+                return 1
+              fi
+              sleep 5
+            done
+          }
+
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 524288000
+
+          # Install dependencies via Homebrew
+          brew install sdl2 ninja pipx
+
+          # Install Qt 6.10.1 via aqtinstall
+          if [ '${{ steps.cache-qt-macos.outputs.cache-hit }}' != 'true' ]; then
+            pipx install aqtinstall
+            pipx ensurepath
+            export PATH="$HOME/.local/bin:$PATH"
+            aqt install-qt mac desktop 6.10.1 clang_64 -O ~/Qt
+          fi
+          export PATH="$HOME/Qt/6.10.1/macos/bin:$PATH"
+          export CMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
+          export QT_DIR="$HOME/Qt/6.10.1/macos"
+          echo "$HOME/Qt/6.10.1/macos/bin" >> $GITHUB_PATH
+          echo "CMAKE_PREFIX_PATH=$HOME/Qt/6.10.1/macos" >> $GITHUB_ENV
+          echo "QT_DIR=$HOME/Qt/6.10.1/macos" >> $GITHUB_ENV
+
+          # Always update submodules so .git/modules is present even on cache hit
+          retry git submodule update --init --depth=1 -j$(sysctl -n hw.ncpu) $(grep -oE 'path = .+' .gitmodules | sed 's/path = //' | grep -v 'premake-androidndk\|premake-export-compile-commands')
+          # DirectXShaderCompiler has nested submodules needed for dxilconv
+          retry git -C third_party/DirectXShaderCompiler submodule update --init --depth=1 external/SPIRV-Headers external/SPIRV-Tools
+
+          if [ '${{ steps.cache-premake5.outputs.cache-hit }}' != 'true' ]; then
+            ./xenia-build.py premake
+            cp third_party/premake-core/bin/release/premake5 tools/build/bin
+          else
+            ./xenia-build.py premake
+          fi
+
+          # Fetch data repos (game-patches, optimized-settings)
+          ./xenia-build.py fetchdata
+
+      - name: Build
+        run: ./xenia-build.py build --config=Release --target=xenia-app
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          app_bundle=""
+          for candidate in \
+            build/bin/Mac-ARM64/Release/Xenia-Edge.app \
+            build/bin/Mac-ARM64/Release/Xenia.app \
+            build/bin/Mac-ARM64/Release/xenia_edge.app; do
+            if [ -d "$candidate" ]; then
+              app_bundle="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$app_bundle" ]; then
+            echo "::error::App bundle not found in build/bin/Mac-ARM64/Release"
+            exit 1
+          fi
+
+          target_bundle="build/bin/Mac-ARM64/Release/Xenia-Edge.app"
+          if [ "$app_bundle" != "$target_bundle" ]; then
+            rm -rf "$target_bundle"
+            mv "$app_bundle" "$target_bundle"
+            app_bundle="$target_bundle"
+          fi
+
+          mkdir -p "$app_bundle/Contents/Resources"
+          cp -f assets/icon/xenia.icns "$app_bundle/Contents/Resources/"
+
+          macdeployqt="$HOME/Qt/6.10.1/macos/bin/macdeployqt"
+          if [ -x "$macdeployqt" ]; then
+            "$macdeployqt" "$app_bundle" -always-overwrite -verbose=2 \
+              -libpath=third_party/metal-shader-converter/lib \
+              -libpath=third_party/DirectXShaderCompiler/build_dxilconv_macos/lib \
+              -libpath=/opt/homebrew/opt/sdl2/lib \
+              -libpath=/usr/local/opt/sdl2/lib
+          else
+            echo "::warning::macdeployqt not found at $macdeployqt"
+          fi
+
+          if [ -f third_party/metal-shader-converter/lib/libmetalirconverter.dylib ]; then
+            cp -f third_party/metal-shader-converter/lib/libmetalirconverter.dylib \
+              "$app_bundle/Contents/Frameworks/" || true
+          fi
+          if [ -f third_party/DirectXShaderCompiler/build_dxilconv_macos/lib/libdxilconv.dylib ]; then
+            cp -f third_party/DirectXShaderCompiler/build_dxilconv_macos/lib/libdxilconv.dylib \
+              "$app_bundle/Contents/Frameworks/" || true
+          fi
+
+          main_exe="$app_bundle/Contents/MacOS/xenia_edge"
+          if [ -f "$main_exe" ]; then
+            codesign --remove-signature "$main_exe" || true
+          fi
+          codesign --remove-signature "$app_bundle" || true
+          frameworks_dir="$app_bundle/Contents/Frameworks"
+          plugins_dir="$app_bundle/Contents/PlugIns"
+          if [ -d "$frameworks_dir" ]; then
+            find "$frameworks_dir" -maxdepth 2 -name "*.framework" -type d -print0 | \
+              xargs -0 -I{} codesign --remove-signature "{}" || true
+            find "$frameworks_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --remove-signature "{}" || true
+            find "$frameworks_dir" -maxdepth 2 -name "*.framework" -type d -print0 | \
+              xargs -0 -I{} codesign --force --sign - --timestamp=none "{}"
+            find "$frameworks_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --force --sign - --timestamp=none "{}"
+          fi
+          if [ -d "$plugins_dir" ]; then
+            find "$plugins_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --remove-signature "{}" || true
+            find "$plugins_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --force --sign - --timestamp=none "{}"
+          fi
+          if [ -f "$main_exe" ]; then
+            codesign --force --sign - --timestamp=none "$main_exe"
+          fi
+          codesign --force --deep --timestamp=none \
+            --sign - --entitlements xenia.entitlements "$app_bundle"
+          xattr -cr "$app_bundle"
+
+          mkdir -p artifacts/release
+
+          # Create a DMG
+          mkdir -p dmg_contents
+          cp -R "$app_bundle" dmg_contents/
+          cp LICENSE dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+
+          hdiutil create -volname "Xenia-Edge" -srcfolder dmg_contents -ov -format UDZO "artifacts/release/xenia_edge_macos.dmg"
+          rm -rf dmg_contents
+
+      - name: Upload xenia edge artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_macos_arm64
+          path: artifacts/release
+          if-no-files-found: error
+
+  build-macos-x86_64:
+    name: Build macOS x86_64
+    # Disabled temporarily. Re-enable by removing the if:false line below.
+    if: ${{ false }}
+    needs: lint
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Cache premake5
+        id: cache-premake5
+        uses: actions/cache@main
+        with:
+          path: tools/build/bin/premake5
+          key: ${{ runner.os }}-${{ runner.arch }}-premake5-${{ hashFiles('third_party/premake-core/**') }}
+
+      - name: Cache build output
+        id: cache-build
+        uses: actions/cache@v3
+        with:
+          path: |
+            build/obj
+            build/bin/Mac-x86_64/Release/*.a
+          key: ${{ runner.os }}-x86_64-build-${{ hashFiles('src/**', 'premake5.lua', 'third_party/**/*.lua') }}
+          restore-keys: |
+            ${{ runner.os }}-x86_64-build-
+
+      - name: Cache Qt6
+        id: cache-qt-macos
+        uses: actions/cache@v3
+        with:
+          path: ~/Qt
+          key: ${{ runner.os }}-${{ runner.arch }}-qt6-6.10.1
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-qt6-
+
+      - name: Cache submodules
+        id: cache-submodules-macos
+        uses: actions/cache@v3
+        with:
+          path: |
+            third_party
+            .git/modules/third_party
+          key: ${{ runner.os }}-${{ runner.arch }}-submodules-${{ hashFiles('.gitmodules') }}-${{ hashFiles('.git/modules/third_party/*/HEAD') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-submodules-
+
+      - name: Setup
+        run: |
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge 5 ]; then
+                return 1
+              fi
+              sleep 5
+            done
+          }
+
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 60
+          git config --global http.postBuffer 524288000
+
+          # Install dependencies via Homebrew
+          brew install sdl2 ninja pipx
+
+          # Install Qt 6.10.1 via aqtinstall
+          if [ '${{ steps.cache-qt-macos.outputs.cache-hit }}' != 'true' ]; then
+            pipx install aqtinstall
+            pipx ensurepath
+            export PATH="$HOME/.local/bin:$PATH"
+            aqt install-qt mac desktop 6.10.1 clang_64 -O ~/Qt
+          fi
+          export PATH="$HOME/Qt/6.10.1/macos/bin:$PATH"
+          export CMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
+          export QT_DIR="$HOME/Qt/6.10.1/macos"
+          echo "$HOME/Qt/6.10.1/macos/bin" >> $GITHUB_PATH
+          echo "CMAKE_PREFIX_PATH=$HOME/Qt/6.10.1/macos" >> $GITHUB_ENV
+          echo "QT_DIR=$HOME/Qt/6.10.1/macos" >> $GITHUB_ENV
+
+          # Always update submodules so .git/modules is present even on cache hit
+          retry git submodule update --init --depth=1 -j$(sysctl -n hw.ncpu) $(grep -oE 'path = .+' .gitmodules | sed 's/path = //' | grep -v 'premake-androidndk\|premake-export-compile-commands')
+          # DirectXShaderCompiler has nested submodules needed for dxilconv
+          retry git -C third_party/DirectXShaderCompiler submodule update --init --depth=1 external/SPIRV-Headers external/SPIRV-Tools
+
+          if [ '${{ steps.cache-premake5.outputs.cache-hit }}' != 'true' ]; then
+            ./xenia-build.py premake
+            cp third_party/premake-core/bin/release/premake5 tools/build/bin
+          else
+            ./xenia-build.py premake
+          fi
+
+          # Fetch data repos (game-patches, optimized-settings)
+          ./xenia-build.py fetchdata
+
+      - name: Build
+        run: ./xenia-build.py build --config=Release --target=xenia-app --arch=x86_64
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          app_bundle=""
+          for candidate in \
+            build/bin/Mac-x86_64/Release/Xenia-Edge.app \
+            build/bin/Mac-x86_64/Release/Xenia.app \
+            build/bin/Mac-x86_64/Release/xenia_edge.app; do
+            if [ -d "$candidate" ]; then
+              app_bundle="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$app_bundle" ]; then
+            echo "::error::App bundle not found in build/bin/Mac-x86_64/Release"
+            exit 1
+          fi
+
+          target_bundle="build/bin/Mac-x86_64/Release/Xenia-Edge.app"
+          if [ "$app_bundle" != "$target_bundle" ]; then
+            rm -rf "$target_bundle"
+            mv "$app_bundle" "$target_bundle"
+            app_bundle="$target_bundle"
+          fi
+
+          mkdir -p "$app_bundle/Contents/Resources"
+          cp -f assets/icon/xenia.icns "$app_bundle/Contents/Resources/"
+
+          macdeployqt="$HOME/Qt/6.10.1/macos/bin/macdeployqt"
+          if [ -x "$macdeployqt" ]; then
+            "$macdeployqt" "$app_bundle" -always-overwrite -verbose=2 \
+              -libpath=third_party/metal-shader-converter/lib \
+              -libpath=third_party/DirectXShaderCompiler/build_dxilconv_macos_x86_64/lib \
+              -libpath=/opt/homebrew/opt/sdl2/lib \
+              -libpath=/usr/local/opt/sdl2/lib
+          else
+            echo "::warning::macdeployqt not found at $macdeployqt"
+          fi
+
+          if [ -f third_party/metal-shader-converter/lib/libmetalirconverter.dylib ]; then
+            cp -f third_party/metal-shader-converter/lib/libmetalirconverter.dylib \
+              "$app_bundle/Contents/Frameworks/" || true
+          fi
+          if [ -f third_party/DirectXShaderCompiler/build_dxilconv_macos_x86_64/lib/libdxilconv.dylib ]; then
+            cp -f third_party/DirectXShaderCompiler/build_dxilconv_macos_x86_64/lib/libdxilconv.dylib \
+              "$app_bundle/Contents/Frameworks/" || true
+          fi
+
+          main_exe="$app_bundle/Contents/MacOS/xenia_edge"
+          if [ -f "$main_exe" ]; then
+            codesign --remove-signature "$main_exe" || true
+          fi
+          codesign --remove-signature "$app_bundle" || true
+          frameworks_dir="$app_bundle/Contents/Frameworks"
+          plugins_dir="$app_bundle/Contents/PlugIns"
+          if [ -d "$frameworks_dir" ]; then
+            find "$frameworks_dir" -maxdepth 2 -name "*.framework" -type d -print0 | \
+              xargs -0 -I{} codesign --remove-signature "{}" || true
+            find "$frameworks_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --remove-signature "{}" || true
+            find "$frameworks_dir" -maxdepth 2 -name "*.framework" -type d -print0 | \
+              xargs -0 -I{} codesign --force --sign - --timestamp=none "{}"
+            find "$frameworks_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --force --sign - --timestamp=none "{}"
+          fi
+          if [ -d "$plugins_dir" ]; then
+            find "$plugins_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --remove-signature "{}" || true
+            find "$plugins_dir" -name "*.dylib" -type f -print0 | \
+              xargs -0 -I{} codesign --force --sign - --timestamp=none "{}"
+          fi
+          if [ -f "$main_exe" ]; then
+            codesign --force --sign - --timestamp=none "$main_exe"
+          fi
+          codesign --force --deep --timestamp=none \
+            --sign - --entitlements xenia.entitlements "$app_bundle"
+          xattr -cr "$app_bundle"
+
+          mkdir -p artifacts/release
+
+          # Create a DMG
+          mkdir -p dmg_contents
+          cp -R "$app_bundle" dmg_contents/
+          cp LICENSE dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+
+          hdiutil create -volname "Xenia-Edge" -srcfolder dmg_contents -ov -format UDZO "artifacts/release/xenia_edge_macos_x86_64.dmg"
+          rm -rf dmg_contents
+
+      - name: Upload xenia edge artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_macos_x86_64
+          path: artifacts/release
+          if-no-files-found: error
+
+  build-windows-x86_64:
+    name: Build Windows x86_64
     needs: lint
     runs-on: windows-2025
     env:
@@ -228,6 +643,17 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
+
+      - name: Cache build output
+        id: cache-build
+        uses: actions/cache@v3
+        with:
+          path: |
+            build/obj
+            build/bin/Windows-x86_64/Release/*.lib
+          key: ${{ runner.os }}-x86_64-build-${{ hashFiles('src/**', 'premake5.lua', 'third_party/**/*.lua') }}
+          restore-keys: |
+            ${{ runner.os }}-x86_64-build-
 
       - name: Cache Vulkan SDK
         id: cache-vulkan-sdk
@@ -251,7 +677,9 @@ jobs:
         id: cache-submodules
         uses: actions/cache@v3
         with:
-          path: third_party
+          path: |
+            third_party
+            .git/modules/third_party
           key: ${{ runner.os }}-submodules-${{ hashFiles('.gitmodules') }}-${{ hashFiles('.git/modules/third_party/*/HEAD') }}
 
       - name: Setup
@@ -308,10 +736,12 @@ jobs:
             aqt install-qt windows desktop 6.10.1 win64_msvc2022_64 -O C:\Qt
           }
 
-          $cacheHit = '${{ steps.cache-submodules.outputs.cache-hit }}'
-          if ($cacheHit -ne 'true') {
-            git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS (Select-String -CaseSensitive '(?<=path = )(?!third_party\/(premake-(androidndk|cmake|export-compile-commands))).+' .gitmodules).Matches.Value
-          }
+          # Always run submodule update - it's fast if already present from cache
+          # This ensures any newly added submodules are fetched even with cache hit
+          git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS (Select-String -CaseSensitive '(?<=path = )(?!third_party\/(premake-(androidndk|cmake|export-compile-commands))).+' .gitmodules).Matches.Value
+
+          # DirectXShaderCompiler has nested submodules needed for dxilconv
+          git -C third_party/DirectXShaderCompiler submodule update --init --depth=1 external/SPIRV-Headers external/SPIRV-Tools
 
           # Fetch data repos (game-patches, optimized-settings)
           python xenia-build.py fetchdata
@@ -321,57 +751,76 @@ jobs:
       - name: Prepare artifacts
         id: prepare_artifacts
         run: |
-          $binary = 'build\bin\Windows\Release\xenia_edge.exe'
+          $binary = 'build\bin\Windows-x86_64\Release\xenia_edge.exe'
           if ((get-item $binary).Length -le 100000) {
             echo "::error::$binary is too small."
           }
-          robocopy . build\bin\Windows\Release LICENSE /r:0 /w:0
+          robocopy . build\bin\Windows-x86_64\Release LICENSE /r:0 /w:0
           # Copy all files and directories (Qt DLLs, plugins, etc.) excluding build artifacts
-          robocopy build\bin\Windows\Release artifacts\xenia_edge /MIR /r:0 /w:0 /XF *.lib *.idb *.exp /XD generic iconengines imageformats networkinformation styles tls
+          robocopy build\bin\Windows-x86_64\Release artifacts\xenia_edge /MIR /r:0 /w:0 /XF *.lib *.idb *.exp /XD generic iconengines imageformats networkinformation styles tls
           If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
       - name: Upload xenia edge artifacts
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@main
         with:
-          name: xenia_edge_windows
+          name: xenia_edge_windows_x86_64
           path: artifacts\xenia_edge
           if-no-files-found: error
 
   release:
     name: Create Release
-    needs: [build-linux, build-windows]
+    needs: [build-linux-x86_64, build-macos-arm64, build-windows-x86_64]
     runs-on: ubuntu-latest
     if: |
       github.repository == 'has207/xenia-edge' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/edge'
     steps:
-      - name: Download Linux artifacts
+      - name: Download Linux x86_64 artifacts
         uses: actions/download-artifact@main
         with:
-          name: xenia_edge_linux
-          path: linux_artifacts
+          name: xenia_edge_linux_x86_64
+          path: linux_x86_64_artifacts
 
-      - name: Download Windows artifacts
+      - name: Download macOS ARM64 artifacts
         uses: actions/download-artifact@main
         with:
-          name: xenia_edge_windows
-          path: windows_artifacts
+          name: xenia_edge_macos_arm64
+          path: macos_arm64_artifacts
+
+      - name: Download macOS x86_64 artifacts
+        uses: actions/download-artifact@main
+        with:
+          name: xenia_edge_macos_x86_64
+          path: macos_x86_64_artifacts
+
+      - name: Download Windows x86_64 artifacts
+        uses: actions/download-artifact@main
+        with:
+          name: xenia_edge_windows_x86_64
+          path: windows_x86_64_artifacts
 
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # Create zips
-          cd linux_artifacts
-          # For Linux, just rename the AppImage (no need to zip a single file)
-          mv xenia_edge.AppImage ../xenia_edge_linux.AppImage
-          cd ../windows_artifacts
-          7z a ../xenia_edge_windows.zip * -xr!'*.pdb' -mx9 -bb3
+          # Prepare release artifacts
+          cd linux_x86_64_artifacts
+          mv xenia_edge.AppImage ../xenia_edge_linux_x86_64.AppImage
+          cd ../macos_arm64_artifacts
+          mv xenia_edge_macos.dmg ../xenia_edge_macos_arm64.dmg
+          cd ../macos_x86_64_artifacts
+          mv xenia_edge_macos_x86_64.dmg ../
+          cd ../windows_x86_64_artifacts
+          7z a ../xenia_edge_windows_x86_64.zip * -xr!'*.pdb' -mx9 -bb3
           cd ..
 
           # Create release
           tag=${GITHUB_SHA::7}
-          gh release create $tag xenia_edge_linux.AppImage xenia_edge_windows.zip \
+          gh release create $tag \
+            xenia_edge_linux_x86_64.AppImage \
+            xenia_edge_macos_arm64.dmg \
+            xenia_edge_macos_x86_64.dmg \
+            xenia_edge_windows_x86_64.zip \
             --target $GITHUB_SHA -t "xenia_edge" --generate-notes
