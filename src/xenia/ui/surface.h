@@ -32,6 +32,8 @@ class Surface {
     // GNU/Linux.
     kTypeIndex_WaylandWindow,
     kTypeIndex_XcbWindow,
+    // macOS.
+    kTypeIndex_MacNSView,
     // Windows.
     kTypeIndex_Win32Hwnd,
   };
@@ -41,6 +43,7 @@ class Surface {
                                     << kTypeIndex_AndroidNativeWindow,
     kTypeFlag_WaylandWindow = TypeFlags(1) << kTypeIndex_WaylandWindow,
     kTypeFlag_XcbWindow = TypeFlags(1) << kTypeIndex_XcbWindow,
+    kTypeFlag_MacNSView = TypeFlags(1) << kTypeIndex_MacNSView,
     kTypeFlag_Win32Hwnd = TypeFlags(1) << kTypeIndex_Win32Hwnd,
   };
 

@@ -25,22 +25,23 @@ ObjectTable::~ObjectTable() { Reset(); }
 void ObjectTable::Reset() {
   auto global_lock = global_critical_region_.Acquire();
 
-  // Release all objects, clearing their handles first so destructors
-  // don't assert on non-empty handles_.
+  // Release all objects.
   for (uint32_t n = 0; n < table_capacity_; n++) {
     ObjectTableEntry& entry = table_[n];
     if (entry.object) {
-      entry.object->handles().clear();
       entry.handle_ref_count = 0;
+      entry.object->handles().clear();
       entry.object->Release();
+      entry.object = nullptr;
     }
   }
   for (uint32_t n = 0; n < host_table_capacity_; n++) {
     ObjectTableEntry& entry = host_table_[n];
     if (entry.object) {
-      entry.object->handles().clear();
       entry.handle_ref_count = 0;
+      entry.object->handles().clear();
       entry.object->Release();
+      entry.object = nullptr;
     }
   }
 
