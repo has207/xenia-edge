@@ -12,6 +12,9 @@ project("mspack")
   includedirs({
       "mspack",
   })
+  externalincludedirs({
+      "mspack",
+  })
   files({
       "mspack/logging.cc",
       "mspack/lzxd.c",

@@ -8,6 +8,8 @@ project("zarchive")
   })
   includedirs({
     "zarchive/include",
+  })
+  externalincludedirs({
     "zstd/lib",
   })
   files({

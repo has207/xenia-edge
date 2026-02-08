@@ -241,13 +241,13 @@ void GDBStub::Listen(GDBClient& client) {
             cache_.cur_thread_id = cache_.notify_thread_id;
           }
 
-          SignalCode signal = SignalCode::SIGTRAP;
+          SignalCode signal = SignalCode::kSIGTRAP;
           if (cache_.notify_exception_code.has_value()) {
             if (cache_.notify_exception_code ==
                 xe::Exception::Code::kIllegalInstruction) {
-              signal = SignalCode::SIGILL;
+              signal = SignalCode::kSIGILL;
             } else {
-              signal = SignalCode::SIGSEGV;
+              signal = SignalCode::kSIGSEGV;
             }
 
             cache_.notify_exception_code.reset();

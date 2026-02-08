@@ -35,7 +35,7 @@ class GDBStub : public cpu::DebugListener {
     Interrupt = '\03',
   };
 
-  enum class SignalCode : uint8_t { SIGILL = 4, SIGTRAP = 5, SIGSEGV = 11 };
+  enum class SignalCode : uint8_t { kSIGILL = 4, kSIGTRAP = 5, kSIGSEGV = 11 };
 
   enum class RegisterIndex : int {
     GPR0 = 0,
