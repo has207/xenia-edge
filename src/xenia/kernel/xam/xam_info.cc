@@ -458,7 +458,6 @@ void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {
         assert_always();
       }
 #endif  // XE_PLATFORM_WIN32
-
       // Convert launch_data to hex string
       std::string launch_data_hex;
       for (uint8_t byte : loader_data.launch_data) {

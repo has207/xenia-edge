@@ -34,7 +34,11 @@
 #include "xenia/cpu/xex_module.h"
 
 // TODO(benvanik): based on compiler support
+#if XE_ARCH_AMD64
 #include "xenia/cpu/backend/x64/x64_backend.h"
+#elif XE_ARCH_ARM64
+#include "xenia/cpu/backend/a64/a64_backend.h"
+#endif  // XE_ARCH
 
 #if 0 && DEBUG
 #define DEFAULT_DEBUG_FLAG true
@@ -689,10 +693,6 @@ bool Processor::OnThreadBreakpointHit(Exception* ex) {
 void Processor::OnStepCompleted(ThreadDebugInfo* thread_info) {
   auto global_lock = global_critical_region_.Acquire();
   execution_state_ = ExecutionState::kPaused;
-
-  // Unlock before notifying to avoid deadlock with debugger stub.
-  global_lock.unlock();
-
   if (debug_listener_) {
     debug_listener_->OnExecutionPaused();
   }
@@ -727,19 +727,15 @@ bool Processor::OnUnhandledException(Exception* ex) {
                               ex->thread_context());
 
   // Stop and notify the listener.
-  if (execution_state_ != ExecutionState::kRunning) {
-    global_lock.unlock();
-    Thread::GetCurrentThread()->thread()->Suspend();
-    return true;
-  }
+  // This will take control.
+  assert_true(execution_state_ == ExecutionState::kRunning);
   execution_state_ = ExecutionState::kPaused;
 
-  // Notify debugger that execution stopped.
+  // Notify debugger that exceution stopped.
   debug_listener_->OnUnhandledException(ex);
   debug_listener_->OnExecutionPaused();
 
-  // Unlock before suspending to avoid deadlock with debugger stub.
-  global_lock.unlock();
+  // Suspend self.
   Thread::GetCurrentThread()->thread()->Suspend();
 
   return true;

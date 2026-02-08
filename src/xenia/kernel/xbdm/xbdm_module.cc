@@ -28,8 +28,8 @@ XbdmModule::XbdmModule(Emulator* emulator, KernelState* kernel_state)
 #undef XE_MODULE_EXPORT_GROUP
 }
 
-// Use construct-on-first-use idiom to avoid static initialization order issues
-std::vector<xe::cpu::Export*>& GetXbdmExports() {
+// Ensure xbdm_exports is initialized before use in static initializers.
+static std::vector<xe::cpu::Export*>& GetXbdmExports() {
   static std::vector<xe::cpu::Export*> xbdm_exports(4096);
   return xbdm_exports;
 }

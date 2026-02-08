@@ -32,6 +32,8 @@
 
 #if XE_ARCH_AMD64
 #include <xmmintrin.h>
+#elif XE_ARCH_ARM64
+#include <arm_neon.h>
 #endif
 
 namespace xe {
@@ -296,7 +298,7 @@ inline bool bit_scan_forward(uint64_t v, uint32_t* out_first_set_index) {
 }
 #else
 inline bool bit_scan_forward(uint32_t v, uint32_t* out_first_set_index) {
-  int i = ffs(v);
+  int i = __builtin_ffs(v);
   *out_first_set_index = i - 1;
   return i != 0;
 }
@@ -315,11 +317,19 @@ inline bool bit_scan_forward(int64_t v, uint32_t* out_first_set_index) {
 
 template <typename T>
 inline T log2_floor(T v) {
-  return sizeof(T) * 8 - 1 - lzcnt(v);
+  if constexpr (sizeof(T) <= sizeof(uint32_t)) {
+    return sizeof(T) * 8 - 1 - lzcnt(static_cast<uint32_t>(v));
+  } else {
+    return sizeof(T) * 8 - 1 - lzcnt(static_cast<uint64_t>(v));
+  }
 }
 template <typename T>
 inline T log2_ceil(T v) {
-  return sizeof(T) * 8 - lzcnt(v - 1);
+  if constexpr (sizeof(T) <= sizeof(uint32_t)) {
+    return sizeof(T) * 8 - lzcnt(static_cast<uint32_t>(v - 1));
+  } else {
+    return sizeof(T) * 8 - lzcnt(static_cast<uint64_t>(v - 1));
+  }
 }
 
 template <typename T>
@@ -408,6 +418,27 @@ template <int N>
 int64_t m128_i64(const __m128& v) {
   return m128_i64<N>(_mm_castps_pd(v));
 }
+#elif XE_ARCH_ARM64
+// Utilities for NEON values.
+template <int N>
+float m128_f32(const float32x4_t& v) {
+  return vgetq_lane_f32(v, N);
+}
+template <int N>
+int32_t m128_i32(const int32x4_t& v) {
+  return vgetq_lane_s32(v, N);
+}
+template <int N>
+double m128_f64(const float64x2_t& v) {
+  return vgetq_lane_f64(v, N);
+}
+template <int N>
+int64_t m128_i64(const int64x2_t& v) {
+  return vgetq_lane_s64(v, N);
+}
+#endif
+
+#if XE_ARCH_AMD64
 /*
 
         std::min/max float has handling for nans, where if either argument is

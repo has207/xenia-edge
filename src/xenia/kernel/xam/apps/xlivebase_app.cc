@@ -11,7 +11,15 @@
 
 #include "xenia/base/logging.h"
 
-#include <asio.hpp>
+#ifdef XE_PLATFORM_WIN32
+// NOTE: must be included last as it expects windows.h to already be included.
+#ifndef _WINSOCK_DEPRECATED_NO_WARNINGS
+#define _WINSOCK_DEPRECATED_NO_WARNINGS  // inet_addr
+#endif
+#include <winsock2.h>  // NOLINT(build/include_order)
+#elif XE_PLATFORM_LINUX || XE_PLATFORM_MAC
+#include <netinet/in.h>
+#endif
 
 struct XONLINE_SERVICE_INFO {
   xe::be<uint32_t> id;

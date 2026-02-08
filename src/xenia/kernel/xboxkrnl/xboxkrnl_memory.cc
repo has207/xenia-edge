@@ -215,15 +215,21 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
       // Use the smaller of adjusted_size and the actual allocated region size
       uint32_t size_to_zero = std::min(adjusted_size, alloc_info.region_size);
 
+      bool made_writable = true;
       if (!(protect & kMemoryProtectWrite)) {
-        heap->Protect(address, size_to_zero,
-                      kMemoryProtectRead | kMemoryProtectWrite);
+        made_writable = heap->Protect(address, size_to_zero,
+                                      kMemoryProtectRead | kMemoryProtectWrite);
+        if (!made_writable) {
+          XELOGE("NtAllocateVirtualMemory: temp RW protect failed");
+        }
       }
-      if (!was_commited) {
+      if (made_writable && !was_commited) {
         kernel_memory()->Zero(address, size_to_zero);
       }
-      if (!(protect & kMemoryProtectWrite)) {
-        heap->Protect(address, size_to_zero, protect);
+      if (!(protect & kMemoryProtectWrite) && made_writable) {
+        if (!heap->Protect(address, size_to_zero, protect)) {
+          XELOGE("NtAllocateVirtualMemory: restore protect failed");
+        }
       }
     }
   }
