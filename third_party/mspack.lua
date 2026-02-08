@@ -12,7 +12,7 @@ project("mspack")
   includedirs({
       "mspack",
   })
-  sysincludedirs({
+  externalincludedirs({
       "mspack",
   })
   files({

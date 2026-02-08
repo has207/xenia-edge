@@ -33,6 +33,9 @@
 #include "xenia/base/system.h"
 #include "xenia/cpu/backend/code_cache.h"
 #include "xenia/cpu/backend/null_backend.h"
+#if XE_ARCH_ARM64
+#include "xenia/cpu/backend/a64/a64_backend.h"
+#endif  // XE_ARCH_ARM64
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/thread_state.h"
 #include "xenia/gpu/command_processor.h"
@@ -283,12 +286,22 @@ X_STATUS Emulator::Setup(
   if (cvars::cpu == "x64") {
     backend.reset(new xe::cpu::backend::x64::X64Backend());
   }
-#endif  // XE_ARCH
+#endif  // XE_ARCH_AMD64
+#if XE_ARCH_ARM64
+  if (cvars::cpu == "a64") {
+    backend.reset(new xe::cpu::backend::a64::A64Backend());
+  }
+#endif  // XE_ARCH_ARM64
   if (cvars::cpu == "any") {
     if (!backend) {
 #if XE_ARCH_AMD64
       backend.reset(new xe::cpu::backend::x64::X64Backend());
-#endif  // XE_ARCH
+#endif  // XE_ARCH_AMD64
+#if XE_ARCH_ARM64
+      if (!backend) {
+        backend.reset(new xe::cpu::backend::a64::A64Backend());
+      }
+#endif  // XE_ARCH_ARM64
     }
   }
   if (!backend && !require_cpu_backend_) {
