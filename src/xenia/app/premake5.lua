@@ -182,37 +182,6 @@ project("xenia-app")
     libdirs({ dxilconv_libdir_x86_64 })
   filter({})
 
-  filter("system:macosx")
-    links({
-      "xenia-gpu-metal",
-      "xenia-ui-metal",
-      "dxilconv",
-      "metalirconverter",
-      "Cocoa.framework",
-      "CoreFoundation.framework",
-      "CoreServices.framework",
-      "Foundation.framework",
-      "Metal.framework",
-      "MetalFX.framework",
-      "MetalKit.framework",
-      "QuartzCore.framework",
-      "SDL2",
-    })
-    linkoptions({
-      "-ldxilconv",
-      "-lLLVMDxcSupport",
-    })
-    libdirs({
-      metal_converter_libdir,
-      "/opt/homebrew/opt/sdl2/lib",
-      "/usr/local/opt/sdl2/lib",
-    })
-  filter({"system:macosx", "architecture:arm64"})
-    libdirs({ dxilconv_libdir_arm64 })
-  filter({"system:macosx", "architecture:x86_64"})
-    libdirs({ dxilconv_libdir_x86_64 })
-  filter({})
-
   if enableMiscSubprojects then
     filter({"platforms:Windows-*", SINGLE_LIBRARY_FILTER})
       links({
