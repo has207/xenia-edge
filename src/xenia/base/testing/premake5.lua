@@ -5,6 +5,5 @@ test_suite("xenia-base-tests", project_root, ".", {
   links = {
     "fmt",
     "xenia-base",
-    "xenia-gpu",
   },
 })

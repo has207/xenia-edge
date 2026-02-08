@@ -134,7 +134,7 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
   // Find the device.
   auto it =
       std::find_if(devices_.cbegin(), devices_.cend(), [&](const auto& d) {
-        return xe::utf8::starts_with_case(normalized_path, d->mount_path());
+        return xe::utf8::starts_with(normalized_path, d->mount_path());
       });
   if (it == devices_.cend()) {
     // Supress logging the error for ShaderDumpxe:\CompareBackEnds as this is

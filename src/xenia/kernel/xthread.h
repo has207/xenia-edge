@@ -28,6 +28,15 @@
 #include "xenia/kernel/xobject.h"
 #include "xenia/xbox.h"
 
+#if XE_PLATFORM_MAC
+#ifdef WAIT_ANY
+#undef WAIT_ANY
+#endif
+#ifdef WAIT_ALL
+#undef WAIT_ALL
+#endif
+#endif
+
 namespace xe {
 namespace kernel {
 
@@ -430,7 +439,7 @@ class XThread : public XObject, public cpu::Thread {
   X_STATUS Delay(uint32_t processor_mode, uint32_t alertable,
                  uint64_t interval);
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
   // Performs self-suspension: increments suspend_count and blocks until
   // another thread calls Resume() and suspend_count reaches 0.
   // Returns the previous suspend_count value.
@@ -478,7 +487,7 @@ class XThread : public XObject, public cpu::Thread {
 
   int32_t priority_ = 0;
 
-#if XE_PLATFORM_LINUX
+#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
   // Condition variable for thread self-suspension.
   std::mutex suspend_mutex_;
   std::condition_variable suspend_cv_;

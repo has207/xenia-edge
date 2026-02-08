@@ -351,8 +351,8 @@ uint64_t A64Backend::CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
     case ARM64_INS_BL: {
       assert_true(detail.operands[0].type == ARM64_OP_IMM);
       const int64_t pc_offset = static_cast<int64_t>(detail.operands[0].imm);
-      const bool test_passed =
-          TestCapstonePstate(detail.cc, thread_info->host_context.pstate);
+      const bool test_passed = TestCapstonePstate(
+          detail.cc, static_cast<uint32_t>(thread_info->host_context.pstate));
       if (test_passed) {
         return current_pc + pc_offset;
       } else {

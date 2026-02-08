@@ -105,7 +105,7 @@ void ContextPromotionPass::PromoteBlock(Block* block) {
       // Volatile instruction - requires all context values be flushed.
       validity.reset();
     } else if (i->opcode == &OPCODE_LOAD_CONTEXT_info) {
-      const size_t offset = i->src1.offset;
+      size_t offset = i->src1.offset;
       if (validity.test(static_cast<uint32_t>(offset))) {
         // Legit previous value, reuse.
         Value* previous_value = context_values_[offset];
@@ -113,19 +113,15 @@ void ContextPromotionPass::PromoteBlock(Block* block) {
         i->set_src1(previous_value);
       } else {
         // Store the loaded value into the table.
-        if (i->dest->type != TypeName::VEC128_TYPE) {
-          context_values_[offset] = i->dest;
-          validity.set(static_cast<uint32_t>(offset));
-        }
-      }
-    } else if (i->opcode == &OPCODE_STORE_CONTEXT_info) {
-      const size_t offset = i->src1.offset;
-      Value* value = i->src2.value;
-      if (value->type != TypeName::VEC128_TYPE) {
-        // Store value into the table for later.
-        context_values_[offset] = value;
+        context_values_[offset] = i->dest;
         validity.set(static_cast<uint32_t>(offset));
       }
+    } else if (i->opcode == &OPCODE_STORE_CONTEXT_info) {
+      size_t offset = i->src1.offset;
+      Value* value = i->src2.value;
+      // Store value into the table for later.
+      context_values_[offset] = value;
+      validity.set(static_cast<uint32_t>(offset));
     }
     i = next;
   }
@@ -144,16 +140,13 @@ void ContextPromotionPass::RemoveDeadStoresBlock(Block* block) {
       // Volatile instruction - requires all context values be flushed.
       validity.reset();
     } else if (i->opcode == &OPCODE_STORE_CONTEXT_info) {
-      const size_t offset = i->src1.offset;
-      const Value* value = i->src2.value;
-      if (value->type != TypeName::VEC128_TYPE) {
-        if (!validity.test(static_cast<uint32_t>(offset))) {
-          // Offset not yet written, mark and continue.
-          validity.set(static_cast<uint32_t>(offset));
-        } else {
-          // Already written to. Remove this store.
-          i->UnlinkAndNOP();
-        }
+      size_t offset = i->src1.offset;
+      if (!validity.test(static_cast<uint32_t>(offset))) {
+        // Offset not yet written, mark and continue.
+        validity.set(static_cast<uint32_t>(offset));
+      } else {
+        // Already written to. Remove this store.
+        i->UnlinkAndNOP();
       }
     }
     i = prev;

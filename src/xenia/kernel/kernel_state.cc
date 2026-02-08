@@ -82,12 +82,8 @@ KernelState::~KernelState() {
 
   if (dispatch_thread_running_) {
     dispatch_thread_running_ = false;
-    if (dispatch_thread_ && dispatch_thread_->is_running()) {
-      dispatch_cond_.notify_all();
-      dispatch_thread_->Wait(0, 0, 0, nullptr);
-    }
-    // Skip notify/Wait if already force-terminated — mutex may be abandoned.
-    dispatch_thread_.reset();
+    dispatch_cond_.notify_all();
+    dispatch_thread_->Wait(0, 0, 0, nullptr);
   }
 
   executable_module_.reset();
