@@ -6,7 +6,7 @@ project("xenia-kernel")
   uuid("ae185c4a-1c4f-4503-9892-328e549e871a")
   kind("StaticLib")
   language("C++")
-  sysincludedirs({
+  externalincludedirs({
     project_root.."/third_party/asio/include",
   })
   defines({
