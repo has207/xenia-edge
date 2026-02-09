@@ -73,7 +73,7 @@ function sdl2_include()
     includedirs({
       path.getrelative(".", third_party_path) .. "/SDL2/include",
     })
-  filter("platforms:Linux or Mac")
+  filter("platforms:Linux-* or platforms:Mac-*")
     includedirs(sdl2_sys_includedirs)
     libdirs(sdl2_sys_libdirs)
   filter({})
