@@ -168,7 +168,8 @@ jobs:
       - name: Prepare artifacts
         id: prepare_artifacts
         run: |
-          binary=build/bin/Linux-x86_64/Release/xenia_edge
+          release_dir="build/bin/Linux-x86_64/Release"
+          binary="$release_dir/xenia_edge"
           if [ $(stat -c%s $binary) -le 100000 ]; then
             echo "::error::Binary is too small."
           fi
@@ -201,7 +202,7 @@ jobs:
           # Copy all necessary files (excluding build artifacts) next to the binary in AppDir
           mkdir -p artifacts/xenia_edge/usr/bin
           # Copy directories (optimized_settings, game_patches, etc.)
-          find build/bin/Linux-x86_64/Release -maxdepth 1 -type d ! -name Release -exec cp -r {} artifacts/xenia_edge/usr/bin/ \;
+          find "$release_dir" -maxdepth 1 -type d ! -name Release -exec cp -r {} artifacts/xenia_edge/usr/bin/ \;
           # Copy any additional runtime files if needed (currently just directories are copied)
 
           # Run linuxdeploy with Qt plugin to deploy all Qt dependencies and create AppImage
@@ -751,13 +752,14 @@ jobs:
       - name: Prepare artifacts
         id: prepare_artifacts
         run: |
-          $binary = 'build\bin\Windows-x86_64\Release\xenia_edge.exe'
+          $releaseDir = 'build\bin\Windows-x86_64\Release'
+          $binary = Join-Path $releaseDir 'xenia_edge.exe'
           if ((get-item $binary).Length -le 100000) {
             echo "::error::$binary is too small."
           }
-          robocopy . build\bin\Windows-x86_64\Release LICENSE /r:0 /w:0
+          robocopy . $releaseDir LICENSE /r:0 /w:0
           # Copy all files and directories (Qt DLLs, plugins, etc.) excluding build artifacts
-          robocopy build\bin\Windows-x86_64\Release artifacts\xenia_edge /MIR /r:0 /w:0 /XF *.lib *.idb *.exp /XD generic iconengines imageformats networkinformation styles tls
+          robocopy $releaseDir artifacts\xenia_edge /MIR /r:0 /w:0 /XF *.lib *.idb *.exp /XD generic iconengines imageformats networkinformation styles tls
           If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
       - name: Upload xenia edge artifacts
         if: steps.prepare_artifacts.outcome == 'success'
