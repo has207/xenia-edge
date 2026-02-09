@@ -985,12 +985,18 @@ def get_build_bin_path(args):
       A full path for the bin folder.
     """
     if sys.platform == "darwin":
-        platform = "macosx"
+        machine = os.uname().machine.lower()
+        platform = "Mac-ARM64" if machine in ("arm64", "aarch64") else "Mac-x86_64"
     elif sys.platform == "win32":
-        platform = "windows"
+        machine = (os.environ.get("PROCESSOR_ARCHITEW6432")
+                   or os.environ.get("PROCESSOR_ARCHITECTURE")
+                   or "").upper()
+        platform = "Windows-ARM64" if "ARM64" in machine else "Windows-x86_64"
     else:
-        platform = "linux"
-    return os.path.join(self_path, "build", "bin", platform.capitalize(), args["config"].capitalize())
+        machine = os.uname().machine.lower()
+        platform = "Linux-ARM64" if machine in ("arm64", "aarch64") else "Linux-x86_64"
+    return os.path.join(self_path, "build", "bin", platform,
+                        args["config"].capitalize())
 
 
 def run_windeployqt(bin_path, config):
@@ -1338,14 +1344,24 @@ class BaseBuildCommand(Command):
                 print_error("Visual Studio is not installed.")
                 result = 1
             else:
+                machine = (os.environ.get("PROCESSOR_ARCHITEW6432")
+                           or os.environ.get("PROCESSOR_ARCHITECTURE")
+                           or "").upper()
+                if "ARM64" in machine:
+                    premake_platform = "Windows-ARM64"
+                    msbuild_platform = "ARM64"
+                else:
+                    premake_platform = "Windows-x86_64"
+                    msbuild_platform = "x64"
+
                 targets = None
                 if args["target"]:
                     # Build each project file directly to avoid MSBuild trying to
                     # run the target on every project in the solution
                     result = 0
                     # Convert config name to match project configuration names
-                    # e.g., "debug" -> "Debug Windows"
-                    config_name = f"{args['config'].capitalize()} Windows"
+                    # e.g., "debug" -> "Debug Windows-x86_64"
+                    config_name = f"{args['config'].capitalize()} {premake_platform}"
                     for target in args["target"]:
                         project_file = f"build/{target}.vcxproj"
                         if not os.path.exists(project_file):
@@ -1362,7 +1378,7 @@ class BaseBuildCommand(Command):
                             "/v:m",
                             target_arg,
                             f"/p:Configuration={config_name}",
-                            "/p:Platform=x64",
+                            f"/p:Platform={msbuild_platform}",
                             ] + pass_args)
                         if result != 0:
                             break
