@@ -758,11 +758,65 @@ workspace("xenia")
 
     -- Add POSIX feature test macros for FFmpeg on Linux
     if prj.name == "libavutil" or prj.name == "libavcodec" or prj.name == "libavformat" then
+      -- Keep FFmpeg premake files from commit 85e39939 compatible with split
+      -- platform names until FFmpeg submodule updates are pulled in.
+      filter({"platforms:Windows-*"})
+        includedirs({
+          "third_party/FFmpeg/compat/atomics/win32",
+        })
+        forceincludes({
+          "stdatomic.h",
+        })
+        links({
+          "bcrypt",
+        })
+      filter({"platforms:Linux-* or platforms:Mac-*"})
+        includedirs({
+          "third_party/FFmpeg/compat/atomics/gcc",
+        })
       filter({"platforms:Linux-*"})
         defines({
           "_GNU_SOURCE",
           "_POSIX_C_SOURCE=200809L",
           "_XOPEN_SOURCE=700",
+        })
+      filter({})
+    end
+
+    if prj.name == "libavcodec" then
+      filter({"platforms:Linux-x86_64 or platforms:Windows-x86_64"})
+        files({
+          "third_party/FFmpeg/libavcodec/x86/constants.c",
+          "third_party/FFmpeg/libavcodec/x86/dct_init.c",
+          "third_party/FFmpeg/libavcodec/x86/fdctdsp_init.c",
+          "third_party/FFmpeg/libavcodec/x86/fft_init.c",
+          "third_party/FFmpeg/libavcodec/x86/idctdsp_init.c",
+          "third_party/FFmpeg/libavcodec/x86/mpegaudiodsp.c",
+          "third_party/FFmpeg/libavcodec/x86/fdct.c",
+        })
+      filter({"platforms:Windows-*"})
+        files({
+          "third_party/FFmpeg/libavcodec/file_open.c",
+        })
+      filter({})
+    end
+
+    if prj.name == "libavutil" then
+      filter({"platforms:Linux-x86_64 or platforms:Windows-x86_64"})
+        files({
+          "third_party/FFmpeg/libavutil/x86/cpu.c",
+          "third_party/FFmpeg/libavutil/x86/fixed_dsp_init.c",
+          "third_party/FFmpeg/libavutil/x86/float_dsp_init.c",
+          "third_party/FFmpeg/libavutil/x86/imgutils_init.c",
+          "third_party/FFmpeg/libavutil/x86/lls_init.c",
+        })
+      filter({})
+    end
+
+    if prj.name == "libavformat" then
+      filter({"platforms:Windows-*"})
+        files({
+          "third_party/FFmpeg/libavformat/file_open.c",
         })
       filter({})
     end
