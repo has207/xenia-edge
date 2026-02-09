@@ -229,6 +229,18 @@ def setup_qt():
             print_warning(f"QT_DIR is set to {existing_qt_dir} but directory does not exist")
         return False
 
+    # Prefer common system package-manager Qt roots before /opt/Qt tree probing.
+    if sys.platform == "darwin":
+        brew_qt_candidates = [
+            "/opt/homebrew/opt/qt",
+            "/usr/local/opt/qt",
+        ]
+        for qt_dir in brew_qt_candidates:
+            if os.path.exists(qt_dir):
+                os.environ["QT_DIR"] = qt_dir
+                print(f"Found Qt at {qt_dir}")
+                return True
+
     # Determine Qt base directory based on platform
     if sys.platform == "win32":
         qt_base = "C:\\Qt"
