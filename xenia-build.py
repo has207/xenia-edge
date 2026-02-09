@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 from glob import glob
 from json import loads as jsonloads
 import os
-from shutil import rmtree
+from shutil import rmtree, which
 import subprocess
 import sys
 import stat
@@ -364,16 +364,29 @@ def generate_moc_files():
     if not qt_dir:
         return True  # Qt not available, skip MOC generation
 
-    # Find moc executable
+    # Find moc executable.
     if sys.platform == "win32":
-        moc_path = os.path.join(qt_dir, "bin", "moc.exe")
+        moc_path_candidates = [
+            os.path.join(qt_dir, "bin", "moc.exe"),
+        ]
     else:
-        moc_path = os.path.join(qt_dir, "libexec", "moc")
-        if not os.path.exists(moc_path):
-            moc_path = os.path.join(qt_dir, "bin", "moc")
+        moc_path_candidates = [
+            os.path.join(qt_dir, "libexec", "moc"),
+            os.path.join(qt_dir, "bin", "moc"),
+            os.path.join(qt_dir, "share", "qt", "libexec", "moc"),
+        ]
+        # Homebrew often ships moc in qtbase rather than qt.
+        if qt_dir.startswith("/opt/homebrew/opt/qt"):
+            moc_path_candidates.append("/opt/homebrew/opt/qtbase/share/qt/libexec/moc")
+        for bin_name in ["moc", "moc-qt6", "moc6"]:
+            moc_bin = which(bin_name)
+            if moc_bin:
+                moc_path_candidates.append(moc_bin)
 
-    if not os.path.exists(moc_path):
-        print_warning(f"moc not found at {moc_path}")
+    moc_path = next((path for path in moc_path_candidates if os.path.exists(path)), None)
+
+    if not moc_path:
+        print_warning(f"moc not found (searched: {', '.join(moc_path_candidates)})")
         return False
 
     # Find all Qt headers with Q_OBJECT
