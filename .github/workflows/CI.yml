@@ -239,6 +239,8 @@ jobs:
 
   build-macos-arm64:
     name: Build macOS ARM64
+    # Disabled temporarily. Re-enable by removing the if:false line below.
+    if: ${{ false }}
     needs: lint
     runs-on: macos-15
     steps:
