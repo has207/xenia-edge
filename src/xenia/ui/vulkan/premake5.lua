@@ -16,7 +16,7 @@ project("xenia-ui-vulkan")
   })
 
   -- Include SPIRV-Tools from Vulkan SDK
-  filter("platforms:Windows")
+  filter("platforms:Windows-*")
     includedirs({
       "$(VULKAN_SDK)/Include",
     })
@@ -28,7 +28,7 @@ project("xenia-ui-vulkan")
       "SPIRV-Tools.lib",
     })
 
-  filter("platforms:Linux")
+  filter("platforms:Linux-*")
     links({
       "SPIRV-Tools-opt",
       "SPIRV-Tools",
@@ -88,7 +88,7 @@ if enableMiscSubprojects then
         "xenia-cpu-backend-x64",
       })
 
-    filter("platforms:Linux")
+    filter("platforms:Linux-*")
       links({
         "X11",
         "xcb",

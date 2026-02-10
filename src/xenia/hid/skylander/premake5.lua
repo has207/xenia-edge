@@ -13,7 +13,7 @@ project("xenia-hid-skylander")
       "skylander_emulated.cc"
   })
 
-  filter({"platforms:Windows"})
+  filter({"platforms:Windows-*"})
     links({
       "libusb",
     })

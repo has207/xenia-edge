@@ -13,7 +13,7 @@ project("asio")
     "ASIO_NO_DEPRECATED",
   })
 
-  filter("platforms:Windows")
+  filter("platforms:Windows-*")
     defines({
       "_WIN32_WINNT=0x0A00",  -- Windows 10+
     })

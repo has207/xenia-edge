@@ -29,7 +29,7 @@ project("xenia-cpu-ppc-tests")
   })
   apu_transitive_deps()
   -- Qt is required because xenia-kernel now uses Qt for achievements dialog
-  filter("platforms:Linux")
+  filter("platforms:Linux-*")
     local qt_dir = os.getenv("QT_DIR")
     if qt_dir then
       links({
@@ -54,7 +54,7 @@ project("xenia-cpu-ppc-tests")
     links({
       "xenia-cpu-backend-x64",
     })
-  filter("platforms:Windows")
+  filter("platforms:Windows-*")
     debugdir(project_root)
     debugargs({
       "2>&1",
