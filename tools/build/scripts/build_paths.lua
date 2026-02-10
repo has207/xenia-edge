@@ -11,6 +11,8 @@ if os.istarget("android") then
   platform_suffix = "android"
 elseif os.istarget("windows") then
   platform_suffix = "win"
+elseif os.istarget("macosx") then
+  platform_suffix = "mac"
 else
   platform_suffix = "posix"
 end

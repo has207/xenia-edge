@@ -15,7 +15,7 @@ project("xenia-apu")
   includedirs({
     project_root.."/third_party/FFmpeg",
   })
-  filter("platforms:Linux")
+  filter("platforms:Linux-*")
     links({
       "xenia-helper-sdl",
       "SDL2",

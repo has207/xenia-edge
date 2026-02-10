@@ -12,7 +12,7 @@ project("xenia-debug-gdb")
     "xenia-cpu",
     "xenia-ui",
   })
-  filter({"configurations:Release", "platforms:Windows"})
+  filter({"configurations:Release", "platforms:Windows-*"})
     buildoptions({
       "/Os",
       "/O1"

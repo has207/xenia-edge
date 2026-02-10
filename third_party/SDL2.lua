@@ -69,11 +69,11 @@ end
 -- Call this function in project scope to include the SDL2 headers.
 --
 function sdl2_include()
-  filter("platforms:Windows")
+  filter("platforms:Windows-*")
     includedirs({
       path.getrelative(".", third_party_path) .. "/SDL2/include",
     })
-  filter("platforms:Linux or Mac")
+  filter("platforms:Linux-* or platforms:Mac-*")
     includedirs(sdl2_sys_includedirs)
     libdirs(sdl2_sys_libdirs)
   filter({})

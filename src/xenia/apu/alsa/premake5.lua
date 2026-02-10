@@ -11,7 +11,7 @@ project("xenia-apu-alsa")
   })
   local_platform_files()
 
-  filter("platforms:Linux")
+  filter("platforms:Linux-*")
     links({
       "asound",
       "pthread",

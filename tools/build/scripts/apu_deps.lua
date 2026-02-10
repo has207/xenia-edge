@@ -3,7 +3,7 @@
 -- On Linux, xenia-apu's AudioMediaPlayer directly instantiates SDLAudioDriver,
 -- so consumers must link xenia-apu-sdl (which in turn brings in xenia-helper-sdl and SDL2)
 function apu_transitive_deps()
-  filter("platforms:Linux")
+  filter("platforms:Linux-*")
     links({
       "xenia-apu-sdl",  -- Contains SDLAudioDriver used by AudioMediaPlayer
     })

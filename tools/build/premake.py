@@ -10,6 +10,7 @@ __author__ = "ben.vanik@gmail.com (Ben Vanik)"
 
 from json import loads as jsonloads
 import os
+import platform
 from shutil import rmtree
 import subprocess
 import sys
@@ -52,15 +53,15 @@ setup_premake_path_override()
 def main():
     # First try the freshly-built premake.
     premake5_bin = os.path.join(premake_path, "bin", "release", "premake5")
-    if not has_bin(premake5_bin):
+    if not is_premake_usable(premake5_bin):
         # No fresh build, so fallback to checked in copy (which we may not have).
         premake5_bin = os.path.join(self_path, "bin", "premake5")
-    if not has_bin(premake5_bin):
+    if not is_premake_usable(premake5_bin):
         # Still no valid binary, so build it.
-        print("premake5 executable not found, attempting build...")
+        print("premake5 executable not found or unusable, attempting build...")
         build_premake()
         premake5_bin = os.path.join(premake_path, "bin", "release", "premake5")
-    if not has_bin(premake5_bin):
+    if not is_premake_usable(premake5_bin):
         # Nope, boned.
         print("ERROR: cannot build premake5 executable.")
         sys.exit(1)
@@ -92,11 +93,18 @@ def build_premake():
     try:
         os.chdir(premake_path)
         if sys.platform == "darwin":
-            subprocess.call([
-                "make",
-                "-f", "Bootstrap.mak",
-                "osx",
-                ])
+            premake_arch = platform.machine()
+            if premake_arch in ["arm64", "aarch64"]:
+                premake_arch = "ARM64"
+            elif premake_arch in ["x86_64", "amd64"]:
+                premake_arch = "x86_64"
+            else:
+                premake_arch = None
+            make_args = ["make", "-f", "Bootstrap.mak"]
+            if premake_arch:
+                make_args.append(f"PLATFORM={premake_arch}")
+            make_args.append("osx")
+            subprocess.call(make_args)
         elif sys.platform == "win32":
             # Grab Visual Studio version and execute shell to set up environment.
             vs_version = import_vs_environment()
@@ -119,6 +127,26 @@ def build_premake():
     finally:
         os.chdir(cwd)
     pass
+
+
+def is_premake_usable(premake5_bin):
+    if not has_bin(premake5_bin):
+        return False
+    if sys.platform == "darwin":
+        try:
+            subprocess.check_call(
+                [premake5_bin, "--version"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as e:
+            # Errno 86: Bad CPU type in executable (wrong arch).
+            if e.errno == 86:
+                print("premake5 executable has wrong architecture, rebuilding...")
+            return False
+        except subprocess.CalledProcessError:
+            return False
+    return True
 
 
 def clone_premake_to_internal_storage():

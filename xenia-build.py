@@ -898,7 +898,28 @@ def get_premake_target_os(target_os_override=None):
     return target_os
 
 
-def run_premake(target_os, action, cc=None):
+def normalize_arch_name(arch):
+    if not arch:
+        return None
+    arch = arch.lower()
+    if arch in ("arm64", "aarch64"):
+        return "arm64"
+    if arch in ("x86_64", "x64", "amd64"):
+        return "x86_64"
+    return None
+
+
+def detect_host_arch():
+    if sys.platform == "win32":
+        machine = (os.environ.get("PROCESSOR_ARCHITEW6432")
+                   or os.environ.get("PROCESSOR_ARCHITECTURE")
+                   or "").upper()
+        return "arm64" if "ARM64" in machine else "x86_64"
+    machine = os.uname().machine.lower()
+    return "arm64" if machine in ("arm64", "aarch64") else "x86_64"
+
+
+def run_premake(target_os, action, cc=None, arch=None):
     """Runs premake on the main project with the given format.
 
     Args:
@@ -919,6 +940,8 @@ def run_premake(target_os, action, cc=None):
 
     if cc:
         args.insert(4, f"--cc={cc}")
+    if arch:
+        args.insert(5, f"--arch={arch}")
 
     ret = subprocess.call(args)
 
@@ -928,7 +951,7 @@ def run_premake(target_os, action, cc=None):
     return ret
 
 
-def run_platform_premake(target_os_override=None, cc=None, devenv=None):
+def run_platform_premake(target_os_override=None, cc=None, devenv=None, arch=None):
     """Runs all gyp configurations.
     """
     target_os = get_premake_target_os(target_os_override)
@@ -946,7 +969,7 @@ def run_platform_premake(target_os_override=None, cc=None, devenv=None):
             devenv = "cmake"
     if not cc:
         cc = get_cc(cc=cc)
-    return run_premake(target_os=target_os, action=devenv, cc=cc)
+    return run_premake(target_os=target_os, action=devenv, cc=cc, arch=arch)
 
 
 def get_build_bin_path(args):
@@ -959,13 +982,14 @@ def get_build_bin_path(args):
     Returns:
       A full path for the bin folder.
     """
+    arch = normalize_arch_name(args.get("arch")) or detect_host_arch()
     if sys.platform == "darwin":
-        platform = "macosx"
+        platform = "Mac-ARM64" if arch == "arm64" else "Mac-x86_64"
     elif sys.platform == "win32":
-        platform = "windows"
+        platform = "Windows-ARM64" if arch == "arm64" else "Windows-x86_64"
     else:
-        platform = "linux"
-    return os.path.join(self_path, "build", "bin", platform.capitalize(), args["config"].capitalize())
+        platform = "Linux-ARM64" if arch == "arm64" else "Linux-x86_64"
+    return os.path.join(self_path, "build", "bin", platform, args["config"].capitalize())
 
 
 def run_windeployqt(bin_path, config):
@@ -1255,6 +1279,9 @@ class PremakeCommand(Command):
         self.parser.add_argument(
             "--devenv", default=None, help="Development environment")
         self.parser.add_argument(
+            "--arch", choices=["x86_64", "arm64"], default=None,
+            type=str.lower, help="Target architecture passed to premake.")
+        self.parser.add_argument(
             "--target_os", default=None,
             help="Target OS passed to premake, for cross-compilation")
 
@@ -1262,7 +1289,8 @@ class PremakeCommand(Command):
         # Update premake. If no binary found, it will be built from source.
         print("Running premake...\n")
         ret = run_platform_premake(target_os_override=args["target_os"],
-                                   cc=args["cc"], devenv=args["devenv"])
+                                   cc=args["cc"], devenv=args["devenv"],
+                                   arch=args["arch"])
         print_status(ResultStatus.SUCCESS if not ret else ResultStatus.FAILURE)
 
         return ret
@@ -1285,6 +1313,10 @@ class BaseBuildCommand(Command):
             "--target", action="append", default=[],
             help="Builds only the given target(s).")
         self.parser.add_argument(
+            "--arch", choices=["x86_64", "arm64"], default=None,
+            type=str.lower,
+            help="Target architecture passed to premake (defaults to host arch).")
+        self.parser.add_argument(
             "--force", action="store_true",
             help="Forces a full rebuild.")
         self.parser.add_argument(
@@ -1302,7 +1334,7 @@ class BaseBuildCommand(Command):
 
         if not args["no_premake"]:
             print("- running premake...")
-            run_platform_premake(cc=args["cc"])
+            run_platform_premake(cc=args["cc"], arch=args["arch"])
             print("")
 
         print("- building (%s):%s..." % (
@@ -1313,14 +1345,22 @@ class BaseBuildCommand(Command):
                 print_error("Visual Studio is not installed.")
                 result = 1
             else:
+                arch = normalize_arch_name(args.get("arch")) or detect_host_arch()
+                if arch == "arm64":
+                    premake_platform = "Windows-ARM64"
+                    msbuild_platform = "ARM64"
+                else:
+                    premake_platform = "Windows-x86_64"
+                    msbuild_platform = "x64"
+
                 targets = None
                 if args["target"]:
                     # Build each project file directly to avoid MSBuild trying to
                     # run the target on every project in the solution
                     result = 0
                     # Convert config name to match project configuration names
-                    # e.g., "debug" -> "Debug Windows"
-                    config_name = f"{args['config'].capitalize()} Windows"
+                    # e.g., "debug" -> "Debug Windows-x86_64"
+                    config_name = f"{args['config'].capitalize()} {premake_platform}"
                     for target in args["target"]:
                         project_file = f"build/{target}.vcxproj"
                         if not os.path.exists(project_file):
@@ -1337,7 +1377,7 @@ class BaseBuildCommand(Command):
                             "/v:m",
                             target_arg,
                             f"/p:Configuration={config_name}",
-                            "/p:Platform=x64",
+                            f"/p:Platform={msbuild_platform}",
                             ] + pass_args)
                         if result != 0:
                             break
@@ -1439,7 +1479,7 @@ class BuildShadersCommand(Command):
             """,
             *args, **kwargs)
         self.parser.add_argument(
-            "--target", action="append", choices=["dxbc", "spirv"], default=[],
+            "--target", action="append", choices=["dxbc", "spirv", "metal"], default=[],
             help="Builds only the given target(s).")
 
     def execute(self, args, pass_args, cwd):
@@ -1450,7 +1490,7 @@ def build_shaders(targets=None):
     """Builds shader bytecode. Called by BuildShadersCommand and BuildCommand.
 
     Args:
-        targets: List of targets ("dxbc", "spirv"), or None/empty for all.
+        targets: List of targets ("dxbc", "spirv", "metal"), or None/empty for all.
 
     Returns:
         0 on success, non-zero on error.
@@ -1458,15 +1498,22 @@ def build_shaders(targets=None):
     # Check if shaders need rebuilding by comparing source vs generated timestamps
     gpu_shaders = "src/xenia/gpu/shaders"
     ui_shaders = "src/xenia/ui/shaders"
-    # DXBC directories only on Windows, SPIR-V everywhere
-    bytecode_dirs = [
-        "src/xenia/gpu/shaders/bytecode/vulkan_spirv",
-        "src/xenia/ui/shaders/bytecode/vulkan_spirv",
-    ]
+    # DXBC directories only on Windows, SPIR-V on non-mac platforms.
+    bytecode_dirs = []
+    if sys.platform != "darwin":
+        bytecode_dirs.extend([
+            "src/xenia/gpu/shaders/bytecode/vulkan_spirv",
+            "src/xenia/ui/shaders/bytecode/vulkan_spirv",
+        ])
     if sys.platform == "win32":
         bytecode_dirs.extend([
             "src/xenia/gpu/shaders/bytecode/d3d12_5_1",
             "src/xenia/ui/shaders/bytecode/d3d12_5_1",
+        ])
+    if sys.platform == "darwin":
+        bytecode_dirs.extend([
+            "src/xenia/gpu/shaders/bytecode/metal",
+            "src/xenia/ui/shaders/bytecode/metal",
         ])
 
     newest_source = max(get_dir_newest_mtime(gpu_shaders),
@@ -1488,9 +1535,24 @@ def build_shaders(targets=None):
                  if (name.endswith(".glsl") or
                      name.endswith(".hlsl") or
                      name.endswith(".xesl"))]
+    if sys.platform == "win32":
+        all_targets = ["dxbc", "spirv"]
+    elif sys.platform == "darwin":
+        all_targets = ["metal"]
+    else:
+        all_targets = ["spirv"]
+
     if targets is None:
         targets = []
-    all_targets = len(targets) == 0
+    if len(targets) == 0:
+        targets = list(all_targets)
+    else:
+        unsupported_targets = [target for target in targets
+                               if target not in all_targets]
+        if unsupported_targets:
+            print_error("unsupported shader target(s) for this host: "
+                        + ", ".join(sorted(set(unsupported_targets))))
+            return 1
 
     # XeSL ("Xenia Shading Language") means shader files that can be
     # compiled as multiple languages from a single file. Whenever possible,
@@ -1507,7 +1569,7 @@ def build_shaders(targets=None):
     # used in language-specific sources.
 
     # Direct3D DXBC (Windows only).
-    if (all_targets or "dxbc" in targets) and sys.platform == "win32":
+    if "dxbc" in targets:
         print("Building Direct3D 12 Shader Model 5.1 DXBC shaders...")
 
         # Get the FXC path.
@@ -1591,8 +1653,80 @@ def build_shaders(targets=None):
                 print_error(f"failed to compile DXBC shader: {src_path}")
                 return 1
 
+    # Metal MSL.
+    if "metal" in targets:
+        print("Building Metal MSL shaders...")
+
+        use_xcrun = False
+        if not has_bin("metal") or not has_bin("metallib"):
+            if has_bin("xcrun"):
+                use_xcrun = True
+            else:
+                print_error("could not find Metal compiler tools")
+                return 1
+
+        def metal_tool(tool, args):
+            if use_xcrun:
+                return ["xcrun", "-sdk", "macosx", tool] + args
+            return [tool] + args
+
+        module_cache = os.path.join(self_path, "build", "metal_module_cache")
+        os.makedirs(module_cache, exist_ok=True)
+
+        for src_path in src_paths:
+            src_name = os.path.basename(src_path)
+            if (not src_name.endswith(".xesl") or len(src_name) <= 8 or
+                    src_name[-8] != "."):
+                continue
+            if "fxaa" in src_name or "ffx_" in src_name:
+                continue
+            identifier = src_name[:-5].replace(".", "_")
+            stage = identifier[-2:]
+            if stage not in ["cs", "ps", "vs"]:
+                continue
+
+            print(f"- {src_path} > metal")
+            src_dir = os.path.dirname(src_path)
+            out_dir = os.path.join(src_dir, "bytecode/metal")
+            os.makedirs(out_dir, exist_ok=True)
+
+            base_path = os.path.join(out_dir, identifier)
+            air_path = f"{base_path}.air"
+            metallib_path = f"{base_path}.metallib"
+
+            compile_args = [
+                "-x", "metal",
+                "-D", "SHADING_LANGUAGE_MSL_XE=1",
+                "-I", src_dir,
+                f"-fmodules-cache-path={module_cache}",
+            ]
+            cmd = metal_tool("metal", compile_args + [
+                "-c", src_path, "-o", air_path])
+            if subprocess.call(cmd) != 0:  # nosec B603
+                print_error("failed to compile Metal shader")
+                return 1
+            cmd = metal_tool("metallib", [air_path, "-o", metallib_path])
+            if subprocess.call(cmd) != 0:  # nosec B603
+                print_error("failed to link Metal library")
+                return 1
+
+            with open(f"{base_path}.h", "w") as out_file:
+                out_file.write("// Generated with `xb buildshaders`.\n")
+                out_file.write(f"const uint8_t {identifier}_metallib[] = {{")
+                with open(metallib_path, "rb") as mlib:
+                    for i, byte in enumerate(mlib.read()):
+                        out_file.write("\n    " if i % 16 == 0 else " ")
+                        out_file.write(f"0x{byte:02X},")
+                out_file.write("\n};\n")
+
+            for path in [air_path, metallib_path]:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
     # Vulkan SPIR-V.
-    if all_targets or "spirv" in targets:
+    if "spirv" in targets:
         print("Building Vulkan SPIR-V shaders...")
 
         # Get the SPIR-V tool paths.
@@ -2081,8 +2215,10 @@ def clean_shader_bytecode():
     bytecode_dirs = [
         "src/xenia/gpu/shaders/bytecode/d3d12_5_1",
         "src/xenia/gpu/shaders/bytecode/vulkan_spirv",
+        "src/xenia/gpu/shaders/bytecode/metal",
         "src/xenia/ui/shaders/bytecode/d3d12_5_1",
         "src/xenia/ui/shaders/bytecode/vulkan_spirv",
+        "src/xenia/ui/shaders/bytecode/metal",
     ]
     for bytecode_dir in bytecode_dirs:
         if os.path.isdir(bytecode_dir):
