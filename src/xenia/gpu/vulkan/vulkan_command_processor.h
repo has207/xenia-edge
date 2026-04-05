@@ -25,6 +25,7 @@
 #include "xenia/base/hash.h"
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/draw_util.h"
+#include "xenia/gpu/gpu_flags.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/spirv_shader_translator.h"
 #include "xenia/gpu/vulkan/deferred_command_buffer.h"
@@ -35,6 +36,7 @@
 #include "xenia/gpu/vulkan/vulkan_shader.h"
 #include "xenia/gpu/vulkan/vulkan_shared_memory.h"
 #include "xenia/gpu/vulkan/vulkan_texture_cache.h"
+#include "xenia/gpu/vulkan/vulkan_zpd_query_pool.h"
 #include "xenia/gpu/xenos.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/ui/vulkan/linked_type_descriptor_set_allocator.h"
@@ -153,12 +155,6 @@ class VulkanCommandProcessor final : public CommandProcessor {
       std::function<void()> completion_callback = nullptr) override;
 
   void RestoreEdramSnapshot(const void* snapshot) override;
-
-  void PrepareForWait() override;
-  void ReturnFromWait() override;
-  bool SupportsGuestOcclusionQueries() const override {
-    return occlusion_query_resources_available_;
-  }
 
   ui::vulkan::VulkanDevice* GetVulkanDevice() const {
     return static_cast<const ui::vulkan::VulkanProvider*>(
@@ -448,7 +444,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Checks if ending a submission right now would not cause potentially more
   // delay than it would reduce - such as when there are unfinished graphics
   // pipeline creation requests.
-  bool CanEndSubmissionImmediately();
+  bool CanEndSubmissionImmediately() const;
   bool AwaitAllQueueOperationsCompletion() {
     CheckSubmissionCompletionAndDeviceLoss(GetCurrentSubmission());
     return !submission_open_ &&
@@ -464,17 +460,56 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   void DestroyScratchBuffer();
 
-  void ProcessReadyOcclusionQueries(
-      uint64_t completed_submission_hint = UINT64_MAX);
-  bool InitializeOcclusionQueryResources();
-  void ShutdownOcclusionQueryResources();
-  bool BeginGuestOcclusionQuery(uint32_t sample_count_address);
-  bool EndGuestOcclusionQuery(uint32_t sample_count_address);
-  bool AcquireOcclusionQueryIndex(uint32_t& host_index_out);
-  void DisableHostOcclusionQueries();
-  uint64_t NormalizeOcclusionSamples(uint64_t samples) const;
-  void WriteGuestOcclusionResult(uint32_t sample_count_address,
-                                 uint64_t samples);
+  // ZPD occlusion queries backend.
+  // vkCmdBeginQuery is only valid inside a render pass, so segments split at
+  // pass end and resume at the next pass begin. If BEGIN fires outside a pass,
+  // segment_pending_begin waits for the next. Outside a render pass,
+  // DiscardZPDQuery can skip EndQuery and just reset the slot via
+  // vkResetQueryPool. Inside a pass, EndQuery is required.
+  // Strict ZPD retirement may need to end the pass before blocking.
+  void EnsureZPDQueryResources() override;
+  void ShutdownZPDQueryResources() override {
+    zpd_host_query_pool_->Shutdown();
+  }
+
+  bool IsZPDQueryPoolReady() const override {
+    return zpd_host_query_pool_->is_initialized();
+  }
+  bool CanOpenZPDQuery() const override;
+
+  QueryOpenResult OpenZPDQuery(uint32_t& out_host_index,
+                               uint32_t& out_host_generation,
+                               bool can_close_submission) override;
+  bool CloseZPDQuery(uint32_t host_index, uint32_t host_generation,
+                     uint64_t& out_submission) override;
+  bool DiscardZPDQuery(uint32_t host_index, uint32_t host_generation) override;
+  uint64_t GetZPDQueryResult(uint32_t host_index) override {
+    return zpd_host_query_pool_->GetQueryReadbackValue(host_index);
+  }
+  void ReleaseZPDQuery(uint32_t host_index, uint32_t host_generation) override {
+    zpd_host_query_pool_->ReleaseQueryIndex(host_index, host_generation);
+  }
+  bool IsZPDQueryResultValid(uint32_t host_index,
+                             uint32_t host_generation) const override {
+    return zpd_host_query_pool_->GenerationMatches(host_index, host_generation);
+  }
+
+  CommandProcessor::ZPDSubmissionBridge* GetZPDSubmissionBridge() override;
+
+  class ZPDSubmissionBridge final
+      : public CommandProcessor::ZPDSubmissionBridge {
+   public:
+    explicit ZPDSubmissionBridge(VulkanCommandProcessor& command_processor)
+        : command_processor_(command_processor) {}
+
+    CommandProcessor::ZPDSubmissionState GetState() const override;
+    void PrepareReadback(uint64_t completed_submission) override;
+    bool EnsureProgress() override;
+    void AwaitSubmission(uint64_t submission) override;
+
+   private:
+    VulkanCommandProcessor& command_processor_;
+  };
 
   void UpdateDynamicState(const draw_util::ViewportInfo& viewport_info,
                           bool primitive_polygonal,
@@ -515,6 +550,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
   VkShaderStageFlags guest_shader_vertex_stages_ = 0;
 
   std::vector<VkSemaphore> semaphores_free_;
+
+  ZPDSubmissionBridge zpd_submission_bridge_{*this};
 
   ui::vulkan::VulkanGPUCompletionTimeline completion_timeline_;
   bool submission_open_ = false;
@@ -612,6 +649,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
   std::unique_ptr<VulkanPrimitiveProcessor> primitive_processor_;
 
   std::unique_ptr<VulkanRenderTargetCache> render_target_cache_;
+
+  std::unique_ptr<VulkanZPDQueryPool> zpd_host_query_pool_;
 
   std::unique_ptr<VulkanPipelineCache> pipeline_cache_;
 
@@ -886,25 +925,6 @@ class VulkanCommandProcessor final : public CommandProcessor {
 
   // Per-memexport double-buffered readback for fast mode (delayed sync)
   std::unordered_map<uint64_t, ReadbackBuffer> memexport_readback_buffers_;
-
-  // Occlusion query support.
-  VkQueryPool occlusion_query_pool_ = VK_NULL_HANDLE;
-  VkBuffer occlusion_query_readback_buffer_ = VK_NULL_HANDLE;
-  VkDeviceMemory occlusion_query_readback_memory_ = VK_NULL_HANDLE;
-  uint8_t* occlusion_query_readback_mapping_ = nullptr;
-  uint32_t occlusion_query_cursor_ = 0;
-  bool occlusion_query_resources_available_ = false;
-  struct ActiveOcclusionQuery {
-    uint32_t sample_count_address = 0;
-    uint32_t host_index = UINT32_MAX;
-    bool valid = false;
-  } active_occlusion_query_;
-  struct PendingOcclusionQuery {
-    uint32_t host_index;
-    uint64_t submission;
-    uint32_t sample_count_address;
-  };
-  std::deque<PendingOcclusionQuery> pending_occlusion_queries_;
 
   // Debug marker support for RenderDoc/debug tools.
   bool debug_markers_enabled_ = false;

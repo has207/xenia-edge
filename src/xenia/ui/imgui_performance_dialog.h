@@ -49,8 +49,8 @@ class ImGuiPerformanceDialog : public ImGuiGamepadDialog {
   // Setting change handlers
   void OnReadbackResolveChanged(int value);
   void OnReadbackMemexportChanged(int value);
+  void OnOcclusionQueryChanged(int value);
   void OnEmulatedDisplayUncappedChanged(bool uncapped);
-  void OnOcclusionQueryChanged(bool enabled);
   void OnClearMemoryPageStateChanged(bool enabled);
 
   app::EmulatorWindow* emulator_window_;
@@ -59,13 +59,14 @@ class ImGuiPerformanceDialog : public ImGuiGamepadDialog {
   // Current settings state (selected values)
   int readback_resolve_mode_ = 2;    // 0=None, 1=Some, 2=Fast, 3=Full
   int readback_memexport_mode_ = 1;  // 0=None, 1=Fast, 2=Full
+  int occlusion_query_mode_ = 0;     // 0=Fake, 1=Fast, 2=Strict
   bool display_uncapped_ = false;
-  bool occlusion_query_ = false;
   bool clear_memory_page_state_ = false;
 
   // Highlight positions for navigation
   int resolve_highlight_ = 2;
   int memexport_highlight_ = 1;
+  int occlusion_query_highlight_ = 0;
 };
 
 }  // namespace ui

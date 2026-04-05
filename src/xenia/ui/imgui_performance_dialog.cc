@@ -24,7 +24,7 @@ DECLARE_bool(readback_memexport);
 DECLARE_bool(readback_memexport_fast);
 DECLARE_string(readback_resolve);
 DECLARE_bool(guest_display_refresh_cap);
-DECLARE_bool(occlusion_query_enable);
+DECLARE_string(occlusion_query);
 
 namespace xe {
 namespace ui {
@@ -51,8 +51,15 @@ void ImGuiPerformanceDialog::LoadCurrentSettings() {
   // Load Emulated Display Uncapped (inverted from guest_display_refresh_cap)
   display_uncapped_ = !cvars::guest_display_refresh_cap;
 
-  // Load Occlusion Query setting
-  occlusion_query_ = cvars::occlusion_query_enable;
+  // Load Occlusion Query setting (0=fake, 1=fast, 2=strict)
+  const std::string& oq_mode = cvars::occlusion_query;
+  if (oq_mode == "fast") {
+    occlusion_query_mode_ = 1;
+  } else if (oq_mode == "strict") {
+    occlusion_query_mode_ = 2;
+  } else {
+    occlusion_query_mode_ = 0;  // Default to "fake"
+  }
 
   // Load Readback Resolve setting (0=none, 1=some, 2=fast, 3=full)
   const std::string& resolve_mode = cvars::readback_resolve;
@@ -151,11 +158,33 @@ void ImGuiPerformanceDialog::OnEmulatedDisplayUncappedChanged(bool uncapped) {
   ShowNotification("Emulated Display", uncapped ? "Uncapped" : "Capped");
 }
 
-void ImGuiPerformanceDialog::OnOcclusionQueryChanged(bool enabled) {
-  SetOcclusionQueryEnable(enabled);
-  config::SaveGameConfigSetting(emulator_window_->emulator(), "GPU",
-                                "occlusion_query_enable", enabled);
-  ShowNotification("Occlusion Queries", enabled ? "Enabled" : "Disabled");
+void ImGuiPerformanceDialog::OnOcclusionQueryChanged(int value) {
+  auto emulator = emulator_window_->emulator();
+  if (!emulator) return;
+
+  auto graphics_system = emulator->graphics_system();
+  if (!graphics_system) return;
+
+  auto command_processor = graphics_system->command_processor();
+  if (!command_processor) return;
+
+  gpu::ZPDMode mode;
+  switch (value) {
+    case 1:
+      mode = gpu::ZPDMode::kFast;
+      break;
+    case 2:
+      mode = gpu::ZPDMode::kStrict;
+      break;
+    default:
+      mode = gpu::ZPDMode::kFake;
+      break;
+  }
+
+  command_processor->SetZPDMode(mode);
+
+  const char* mode_names[] = {"Fake", "Fast", "Strict"};
+  ShowNotification("Occlusion Query Mode", mode_names[value]);
 }
 
 void ImGuiPerformanceDialog::OnClearMemoryPageStateChanged(bool enabled) {
@@ -272,6 +301,42 @@ void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
     ImGui::Separator();
     ImGui::Spacing();
 
+    ImGui::PushStyleColor(ImGuiCol_Text, xbox_green);
+    ImGui::Text("Occlusion Query Mode");
+    ImGui::PopStyleColor();
+
+    ImGui::Indent(10);
+    ImGui::PushID("occlusion_query");
+    const char* oq_labels[] = {"Fake", "Fast", "Strict"};
+    for (int i = 0; i < 3; i++) {
+      bool is_selected = (occlusion_query_mode_ == i);
+      bool is_highlighted = (occlusion_query_highlight_ == i);
+
+      if (is_highlighted && !is_selected) {
+        ImGui::PushStyleColor(ImGuiCol_Text, highlight_color);
+      }
+
+      if (ImGui::RadioButton(oq_labels[i], is_selected)) {
+        if (!is_selected) {
+          occlusion_query_mode_ = i;
+          occlusion_query_highlight_ = i;
+          OnOcclusionQueryChanged(i);
+        }
+      }
+
+      if (is_highlighted && !is_selected) {
+        ImGui::PopStyleColor();
+      }
+
+      if (i < 2) ImGui::SameLine();
+    }
+    ImGui::PopID();
+    ImGui::Unindent(10);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
     // Other section
     ImGui::PushStyleColor(ImGuiCol_Text, xbox_green);
     ImGui::Text("Other");
@@ -281,11 +346,6 @@ void ImGuiPerformanceDialog::OnDraw(ImGuiIO& io) {
 
     if (ImGui::Checkbox("Emulated Display Uncapped", &display_uncapped_)) {
       OnEmulatedDisplayUncappedChanged(display_uncapped_);
-    }
-
-    if (ImGui::Checkbox("Enable hardware occlusion queries",
-                        &occlusion_query_)) {
-      OnOcclusionQueryChanged(occlusion_query_);
     }
 
     if (ImGui::Checkbox("Clear memory page state on GPU cache invalidation",

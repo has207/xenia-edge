@@ -27,6 +27,7 @@
 #include "xenia/gpu/d3d12/d3d12_render_target_cache.h"
 #include "xenia/gpu/d3d12/d3d12_shared_memory.h"
 #include "xenia/gpu/d3d12/d3d12_texture_cache.h"
+#include "xenia/gpu/d3d12/d3d12_zpd_query_pool.h"
 #include "xenia/gpu/d3d12/deferred_command_list.h"
 #include "xenia/gpu/d3d12/pipeline_cache.h"
 #include "xenia/gpu/draw_util.h"
@@ -56,6 +57,7 @@ struct MemExportRange {
   uint32_t base_address_dwords;
   uint32_t size_dwords;
 };
+
 class D3D12CommandProcessor final : public CommandProcessor {
  protected:
 #define OVERRIDING_BASE_CMDPROCESSOR
@@ -79,13 +81,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
   void TracePlaybackWroteMemory(uint32_t base_ptr, uint32_t length) override;
 
   void RestoreEdramSnapshot(const void* snapshot) override;
-
-  void PrepareForWait() override;
-  void ReturnFromWait() override;
-  bool SupportsGuestOcclusionQueries() const override {
-    return occlusion_query_resources_available_ &&
-           cvars::occlusion_query_enable;
-  }
 
   ui::d3d12::D3D12Provider& GetD3D12Provider() const {
     return *static_cast<ui::d3d12::D3D12Provider*>(
@@ -509,21 +504,62 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   void WriteGammaRampSRV(bool is_pwl, D3D12_CPU_DESCRIPTOR_HANDLE handle) const;
 
-  bool InitializeOcclusionQueryResources();
-  void ShutdownOcclusionQueryResources();
-  bool BeginGuestOcclusionQuery(uint32_t sample_count_address);
-  bool EndGuestOcclusionQuery(uint32_t sample_count_address,
-                              xenos::xe_gpu_depth_sample_counts* sample_counts);
-  void ProcessReadyOcclusionQueries(uint64_t completed_submission);
-  bool AcquireOcclusionQueryIndex(uint32_t& host_index_out);
-  void DisableHostOcclusionQueries();
-  uint64_t NormalizeOcclusionSamples(uint64_t samples) const;
-  void WriteGuestOcclusionResult(
-      xenos::xe_gpu_depth_sample_counts* sample_counts, uint64_t samples);
+  // ZPD occlusion queries backend.
+  // BeginQuery/EndQuery must be in the same command list, segments split at
+  // EndSubmission, resume at BeginSubmission. Discarded queries still need
+  // EndQuery or the heap slot breaks on some drivers. RecordZPDResolveBatch
+  // emits coalesced ResolveQueryData at submit. First query at a fresh slot
+  // always produce 0 if the pool was exhausted when it was issued.
+  void EnsureZPDQueryResources() override;
+  void ShutdownZPDQueryResources() override {
+    zpd_host_query_pool_->Shutdown();
+  }
+
+  bool IsZPDQueryPoolReady() const override {
+    return zpd_host_query_pool_->is_initialized();
+  }
+  bool CanOpenZPDQuery() const override;
+
+  QueryOpenResult OpenZPDQuery(uint32_t& out_host_index,
+                               uint32_t& out_host_generation,
+                               bool can_close_submission) override;
+  bool CloseZPDQuery(uint32_t host_index, uint32_t host_generation,
+                     uint64_t& out_submission) override;
+  bool DiscardZPDQuery(uint32_t host_index, uint32_t host_generation) override;
+  uint64_t GetZPDQueryResult(uint32_t host_index) override {
+    return zpd_host_query_pool_->GetQueryReadbackValue(host_index);
+  }
+  void ReleaseZPDQuery(uint32_t host_index, uint32_t host_generation) override {
+    zpd_host_query_pool_->ReleaseQueryIndex(host_index, host_generation);
+  }
+  bool IsZPDQueryResultValid(uint32_t host_index,
+                             uint32_t host_generation) const override {
+    return zpd_host_query_pool_->GenerationMatches(host_index, host_generation);
+  }
+
+  // Record the pending resolve batch on the current command list.
+  void RecordZPDResolveBatch();
+
+  CommandProcessor::ZPDSubmissionBridge* GetZPDSubmissionBridge() override;
+
+  class ZPDSubmissionBridge final
+      : public CommandProcessor::ZPDSubmissionBridge {
+   public:
+    explicit ZPDSubmissionBridge(D3D12CommandProcessor& command_processor)
+        : command_processor_(command_processor) {}
+    CommandProcessor::ZPDSubmissionState GetState() const override;
+    bool EnsureProgress() override;
+    void AwaitSubmission(uint64_t submission) override;
+
+   private:
+    D3D12CommandProcessor& command_processor_;
+  };
 
   bool device_removed_ = false;
 
   bool cache_clear_requested_ = false;
+
+  ZPDSubmissionBridge zpd_submission_bridge_{*this};
 
   std::unique_ptr<ui::d3d12::D3D12GPUCompletionTimeline> completion_timeline_;
   bool submission_open_ = false;
@@ -566,6 +602,8 @@ class D3D12CommandProcessor final : public CommandProcessor {
   std::unique_ptr<D3D12SharedMemory> shared_memory_;
 
   std::unique_ptr<D3D12RenderTargetCache> render_target_cache_;
+
+  std::unique_ptr<D3D12ZPDQueryPool> zpd_host_query_pool_;
 
   std::unique_ptr<ui::d3d12::D3D12UploadBufferPool> constant_buffer_pool_;
 
@@ -722,42 +760,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
   // Kept in NON_PIXEL_SHADER_RESOURCE state.
   Microsoft::WRL::ComPtr<ID3D12Resource> fxaa_source_texture_;
   uint64_t fxaa_source_texture_submission_ = 0;
-
-  // Occlusion query resources.
-  Microsoft::WRL::ComPtr<ID3D12QueryHeap> occlusion_query_heap_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> occlusion_query_readback_;
-  uint64_t* occlusion_query_readback_mapping_ = nullptr;  // Persistent mapping
-  uint32_t occlusion_query_cursor_ = 0;
-  bool occlusion_query_resources_available_ = false;
-  struct ActiveOcclusionQuery {
-    uint32_t sample_count_address = 0;
-    uint32_t query_id = 0;  // VIZ_QUERY ID (0-63)
-    uint32_t host_index = UINT32_MAX;
-    bool valid = false;
-    bool cache_serviced = false;  // True if using cached result, no D3D12 query
-  } active_occlusion_query_;
-
-  // Pending async queries (resolved when submission completes)
-  struct PendingOcclusionQuery {
-    uint32_t host_index;
-    uint64_t submission;
-    uint32_t sample_count_address;
-    xenos::xe_gpu_depth_sample_counts*
-        sample_counts;  // Cached pointer (nullptr for cache-only updates)
-    uint32_t query_id;
-  };
-  std::deque<PendingOcclusionQuery> pending_occlusion_queries_;
-
-  // Query statistics (logged every 100 frames)
-  struct OcclusionQueryStats {
-    uint64_t queries_begun = 0;
-    uint64_t queries_ended = 0;
-    uint64_t queries_failed = 0;
-    uint64_t queries_resolved_sync = 0;  // Required GPU stall
-    uint64_t cursor_wraps = 0;
-    uint32_t max_cursor_value = 0;
-    uint64_t last_log_frame = 0;
-  } occlusion_query_stats_;
 
   // Unsubmitted barrier batch.
   std::vector<D3D12_RESOURCE_BARRIER> barriers_;

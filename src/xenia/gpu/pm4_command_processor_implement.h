@@ -1146,14 +1146,14 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_EXT(
   return true;
 }
 
-static uint32_t samples = cvars::query_occlusion_sample_upper_threshold;
-
-#if !defined(XE_GPU_OVERRIDES_EVENT_WRITE_ZPD)
 XE_NOINLINE
+// This is not a simple BEGIN/END around a host occlusion query. One slot can
+// span multiple submissions, be force closed by a colliding BEGIN, or get an
+// orphaned END with no matching BEGIN. Hardware only uses a single register
+// (RB_SAMPLE_COUNT_ADDR) for the target address, no explicit handle passing.
+// Debugging RB_SAMPLE_COUNT_CTL has not yet revealed any helpful bits.
 bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
     uint32_t packet, uint32_t count) XE_RESTRICT {
-  // Set by D3D as BE but struct ABI is LE
-  const uint32_t kQueryFinished = xe::byte_swap(0xFFFFFEED);
   assert_true(count == 1);
   uint32_t initiator = reader_.ReadAndSwap<uint32_t>();
   uint32_t event_type = initiator & 0x3F;
@@ -1166,36 +1166,158 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_EVENT_WRITE_ZPD(
   // Writeback initiator.
   COMMAND_PROCESSOR::WriteEventInitiator(event_type);
 
-  if (cvars::query_occlusion_sample_lower_threshold < 0) {
+  uint32_t report_address =
+      register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR];
+  uint32_t report_record_base = XenosZPDReport::GetRecordBase(report_address);
+  bool is_begin_record = XenosZPDReport::IsBeginRecord(report_address);
+  bool is_end_record = XenosZPDReport::IsEndRecord(report_address);
+
+  xe_gpu_depth_sample_counts* report =
+      report_record_base
+          ? memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
+                report_record_base)
+          : nullptr;
+
+  // True if the record has the pending D3D sentinel.
+  // Useful as a hint, but not authoritative for report boundaries.
+  // QueryBatch titles can have multiple pending sentinels in a row and don't
+  // necessarily update in an order we currently observe.
+  bool guest_marks_end = report && XenosZPDReport::HasPendingSentinel(report);
+  uint32_t slot_base = XenosZPDReport::GetSlotBase(report_address);
+  bool logical_active = zpd_active_segment_.logical_active;
+
+  auto write_batch_fake = [&]() {
+    if (!report_record_base) {
+      return;
+    }
+
+    if (cvars::occlusion_query_fake_lower_threshold >= 0) {
+      fake_zpd_sample_count_ =
+          (fake_zpd_sample_count_ <=
+           static_cast<uint32_t>(cvars::occlusion_query_fake_lower_threshold))
+              ? static_cast<uint32_t>(
+                    cvars::occlusion_query_fake_upper_threshold)
+              : fake_zpd_sample_count_ - 1;
+    } else if (fake_zpd_sample_count_ == 0) {
+      fake_zpd_sample_count_ = 1;
+    }
+
+    uint32_t step = std::max(uint32_t{1}, fake_zpd_sample_count_);
+    zpd_batch_fake_count_ =
+        XenosZPDReport::AddSamples(zpd_batch_fake_count_, step);
+    XenosZPDReport::WriteSampleCount(report, zpd_batch_fake_count_);
+  };
+
+  if (cvars::occlusion_query_log && report) {
+    XELOGI(
+        "ZPD: EVENT_WRITE_ZPD fields event={} report_address=0x{:08X} "
+        "record=0x{:08X} Total=({:08X},{:08X}) ZFail=({:08X},{:08X}) "
+        "ZPass=({:08X},{:08X}) Stencil=({:08X},{:08X}) pending={}",
+        GetEventName(event_type), report_address, report_record_base,
+        uint32_t(report->Total_A), uint32_t(report->Total_B),
+        uint32_t(report->ZFail_A), uint32_t(report->ZFail_B),
+        uint32_t(report->ZPass_A), uint32_t(report->ZPass_B),
+        uint32_t(report->StencilFail_A), uint32_t(report->StencilFail_B),
+        guest_marks_end);
+  }
+
+  // Sticky fallback. Stop using the normal query path and feed cumulative fake
+  // samples for the rest of the session.
+  if (zpd_batch_fake_) {
+    write_batch_fake();
     return true;
   }
-  // Occlusion queries:
-  // This command is send on query begin and end.
-  // As a workaround report some fixed amount of passed samples.
-  auto* pSampleCounts = memory_->TranslatePhysical<xe_gpu_depth_sample_counts*>(
-      register_file_->values[XE_GPU_REG_RB_SAMPLE_COUNT_ADDR]);
-  // 0xFFFFFEED is written to this two locations by D3D only on D3DISSUE_END
-  // and used to detect a finished query.
-  bool is_end_via_z_pass = pSampleCounts->ZPass_A == kQueryFinished &&
-                           pSampleCounts->ZPass_B == kQueryFinished;
-  // Older versions of D3D also checks for ZFail (4D5307D5).
-  bool is_end_via_z_fail = pSampleCounts->ZFail_A == kQueryFinished &&
-                           pSampleCounts->ZFail_B == kQueryFinished;
-  std::memset(pSampleCounts, 0, sizeof(xe_gpu_depth_sample_counts));
-  if (is_end_via_z_pass || is_end_via_z_fail) {
-    pSampleCounts->ZPass_A = samples;
-    pSampleCounts->Total_A = samples;
+
+  // QueryBatch titles advance through pending records in steps within one page.
+  // Detect a short consecutive run here and pull the fake ripcord before the
+  // guest starts waiting on sentinels that won't clear.
+  uint32_t batch_page_base = XenosZPDReport::GetBatchPageBase(report_address);
+  // 5451082C is another batched title, but it doesn't advance through
+  // records. Instead, it has a fixed record orphan END that it repeatedly hits.
+  // Detect this pattern as well.
+  bool repeated_orphan_end = report_record_base && guest_marks_end &&
+                             is_end_record && !logical_active &&
+                             batch_page_base != 0 &&
+                             zpd_batch_page_ == batch_page_base &&
+                             report_record_base == zpd_batch_last_record_;
+  if (report_record_base && guest_marks_end && batch_page_base != 0) {
+    if ((zpd_batch_page_ == batch_page_base &&
+         XenosZPDReport::IsBatchStep(zpd_batch_last_record_,
+                                     report_record_base)) ||
+        repeated_orphan_end) {
+      ++zpd_batch_run_;
+    } else {
+      zpd_batch_page_ = batch_page_base;
+      zpd_batch_run_ = 1;
+    }
+    zpd_batch_last_record_ = report_record_base;
+
+    if (zpd_batch_run_ >= (repeated_orphan_end ? 16u : 4u)) {
+      // Don't try to mix real and fake results.
+      zpd_batch_fake_ = true;
+      zpd_batch_fake_count_ = 0;
+      zpd_pending_retire_handle_ = XenosReportController::kInvalidReportHandle;
+      zpd_pending_retire_stalls_ = 0;
+      XELOGI(
+          "ZPD: Batched occlusion query pattern detected, falling back to "
+          "fake sample counts.");
+      write_batch_fake();
+      return true;
+    }
+  } else {
+    zpd_batch_page_ = 0;
+    zpd_batch_last_record_ = 0;
+    zpd_batch_run_ = 0;
   }
 
-  samples =
-      samples <= static_cast<uint32_t>(
-                     cvars::query_occlusion_sample_lower_threshold)
-          ? static_cast<uint32_t>(cvars::query_occlusion_sample_upper_threshold)
-          : samples - 1;
+  if (COMMAND_PROCESSOR::GetZPDMode() != ZPDMode::kFake &&
+      zpd_report_controller_) {
+    if (logical_active && is_end_record) {
+      if (slot_base == zpd_active_segment_.slot_base) {
+        COMMAND_PROCESSOR::EndZPDReport(report_address, false);
+      }
+      return true;
+    }
+    if (is_begin_record) {
+      COMMAND_PROCESSOR::BeginZPDReport(report_address);
+      return true;
+    }
+    if (!logical_active && is_end_record) {
+      // No logical report is active for this slot, so this is likely an
+      // orphaned END. In fast mode, replay the last cached delta so polling
+      // code does not sit on the sentinel forever.
+      if (COMMAND_PROCESSOR::GetZPDMode() == ZPDMode::kFast) {
+        uint32_t cached_delta = 1;
+        auto cache_it = fast_zpd_report_cached_values_.find(report_record_base);
+        if (cache_it != fast_zpd_report_cached_values_.end()) {
+          cached_delta = cache_it->second;
+        }
+        COMMAND_PROCESSOR::WriteZPDReport(0, report_record_base, 0,
+                                          cached_delta, false);
+      } else {
+        // In strict mode, just pump in case a previous report has resolved.
+        zpd_report_controller_->RetireReports();
+      }
+      return true;
+    }
+    return true;
+  }
 
+  // Conventional fake fallback, which only touches records marked as pending.
+  if (cvars::occlusion_query_fake_lower_threshold < 0 || !report_record_base ||
+      !guest_marks_end) {
+    return true;
+  }
+
+  fake_zpd_sample_count_ =
+      (fake_zpd_sample_count_ <=
+       static_cast<uint32_t>(cvars::occlusion_query_fake_lower_threshold))
+          ? static_cast<uint32_t>(cvars::occlusion_query_fake_upper_threshold)
+          : fake_zpd_sample_count_ - 1;
+
+  XenosZPDReport::WriteSampleCount(report, fake_zpd_sample_count_);
   return true;
 }
-#endif  // !defined(XE_GPU_OVERRIDES_EVENT_WRITE_ZPD)
 
 bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
     uint32_t packet, const char* opcode_name, uint32_t viz_query_condition,
@@ -1287,9 +1409,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
 
   if (draw_succeeded) {
     auto viz_query = register_file_->Get<reg::PA_SC_VIZ_QUERY>();
-    bool viz_query_active =
-        viz_query.viz_query_ena && viz_query.kill_pix_post_hi_z;
-    if (!viz_query_active || SupportsGuestOcclusionQueries()) {
+    if (!(viz_query.viz_query_ena && viz_query.kill_pix_post_hi_z)) {
       // TODO(Triang3l): Don't drop the draw call completely if the vertex
       // shader has memexport.
       // TODO(Triang3l || JoelLinn): Handle this properly in the render
