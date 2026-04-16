@@ -238,7 +238,7 @@ void ConfigDialogQt::CreateCategoryPage(
           QString("<p style='white-space: pre-wrap; max-width: 400px;'>%1</p>")
               .arg(SafeQString(var_info->description).toHtmlEscaped());
       label->setToolTip(tooltip);
-      label->setToolTipDuration(5000);  // Show for 5 seconds
+      label->setToolTipDuration(60000);  // Show for 60 seconds
     }
 
     // Store label reference for bold state updates
