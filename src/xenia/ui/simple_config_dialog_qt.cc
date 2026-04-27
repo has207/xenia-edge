@@ -32,7 +32,7 @@ using xe::ui::SafeStdString;
 SimpleConfigDialogQt::SimpleConfigDialogQt(QWidget* parent,
                                            EmulatorWindow* emulator_window)
     : QDialog(parent), emulator_window_(emulator_window) {
-  setWindowTitle("Emulator Settings");
+  setWindowTitle("模拟器设置");
   setMinimumWidth(500);
   SetupUI();
   LoadConfigValues();
@@ -46,7 +46,7 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* main_layout = new QVBoxLayout(this);
 
   // Graphics section
-  auto* graphics_group = new QGroupBox("Graphics", this);
+  auto* graphics_group = new QGroupBox("图形", this);
   auto* graphics_layout = new QFormLayout(graphics_group);
 
   const auto& enum_options = ui::GetKnownEnumOptions();
@@ -60,7 +60,7 @@ void SimpleConfigDialogQt::SetupUI() {
   }
   options_["gpu"].cvar_name = "gpu";
   options_["gpu"].editor_widget = gpu_combo;
-  options_["gpu"].label_widget = new QLabel("Graphics Backend:", this);
+  options_["gpu"].label_widget = new QLabel("图形后端:", this);
   connect(gpu_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["gpu"].label_widget, gpu_combo);
@@ -74,7 +74,7 @@ void SimpleConfigDialogQt::SetupUI() {
   }
   options_["render_target_path"].cvar_name = "render_target_path";
   options_["render_target_path"].editor_widget = render_path_combo;
-  options_["render_target_path"].label_widget = new QLabel("Rendering:", this);
+  options_["render_target_path"].label_widget = new QLabel("渲染:", this);
   connect(render_path_combo,
           QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &SimpleConfigDialogQt::OnValueChanged);
@@ -93,7 +93,7 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["draw_resolution_scale"].cvar_name = "draw_resolution_scale";
   options_["draw_resolution_scale"].editor_widget = scale_combo;
   options_["draw_resolution_scale"].label_widget =
-      new QLabel("Resolution Scale:", this);
+      new QLabel("分辨率缩放:", this);
   connect(scale_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["draw_resolution_scale"].label_widget,
@@ -106,7 +106,7 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["framerate_limit"].cvar_name = "framerate_limit";
   options_["framerate_limit"].editor_widget = fps_spin;
   options_["framerate_limit"].label_widget =
-      new QLabel("Framerate Limit:", this);
+      new QLabel("帧率限制:", this);
   connect(fps_spin, QOverload<int>::of(&QSpinBox::valueChanged), this,
           &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["framerate_limit"].label_widget, fps_spin);
@@ -117,7 +117,7 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* guest_refresh_layout = new QHBoxLayout(guest_refresh_widget);
   guest_refresh_layout->setContentsMargins(0, 0, 0, 0);
   auto* guest_refresh_group = new QButtonGroup(this);
-  auto* uncapped_radio = new QRadioButton("Uncapped", guest_refresh_widget);
+  auto* uncapped_radio = new QRadioButton("不限制", guest_refresh_widget);
   auto* hz50_radio = new QRadioButton("50Hz", guest_refresh_widget);
   auto* hz60_radio = new QRadioButton("60Hz", guest_refresh_widget);
   guest_refresh_group->addButton(uncapped_radio, 0);
@@ -130,7 +130,7 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["guest_refresh_rate"].cvar_name = "guest_refresh_rate";
   options_["guest_refresh_rate"].editor_widget = guest_refresh_widget;
   options_["guest_refresh_rate"].label_widget =
-      new QLabel("Emulated Display Refresh Rate:", this);
+      new QLabel("模拟显示刷新率:", this);
   connect(guest_refresh_group, &QButtonGroup::idClicked, this,
           &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["guest_refresh_rate"].label_widget,
@@ -141,7 +141,7 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* vsync_check = new QCheckBox(this);
   options_["vsync"].cvar_name = "vsync";
   options_["vsync"].editor_widget = vsync_check;
-  options_["vsync"].label_widget = new QLabel("VSync:", this);
+  options_["vsync"].label_widget = new QLabel("垂直同步:", this);
   connect(vsync_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["vsync"].label_widget, vsync_check);
@@ -149,7 +149,7 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* fullscreen_check = new QCheckBox(this);
   options_["fullscreen"].cvar_name = "fullscreen";
   options_["fullscreen"].editor_widget = fullscreen_check;
-  options_["fullscreen"].label_widget = new QLabel("Full Screen:", this);
+  options_["fullscreen"].label_widget = new QLabel("全屏:", this);
   connect(fullscreen_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["fullscreen"].label_widget,
@@ -158,7 +158,7 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* letterbox_check = new QCheckBox(this);
   options_["present_letterbox"].cvar_name = "present_letterbox";
   options_["present_letterbox"].editor_widget = letterbox_check;
-  options_["present_letterbox"].label_widget = new QLabel("Letterbox:", this);
+  options_["present_letterbox"].label_widget = new QLabel("信箱模式:", this);
   connect(letterbox_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
   graphics_layout->addRow(options_["present_letterbox"].label_widget,
@@ -167,7 +167,7 @@ void SimpleConfigDialogQt::SetupUI() {
   main_layout->addWidget(graphics_group);
 
   // Audio section
-  auto* audio_group = new QGroupBox("Audio", this);
+  auto* audio_group = new QGroupBox("音频", this);
   auto* audio_layout = new QFormLayout(audio_group);
 
   auto* apu_combo = new QComboBox(this);
@@ -179,7 +179,7 @@ void SimpleConfigDialogQt::SetupUI() {
   }
   options_["apu"].cvar_name = "apu";
   options_["apu"].editor_widget = apu_combo;
-  options_["apu"].label_widget = new QLabel("Audio Backend:", this);
+  options_["apu"].label_widget = new QLabel("音频后端:", this);
   connect(apu_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &SimpleConfigDialogQt::OnValueChanged);
   audio_layout->addRow(options_["apu"].label_widget, apu_combo);
@@ -193,7 +193,7 @@ void SimpleConfigDialogQt::SetupUI() {
   }
   options_["xma_decoder"].cvar_name = "xma_decoder";
   options_["xma_decoder"].editor_widget = xma_combo;
-  options_["xma_decoder"].label_widget = new QLabel("Audio Decoder:", this);
+  options_["xma_decoder"].label_widget = new QLabel("音频解码器:", this);
   connect(xma_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &SimpleConfigDialogQt::OnValueChanged);
   audio_layout->addRow(options_["xma_decoder"].label_widget, xma_combo);
@@ -202,7 +202,7 @@ void SimpleConfigDialogQt::SetupUI() {
   options_["use_dedicated_xma_thread"].cvar_name = "use_dedicated_xma_thread";
   options_["use_dedicated_xma_thread"].editor_widget = xma_thread_check;
   options_["use_dedicated_xma_thread"].label_widget =
-      new QLabel("Dedicated Thread:", this);
+      new QLabel("专用线程:", this);
   connect(xma_thread_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
   audio_layout->addRow(options_["use_dedicated_xma_thread"].label_widget,
@@ -211,7 +211,7 @@ void SimpleConfigDialogQt::SetupUI() {
   main_layout->addWidget(audio_group);
 
   // Other section
-  auto* other_group = new QGroupBox("Other", this);
+  auto* other_group = new QGroupBox("其他", this);
   auto* other_layout = new QFormLayout(other_group);
 
   auto* license_combo = new QComboBox(this);
@@ -220,7 +220,7 @@ void SimpleConfigDialogQt::SetupUI() {
   license_combo->addItem("All", -1);
   options_["license_mask"].cvar_name = "license_mask";
   options_["license_mask"].editor_widget = license_combo;
-  options_["license_mask"].label_widget = new QLabel("License:", this);
+  options_["license_mask"].label_widget = new QLabel("许可证:", this);
   connect(license_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SimpleConfigDialogQt::OnValueChanged);
   other_layout->addRow(options_["license_mask"].label_widget, license_combo);
@@ -228,7 +228,7 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* discord_check = new QCheckBox(this);
   options_["discord"].cvar_name = "discord";
   options_["discord"].editor_widget = discord_check;
-  options_["discord"].label_widget = new QLabel("Discord Rich Presence:", this);
+  options_["discord"].label_widget = new QLabel("Discord 状态:", this);
   connect(discord_check, &QCheckBox::checkStateChanged, this,
           &SimpleConfigDialogQt::OnValueChanged);
   other_layout->addRow(options_["discord"].label_widget, discord_check);
@@ -242,7 +242,7 @@ void SimpleConfigDialogQt::SetupUI() {
   }
   options_["user_language"].cvar_name = "user_language";
   options_["user_language"].editor_widget = language_combo;
-  options_["user_language"].label_widget = new QLabel("Language:", this);
+  options_["user_language"].label_widget = new QLabel("语言:", this);
   connect(language_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SimpleConfigDialogQt::OnValueChanged);
   other_layout->addRow(options_["user_language"].label_widget, language_combo);
@@ -256,7 +256,7 @@ void SimpleConfigDialogQt::SetupUI() {
   }
   options_["user_country"].cvar_name = "user_country";
   options_["user_country"].editor_widget = country_combo;
-  options_["user_country"].label_widget = new QLabel("Country:", this);
+  options_["user_country"].label_widget = new QLabel("国家/地区:", this);
   connect(country_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SimpleConfigDialogQt::OnValueChanged);
   other_layout->addRow(options_["user_country"].label_widget, country_combo);
@@ -266,24 +266,24 @@ void SimpleConfigDialogQt::SetupUI() {
   // Buttons
   auto* button_layout = new QHBoxLayout();
 
-  auto* advanced_button = new QPushButton("Advanced...", this);
+  auto* advanced_button = new QPushButton("高级...", this);
   connect(advanced_button, &QPushButton::clicked, this,
           &SimpleConfigDialogQt::OnAdvancedClicked);
   button_layout->addWidget(advanced_button);
 
-  auto* reset_button = new QPushButton("Reset to Default", this);
+  auto* reset_button = new QPushButton("重置为默认", this);
   connect(reset_button, &QPushButton::clicked, this,
           &SimpleConfigDialogQt::OnResetClicked);
   button_layout->addWidget(reset_button);
 
   button_layout->addStretch();
 
-  auto* save_button = new QPushButton("Save", this);
+  auto* save_button = new QPushButton("保存", this);
   connect(save_button, &QPushButton::clicked, this,
           &SimpleConfigDialogQt::OnSaveClicked);
   button_layout->addWidget(save_button);
 
-  auto* discard_button = new QPushButton("Cancel", this);
+  auto* discard_button = new QPushButton("取消", this);
   connect(discard_button, &QPushButton::clicked, this,
           &SimpleConfigDialogQt::OnDiscardClicked);
   button_layout->addWidget(discard_button);

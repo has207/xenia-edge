@@ -150,7 +150,7 @@ void GameListDialogQt::SetupUI() {
   connect(open_button, &QToolButton::clicked,
           [this]() { emit fileOpenRequested(); });
 
-  open_label_ = new QLabel("Open", this);
+  open_label_ = new QLabel("打开", this);
   open_label_->setAlignment(Qt::AlignCenter);
 
   open_layout->addWidget(open_button);
@@ -179,7 +179,7 @@ void GameListDialogQt::SetupUI() {
   connect(play_button_, &QToolButton::clicked, this,
           &GameListDialogQt::OnPlayClicked);
 
-  play_label_ = new QLabel("Play", this);
+  play_label_ = new QLabel("运行", this);
   play_label_->setAlignment(Qt::AlignCenter);
 
   // Create opacity effect for label
@@ -205,7 +205,7 @@ void GameListDialogQt::SetupUI() {
   connect(settings_button_, &QToolButton::clicked, this,
           &GameListDialogQt::OnSettingsClicked);
 
-  settings_label_ = new QLabel("Config", this);
+  settings_label_ = new QLabel("设置", this);
   settings_label_->setAlignment(Qt::AlignCenter);
 
   settings_layout->addWidget(settings_button_);
@@ -253,7 +253,7 @@ void GameListDialogQt::SetupUI() {
 
   // Search box
   search_box_ = new QLineEdit(this);
-  search_box_->setPlaceholderText("Search games...");
+  search_box_->setPlaceholderText("搜索游戏...");
   search_box_->setClearButtonEnabled(true);
   search_box_->setStyleSheet("padding-left: 8px;");
   connect(search_box_, &QLineEdit::textChanged, this,
@@ -270,15 +270,15 @@ void GameListDialogQt::SetupUI() {
   header_layout->setContentsMargins(10, 5, 10, 5);
   header_layout->setSpacing(15);
 
-  icon_header_ = new QLabel("Icon", this);
+  icon_header_ = new QLabel("图标", this);
   icon_header_->setMinimumWidth(80);
   icon_header_->setMaximumWidth(80);
   header_layout->addWidget(icon_header_);
 
-  title_header_ = new QLabel("Title", this);
+  title_header_ = new QLabel("标题", this);
   header_layout->addWidget(title_header_, 1);
 
-  last_played_header_ = new QLabel("Last Played", this);
+  last_played_header_ = new QLabel("最后游玩", this);
   last_played_header_->setMinimumWidth(200);
   last_played_header_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   header_layout->addWidget(last_played_header_);
@@ -774,19 +774,16 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
   QAction* open_folder_action = nullptr;
 
   if (has_path) {
-    // Check if this is a multi-disc game
     if (entry && entry->all_discs.size() > 1) {
-      // Create a submenu for disc selection
-      launch_menu = context_menu.addMenu("Launch");
+      launch_menu = context_menu.addMenu("启动");
       size_t disc_num = 1;
       for (const auto& disc : entry->all_discs) {
         QString disc_label = disc.label.empty()
-                                 ? QString("Disc %1").arg(disc_num)
+                                 ? QString("光盘 %1").arg(disc_num)
                                  : SafeQString(disc.label);
         QAction* disc_action = launch_menu->addAction(disc_label);
         disc_num++;
 
-        // Capture disc.path by value in lambda (copy to local variable first)
         std::filesystem::path disc_path_copy = disc.path;
         connect(disc_action, &QAction::triggered,
                 [this, disc_path_copy, title_id]() {
@@ -794,12 +791,11 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
                 });
       }
     } else {
-      // Single disc game, just add a launch action
-      launch_action = context_menu.addAction("Launch");
+      launch_action = context_menu.addAction("启动");
     }
-    open_folder_action = context_menu.addAction("Open containing folder");
+    open_folder_action = context_menu.addAction("打开所在文件夹");
   } else {
-    launch_action = context_menu.addAction("Open");
+    launch_action = context_menu.addAction("打开");
   }
 
   // Get the primary profile (same one shown in profile button)
@@ -814,15 +810,12 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
     xuid = primary_profile->xuid();
   }
 
-  // Saves folder option (enabled if user is logged in, we have a valid
-  // title_id, and saves exist)
   QAction* saves_action = nullptr;
   if (title_id != 0) {
-    saves_action = context_menu.addAction("Saves");
+    saves_action = context_menu.addAction("存档");
     if (!is_signedin) {
       saves_action->setEnabled(false);
     } else {
-      // Check if saves folder exists
       auto saves_path = profile_manager->GetProfileContentPath(
           xuid, title_id, XContentType::kSavedGame);
       if (!std::filesystem::exists(saves_path)) {
@@ -831,12 +824,9 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
     }
   }
 
-  // Title Updates folder option (enabled if we have a valid title_id and
-  // updates exist)
   QAction* title_updates_action = nullptr;
   if (title_id != 0) {
-    title_updates_action = context_menu.addAction("Title Updates");
-    // Title updates use xuid=0 and content type kInstaller
+    title_updates_action = context_menu.addAction("标题更新");
     auto tu_path = profile_manager->GetProfileContentPath(
         0, title_id, XContentType::kInstaller);
     if (!std::filesystem::exists(tu_path)) {
@@ -844,11 +834,9 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
     }
   }
 
-  // DLC folder option (enabled if we have a valid title_id and DLC exists)
   QAction* dlc_action = nullptr;
   if (title_id != 0) {
     dlc_action = context_menu.addAction("DLC");
-    // DLC uses xuid=0 and content type kMarketplaceContent
     auto dlc_path = profile_manager->GetProfileContentPath(
         0, title_id, XContentType::kMarketplaceContent);
     if (!std::filesystem::exists(dlc_path)) {
@@ -856,12 +844,10 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
     }
   }
 
-  // Patches option (always shown if we have a valid title_id, greyed out if no
-  // patches)
   QMenu* patches_menu = nullptr;
   if (title_id != 0) {
     auto available_patches = FindPatchesForTitle(title_id);
-    patches_menu = context_menu.addMenu("Patches");
+    patches_menu = context_menu.addMenu("补丁");
 
     if (available_patches.empty()) {
       // No patches found - disable the menu
@@ -902,15 +888,12 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
     }
   }
 
-  // Achievements option (enabled if user is logged in and we have a valid
-  // title_id)
   QAction* achievements_action = nullptr;
   if (title_id != 0) {
-    achievements_action = context_menu.addAction("Achievements");
+    achievements_action = context_menu.addAction("成就");
     if (!is_signedin) {
       achievements_action->setEnabled(false);
     } else {
-      // Get the title name from the game entry before connecting
       std::string title_name_str;
       for (const auto& entry : game_entries_) {
         if (entry.title_id == title_id) {
@@ -927,27 +910,23 @@ void GameListDialogQt::OnGameRightClicked(const QPoint& pos) {
     }
   }
 
-  // Game config overrides option (enabled if we have a valid title_id)
   QAction* config_action = nullptr;
   if (title_id != 0) {
-    config_action = context_menu.addAction("Config Overrides...");
+    config_action = context_menu.addAction("配置覆盖...");
   }
 
-  // Compatibility option (enabled if we have a valid title_id)
   QMenu* compatibility_menu = nullptr;
   QAction* compatibility_canary_action = nullptr;
   QAction* compatibility_master_action = nullptr;
   if (title_id != 0) {
-    compatibility_menu = context_menu.addMenu("Compatibility");
+    compatibility_menu = context_menu.addMenu("兼容性");
     compatibility_canary_action = compatibility_menu->addAction("Canary");
     compatibility_master_action = compatibility_menu->addAction("Master");
   }
 
-  // Separator before Remove option
   context_menu.addSeparator();
 
-  // Remove option is always available for all entries (at the bottom, in red)
-  QAction* remove_action = context_menu.addAction("🗑 Remove from list");
+  QAction* remove_action = context_menu.addAction("🗑 从列表中移除");
 
   QAction* selected = context_menu.exec(table_widget_->mapToGlobal(pos));
 
