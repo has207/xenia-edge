@@ -1,0 +1,155 @@
+name: Build Linux (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Build configuration'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - Debug
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Cache Qt6
+        id: cache-qt-linux
+        uses: actions/cache@v3
+        with:
+          path: /opt/Qt
+          key: ${{ runner.os }}-qt6-6.10.1
+          restore-keys: |
+            ${{ runner.os }}-qt6-
+
+      - name: Cache linuxdeploy tools
+        id: cache-linuxdeploy
+        uses: actions/cache@v3
+        with:
+          path: ~/linuxdeploy
+          key: ${{ runner.os }}-linuxdeploy-tools
+          restore-keys: |
+            ${{ runner.os }}-linuxdeploy-
+
+      - name: Setup
+        run: |
+          UBUNTU_BASE=$(lsb_release -cs)
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo apt-add-repository "deb http://apt.llvm.org/${UBUNTU_BASE}/ llvm-toolchain-${UBUNTU_BASE}-21 main"
+
+          sudo apt-get -y update
+          sudo apt-get -y install valgrind libc++-dev libc++abi-dev libgtk-3-dev libsdl2-dev libx11-xcb-dev clang-21 lld-21 ninja-build cmake libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-cursor0 libxcb-shape0 libfontconfig1-dev libxtst-dev
+
+          if [ '${{ steps.cache-qt-linux.outputs.cache-hit }}' != 'true' ]; then
+            pip install aqtinstall
+            echo "Available architectures for Qt 6.10.1:"
+            aqt list-qt linux desktop --arch 6.10.1 || true
+            aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt
+          fi
+          export PATH="/opt/Qt/6.10.1/gcc_64/bin:$PATH"
+          export CMAKE_PREFIX_PATH="/opt/Qt/6.10.1/gcc_64"
+          export PKG_CONFIG_PATH="/opt/Qt/6.10.1/gcc_64/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export QT_DIR="/opt/Qt/6.10.1/gcc_64"
+          echo "/opt/Qt/6.10.1/gcc_64/bin" >> $GITHUB_PATH
+          echo "CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/gcc_64" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/opt/Qt/6.10.1/gcc_64/lib/pkgconfig" >> $GITHUB_ENV
+          echo "QT_DIR=/opt/Qt/6.10.1/gcc_64" >> $GITHUB_ENV
+
+          if [ '${{ steps.cache-linuxdeploy.outputs.cache-hit }}' != 'true' ]; then
+            mkdir -p ~/linuxdeploy
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy
+            wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy-plugin-qt
+            wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy-plugin-appimage
+            chmod +x ~/linuxdeploy/linuxdeploy ~/linuxdeploy/linuxdeploy-plugin-qt ~/linuxdeploy/linuxdeploy-plugin-appimage
+          fi
+          echo "$HOME/linuxdeploy" >> $GITHUB_PATH
+
+          git submodule update --init --depth=1 -j$(getconf _NPROCESSORS_ONLN) $(grep -oP '(?<=path = )(?!third_party\/DirectXShaderCompiler).+' .gitmodules)
+
+          ./xenia-build.py fetchdata
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@main
+
+      - name: Build
+        env:
+          CC: clang-21
+          CXX: clang++-21
+          SCCACHE_GHA_ENABLED: "true"
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        run: ./xenia-build.py build --config=${{ inputs.config }}
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          binary=build/bin/Linux/${{ inputs.config }}/xenia_edge
+          if [ $(stat -c%s $binary) -le 100000 ]; then
+            echo "::error::Binary is too small."
+          fi
+          chmod +x $binary
+          mkdir -p artifacts/xenia_edge
+
+          export QMAKE=/opt/Qt/6.10.1/gcc_64/bin/qmake
+          export LD_LIBRARY_PATH=/opt/Qt/6.10.1/gcc_64/lib:$LD_LIBRARY_PATH
+
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/16x16/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/32x32/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/48x48/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/64x64/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/128x128/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/256x256/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/512x512/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/1024x1024/apps
+
+          cp assets/icon/16.png artifacts/xenia_edge/usr/share/icons/hicolor/16x16/apps/xenia_edge.png
+          cp assets/icon/32.png artifacts/xenia_edge/usr/share/icons/hicolor/32x32/apps/xenia_edge.png
+          cp assets/icon/48.png artifacts/xenia_edge/usr/share/icons/hicolor/48x48/apps/xenia_edge.png
+          cp assets/icon/64.png artifacts/xenia_edge/usr/share/icons/hicolor/64x64/apps/xenia_edge.png
+          cp assets/icon/128.png artifacts/xenia_edge/usr/share/icons/hicolor/128x128/apps/xenia_edge.png
+          cp assets/icon/256.png artifacts/xenia_edge/usr/share/icons/hicolor/256x256/apps/xenia_edge.png
+          cp assets/icon/512.png artifacts/xenia_edge/usr/share/icons/hicolor/512x512/apps/xenia_edge.png
+          cp assets/icon/1024.png artifacts/xenia_edge/usr/share/icons/hicolor/1024x1024/apps/xenia_edge.png
+
+          mkdir -p artifacts/xenia_edge/usr/bin
+          find build/bin/Linux/${{ inputs.config }} -maxdepth 1 -type d ! -name ${{ inputs.config }} -exec cp -r {} artifacts/xenia_edge/usr/bin/ \;
+
+          export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+          ~/linuxdeploy/linuxdeploy --appdir artifacts/xenia_edge \
+            --executable $binary \
+            --desktop-file assets/xenia_edge.desktop \
+            --icon-file assets/icon/256.png \
+            --plugin qt \
+            --output appimage
+
+          appimage_file=$(ls -1 *.AppImage | head -n1)
+          if [ -z "$appimage_file" ]; then
+            echo "::error::AppImage file not found after linuxdeploy"
+            exit 1
+          fi
+
+          mkdir -p artifacts/release
+          mv "$appimage_file" artifacts/release/xenia_edge.AppImage
+          chmod +x artifacts/release/xenia_edge.AppImage
+
+          cp LICENSE artifacts/release/
+
+      - name: Upload xenia edge artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_linux_${{ inputs.config }}
+          path: artifacts/release
+          if-no-files-found: error
