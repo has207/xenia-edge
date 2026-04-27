@@ -804,8 +804,7 @@ bool EmulatorWindow::Initialize() {
     main_menu->AddChild(std::move(profile_menu));
 
     // Configuration menu.
-    auto config_menu =
-        MenuItem::Create(MenuItem::Type::kPopup, "&配置");
+    auto config_menu = MenuItem::Create(MenuItem::Type::kPopup, "&配置");
     {
       config_menu->AddChild(
           MenuItem::Create(MenuItem::Type::kString, "&APU",
@@ -1192,8 +1191,7 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
   context_menu->AddAction(vibration_text,
                           [this]() { ToggleControllerVibration(); });
 
-  context_menu->AddAction(
-      "截图", [this]() { TakeScreenshot(); }, "F12");
+  context_menu->AddAction("截图", [this]() { TakeScreenshot(); }, "F12");
 
   context_menu->AddSeparator();
 
@@ -1201,8 +1199,7 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
       "后处理", [this]() { ToggleDisplayConfigDialog(); }, "F6");
 
   context_menu->AddAction(
-      "性能设置", [this]() { TogglePerformanceTuningDialog(); },
-      "F7");
+      "性能设置", [this]() { TogglePerformanceTuningDialog(); }, "F7");
 
   context_menu->AddSeparator();
 
