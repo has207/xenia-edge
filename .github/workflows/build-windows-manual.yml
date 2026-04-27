@@ -1,0 +1,93 @@
+name: Build Windows (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Build configuration'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - Debug
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-2025
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Cache Qt6
+        id: cache-qt
+        uses: actions/cache@v3
+        with:
+          path: C:\Qt
+          key: ${{ runner.os }}-qt6-6.10.1
+          restore-keys: |
+            ${{ runner.os }}-qt6-
+
+      - name: Disable Defender scanning for build paths
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP"
+        shell: pwsh
+
+      - name: Setup
+        run: |
+          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
+          if ($fxcPaths) {
+            $fxcPath = $fxcPaths[-1].FullName
+            echo "FXC found at: $fxcPath"
+          } else {
+            echo "Warning: fxc.exe not found in Windows SDK"
+          }
+
+          $qtCacheHit = '${{ steps.cache-qt.outputs.cache-hit }}'
+          if ($qtCacheHit -ne 'true') {
+            pip install aqtinstall
+            aqt install-qt windows desktop 6.10.1 win64_msvc2022_64 -O C:\Qt
+          }
+
+          git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS (Select-String -CaseSensitive '(?<=path = ).+' .gitmodules).Matches.Value
+
+          python xenia-build.py fetchdata
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@main
+
+      - name: Build
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        run: python xenia-build.py build --config=${{ inputs.config }} --target=xenia-app
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          $binary = "build\bin\Windows\${{ inputs.config }}\xenia_edge.exe"
+          if ((get-item $binary).Length -le 100000) {
+            echo "::error::$binary is too small."
+          }
+          robocopy . build\bin\Windows\${{ inputs.config }} LICENSE /r:0 /w:0
+          robocopy build\bin\Windows\${{ inputs.config }} artifacts\xenia_edge /MIR /r:0 /w:0 /XF *.lib *.idb *.exp /XD generic iconengines imageformats networkinformation styles tls
+          If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
+
+      - name: Upload xenia edge artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_windows_${{ inputs.config }}
+          path: artifacts\xenia_edge
+          if-no-files-found: error
