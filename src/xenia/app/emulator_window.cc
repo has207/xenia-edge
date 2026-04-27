@@ -769,52 +769,52 @@ bool EmulatorWindow::Initialize() {
     // FIXME: This code is really messy.
     auto main_menu = MenuItem::Create(MenuItem::Type::kNormal);
 
-    auto file_menu = MenuItem::Create(MenuItem::Type::kPopup, "&File");
+    auto file_menu = MenuItem::Create(MenuItem::Type::kPopup, "&文件");
     file_menu_ = file_menu.get();
     {
       auto open_item =
-          MenuItem::Create(MenuItem::Type::kString, "&Open...", "Ctrl+O",
+          MenuItem::Create(MenuItem::Type::kString, "&打开...", "Ctrl+O",
                            std::bind(&EmulatorWindow::FileOpen, this));
       file_open_item_ = open_item.get();
       file_menu->AddChild(std::move(open_item));
 #ifdef DEBUG
       file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
       file_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "Close",
+          MenuItem::Create(MenuItem::Type::kString, "关闭",
                            std::bind(&EmulatorWindow::FileClose, this)));
 #endif  // #ifdef DEBUG
       file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
       file_menu->AddChild(MenuItem::Create(
-          MenuItem::Type::kString, "Show content directory...",
+          MenuItem::Type::kString, "显示内容目录...",
           std::bind(&EmulatorWindow::ShowContentDirectory, this)));
       file_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
       file_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "E&xit", "Alt+F4",
+          MenuItem::Create(MenuItem::Type::kString, "&退出", "Alt+F4",
                            [this]() { window_->RequestClose(); }));
     }
     main_menu->AddChild(std::move(file_menu));
 
     // Profile Menu
-    auto profile_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Profile");
+    auto profile_menu = MenuItem::Create(MenuItem::Type::kPopup, "&配置文件");
     {
       profile_menu->AddChild(MenuItem::Create(
-          MenuItem::Type::kString, "&Show Profile Menu", "",
+          MenuItem::Type::kString, "&显示配置文件菜单", "",
           std::bind(&EmulatorWindow::ToggleProfilesConfigDialog, this)));
     }
     main_menu->AddChild(std::move(profile_menu));
 
     // Configuration menu.
     auto config_menu =
-        MenuItem::Create(MenuItem::Type::kPopup, "&Configuration");
+        MenuItem::Create(MenuItem::Type::kPopup, "&配置");
     {
       config_menu->AddChild(
           MenuItem::Create(MenuItem::Type::kString, "&APU",
                            [this]() { OpenConfigDialog("APU"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Content",
+          MenuItem::Create(MenuItem::Type::kString, "&内容",
                            [this]() { OpenConfigDialog("Content"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "C&PU",
+          MenuItem::Create(MenuItem::Type::kString, "&CPU",
                            [this]() { OpenConfigDialog("CPU"); }));
 #if XE_PLATFORM_WIN32
       config_menu->AddChild(
@@ -822,13 +822,13 @@ bool EmulatorWindow::Initialize() {
                            [this]() { OpenConfigDialog("D3D12"); }));
 #endif
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Display",
+          MenuItem::Create(MenuItem::Type::kString, "&显示",
                            [this]() { OpenConfigDialog("Display"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&General",
+          MenuItem::Create(MenuItem::Type::kString, "&常规",
                            [this]() { OpenConfigDialog("General"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "G&PU",
+          MenuItem::Create(MenuItem::Type::kString, "&GPU",
                            [this]() { OpenConfigDialog("GPU"); }));
       config_menu->AddChild(
           MenuItem::Create(MenuItem::Type::kString, "&HID",
@@ -839,7 +839,7 @@ bool EmulatorWindow::Initialize() {
                            [this]() { OpenConfigDialog("HID.WinKey"); }));
 #endif
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Kernel",
+          MenuItem::Create(MenuItem::Type::kString, "&内核",
                            [this]() { OpenConfigDialog("Kernel"); }));
 #if XE_PLATFORM_LINUX
       config_menu->AddChild(
@@ -847,7 +847,7 @@ bool EmulatorWindow::Initialize() {
                            [this]() { OpenConfigDialog("Linux"); }));
 #endif
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Logging",
+          MenuItem::Create(MenuItem::Type::kString, "&日志",
                            [this]() { OpenConfigDialog("Logging"); }));
 #if XE_PLATFORM_MAC
       config_menu->AddChild(
@@ -855,7 +855,7 @@ bool EmulatorWindow::Initialize() {
                            [this]() { OpenConfigDialog("MacOS"); }));
 #endif
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Memory",
+          MenuItem::Create(MenuItem::Type::kString, "&内存",
                            [this]() { OpenConfigDialog("Memory"); }));
 #if XE_PLATFORM_MAC
       config_menu->AddChild(
@@ -863,22 +863,22 @@ bool EmulatorWindow::Initialize() {
                            [this]() { OpenConfigDialog("Metal"); }));
 #endif
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Profiles",
+          MenuItem::Create(MenuItem::Type::kString, "&配置文件",
                            [this]() { OpenConfigDialog("Profiles"); }));
       config_menu->AddChild(
           MenuItem::Create(MenuItem::Type::kString, "&SDL",
                            [this]() { OpenConfigDialog("SDL"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "S&torage",
+          MenuItem::Create(MenuItem::Type::kString, "&存储",
                            [this]() { OpenConfigDialog("Storage"); }));
       config_menu->AddChild(
           MenuItem::Create(MenuItem::Type::kString, "&UI",
                            [this]() { OpenConfigDialog("UI"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Video",
+          MenuItem::Create(MenuItem::Type::kString, "&视频",
                            [this]() { OpenConfigDialog("Video"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "V&ulkan",
+          MenuItem::Create(MenuItem::Type::kString, "&Vulkan",
                            [this]() { OpenConfigDialog("Vulkan"); }));
 #if XE_PLATFORM_WIN32
       config_menu->AddChild(
@@ -889,42 +889,42 @@ bool EmulatorWindow::Initialize() {
           MenuItem::Create(MenuItem::Type::kString, "&x64",
                            [this]() { OpenConfigDialog("x64"); }));
       config_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "X&Config",
+          MenuItem::Create(MenuItem::Type::kString, "&XConfig",
                            [this]() { OpenConfigDialog("XConfig"); }));
     }
     main_menu->AddChild(std::move(config_menu));
 
     // Tools menu.
-    auto tools_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Tools");
+    auto tools_menu = MenuItem::Create(MenuItem::Type::kPopup, "&工具");
     {
       tools_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&Install Content...",
+          MenuItem::Create(MenuItem::Type::kString, "&安装内容...",
                            std::bind(&EmulatorWindow::InstallContent, this)));
       tools_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
-      auto zar_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Zar Package");
+      auto zar_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Zar 包");
       zar_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "Create",
+          MenuItem::Create(MenuItem::Type::kString, "创建",
                            std::bind(&EmulatorWindow::CreateZarchive, this)));
       zar_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "Extract",
+          MenuItem::Create(MenuItem::Type::kString, "提取",
                            std::bind(&EmulatorWindow::ExtractZarchive, this)));
       tools_menu->AddChild(std::move(zar_menu));
     }
     main_menu->AddChild(std::move(tools_menu));
 
     // Help menu.
-    auto help_menu = MenuItem::Create(MenuItem::Type::kPopup, "&Help");
+    auto help_menu = MenuItem::Create(MenuItem::Type::kPopup, "&帮助");
     {
       help_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "FA&Q...",
+          MenuItem::Create(MenuItem::Type::kString, "&常见问题...",
                            std::bind(&EmulatorWindow::ShowFAQ, this)));
       help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
       help_menu->AddChild(MenuItem::Create(
-          MenuItem::Type::kString, "Game &compatibility...",
+          MenuItem::Type::kString, "游戏兼&容性...",
           std::bind(&EmulatorWindow::ShowCompatibility, this)));
       help_menu->AddChild(MenuItem::Create(MenuItem::Type::kSeparator));
       help_menu->AddChild(
-          MenuItem::Create(MenuItem::Type::kString, "&About...",
+          MenuItem::Create(MenuItem::Type::kString, "&关于...",
                            std::bind(&EmulatorWindow::ShowAbout, this)));
     }
     main_menu->AddChild(std::move(help_menu));
@@ -1179,46 +1179,45 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
   context_menu->SetOnCloseCallback([this]() { context_menu_ = nullptr; });
 
   context_menu->AddAction(
-      window_->IsFullscreen() ? "Exit Fullscreen" : "Fullscreen",
+      window_->IsFullscreen() ? "退出全屏" : "全屏",
       [this]() { ToggleFullscreen(); }, "F11");
 
-  // Get current vibration state
   bool vibration_enabled = false;
   if (input_sys) {
     vibration_enabled = input_sys->GetVibrationCvar();
   }
 
   std::string vibration_text =
-      std::string("Vibration: ") + (vibration_enabled ? "On" : "Off");
+      std::string("震动: ") + (vibration_enabled ? "开" : "关");
   context_menu->AddAction(vibration_text,
                           [this]() { ToggleControllerVibration(); });
 
   context_menu->AddAction(
-      "Take Screenshot", [this]() { TakeScreenshot(); }, "F12");
+      "截图", [this]() { TakeScreenshot(); }, "F12");
 
   context_menu->AddSeparator();
 
   context_menu->AddAction(
-      "Post-Processing", [this]() { ToggleDisplayConfigDialog(); }, "F6");
+      "后处理", [this]() { ToggleDisplayConfigDialog(); }, "F6");
 
   context_menu->AddAction(
-      "Performance Settings", [this]() { TogglePerformanceTuningDialog(); },
+      "性能设置", [this]() { TogglePerformanceTuningDialog(); },
       "F7");
 
   context_menu->AddSeparator();
 
-  context_menu->AddAction("Profiles Menu",
+  context_menu->AddAction("配置文件菜单",
                           [this]() { ToggleProfilesConfigDialog(); });
 
-  context_menu->AddAction("XMP Audio Player",
+  context_menu->AddAction("XMP 音频播放器",
                           [this]() { ToggleXMPConfigDialog(); });
 
   context_menu->AddSeparator();
 
-  context_menu->AddAction("Quit Game", [this, input_sys]() {
+  context_menu->AddAction("退出游戏", [this, input_sys]() {
     new ui::ImGuiConfirmDialog(
-        imgui_drawer(), "Quit Game",
-        "Are you sure you want to quit?\n\nAny unsaved progress will be lost.",
+        imgui_drawer(), "退出游戏",
+        "确定要退出吗？\n\n所有未保存的进度将会丢失。",
         [this](bool confirmed) {
           if (confirmed) {
             window_->RequestClose();
