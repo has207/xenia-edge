@@ -1,0 +1,257 @@
+name: Build (reusable)
+
+# Callable from CI.yml. Permissions are set by the caller so one set of build
+# logic can run either with write access to the sccache cache (from the trusted
+# edge branch) or read-only (from feature branches and PRs, where sccache
+# self-demotes to read-only on its startup write probe).
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@main
+      - name: Setup
+        env:
+          LLVM_VERSION: 21
+        run: |
+          UBUNTU_BASE=$(lsb_release -cs)
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo apt-add-repository "deb http://apt.llvm.org/${UBUNTU_BASE}/ llvm-toolchain-${UBUNTU_BASE}-$LLVM_VERSION main"
+          sudo apt-get -y update
+          sudo apt-get -y install clang-format-$LLVM_VERSION
+      - name: Lint
+        run: ./xenia-build.py lint --all
+
+  build-linux:
+    name: Build Linux
+    needs: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Cache Qt6
+        id: cache-qt-linux
+        uses: actions/cache@v3
+        with:
+          path: /opt/Qt
+          key: ${{ runner.os }}-qt6-6.10.1
+          restore-keys: |
+            ${{ runner.os }}-qt6-
+
+      - name: Cache linuxdeploy tools
+        id: cache-linuxdeploy
+        uses: actions/cache@v3
+        with:
+          path: ~/linuxdeploy
+          key: ${{ runner.os }}-linuxdeploy-tools
+          restore-keys: |
+            ${{ runner.os }}-linuxdeploy-
+
+      - name: Setup
+        run: |
+          UBUNTU_BASE=$(lsb_release -cs)
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo apt-add-repository "deb http://apt.llvm.org/${UBUNTU_BASE}/ llvm-toolchain-${UBUNTU_BASE}-21 main"
+
+          sudo apt-get -y update
+          sudo apt-get -y install valgrind libc++-dev libc++abi-dev libgtk-3-dev libsdl2-dev libx11-xcb-dev clang-21 lld-21 ninja-build cmake libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-cursor0 libxcb-shape0 libfontconfig1-dev libxtst-dev
+
+          # Install Qt 6.10.1 via aqtinstall
+          if [ '${{ steps.cache-qt-linux.outputs.cache-hit }}' != 'true' ]; then
+            pip install aqtinstall
+            echo "Available architectures for Qt 6.10.1:"
+            aqt list-qt linux desktop --arch 6.10.1 || true
+            aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt
+          fi
+          export PATH="/opt/Qt/6.10.1/gcc_64/bin:$PATH"
+          export CMAKE_PREFIX_PATH="/opt/Qt/6.10.1/gcc_64"
+          export PKG_CONFIG_PATH="/opt/Qt/6.10.1/gcc_64/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export QT_DIR="/opt/Qt/6.10.1/gcc_64"
+          echo "/opt/Qt/6.10.1/gcc_64/bin" >> $GITHUB_PATH
+          echo "CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/gcc_64" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/opt/Qt/6.10.1/gcc_64/lib/pkgconfig" >> $GITHUB_ENV
+          echo "QT_DIR=/opt/Qt/6.10.1/gcc_64" >> $GITHUB_ENV
+
+          # Download linuxdeploy tools if not cached
+          if [ '${{ steps.cache-linuxdeploy.outputs.cache-hit }}' != 'true' ]; then
+            mkdir -p ~/linuxdeploy
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy
+            wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy-plugin-qt
+            wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy-plugin-appimage
+            chmod +x ~/linuxdeploy/linuxdeploy ~/linuxdeploy/linuxdeploy-plugin-qt ~/linuxdeploy/linuxdeploy-plugin-appimage
+          fi
+          echo "$HOME/linuxdeploy" >> $GITHUB_PATH
+
+          # Update submodules
+          git submodule update --init --depth=1 -j$(getconf _NPROCESSORS_ONLN) $(grep -oP '(?<=path = )(?!third_party\/DirectXShaderCompiler).+' .gitmodules)
+
+          # Fetch data repos (game-patches, optimized-settings)
+          ./xenia-build.py fetchdata
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@main
+      - name: Build
+        env:
+          CC: clang-21
+          CXX: clang++-21
+          SCCACHE_GHA_ENABLED: "true"
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        run: ./xenia-build.py build --config=Release
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          binary=build/bin/Linux/Release/xenia_edge
+          if [ $(stat -c%s $binary) -le 100000 ]; then
+            echo "::error::Binary is too small."
+          fi
+          chmod +x $binary
+          mkdir -p artifacts/xenia_edge
+
+          # Use linuxdeploy to bundle Qt dependencies
+          export QMAKE=/opt/Qt/6.10.1/gcc_64/bin/qmake
+          export LD_LIBRARY_PATH=/opt/Qt/6.10.1/gcc_64/lib:$LD_LIBRARY_PATH
+
+          # Install icons with proper naming for linuxdeploy
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/16x16/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/32x32/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/48x48/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/64x64/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/128x128/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/256x256/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/512x512/apps
+          mkdir -p artifacts/xenia_edge/usr/share/icons/hicolor/1024x1024/apps
+
+          cp assets/icon/16.png artifacts/xenia_edge/usr/share/icons/hicolor/16x16/apps/xenia_edge.png
+          cp assets/icon/32.png artifacts/xenia_edge/usr/share/icons/hicolor/32x32/apps/xenia_edge.png
+          cp assets/icon/48.png artifacts/xenia_edge/usr/share/icons/hicolor/48x48/apps/xenia_edge.png
+          cp assets/icon/64.png artifacts/xenia_edge/usr/share/icons/hicolor/64x64/apps/xenia_edge.png
+          cp assets/icon/128.png artifacts/xenia_edge/usr/share/icons/hicolor/128x128/apps/xenia_edge.png
+          cp assets/icon/256.png artifacts/xenia_edge/usr/share/icons/hicolor/256x256/apps/xenia_edge.png
+          cp assets/icon/512.png artifacts/xenia_edge/usr/share/icons/hicolor/512x512/apps/xenia_edge.png
+          cp assets/icon/1024.png artifacts/xenia_edge/usr/share/icons/hicolor/1024x1024/apps/xenia_edge.png
+
+          # Copy all necessary files (excluding build artifacts) next to the binary in AppDir
+          mkdir -p artifacts/xenia_edge/usr/bin
+          # Copy directories (optimized_settings, game_patches, etc.)
+          find build/bin/Linux/Release -maxdepth 1 -type d ! -name Release -exec cp -r {} artifacts/xenia_edge/usr/bin/ \;
+          # Copy any additional runtime files if needed (currently just directories are copied)
+
+          # Run linuxdeploy with Qt plugin to deploy all Qt dependencies and create AppImage
+          export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+          ~/linuxdeploy/linuxdeploy --appdir artifacts/xenia_edge \
+            --executable $binary \
+            --desktop-file assets/xenia_edge.desktop \
+            --icon-file assets/icon/256.png \
+            --plugin qt \
+            --output appimage
+
+          # linuxdeploy creates the AppImage in the current directory
+          # Find and rename it to a standard name
+          appimage_file=$(ls -1 *.AppImage | head -n1)
+          if [ -z "$appimage_file" ]; then
+            echo "::error::AppImage file not found after linuxdeploy"
+            exit 1
+          fi
+
+          # Create final artifacts directory and move the AppImage there
+          mkdir -p artifacts/release
+          mv "$appimage_file" artifacts/release/xenia_edge.AppImage
+          chmod +x artifacts/release/xenia_edge.AppImage
+
+          # Also copy LICENSE
+          cp LICENSE artifacts/release/
+      - name: Upload xenia edge artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_linux
+          path: artifacts/release
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows
+    needs: lint
+    runs-on: windows-2025
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Cache Qt6
+        id: cache-qt
+        uses: actions/cache@v3
+        with:
+          path: C:\Qt
+          key: ${{ runner.os }}-qt6-6.10.1
+          restore-keys: |
+            ${{ runner.os }}-qt6-
+
+      - name: Disable Defender scanning for build paths
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP"
+        shell: pwsh
+
+      - name: Setup
+        run: |
+          # Verify FXC is available (from Windows SDK)
+          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
+          if ($fxcPaths) {
+            $fxcPath = $fxcPaths[-1].FullName
+            echo "FXC found at: $fxcPath"
+          } else {
+            echo "Warning: fxc.exe not found in Windows SDK"
+          }
+
+          # Install Qt6
+          $qtCacheHit = '${{ steps.cache-qt.outputs.cache-hit }}'
+          if ($qtCacheHit -ne 'true') {
+            pip install aqtinstall
+            aqt install-qt windows desktop 6.10.1 win64_msvc2022_64 -O C:\Qt
+          }
+
+          git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS (Select-String -CaseSensitive '(?<=path = ).+' .gitmodules).Matches.Value
+
+          # Fetch data repos (game-patches, optimized-settings)
+          python xenia-build.py fetchdata
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@main
+      - name: Build
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        run: python xenia-build.py build --config=Release --target=xenia-app
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        run: |
+          $binary = 'build\bin\Windows\Release\xenia_edge.exe'
+          if ((get-item $binary).Length -le 100000) {
+            echo "::error::$binary is too small."
+          }
+          robocopy . build\bin\Windows\Release LICENSE /r:0 /w:0
+          # Copy all files and directories (Qt DLLs, plugins, etc.) excluding build artifacts
+          robocopy build\bin\Windows\Release artifacts\xenia_edge /MIR /r:0 /w:0 /XF *.lib *.idb *.exp /XD generic iconengines imageformats networkinformation styles tls
+          If ($LastExitCode -le 7) { echo "LastExitCode = $LastExitCode";$LastExitCode = 0 }
+      - name: Upload xenia edge artifacts
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@main
+        with:
+          name: xenia_edge_windows
+          path: artifacts\xenia_edge
+          if-no-files-found: error
