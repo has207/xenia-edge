@@ -40,7 +40,7 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
   ImGui::SetNextWindowBgAlpha(1.0f);
 
   bool dialog_open = true;
-  if (!ImGui::Begin("No Profiles Found", &dialog_open,
+  if (!ImGui::Begin("未找到配置文件", &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
                         ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -50,8 +50,7 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
   }
 
   const std::string message =
-      "There is no profile available! You will not be able to save without "
-      "one.\n\nWould you like to create one?";
+      "没有可用的配置文件！没有配置文件将无法保存游戏。\n\n是否要创建一个？";
 
   ImGui::TextUnformatted(message.c_str());
 
@@ -65,24 +64,24 @@ void NoProfileDialog::OnDraw(ImGuiIO& io) {
     ImGui::SetKeyboardFocusHere();
   }
   if (content_files.empty()) {
-    if (ImGui::Button("Create Profile")) {
+    if (ImGui::Button("创建配置文件")) {
       new kernel::xam::ui::CreateProfileUI(emulator_window_->imgui_drawer(),
                                            emulator_window_->emulator());
     }
   } else {
-    if (ImGui::Button("Create profile & migrate data")) {
+    if (ImGui::Button("创建配置文件并迁移数据")) {
       new kernel::xam::ui::CreateProfileUI(emulator_window_->imgui_drawer(),
                                            emulator_window_->emulator(), true);
     }
   }
 
   ImGui::SameLine();
-  if (ImGui::Button("Open profile menu")) {
+  if (ImGui::Button("打开配置文件菜单")) {
     emulator_window_->ToggleProfilesConfigDialog();
   }
 
   ImGui::SameLine();
-  if (ImGui::Button("Close") || !dialog_open) {
+  if (ImGui::Button("关闭") || !dialog_open) {
     emulator_window_->SetHotkeysState(true);
     ImGui::End();
     Close();
@@ -183,7 +182,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 
   bool dialog_open = true;
-  if (!ImGui::Begin("Profiles Menu", &dialog_open,
+  if (!ImGui::Begin("配置文件菜单", &dialog_open,
                     ImGuiWindowFlags_NoCollapse |
                         ImGuiWindowFlags_AlwaysAutoResize |
                         ImGuiWindowFlags_HorizontalScrollbar)) {
@@ -212,7 +211,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
   context_menu_open_ = false;
 
   if (profiles->empty()) {
-    ImGui::TextUnformatted("No profiles found!");
+    ImGui::TextUnformatted("未找到配置文件！");
     ImGui::Spacing();
     ImGui::Separator();
   }
@@ -254,7 +253,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
         }
 
         if (user_index == XUserIndexAny) {
-          if (ImGui::MenuItem("Login")) {
+          if (ImGui::MenuItem("登录")) {
             profile_manager->Login(xuid);
             if (!profile_manager->GetProfile(xuid)
                      ->GetProfileIcon(kernel::xam::XTileType::kGamerTile)
@@ -262,9 +261,9 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
               LoadProfileIcon(xuid);
             }
           }
-          if (ImGui::BeginMenu("Login to slot:")) {
+          if (ImGui::BeginMenu("登录到槽位:")) {
             for (uint8_t i = 1; i <= XUserMaxUserCount; i++) {
-              if (ImGui::MenuItem(fmt::format("slot {}", i).c_str())) {
+              if (ImGui::MenuItem(fmt::format("槽位 {}", i).c_str())) {
                 uint64_t current_slot_xuid = 0;
 
                 if (const auto current_profile = profile_manager->GetProfile(
@@ -276,7 +275,6 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
                 profile_manager->Login(xuid, i - 1);
                 LoadProfileIcon(xuid);
 
-                // Release resources
                 if (current_slot_xuid) {
                   LoadProfileIcon(current_slot_xuid);
                 }
@@ -285,7 +283,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
             ImGui::EndMenu();
           }
         } else {
-          if (ImGui::MenuItem("Logout")) {
+          if (ImGui::MenuItem("登出")) {
             profile_manager->Logout(user_index);
             LoadProfileIcon(xuid);
           }
@@ -313,7 +311,7 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
 
   ImGui::Spacing();
 
-  if (ImGui::Button("Create Profile")) {
+  if (ImGui::Button("创建配置文件")) {
     new kernel::xam::ui::CreateProfileUI(emulator_window_->imgui_drawer(),
                                          emulator_window_->emulator());
   }

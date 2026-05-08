@@ -49,7 +49,7 @@ ProfileDialogQt::~ProfileDialogQt() {
 }
 
 void ProfileDialogQt::SetupUI() {
-  setWindowTitle("Profiles Menu");
+  setWindowTitle("配置文件菜单");
   setModal(false);
   setAttribute(Qt::WA_DeleteOnClose);
   setMinimumSize(400, 500);
@@ -72,14 +72,14 @@ void ProfileDialogQt::SetupUI() {
   // Buttons
   auto* button_layout = new QHBoxLayout();
 
-  create_profile_button_ = new QPushButton("Create Profile", this);
+  create_profile_button_ = new QPushButton("创建配置文件", this);
   connect(create_profile_button_, &QPushButton::clicked, this,
           &ProfileDialogQt::OnCreateProfileClicked);
   button_layout->addWidget(create_profile_button_);
 
   button_layout->addStretch();
 
-  close_button_ = new QPushButton("Close", this);
+  close_button_ = new QPushButton("关闭", this);
   connect(close_button_, &QPushButton::clicked, this,
           &ProfileDialogQt::OnCloseClicked);
   button_layout->addWidget(close_button_);
@@ -180,31 +180,31 @@ void ProfileDialogQt::PopulateProfileList() {
   profile_list_->clear();
 
   if (!emulator_window_ || !emulator_window_->emulator()) {
-    profile_list_->addItem("No emulator available");
+    profile_list_->addItem("模拟器不可用");
     return;
   }
 
   auto kernel_state = emulator_window_->emulator()->kernel_state();
   if (!kernel_state) {
-    profile_list_->addItem("No kernel state available");
+    profile_list_->addItem("内核状态不可用");
     return;
   }
 
   auto xam_state = kernel_state->xam_state();
   if (!xam_state) {
-    profile_list_->addItem("No XAM state available");
+    profile_list_->addItem("XAM 状态不可用");
     return;
   }
 
   auto profile_manager = xam_state->profile_manager();
   if (!profile_manager) {
-    profile_list_->addItem("No profile manager available");
+    profile_list_->addItem("配置文件管理器不可用");
     return;
   }
 
   auto profiles = profile_manager->GetAccounts();
   if (profiles->empty()) {
-    profile_list_->addItem("No profiles found!");
+    profile_list_->addItem("未找到配置文件！");
     return;
   }
 
@@ -214,8 +214,8 @@ void ProfileDialogQt::PopulateProfileList() {
 
     QString gamertag = SafeQString(account.GetGamertagString());
     QString status = (user_index == XUserIndexAny)
-                         ? " (Not logged in)"
-                         : fmt::format(" (Slot {})", user_index + 1).c_str();
+                         ? " (未登录)"
+                         : fmt::format(" (槽位 {})", user_index + 1).c_str();
 
     auto* item = new QListWidgetItem(gamertag + status);
     item->setData(Qt::UserRole, QVariant::fromValue(xuid));
@@ -324,24 +324,23 @@ void ProfileDialogQt::OnProfileContextMenu(const QPoint& pos) {
   QMenu context_menu(this);
 
   if (user_index == XUserIndexAny) {
-    QAction* login_action = context_menu.addAction("Login");
+    QAction* login_action = context_menu.addAction("登录");
     connect(login_action, &QAction::triggered, [=, this]() {
       profile_manager->Login(xuid);
       RefreshProfiles();
     });
 
-    // Login to slot submenu
-    QMenu* login_slot_menu = context_menu.addMenu("Login to slot:");
+    QMenu* login_slot_menu = context_menu.addMenu("登录到槽位:");
     for (uint8_t i = 1; i <= XUserMaxUserCount; i++) {
       QAction* slot_action =
-          login_slot_menu->addAction(SafeQString(fmt::format("slot {}", i)));
+          login_slot_menu->addAction(SafeQString(fmt::format("槽位 {}", i)));
       connect(slot_action, &QAction::triggered, [=, this]() {
         profile_manager->Login(xuid, i - 1);
         RefreshProfiles();
       });
     }
   } else {
-    QAction* logout_action = context_menu.addAction("Logout");
+    QAction* logout_action = context_menu.addAction("登出");
     connect(logout_action, &QAction::triggered, [=, this]() {
       profile_manager->Logout(user_index);
       RefreshProfiles();
@@ -349,7 +348,7 @@ void ProfileDialogQt::OnProfileContextMenu(const QPoint& pos) {
   }
 
   // Modify (Gamercard)
-  QAction* modify_action = context_menu.addAction("Modify");
+  QAction* modify_action = context_menu.addAction("修改");
   connect(modify_action, &QAction::triggered, [=, this]() {
     auto* editor_dialog =
         new ProfileEditorDialogQt(nullptr, emulator_window_, xuid);
@@ -365,7 +364,7 @@ void ProfileDialogQt::OnProfileContextMenu(const QPoint& pos) {
   });
 
   QAction* show_content_action =
-      context_menu.addAction("Show Content Directory");
+      context_menu.addAction("显示内容目录");
   connect(show_content_action, &QAction::triggered, [=, this]() {
     const auto path = profile_manager->GetProfileContentPath(
         xuid, emulator_window_->emulator()->kernel_state()->title_id());
@@ -380,7 +379,7 @@ void ProfileDialogQt::OnProfileContextMenu(const QPoint& pos) {
 
   if (!emulator_window_->emulator()->is_title_open()) {
     context_menu.addSeparator();
-    QAction* delete_action = context_menu.addAction("Delete Profile...");
+    QAction* delete_action = context_menu.addAction("删除配置文件...");
     connect(delete_action, &QAction::triggered, [=, this]() {
       auto profiles = profile_manager->GetAccounts();
       auto profile_it = profiles->find(xuid);
@@ -391,10 +390,9 @@ void ProfileDialogQt::OnProfileContextMenu(const QPoint& pos) {
       QString gamertag = SafeQString(profile_it->second.GetGamertagString());
 
       QMessageBox::StandardButton reply = QMessageBox::question(
-          this, "Delete Profile",
-          QString("Are you sure you want to delete profile: %1 (XUID: %2)?\n\n"
-                  "This will remove all data assigned to this profile "
-                  "including savefiles.")
+          this, "删除配置文件",
+          QString("确定要删除配置文件: %1 (XUID: %2) 吗？\n\n"
+                  "这将删除所有与此配置文件相关的数据，包括存档文件。")
               .arg(gamertag)
               .arg(xuid, 16, 16, QChar('0')),
           QMessageBox::Yes | QMessageBox::No);
@@ -432,8 +430,8 @@ void ProfileDialogQt::OnCreateProfileClicked() {
   // Prompt for gamertag
   bool ok;
   QString gamertag = QInputDialog::getText(
-      this, "Create Profile",
-      "Enter gamertag (3-15 characters):", QLineEdit::Normal, "", &ok);
+      this, "创建配置文件",
+      "输入玩家代号 (3-15个字符):", QLineEdit::Normal, "", &ok);
 
   if (!ok || gamertag.isEmpty()) {
     return;
@@ -441,8 +439,8 @@ void ProfileDialogQt::OnCreateProfileClicked() {
 
   // Validate gamertag length
   if (gamertag.length() < 3 || gamertag.length() > 15) {
-    QMessageBox::warning(this, "Invalid Gamertag",
-                         "Gamertag must be between 3 and 15 characters.");
+    QMessageBox::warning(this, "无效的代号",
+                         "玩家代号必须在 3 到 15 个字符之间。");
     return;
   }
 
@@ -453,11 +451,11 @@ void ProfileDialogQt::OnCreateProfileClicked() {
   if (profile_manager->CreateProfile(gamertag_string, autologin, false)) {
     RefreshProfiles();
     QMessageBox::information(
-        this, "Profile Created",
-        QString("Profile '%1' created successfully!").arg(gamertag));
+        this, "配置文件已创建",
+        QString("配置文件 '%1' 创建成功！").arg(gamertag));
   } else {
-    QMessageBox::critical(this, "Error",
-                          "Failed to create profile. Please try again.");
+    QMessageBox::critical(this, "错误",
+                          "创建配置文件失败，请重试。");
   }
 }
 

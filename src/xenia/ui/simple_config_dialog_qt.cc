@@ -102,7 +102,7 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* fps_spin = new QSpinBox(this);
   fps_spin->setMinimum(0);
   fps_spin->setMaximum(1000);
-  fps_spin->setSpecialValueText("Unlimited");
+  fps_spin->setSpecialValueText("无限制");
   options_["framerate_limit"].cvar_name = "framerate_limit";
   options_["framerate_limit"].editor_widget = fps_spin;
   options_["framerate_limit"].label_widget =
@@ -215,9 +215,9 @@ void SimpleConfigDialogQt::SetupUI() {
   auto* other_layout = new QFormLayout(other_group);
 
   auto* license_combo = new QComboBox(this);
-  license_combo->addItem("None", 0);
-  license_combo->addItem("Full", 1);
-  license_combo->addItem("All", -1);
+  license_combo->addItem("无", 0);
+  license_combo->addItem("完整", 1);
+  license_combo->addItem("全部", -1);
   options_["license_mask"].cvar_name = "license_mask";
   options_["license_mask"].editor_widget = license_combo;
   options_["license_mask"].label_widget = new QLabel("许可证:", this);
@@ -630,8 +630,8 @@ void SimpleConfigDialogQt::OnSaveClicked() {
 void SimpleConfigDialogQt::OnDiscardClicked() {
   if (has_unsaved_changes_) {
     auto reply = QMessageBox::question(
-        this, "Unsaved Changes",
-        "You have unsaved changes. Are you sure you want to discard them?",
+        this, "未保存的更改",
+        "您有未保存的更改。确定要放弃这些更改吗？",
         QMessageBox::Yes | QMessageBox::No);
 
     if (reply == QMessageBox::No) {
@@ -645,9 +645,8 @@ void SimpleConfigDialogQt::OnDiscardClicked() {
 void SimpleConfigDialogQt::OnAdvancedClicked() {
   if (has_unsaved_changes_) {
     auto reply = QMessageBox::question(
-        this, "Unsaved Changes",
-        "You have unsaved changes. Do you want to save them before opening "
-        "the advanced settings?",
+        this, "未保存的更改",
+        "您有未保存的更改。是否要在打开高级设置前保存它们？",
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
 
     if (reply == QMessageBox::Cancel) {
@@ -668,8 +667,8 @@ void SimpleConfigDialogQt::OnAdvancedClicked() {
 
 void SimpleConfigDialogQt::OnResetClicked() {
   auto reply = QMessageBox::question(
-      this, "Reset to Defaults",
-      "Are you sure you want to reset all settings to their default values?",
+      this, "重置为默认",
+      "确定要将所有设置重置为默认值吗？",
       QMessageBox::Yes | QMessageBox::No);
 
   if (reply == QMessageBox::Yes) {

@@ -1276,11 +1276,11 @@ void EmulatorWindow::ExportScreenshot(const xe::ui::RawImage& image) {
   SaveImage(screenshot_path / filename, image);
 
   const std::string notification_text =
-      fmt::format("Screenshot saved: {}", filename);
+      fmt::format("截图已保存: {}", filename);
 
   app_context_.CallInUIThread([this, notification_text]() {
     if (imgui_drawer()) {
-      new ui::HostNotificationWindow(imgui_drawer(), "Screenshot Created!",
+      new ui::HostNotificationWindow(imgui_drawer(), "截图已创建",
                                      notification_text, 0);
     }
   });
@@ -1340,7 +1340,7 @@ void EmulatorWindow::FileOpen() {
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
   file_picker->set_type(ui::FilePicker::Type::kFile);
   file_picker->set_multi_selection(false);
-  file_picker->set_title("Select Content Package");
+  file_picker->set_title("选择内容包");
 
   auto initial_dir = GetFilePickerInitialDirectory();
   if (!initial_dir.empty()) {
@@ -1376,7 +1376,7 @@ void EmulatorWindow::InstallContent() {
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
   file_picker->set_type(ui::FilePicker::Type::kFile);
   file_picker->set_multi_selection(true);
-  file_picker->set_title("Select Content Package(s)");
+  file_picker->set_title("选择内容包");
 
   auto initial_dir = GetFilePickerInitialDirectory();
   if (!initial_dir.empty()) {
@@ -1430,7 +1430,7 @@ void EmulatorWindow::ExtractZarchive() {
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
   file_picker->set_type(ui::FilePicker::Type::kFile);
   file_picker->set_multi_selection(true);
-  file_picker->set_title("Select Zar Package");
+  file_picker->set_title("选择 Zar 包");
 
   auto initial_dir = GetFilePickerInitialDirectory();
   if (!initial_dir.empty()) {
@@ -1450,7 +1450,7 @@ void EmulatorWindow::ExtractZarchive() {
   }
 
   file_picker->set_type(ui::FilePicker::Type::kDirectory);
-  file_picker->set_title("Select Directory to Extract");
+  file_picker->set_title("选择解压目录");
 
   if (file_picker->Show(window_.get())) {
     extract_dir = file_picker->selected_files().front();
@@ -1550,7 +1550,7 @@ void EmulatorWindow::CreateZarchive() {
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
   file_picker->set_type(ui::FilePicker::Type::kDirectory);
   file_picker->set_multi_selection(true);
-  file_picker->set_title("Select Contents");
+  file_picker->set_title("选择内容");
 
   auto initial_dir = GetFilePickerInitialDirectory();
   if (!initial_dir.empty()) {
@@ -1613,12 +1613,12 @@ void EmulatorWindow::CreateZarchive() {
     file_picker->set_multi_selection(false);
     file_picker->set_file_name(default_name);
     file_picker->set_default_extension("zar");
-    file_picker->set_title("Zarchive File");
+    file_picker->set_title("Zarchive 文件");
     file_picker->set_extensions({
         {"Zarchive File (*.zar)", "*.zar"},
     });
   } else {
-    file_picker->set_title("Output Directory");
+    file_picker->set_title("输出目录");
   }
 
   if (file_picker->Show(window_.get())) {
@@ -1695,10 +1695,9 @@ void EmulatorWindow::CpuTimeScalarSetDouble() {
 
 void EmulatorWindow::CpuBreakIntoDebugger() {
   if (!cvars::debug) {
-    xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(), "Xenia Debugger",
-                                        "Xenia must be launched with the "
-                                        "--debug flag in order to enable "
-                                        "debugging.");
+    xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(), "Xenia 调试器",
+                                        "Xenia 必须使用 "
+                                        "--debug 参数启动才能启用调试功能。");
     return;
   }
   auto processor = emulator()->processor();
@@ -1842,8 +1841,8 @@ void EmulatorWindow::ToggleControllerVibration() {
     app_context_.CallInUIThread([this, status]() {
       if (imgui_drawer()) {
         new ui::HostNotificationWindow(
-            imgui_drawer(), "Controller Vibration",
-            fmt::format("Vibration is now {}", status), 0);
+            imgui_drawer(), "手柄震动",
+            fmt::format("震动已{}", status == "On" ? "开启" : "关闭"), 0);
       }
     });
   }
@@ -1885,15 +1884,15 @@ void EmulatorWindow::ShowAbout() {
 
   QString about_text = QString(
                            "<h2>Xenia Edge</h2>"
-                           "<p>Experimental fork of Xenia Canary</p>"
-                           "<p><b>Branch:</b> %1<br>"
-                           "<b>Commit:</b> %2<br>"
-                           "<b>Build Date:</b> %3<br>"
-                           "<b>Qt Version:</b> %4</p>"
-                           "<p>For more information, visit <a "
+                           "<p>Xenia Canary 实验性分支</p>"
+                           "<p><b>分支:</b> %1<br>"
+                           "<b>提交:</b> %2<br>"
+                           "<b>构建日期:</b> %3<br>"
+                           "<b>Qt 版本:</b> %4</p>"
+                           "<p>更多信息请访问 <a "
                            "href=\"https://github.com/has207/"
                            "xenia-edge\">github.com/has207/xenia-edge</a></p>"
-                           "<p><small>Icons by <a "
+                           "<p><small>图标来自 <a "
                            "href=\"https://icons8.com\">Icons8</a></small></p>")
                            .arg(XE_BUILD_BRANCH)
                            .arg(XE_BUILD_COMMIT_SHORT)
@@ -1901,7 +1900,7 @@ void EmulatorWindow::ShowAbout() {
                            .arg(qVersion());
 
   QMessageBox about_box(qt_window->qwindow());
-  about_box.setWindowTitle("About Xenia Edge");
+  about_box.setWindowTitle("关于 Xenia Edge");
   about_box.setTextFormat(Qt::RichText);
   about_box.setText(about_text);
   about_box.setStandardButtons(QMessageBox::Ok);
@@ -2553,7 +2552,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
     ClearDialogs();
 
     xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_.get(),
-                                        "Title Launch Failed!", log_msg);
+                                        "游戏启动失败！", log_msg);
 
     return X_STATUS_NO_SUCH_FILE;
   }
@@ -2594,8 +2593,8 @@ xe::X_STATUS EmulatorWindow::RunTitle(
     XELOGE("Failed to launch target: {:08X}", result);
 
     xe::ui::ImGuiDialog::ShowMessageBox(
-        imgui_drawer_.get(), "Title Launch Failed!",
-        "Failed to launch title.\n\nCheck xenia.log for technical details.");
+        imgui_drawer_.get(), "游戏启动失败！",
+        "游戏启动失败。\n\n请查看 xenia.log 获取更多技术详情。");
 
     emulator_->file_system()->Clear();
   } else {
