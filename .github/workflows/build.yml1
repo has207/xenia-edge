@@ -226,17 +226,8 @@ jobs:
           # Fetch data repos (game-patches, optimized-settings)
           python xenia-build.py fetchdata
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@main
       - name: Build
-        env:
-          SCCACHE_GHA_ENABLED: "true"
-          CMAKE_C_COMPILER_LAUNCHER: sccache
-          CMAKE_CXX_COMPILER_LAUNCHER: sccache
         run: python xenia-build.py build --config=Release --target=xenia-app
-      - name: sccache stats
-        if: always()
-        run: sccache --show-stats
       - name: Prepare artifacts
         id: prepare_artifacts
         run: |
