@@ -405,12 +405,22 @@ bool MMIOHandler::ExceptionCallback(Exception* ex) {
   }
   Exception::AccessViolationOperation operation =
       ex->access_violation_operation();
-  if (operation != Exception::AccessViolationOperation::kRead &&
-      operation != Exception::AccessViolationOperation::kWrite) {
+  bool operation_known =
+      operation == Exception::AccessViolationOperation::kRead ||
+      operation == Exception::AccessViolationOperation::kWrite;
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  // Darwin doesn't provide the fault access direction on AArch64, and the
+  // instruction classifier may miss valid host stores such as runtime memcpy
+  // helpers. Let unknown guest-memory watch faults reach the callback as
+  // writes below; real MMIO still requires a known direction and decode.
+  bool is_write = operation != Exception::AccessViolationOperation::kRead;
+#else
+  if (!operation_known) {
     // Data Execution Prevention or something else uninteresting.
     return false;
   }
   bool is_write = operation == Exception::AccessViolationOperation::kWrite;
+#endif
   if (ex->fault_address() < uint64_t(virtual_membase_) ||
       ex->fault_address() > uint64_t(memory_end_)) {
     // Quick kill anything outside our mapping.
@@ -475,6 +485,14 @@ bool MMIOHandler::ExceptionCallback(Exception* ex) {
     return false;
 #endif
   }
+
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+  if (!operation_known) {
+    // Data Execution Prevention or something else uninteresting. Real MMIO
+    // handling needs the access direction and a decodable instruction.
+    return false;
+  }
+#endif
 
   auto rip = ex->pc();
   auto p = reinterpret_cast<const uint8_t*>(rip);
