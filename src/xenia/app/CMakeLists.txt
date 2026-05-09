@@ -186,6 +186,18 @@ elseif(APPLE)
   target_link_options(xenia-app PRIVATE
     "-Wl,-rpath,@executable_path/../Frameworks"
     "-Wl,-rpath,@loader_path/../Frameworks")
+
+  set(_xe_moltenvk_dylib
+      "${PROJECT_SOURCE_DIR}/third_party/MoltenVK/lib/libMoltenVK.dylib")
+  if(EXISTS "${_xe_moltenvk_dylib}")
+    add_custom_command(TARGET xenia-app POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E make_directory
+              "$<TARGET_BUNDLE_DIR:xenia-app>/Contents/Frameworks"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+              "${_xe_moltenvk_dylib}"
+              "$<TARGET_BUNDLE_DIR:xenia-app>/Contents/Frameworks/libMoltenVK.dylib"
+      VERBATIM)
+  endif()
 endif()
 
 xe_target_defaults(xenia-app)
