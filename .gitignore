@@ -105,6 +105,7 @@ CMakeUserPresets.json
 /third_party/binutils/bin/
 /third_party/binutils/powerpc-none-elf/
 /third_party/binutils/share/
+/third_party/MoltenVK/
 /third_party/vasm/
 /tools/shader-playground/*.dll
 /profile_print_times.py
