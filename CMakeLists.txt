@@ -296,7 +296,8 @@ else()
       $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-enum-enum-conversion>
       $<$<COMPILE_LANGUAGE:CXX>:-Wno-absolute-value>
     )
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 20)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR
+       CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 20)
       add_compile_options(
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-literal-operator>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-nontrivial-memcall>
