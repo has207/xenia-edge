@@ -46,8 +46,7 @@ class StackLayout {
    *  | guest ret addr   | sp + 0x030  (guest PPC return address)
    *  | call ret addr    | sp + 0x038  (next call's guest PPC return addr)
    *  | host ret addr    | sp + 0x040  (host x30/LR, for ret instruction)
-   *  | guest saved r1   | sp + 0x048  (guest r1 at function entry, for
-   *  |                  |              longjmp detection)
+   *  | reserved         | sp + 0x048
    *  |  ... locals ...  |
    *  +------------------+
    *
@@ -62,8 +61,9 @@ class StackLayout {
   static constexpr size_t GUEST_RET_ADDR = 48;
   static constexpr size_t GUEST_CALL_RET_ADDR = 56;
   static constexpr size_t HOST_RET_ADDR = 64;
-  // Stackpoint depth after PushStackpoint in prolog, for longjmp detection.
-  static constexpr size_t GUEST_SAVED_STACKPOINT_DEPTH = 72;
+  // Reserved padding. Longjmp detection state lives in A64BackendContext so it
+  // can be checked even when native SP still points at a skipped frame.
+  static constexpr size_t GUEST_RESERVED = 72;
 };
 
 }  // namespace a64

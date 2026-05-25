@@ -54,6 +54,9 @@ struct A64BackendStackpoint {
   unsigned guest_return_address_;
 };
 
+uint32_t FindStackpointSyncDepth(const A64BackendStackpoint* stackpoints,
+                                 uint32_t current_depth, uint32_t guest_sp);
+
 enum : uint32_t {
   kA64BackendFPCRModeBit = 0,
   kA64BackendHasReserveBit = 1,
@@ -78,6 +81,7 @@ struct A64BackendContext {
   uint64_t cached_reserve_offset;
   uint32_t cached_reserve_bit;
   unsigned int current_stackpoint_depth;
+  unsigned int pending_stackpoint_sync_depth;
   unsigned int fpcr_fpu;
   unsigned int fpcr_vmx;
   // bit 0 = 0 if fpcr is fpu, else it is vmx

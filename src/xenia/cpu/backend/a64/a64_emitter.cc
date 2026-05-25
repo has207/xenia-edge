@@ -162,15 +162,8 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // Store zero for call return address (we haven't made a call yet).
   str(xzr, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_CALL_RET_ADDR)));
 
-  // Record stackpoint for longjmp recovery, then save the resulting depth
-  // for post-call detection (if depth changes, a longjmp skipped frames).
+  // Record stackpoint for longjmp recovery.
   PushStackpoint();
-  if (cvars::a64_enable_host_guest_stack_synchronization) {
-    ldr(w16, ptr(x19, static_cast<uint32_t>(offsetof(
-                          A64BackendContext, current_stackpoint_depth))));
-    str(w16, ptr(sp, static_cast<uint32_t>(
-                         StackLayout::GUEST_SAVED_STACKPOINT_DEPTH)));
-  }
 
   // ========================================================================
   // BODY
@@ -740,30 +733,26 @@ void A64Emitter::EnsureSynchronizedGuestAndHostStack() {
   if (!cvars::a64_enable_host_guest_stack_synchronization) {
     return;
   }
-  // Compare current stackpoint depth against the value saved after
-  // PushStackpoint in the prolog. If different, a longjmp occurred and
-  // some frames' PopStackpoint never ran.
+  // ResolveFunction marks this when it returns a return-site address inside an
+  // existing frame. The marker lives in backend context because native SP can
+  // still point at a skipped frame here.
   auto& return_from_sync = NewCachedLabel();
 
-  ldr(w17, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext,
-                                                   current_stackpoint_depth))));
-  ldr(w16, ptr(sp, static_cast<uint32_t>(
-                       StackLayout::GUEST_SAVED_STACKPOINT_DEPTH)));
-  cmp(w17, w16);
+  ldr(w16, ptr(x19, static_cast<uint32_t>(offsetof(
+                        A64BackendContext, pending_stackpoint_sync_depth))));
+  cbz(w16, return_from_sync);
 
   auto& sync_label = AddToTail([](A64Emitter& e, Label& lbl) {
     // x8 was set up in the body to point at return_from_sync; do that there
     // instead of here because adr's ±1 MiB range can't span body+tail in
     // large functions.
     //   x8 = return address (where to resume after fixup)
-    //   x9 = this function's stack size
-    e.mov(e.x9, static_cast<uint64_t>(e.stack_size()));
     e.mov(e.x10, reinterpret_cast<uint64_t>(
                      e.backend()->synchronize_guest_and_host_stack_helper()));
     e.br(e.x10);
   });
   adr(x8, return_from_sync);
-  b(NE, sync_label);
+  b(sync_label);
 
   L(return_from_sync);
 }

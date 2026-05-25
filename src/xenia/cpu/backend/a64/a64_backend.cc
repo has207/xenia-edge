@@ -60,6 +60,26 @@ namespace a64 {
 // a guest address has not yet been compiled.
 uint64_t ResolveFunction(void* raw_context, uint64_t target_address);
 
+uint32_t FindStackpointSyncDepth(const A64BackendStackpoint* stackpoints,
+                                 uint32_t current_depth, uint32_t guest_sp) {
+  if (!stackpoints || current_depth == 0) {
+    return 0;
+  }
+
+  uint32_t idx = current_depth - 1;
+  uint32_t frames_skipped = 0;
+  while (idx != 0xFFFFFFFFu && guest_sp > stackpoints[idx].guest_stack_) {
+    --idx;
+    ++frames_skipped;
+  }
+
+  // >1 frames skipped = real longjmp, not an early SP restore.
+  if (idx == 0xFFFFFFFFu || frames_skipped <= 1) {
+    return 0;
+  }
+  return idx + 1;
+}
+
 // ==========================================================================
 // A64HelperEmitter — generates thunks using xbyak_aarch64.
 // ==========================================================================
@@ -381,15 +401,12 @@ ResolveFunctionThunk A64HelperEmitter::EmitResolveFunctionThunk() {
 // --------------------------------------------------------------------------
 // GuestAndHostSynchronizeStackHelper
 // --------------------------------------------------------------------------
-// Called when longjmp is detected (guest r1 changed after a call returned).
-// Walks the stackpoint array backward to find the matching host SP, restores
-// it, and jumps back to the caller.
+// Called when ResolveFunction detected a longjmp return-site reentry. Restores
+// the host SP for the existing frame and jumps back to the caller.
 //
 // On entry (set by the tail-emitted sync check in the guest function):
 //   x8  = return address (where to jump after fixup)
-//   x9  = caller's stack size (to subtract from restored SP)
 //   x19 = A64BackendContext*
-//   x20 = PPCContext*
 void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   using namespace Xbyak_aarch64;
   struct {
@@ -413,47 +430,30 @@ void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   ldr(w11, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext,
                                                    current_stackpoint_depth))));
 
-  // w12 = current guest r1
-  ldr(w12, ptr(x20, static_cast<int32_t>(offsetof(ppc::PPCContext, r[1]))));
-
-  // Search backward through stackpoints for the first entry where
-  // guest_stack_ >= current r1 (guest stack was unwound past that frame).
-  // ecx = loop index, starting at depth - 1
-  sub(w13, w11, 1);
-
-  auto& loop = NewCachedLabel();
-  auto& found = NewCachedLabel();
+  // w13 = target depth computed by ResolveFunction.
+  ldr(w13, ptr(x19, static_cast<uint32_t>(offsetof(
+                        A64BackendContext, pending_stackpoint_sync_depth))));
   auto& underflow = NewCachedLabel();
 
-  L(loop);
-  // Bounds check
-  tbnz(w13, 31, underflow);  // if index went negative, bail
+  cbz(x10, underflow);
+  // A zero target means this helper was called without a pending repair.
+  cbz(w13, underflow);
+  // The pending target must not be deeper than the current live depth.
+  cmp(w13, w11);
+  b(HI, underflow);
 
-  // x14 = &stackpoints[w13] = x10 + w13 * sizeof(A64BackendStackpoint)
+  // x14 = &stackpoints[target_depth - 1]
+  sub(w13, w13, 1);
+
   mov(w14, static_cast<uint32_t>(sizeof(A64BackendStackpoint)));
   umull(x14, w13, w14);
   add(x14, x10, x14);
 
-  // w15 = stackpoints[index].guest_stack_
-  ldr(w15, ptr(x14, static_cast<uint32_t>(
-                        offsetof(A64BackendStackpoint, guest_stack_))));
-
-  // If guest_stack_ >= current r1, we found our target frame.
-  cmp(w15, w12);
-  b(GE, found);
-
-  // Not found yet, go to previous entry.
-  sub(w13, w13, 1);
-  b(loop);
-
-  L(found);
-  // x14 points to the matching stackpoint entry.
-  // Restore host SP from stackpoints[index].host_stack_
+  // Restore host SP from stackpoints[index].host_stack_. A64 stackpoints are
+  // recorded after the function frame allocation, so this is already the SP
+  // expected by the return-site code.
   ldr(x16, ptr(x14, static_cast<uint32_t>(
                         offsetof(A64BackendStackpoint, host_stack_))));
-
-  // Adjust for the caller's stack frame: SP = host_stack_ - stack_size
-  sub(x16, x16, x9);
   mov(sp, x16);
 
   // Update current_stackpoint_depth = index + 1
@@ -461,6 +461,9 @@ void* A64HelperEmitter::EmitGuestAndHostSynchronizeStackHelper() {
   add(w13, w13, 1);
   str(w13, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext,
                                                    current_stackpoint_depth))));
+  mov(w15, 0);
+  str(w15, ptr(x19, static_cast<uint32_t>(offsetof(
+                        A64BackendContext, pending_stackpoint_sync_depth))));
 
   // Jump back to the caller.
   br(x8);
@@ -641,21 +644,13 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
             auto* backend = static_cast<A64Backend*>(processor->backend());
             auto* backend_context =
                 backend->BackendContextForGuestContext(guest_context);
-            if (backend_context->stackpoints &&
-                backend_context->current_stackpoint_depth > 0) {
-              uint32_t idx = backend_context->current_stackpoint_depth - 1;
-              uint32_t guest_sp = static_cast<uint32_t>(guest_context->r[1]);
-              uint32_t frames_skipped = 0;
-              while (idx != 0xFFFFFFFFu &&
-                     guest_sp >
-                         backend_context->stackpoints[idx].guest_stack_) {
-                --idx;
-                ++frames_skipped;
-              }
-              // >1 frames skipped = real longjmp, not an early SP restore.
-              if (frames_skipped > 1) {
-                return host_address;
-              }
+            const uint32_t sync_depth = FindStackpointSyncDepth(
+                backend_context->stackpoints,
+                backend_context->current_stackpoint_depth,
+                static_cast<uint32_t>(guest_context->r[1]));
+            if (sync_depth != 0) {
+              backend_context->pending_stackpoint_sync_depth = sync_depth;
+              return host_address;
             }
             break;
           }
@@ -945,6 +940,7 @@ void A64Backend::DeinitializeBackendContext(void* ctx) {
 void A64Backend::PrepareForReentry(void* ctx) {
   auto* a64_ctx = BackendContextForGuestContext(ctx);
   a64_ctx->current_stackpoint_depth = 0;
+  a64_ctx->pending_stackpoint_sync_depth = 0;
 }
 
 uint32_t A64Backend::CreateGuestTrampoline(GuestTrampolineProc proc,
@@ -1049,6 +1045,10 @@ void A64Backend::SetGuestRoundingMode(void* ctx, unsigned int mode) {
 }
 
 bool A64Backend::PopulatePseudoStacktrace(GuestPseudoStackTrace* st) {
+  if (!cvars::a64_enable_host_guest_stack_synchronization) {
+    return false;
+  }
+
   ThreadState* thrd_state = ThreadState::Get();
   if (!thrd_state) {
     return false;
@@ -1056,10 +1056,10 @@ bool A64Backend::PopulatePseudoStacktrace(GuestPseudoStackTrace* st) {
   ppc::PPCContext* ctx = thrd_state->context();
   A64BackendContext* backend_ctx = BackendContextForGuestContext(ctx);
 
-  uint32_t depth = backend_ctx->current_stackpoint_depth - 1;
-  if (static_cast<int32_t>(depth) < 1) {
+  if (!backend_ctx->stackpoints || backend_ctx->current_stackpoint_depth < 2) {
     return false;
   }
+  uint32_t depth = backend_ctx->current_stackpoint_depth - 1;
   uint32_t num_entries_to_populate =
       std::min(MAX_GUEST_PSEUDO_STACKTRACE_ENTRIES, depth);
 
