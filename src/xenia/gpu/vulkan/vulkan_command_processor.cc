@@ -3306,51 +3306,55 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
            : 0);
   texture_cache_->RequestTextures(used_texture_mask);
 
+  auto pipeline_layout =
+      static_cast<const PipelineLayout*>(pipeline->pipeline_layout);
+  auto bind_guest_graphics_pipeline = [&]() {
+    // The pipeline may be not ready yet if created asynchronously.
+    // EndSubmission must be called before submitting the command buffer to
+    // await its creation.
+    if (current_guest_graphics_pipeline_ != current_pipeline) {
+      deferred_command_buffer_.CmdVkBindPipeline(
+          VK_PIPELINE_BIND_POINT_GRAPHICS, current_pipeline);
+      current_guest_graphics_pipeline_ = current_pipeline;
+      current_external_graphics_pipeline_ = VK_NULL_HANDLE;
+    }
+    if (current_guest_graphics_pipeline_layout_ != pipeline_layout) {
+      if (current_guest_graphics_pipeline_layout_) {
+        // Keep descriptor set layouts for which the new pipeline layout is
+        // compatible with the previous one (pipeline layouts are compatible for
+        // set N if set layouts 0 through N are compatible).
+        uint32_t descriptor_sets_kept =
+            uint32_t(SpirvShaderTranslator::kDescriptorSetCount);
+        if (current_guest_graphics_pipeline_layout_
+                ->descriptor_set_layout_textures_vertex_ref() !=
+            pipeline_layout->descriptor_set_layout_textures_vertex_ref()) {
+          descriptor_sets_kept = std::min(
+              descriptor_sets_kept,
+              uint32_t(SpirvShaderTranslator::kDescriptorSetTexturesVertex));
+        }
+        if (current_guest_graphics_pipeline_layout_
+                ->descriptor_set_layout_textures_pixel_ref() !=
+            pipeline_layout->descriptor_set_layout_textures_pixel_ref()) {
+          descriptor_sets_kept = std::min(
+              descriptor_sets_kept,
+              uint32_t(SpirvShaderTranslator::kDescriptorSetTexturesPixel));
+        }
+        // Invalidate descriptor set bindings for incompatible sets.
+        current_graphics_descriptor_sets_bound_up_to_date_ &=
+            (UINT32_C(1) << descriptor_sets_kept) - 1;
+      } else {
+        // No or unknown pipeline layout previously bound - all bindings are in
+        // an indeterminate state.
+        current_graphics_descriptor_sets_bound_up_to_date_ = 0;
+      }
+      current_guest_graphics_pipeline_layout_ = pipeline_layout;
+    }
+  };
+
   // Update the graphics pipeline, and if the new graphics pipeline has a
   // different layout, invalidate incompatible descriptor sets before updating
   // current_guest_graphics_pipeline_layout_.
-  // The pipeline may be not ready yet if created asynchronously.
-  // EndSubmission must be called before submitting the command buffer to
-  // await its creation.
-  if (current_guest_graphics_pipeline_ != current_pipeline) {
-    deferred_command_buffer_.CmdVkBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                               current_pipeline);
-    current_guest_graphics_pipeline_ = current_pipeline;
-    current_external_graphics_pipeline_ = VK_NULL_HANDLE;
-  }
-  auto pipeline_layout =
-      static_cast<const PipelineLayout*>(pipeline->pipeline_layout);
-  if (current_guest_graphics_pipeline_layout_ != pipeline_layout) {
-    if (current_guest_graphics_pipeline_layout_) {
-      // Keep descriptor set layouts for which the new pipeline layout is
-      // compatible with the previous one (pipeline layouts are compatible for
-      // set N if set layouts 0 through N are compatible).
-      uint32_t descriptor_sets_kept =
-          uint32_t(SpirvShaderTranslator::kDescriptorSetCount);
-      if (current_guest_graphics_pipeline_layout_
-              ->descriptor_set_layout_textures_vertex_ref() !=
-          pipeline_layout->descriptor_set_layout_textures_vertex_ref()) {
-        descriptor_sets_kept = std::min(
-            descriptor_sets_kept,
-            uint32_t(SpirvShaderTranslator::kDescriptorSetTexturesVertex));
-      }
-      if (current_guest_graphics_pipeline_layout_
-              ->descriptor_set_layout_textures_pixel_ref() !=
-          pipeline_layout->descriptor_set_layout_textures_pixel_ref()) {
-        descriptor_sets_kept = std::min(
-            descriptor_sets_kept,
-            uint32_t(SpirvShaderTranslator::kDescriptorSetTexturesPixel));
-      }
-      // Invalidate descriptor set bindings for incompatible sets.
-      current_graphics_descriptor_sets_bound_up_to_date_ &=
-          (UINT32_C(1) << descriptor_sets_kept) - 1;
-    } else {
-      // No or unknown pipeline layout previously bound - all bindings are in an
-      // indeterminate state.
-      current_graphics_descriptor_sets_bound_up_to_date_ = 0;
-    }
-    current_guest_graphics_pipeline_layout_ = pipeline_layout;
-  }
+  bind_guest_graphics_pipeline();
 
   bool host_render_targets_used = render_target_cache_->GetPath() ==
                                   RenderTargetCache::Path::kHostRenderTargets;
@@ -3548,6 +3552,25 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   SubmitBarriersAndEnterRenderTargetCacheRenderPass(
       render_target_cache_->last_update_render_pass(),
       render_target_cache_->last_update_framebuffer());
+
+  if (render_target_cache_->HasPendingDrawPassTransfers()) {
+    if (!render_target_cache_->EncodePendingDrawPassTransfers()) {
+      if (!render_target_cache_->FlushPendingDrawPassTransfers()) {
+        return false;
+      }
+      SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+          render_target_cache_->last_update_render_pass(),
+          render_target_cache_->last_update_framebuffer());
+    }
+    bind_guest_graphics_pipeline();
+    UpdateDynamicState(viewport_info, primitive_polygonal,
+                       normalized_depth_control, draw_resolution_scale_x,
+                       draw_resolution_scale_y,
+                       apply_host_depth_polygon_offset);
+    if (!UpdateBindings(vertex_shader, pixel_shader)) {
+      return false;
+    }
+  }
 
   // Track for device-lost diagnostics.
   ++submission_in_progress_.draw_count;
