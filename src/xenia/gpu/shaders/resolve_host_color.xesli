@@ -1,0 +1,1531 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#ifndef XENIA_GPU_SHADERS_RESOLVE_HOST_COLOR_XESLI_
+#define XENIA_GPU_SHADERS_RESOLVE_HOST_COLOR_XESLI_
+
+#include "endian.xesli"
+#include "resolve.xesli"
+
+#if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+  #if SHADING_LANGUAGE_GLSL_XE
+    #define texture_2d_host_color_uint_xe utexture2D
+    #define texture_2d_ms_host_color_uint_xe utexture2DMS
+  #elif SHADING_LANGUAGE_HLSL_XE
+    #define texture_2d_host_color_uint_xe Texture2D<uint4_xe>
+    #define texture_2d_ms_host_color_uint_xe Texture2DMS<uint4_xe>
+  #elif SHADING_LANGUAGE_MSL_XE
+    #define texture_2d_host_color_uint_xe texture2d<uint>
+    #define texture_2d_ms_host_color_uint_xe texture2d_ms<uint>
+  #else
+    #error Host color uint textures not defined for the target language.
+  #endif
+#endif
+
+const_buffer_begin_xe(xe_resolve_host_color, set=0, binding=1, b1, space0)
+  uint xe_resolve_host_color_dispatch_offset;
+  uint xe_resolve_host_color_dump_base;
+  uint xe_resolve_host_color_dump_pitch_tiles;
+  uint xe_resolve_host_color_source_base_tiles;
+  uint xe_resolve_host_color_source_pitch_tiles;
+  uint xe_resolve_host_color_thread_count_x;
+  uint xe_resolve_host_color_thread_count_y;
+  uint xe_resolve_host_color_height_scaled;
+  uint xe_resolve_host_color_msaa_2x_sample_0;
+  uint xe_resolve_host_color_msaa_2x_sample_1;
+  uint xe_resolve_host_color_flags;
+const_buffer_end_xe(xe_resolve_host_color)
+
+#define XE_RESOLVE_HOST_COLOR_CONSTANTS_BINDING \
+    const_buffer_binding_xe(xe_resolve_host_color, buffer(2))
+
+#if defined(XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP) && \
+    XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP == 8 && \
+    XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 4
+  byte_buffer_align4_wo_declare_xe(xe_resolve_dest, set=1, binding=0, u0,
+                                   space0)
+#elif defined(XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP) && \
+      XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP <= 16
+  byte_buffer_align8_wo_declare_xe(xe_resolve_dest, set=1, binding=0, u0,
+                                   space0)
+#else
+  byte_buffer_align16_wo_declare_xe(xe_resolve_dest, set=1, binding=0, u0,
+                                    space0)
+#endif
+
+#if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+    #define XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_DECLARE                 \
+        texture_xe(texture_2d_host_color_uint_xe,                        \
+                   xe_resolve_host_color_source, set=2, binding=0, t0,   \
+                   space0, texture(0))
+  #else
+    #define XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_DECLARE                 \
+        texture_xe(texture_2d_ms_host_color_uint_xe,                     \
+                   xe_resolve_host_color_source, set=2, binding=0, t0,   \
+                   space0, texture(0))
+  #endif
+#else
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+    #define XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_DECLARE                 \
+        texture_xe(texture_2d_xe, xe_resolve_host_color_source, set=2,   \
+                   binding=0, t0, space0, texture(0))
+  #else
+    #define XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_DECLARE                 \
+        texture_xe(texture_2d_ms_xe, xe_resolve_host_color_source,       \
+                   set=2, binding=0, t0, space0, texture(0))
+  #endif
+#endif
+
+#if SHADING_LANGUAGE_MSL_XE
+  #define XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_BINDING \
+      XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_DECLARE
+#else
+  XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_DECLARE
+  #define XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_BINDING
+#endif
+
+#if SHADING_LANGUAGE_MSL_XE
+  #if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+    #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+      #define param_texture_xe(name) texture2d<uint> name
+    #else
+      #define param_texture_xe(name) texture2d_ms<uint> name
+    #endif
+  #else
+    #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+      #define param_texture_xe(name) texture2d<float> name
+    #else
+      #define param_texture_xe(name) texture2d_ms<float> name
+    #endif
+  #endif
+  #define param_next_after_texture_xe ,
+  #define pass_texture_xe(name) name
+  #define pass_next_after_texture_xe ,
+#endif
+#ifndef param_texture_xe
+  #define param_texture_xe(name)
+#endif
+#ifndef param_next_after_texture_xe
+  #define param_next_after_texture_xe
+#endif
+#ifndef pass_texture_xe
+  #define pass_texture_xe(name)
+#endif
+#ifndef pass_next_after_texture_xe
+  #define pass_next_after_texture_xe
+#endif
+
+uint XeResolveHostColorTileSizeX(XeResolveInfo resolve_info) {
+  #ifdef XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP
+    return (80u >> resolve_info.edram_format_ints_log2) *
+           resolve_info.resolution_scale.x;
+  #else
+    #if XE_RESOLVE_HOST_COLOR_BPP == 64
+      return 40u * resolve_info.resolution_scale.x;
+    #else
+      return 80u * resolve_info.resolution_scale.x;
+    #endif
+  #endif
+}
+
+uint XeResolveHostColorTileSizeY(XeResolveInfo resolve_info) {
+  return 16u * resolve_info.resolution_scale.y;
+}
+
+uint XeResolveHostColorTilePixelSizeX(XeResolveInfo resolve_info) {
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 4
+    return XeResolveHostColorTileSizeX(resolve_info) >> 1u;
+  #else
+    return XeResolveHostColorTileSizeX(resolve_info);
+  #endif
+}
+
+uint XeResolveHostColorTilePixelSizeY(XeResolveInfo resolve_info) {
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES >= 2
+    return XeResolveHostColorTileSizeY(resolve_info) >> 1u;
+  #else
+    return XeResolveHostColorTileSizeY(resolve_info);
+  #endif
+}
+
+uint XeResolveHostColorPixelsPerThread() {
+  #ifdef XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP
+    #if XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP == 8
+      #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 4
+        return 4u;
+      #else
+        return 8u;
+      #endif
+    #elif XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP == 128
+      return 2u;
+    #else
+      return 4u;
+    #endif
+  #else
+    #if XE_RESOLVE_HOST_COLOR_BPP == 64
+      return 4u;
+    #else
+      return 8u;
+    #endif
+  #endif
+}
+
+uint XeResolveHostColorPackUnorm(float value, float scale) {
+  return uint(saturate_xe(value) * scale + 0.5f);
+}
+
+uint XeResolveHostColorPackSnorm16(float value) {
+  float clamped = min(max(value, -1.0f), 1.0f);
+  float bias = clamped >= 0.0f ? 0.5f : -0.5f;
+  return uint(int(clamped * 32767.0f + bias)) & 0xFFFFu;
+}
+
+uint XeResolveHostColorPreClampedFloat32To7e3(float value) {
+  uint f32 = float_bits_to_uint_xe(value);
+  uint biased_f32;
+  if (f32 < 0x3E800000u) {
+    uint f32_exp = f32 >> 23u;
+    uint shift = min(125u - f32_exp, 24u);
+    uint mantissa = (f32 & 0x7FFFFFu) | 0x800000u;
+    biased_f32 = mantissa >> shift;
+  } else {
+    biased_f32 = f32 + 0xC2000000u;
+  }
+  uint round_bit = (biased_f32 >> 16u) & 1u;
+  uint f10 = biased_f32 + 0x7FFFu + round_bit;
+  return (f10 >> 16u) & 0x3FFu;
+}
+
+uint XeResolveHostColorFloat32To7e3(float value) {
+  return XeResolveHostColorPreClampedFloat32To7e3(
+      min(max(value, 0.0f), 31.875f));
+}
+
+uint XeResolveHostColorPack32Float(float4_xe color, uint format) {
+  switch (format) {
+    case kXenosColorRenderTargetFormat_8_8_8_8:
+    case kXenosColorRenderTargetFormat_8_8_8_8_GAMMA:
+      return XePackR8G8B8A8UNorm(color);
+    case kXenosColorRenderTargetFormat_2_10_10_10:
+    case kXenosColorRenderTargetFormat_2_10_10_10_AS_10_10_10_10:
+      return XePackR10G10B10A2UNorm(color);
+    case kXenosColorRenderTargetFormat_2_10_10_10_FLOAT:
+    case kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16:
+      return XeResolveHostColorFloat32To7e3(color.r) |
+             (XeResolveHostColorFloat32To7e3(color.g) << 10u) |
+             (XeResolveHostColorFloat32To7e3(color.b) << 20u) |
+             (XeResolveHostColorPackUnorm(color.a, 3.0f) << 30u);
+    case kXenosColorRenderTargetFormat_16_16:
+      return XeResolveHostColorPackSnorm16(color.r) |
+             (XeResolveHostColorPackSnorm16(color.g) << 16u);
+    case kXenosColorRenderTargetFormat_16_16_FLOAT:
+      return pack_half_2x16_xe(color.rg);
+    default:
+      return float_bits_to_uint_xe(color.r);
+  }
+}
+
+uint XeResolveHostColorPack32Uint(uint4_xe color, uint format) {
+  switch (format) {
+    case kXenosColorRenderTargetFormat_16_16:
+    case kXenosColorRenderTargetFormat_16_16_FLOAT:
+      return (color.r & 0xFFFFu) | ((color.g & 0xFFFFu) << 16u);
+    case kXenosColorRenderTargetFormat_32_FLOAT:
+      return color.r;
+    default:
+      return color.r;
+  }
+}
+
+uint2_xe XeResolveHostColorPack64Float(float4_xe color, uint format) {
+  switch (format) {
+    case kXenosColorRenderTargetFormat_16_16_16_16:
+      return uint2_xe(XeResolveHostColorPackSnorm16(color.r) |
+                          (XeResolveHostColorPackSnorm16(color.g) << 16u),
+                      XeResolveHostColorPackSnorm16(color.b) |
+                          (XeResolveHostColorPackSnorm16(color.a) << 16u));
+    case kXenosColorRenderTargetFormat_16_16_16_16_FLOAT:
+      return uint2_xe(pack_half_2x16_xe(color.rg),
+                      pack_half_2x16_xe(color.ba));
+    default:
+      return float_bits_to_uint_xe(color.rg);
+  }
+}
+
+uint2_xe XeResolveHostColorPack64Uint(uint4_xe color, uint format) {
+  switch (format) {
+    case kXenosColorRenderTargetFormat_16_16_16_16:
+    case kXenosColorRenderTargetFormat_16_16_16_16_FLOAT:
+      return uint2_xe((color.r & 0xFFFFu) | ((color.g & 0xFFFFu) << 16u),
+                      (color.b & 0xFFFFu) | ((color.a & 0xFFFFu) << 16u));
+    case kXenosColorRenderTargetFormat_32_32_FLOAT:
+      return color.rg;
+    default:
+      return color.rg;
+  }
+}
+
+uint2_xe XeResolveHostColorSourceSampleToTexel(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)) {
+  uint tile_size_x = XeResolveHostColorTileSizeX(resolve_info);
+  uint tile_size_y = XeResolveHostColorTileSizeY(resolve_info);
+
+  uint source_tile_x = source_sample.x / tile_size_x;
+  uint source_tile_y = source_sample.y / tile_size_y;
+  uint sample_in_tile_x = source_sample.x - source_tile_x * tile_size_x;
+  uint sample_in_tile_y = source_sample.y - source_tile_y * tile_size_y;
+  uint source_local_tile =
+      source_tile_y *
+          constant_xe(xe_resolve_host_color,
+                      xe_resolve_host_color_dump_pitch_tiles) +
+      source_tile_x;
+  uint nonwrapped_tile =
+      constant_xe(xe_resolve_host_color, xe_resolve_host_color_dump_base) +
+      source_local_tile;
+  uint source_linear_tile =
+      nonwrapped_tile -
+      constant_xe(xe_resolve_host_color,
+                  xe_resolve_host_color_source_base_tiles);
+  uint source_pitch_tiles =
+      constant_xe(xe_resolve_host_color,
+                  xe_resolve_host_color_source_pitch_tiles);
+  uint source_rt_tile_y = source_linear_tile / source_pitch_tiles;
+  uint source_rt_tile_x =
+      source_linear_tile - source_rt_tile_y * source_pitch_tiles;
+  return uint2_xe(source_rt_tile_x * tile_size_x + sample_in_tile_x,
+                  source_rt_tile_y * tile_size_y + sample_in_tile_y);
+}
+
+uint2_xe XeResolveHostColorSampleOffsetForIndex(uint sample_index) {
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+    return uint_x2_xe(0u);
+  #else
+    return (uint_x2_xe(sample_index) >> uint2_xe(1u, 0u)) & 1u;
+  #endif
+}
+
+uint XeResolveHostColorGet2xSampleId(
+    uint source_sample_y
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)) {
+  return ((source_sample_y & 1u) != 0u)
+             ? constant_xe(xe_resolve_host_color,
+                           xe_resolve_host_color_msaa_2x_sample_1)
+             : constant_xe(xe_resolve_host_color,
+                           xe_resolve_host_color_msaa_2x_sample_0);
+}
+
+#if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+uint4_xe XeResolveHostColorFetchUint(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  uint2_xe source_texel = XeResolveHostColorSourceSampleToTexel(
+      resolve_info, source_sample
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_color));
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+    return texel_fetch_2d_xe(xe_resolve_host_color_source,
+                             int2_xe(source_texel), 0);
+  #elif XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 2
+    uint sample_id = XeResolveHostColorGet2xSampleId(
+        source_texel.y
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color));
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_color_source,
+        int2_xe(source_texel.x, source_texel.y >> 1u), int(sample_id));
+  #else
+    uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_color_source,
+        int2_xe(source_texel.x >> 1u, source_texel.y >> 1u), int(sample_id));
+  #endif
+}
+#else
+float4_xe XeResolveHostColorFetchFloat(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  uint2_xe source_texel = XeResolveHostColorSourceSampleToTexel(
+      resolve_info, source_sample
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_color));
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+    return texel_fetch_2d_xe(xe_resolve_host_color_source,
+                             int2_xe(source_texel), 0);
+  #elif XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 2
+    uint sample_id = XeResolveHostColorGet2xSampleId(
+        source_texel.y
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color));
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_color_source,
+        int2_xe(source_texel.x, source_texel.y >> 1u), int(sample_id));
+  #else
+    uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_color_source,
+        int2_xe(source_texel.x >> 1u, source_texel.y >> 1u), int(sample_id));
+  #endif
+}
+#endif
+
+bool XeResolveHostColorGetPixelIndex(
+    XeResolveInfo resolve_info, uint2_xe thread_index,
+    out_param_xe(uint2_xe, pixel_index)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)) {
+  if (thread_index.x >=
+          constant_xe(xe_resolve_host_color,
+                      xe_resolve_host_color_thread_count_x) ||
+      thread_index.y >=
+          constant_xe(xe_resolve_host_color,
+                      xe_resolve_host_color_thread_count_y)) {
+    return false;
+  }
+
+  uint pixels_per_thread = XeResolveHostColorPixelsPerThread();
+  uint tile_pixel_size_x = XeResolveHostColorTilePixelSizeX(resolve_info);
+  uint tile_pixel_size_y = XeResolveHostColorTilePixelSizeY(resolve_info);
+  uint dispatch_pixel_x = thread_index.x * pixels_per_thread;
+  uint dispatch_pixel_y = thread_index.y;
+  uint dispatch_tile_x = dispatch_pixel_x / tile_pixel_size_x;
+  uint dispatch_tile_y = dispatch_pixel_y / tile_pixel_size_y;
+  uint pixel_in_tile_x =
+      dispatch_pixel_x - dispatch_tile_x * tile_pixel_size_x;
+  uint pixel_in_tile_y =
+      dispatch_pixel_y - dispatch_tile_y * tile_pixel_size_y;
+
+  uint local_tile =
+      constant_xe(xe_resolve_host_color,
+                  xe_resolve_host_color_dispatch_offset) +
+      dispatch_tile_y *
+          constant_xe(xe_resolve_host_color,
+                      xe_resolve_host_color_dump_pitch_tiles) +
+      dispatch_tile_x;
+  uint dump_pitch_tiles =
+      constant_xe(xe_resolve_host_color,
+                  xe_resolve_host_color_dump_pitch_tiles);
+  uint dump_tile_y = local_tile / dump_pitch_tiles;
+  uint dump_tile_x = local_tile - dump_tile_y * dump_pitch_tiles;
+  uint2_xe dump_pixel =
+      uint2_xe(dump_tile_x * tile_pixel_size_x + pixel_in_tile_x,
+               dump_tile_y * tile_pixel_size_y + pixel_in_tile_y);
+
+  if (dump_pixel.x < resolve_info.edram_offset_scaled.x ||
+      dump_pixel.y < resolve_info.edram_offset_scaled.y) {
+    return false;
+  }
+  pixel_index = dump_pixel - resolve_info.edram_offset_scaled;
+  if (pixel_index.x >= (resolve_info.width_div_8_scaled << 3u) ||
+      pixel_index.y >=
+          constant_xe(xe_resolve_host_color,
+                      xe_resolve_host_color_height_scaled)) {
+    return false;
+  }
+  return true;
+}
+
+uint2_xe XeResolveHostColorSourceSampleForSampleIndex(
+    XeResolveInfo resolve_info, uint2_xe pixel_index, uint lane,
+    uint sample_index) {
+  uint2_xe source_pixel =
+      uint2_xe(pixel_index.x + lane,
+               max(pixel_index.y,
+                   resolve_info.half_pixel_offset_fill_source.y)) +
+      resolve_info.edram_offset_scaled;
+  #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 1
+    return source_pixel;
+  #elif XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 2
+    return (source_pixel << uint2_xe(0u, 1u)) +
+           XeResolveHostColorSampleOffsetForIndex(sample_index);
+  #else
+    return (source_pixel << uint_x2_xe(1u)) +
+           XeResolveHostColorSampleOffsetForIndex(sample_index);
+  #endif
+}
+
+uint2_xe XeResolveHostColorSourceSampleForLane(XeResolveInfo resolve_info,
+                                               uint2_xe pixel_index,
+                                               uint lane) {
+  return XeResolveHostColorSourceSampleForSampleIndex(
+      resolve_info, pixel_index, lane,
+      XeResolveFirstSampleIndex(resolve_info.sample_select));
+}
+
+void XeResolveHostColorApplyHalfPixelOffset32(
+    XeResolveInfo resolve_info, uint2_xe pixel_index,
+    inout_param_xe(uint4_xe, pixels_0123)) {
+  dont_flatten_xe
+  if (pixel_index.x == 0u &&
+      resolve_info.half_pixel_offset_fill_source.x != 0u) {
+    if (resolve_info.half_pixel_offset_fill_source.x >= 2u) {
+      if (resolve_info.half_pixel_offset_fill_source.x >= 3u) {
+        pixels_0123.z = pixels_0123.w;
+      }
+      pixels_0123.y = pixels_0123.z;
+    }
+    pixels_0123.x = pixels_0123.y;
+  }
+}
+
+void XeResolveHostColorApplyHalfPixelOffset64(
+    XeResolveInfo resolve_info, uint2_xe pixel_index,
+    inout_param_xe(uint4_xe, pixels_01),
+    inout_param_xe(uint4_xe, pixels_23)) {
+  dont_flatten_xe
+  if (pixel_index.x == 0u &&
+      resolve_info.half_pixel_offset_fill_source.x != 0u) {
+    if (resolve_info.half_pixel_offset_fill_source.x >= 2u) {
+      if (resolve_info.half_pixel_offset_fill_source.x >= 3u) {
+        pixels_23.xy = pixels_23.zw;
+      }
+      pixels_01.zw = pixels_23.xy;
+    }
+    pixels_01.xy = pixels_01.zw;
+  }
+}
+
+#ifdef XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP
+
+uint XeResolveHostColorFetchPacked32(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  #if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+    return XeResolveHostColorPack32Uint(
+        XeResolveHostColorFetchUint(
+            resolve_info, source_sample
+            pass_next_after_const_buffer_xe
+            pass_const_buffer_xe(xe_resolve_host_color)
+            pass_next_after_texture_xe
+            pass_texture_xe(xe_resolve_host_color_source)),
+        resolve_info.edram_format);
+  #else
+    return XeResolveHostColorPack32Float(
+        XeResolveHostColorFetchFloat(
+            resolve_info, source_sample
+            pass_next_after_const_buffer_xe
+            pass_const_buffer_xe(xe_resolve_host_color)
+            pass_next_after_texture_xe
+            pass_texture_xe(xe_resolve_host_color_source)),
+        resolve_info.edram_format);
+  #endif
+}
+
+uint2_xe XeResolveHostColorFetchPacked64(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  #if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+    return XeResolveHostColorPack64Uint(
+        XeResolveHostColorFetchUint(
+            resolve_info, source_sample
+            pass_next_after_const_buffer_xe
+            pass_const_buffer_xe(xe_resolve_host_color)
+            pass_next_after_texture_xe
+            pass_texture_xe(xe_resolve_host_color_source)),
+        resolve_info.edram_format);
+  #else
+    return XeResolveHostColorPack64Float(
+        XeResolveHostColorFetchFloat(
+            resolve_info, source_sample
+            pass_next_after_const_buffer_xe
+            pass_const_buffer_xe(xe_resolve_host_color)
+            pass_next_after_texture_xe
+            pass_texture_xe(xe_resolve_host_color_source)),
+        resolve_info.edram_format);
+  #endif
+}
+
+void XeResolveHostColorFullLoad2RGBAUnswappedSamples(
+    XeResolveInfo resolve_info, uint2_xe pixel_index, uint sample_index,
+    out_param_xe(float4_xe, pixel_0), out_param_xe(float4_xe, pixel_1)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  dont_flatten_xe if (resolve_info.edram_format_ints_log2 != 0u) {
+    uint2_xe packed_0 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     0u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_1 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     1u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    XeResolveUnpack64bpp2Samples(
+        uint4_xe(packed_0.x, packed_0.y, packed_1.x, packed_1.y),
+        resolve_info.edram_format, pixel_0, pixel_1);
+  } else {
+    uint2_xe packed;
+    packed.x = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     0u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed.y = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     1u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    XeResolveUnpack32bpp2Samples(packed, resolve_info.edram_format, pixel_0,
+                                 pixel_1);
+  }
+}
+
+void XeResolveHostColorFullLoad4RGBAUnswappedSamples(
+    XeResolveInfo resolve_info, uint2_xe pixel_index, uint sample_index,
+    out_param_xe(float4_xe, pixel_0), out_param_xe(float4_xe, pixel_1),
+    out_param_xe(float4_xe, pixel_2), out_param_xe(float4_xe, pixel_3)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  dont_flatten_xe if (resolve_info.edram_format_ints_log2 != 0u) {
+    uint2_xe packed_0 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     0u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_1 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     1u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_2 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     2u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_3 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     3u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    XeResolveUnpack64bpp4Samples(
+        uint4_xe(packed_0.x, packed_0.y, packed_1.x, packed_1.y),
+        uint4_xe(packed_2.x, packed_2.y, packed_3.x, packed_3.y),
+        resolve_info.edram_format, pixel_0, pixel_1, pixel_2, pixel_3);
+  } else {
+    uint4_xe packed;
+    packed.x = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     0u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed.y = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     1u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed.z = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     2u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed.w = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     3u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    XeResolveUnpack32bpp4Samples(packed, resolve_info.edram_format, pixel_0,
+                                 pixel_1, pixel_2, pixel_3);
+  }
+}
+
+void XeResolveHostColorFullLoad8RedSamples(
+    XeResolveInfo resolve_info, uint2_xe pixel_index, uint sample_index,
+    out_param_xe(float4_xe, pixels_0123),
+    out_param_xe(float4_xe, pixels_4567)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  dont_flatten_xe if (resolve_info.edram_format_ints_log2 != 0u) {
+    uint4_xe packed_0123, packed_4567;
+    uint2_xe packed_0 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     0u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_1 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     1u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_2 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     2u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_3 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     3u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_4 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     4u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_5 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     5u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_6 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     6u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed_7 = XeResolveHostColorFetchPacked64(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     7u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    dont_flatten_xe if (resolve_info.dest_swap) {
+      packed_0123 = uint4_xe(packed_0.y, packed_1.y, packed_2.y, packed_3.y);
+      packed_4567 = uint4_xe(packed_4.y, packed_5.y, packed_6.y, packed_7.y);
+    } else {
+      packed_0123 = uint4_xe(packed_0.x, packed_1.x, packed_2.x, packed_3.x);
+      packed_4567 = uint4_xe(packed_4.x, packed_5.x, packed_6.x, packed_7.x);
+    }
+    XeResolveUnpack64bpp8RedUnswappedSamples(
+        packed_0123, packed_4567, resolve_info.edram_format, pixels_0123,
+        pixels_4567);
+  } else {
+    uint4_xe packed_0123, packed_4567;
+    packed_0123.x = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     0u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed_0123.y = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     1u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed_0123.z = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     2u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed_0123.w = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     3u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed_4567.x = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     4u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed_4567.y = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     5u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed_4567.z = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     6u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    packed_4567.w = XeResolveHostColorFetchPacked32(
+        resolve_info,
+        XeResolveHostColorSourceSampleForSampleIndex(resolve_info, pixel_index,
+                                                     7u, sample_index)
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    XeResolveUnpack32bpp8RedSamples(
+        packed_0123, packed_4567, resolve_info.edram_format,
+        resolve_info.dest_swap, pixels_0123, pixels_4567);
+  }
+}
+
+void XeResolveHostColorApplyExpBiasAndSwap2(
+    XeResolveInfo resolve_info, float exp_bias,
+    inout_param_xe(float4_xe, pixel_0),
+    inout_param_xe(float4_xe, pixel_1)) {
+  dont_flatten_xe if ((resolve_info.edram_format ==
+                           kXenosColorRenderTargetFormat_2_10_10_10_FLOAT ||
+                       resolve_info.edram_format ==
+                           kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16) &&
+                      resolve_info.dest_format != kXenosFormat_16_16_16_16_FLOAT &&
+                      resolve_info.dest_format != kXenosFormat_32_32_32_32_FLOAT) {
+    pixel_0.xyz *= exp_bias;
+    pixel_1.xyz *= exp_bias;
+  } else {
+    pixel_0 *= exp_bias;
+    pixel_1 *= exp_bias;
+  }
+  dont_flatten_xe if (resolve_info.dest_swap) {
+    pixel_0 = pixel_0.bgra;
+    pixel_1 = pixel_1.bgra;
+  }
+}
+
+void XeResolveHostColorApplyExpBiasAndSwap4(
+    XeResolveInfo resolve_info, float exp_bias,
+    inout_param_xe(float4_xe, pixel_0),
+    inout_param_xe(float4_xe, pixel_1),
+    inout_param_xe(float4_xe, pixel_2),
+    inout_param_xe(float4_xe, pixel_3)) {
+  dont_flatten_xe if ((resolve_info.edram_format ==
+                           kXenosColorRenderTargetFormat_2_10_10_10_FLOAT ||
+                       resolve_info.edram_format ==
+                           kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16) &&
+                      resolve_info.dest_format != kXenosFormat_16_16_16_16_FLOAT &&
+                      resolve_info.dest_format != kXenosFormat_32_32_32_32_FLOAT) {
+    pixel_0.xyz *= exp_bias;
+    pixel_1.xyz *= exp_bias;
+    pixel_2.xyz *= exp_bias;
+    pixel_3.xyz *= exp_bias;
+  } else {
+    pixel_0 *= exp_bias;
+    pixel_1 *= exp_bias;
+    pixel_2 *= exp_bias;
+    pixel_3 *= exp_bias;
+  }
+  dont_flatten_xe if (resolve_info.dest_swap) {
+    pixel_0 = pixel_0.bgra;
+    pixel_1 = pixel_1.bgra;
+    pixel_2 = pixel_2.bgra;
+    pixel_3 = pixel_3.bgra;
+  }
+}
+
+void XeResolveHostColorFullLoad2RGBAColors(
+    XeResolveInfo resolve_info, uint2_xe pixel_index,
+    out_param_xe(float4_xe, pixel_0), out_param_xe(float4_xe, pixel_1)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  uint first_sample = XeResolveFirstSampleIndex(resolve_info.sample_select);
+  XeResolveHostColorFullLoad2RGBAUnswappedSamples(
+      resolve_info, pixel_index, first_sample, pixel_0, pixel_1
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_color)
+      pass_next_after_texture_xe
+      pass_texture_xe(xe_resolve_host_color_source));
+  float exp_bias = resolve_info.dest_exp_bias_factor;
+  dont_flatten_xe if (resolve_info.sample_select >= kXenosCopySampleSelect_01) {
+    exp_bias *= 0.5f;
+    float4_xe sample_pixel_0, sample_pixel_1;
+    XeResolveHostColorFullLoad2RGBAUnswappedSamples(
+        resolve_info, pixel_index, first_sample + 1u, sample_pixel_0,
+        sample_pixel_1 pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    pixel_0 += sample_pixel_0;
+    pixel_1 += sample_pixel_1;
+    dont_flatten_xe if (resolve_info.sample_select >=
+                        kXenosCopySampleSelect_0123) {
+      exp_bias *= 0.5f;
+      XeResolveHostColorFullLoad2RGBAUnswappedSamples(
+          resolve_info, pixel_index, first_sample + 2u, sample_pixel_0,
+          sample_pixel_1 pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      pixel_0 += sample_pixel_0;
+      pixel_1 += sample_pixel_1;
+      XeResolveHostColorFullLoad2RGBAUnswappedSamples(
+          resolve_info, pixel_index, first_sample + 3u, sample_pixel_0,
+          sample_pixel_1 pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      pixel_0 += sample_pixel_0;
+      pixel_1 += sample_pixel_1;
+    }
+  }
+  XeResolveHostColorApplyExpBiasAndSwap2(resolve_info, exp_bias, pixel_0,
+                                         pixel_1);
+}
+
+void XeResolveHostColorFullLoad4RGBAColors(
+    XeResolveInfo resolve_info, uint2_xe pixel_index,
+    out_param_xe(float4_xe, pixel_0), out_param_xe(float4_xe, pixel_1),
+    out_param_xe(float4_xe, pixel_2), out_param_xe(float4_xe, pixel_3)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  uint first_sample = XeResolveFirstSampleIndex(resolve_info.sample_select);
+  XeResolveHostColorFullLoad4RGBAUnswappedSamples(
+      resolve_info, pixel_index, first_sample, pixel_0, pixel_1, pixel_2,
+      pixel_3 pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_color)
+      pass_next_after_texture_xe
+      pass_texture_xe(xe_resolve_host_color_source));
+  float exp_bias = resolve_info.dest_exp_bias_factor;
+  dont_flatten_xe if (resolve_info.sample_select >= kXenosCopySampleSelect_01) {
+    exp_bias *= 0.5f;
+    float4_xe sample_pixel_0, sample_pixel_1, sample_pixel_2, sample_pixel_3;
+    XeResolveHostColorFullLoad4RGBAUnswappedSamples(
+        resolve_info, pixel_index, first_sample + 1u, sample_pixel_0,
+        sample_pixel_1, sample_pixel_2,
+        sample_pixel_3 pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    pixel_0 += sample_pixel_0;
+    pixel_1 += sample_pixel_1;
+    pixel_2 += sample_pixel_2;
+    pixel_3 += sample_pixel_3;
+    dont_flatten_xe if (resolve_info.sample_select >=
+                        kXenosCopySampleSelect_0123) {
+      exp_bias *= 0.5f;
+      XeResolveHostColorFullLoad4RGBAUnswappedSamples(
+          resolve_info, pixel_index, first_sample + 2u, sample_pixel_0,
+          sample_pixel_1, sample_pixel_2,
+          sample_pixel_3 pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      pixel_0 += sample_pixel_0;
+      pixel_1 += sample_pixel_1;
+      pixel_2 += sample_pixel_2;
+      pixel_3 += sample_pixel_3;
+      XeResolveHostColorFullLoad4RGBAUnswappedSamples(
+          resolve_info, pixel_index, first_sample + 3u, sample_pixel_0,
+          sample_pixel_1, sample_pixel_2,
+          sample_pixel_3 pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      pixel_0 += sample_pixel_0;
+      pixel_1 += sample_pixel_1;
+      pixel_2 += sample_pixel_2;
+      pixel_3 += sample_pixel_3;
+    }
+  }
+  XeResolveHostColorApplyExpBiasAndSwap4(resolve_info, exp_bias, pixel_0,
+                                         pixel_1, pixel_2, pixel_3);
+}
+
+void XeResolveHostColorFullLoad8RedColors(
+    XeResolveInfo resolve_info, uint2_xe pixel_index,
+    out_param_xe(float4_xe, pixels_0123),
+    out_param_xe(float4_xe, pixels_4567)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  uint first_sample = XeResolveFirstSampleIndex(resolve_info.sample_select);
+  XeResolveHostColorFullLoad8RedSamples(
+      resolve_info, pixel_index, first_sample, pixels_0123, pixels_4567
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_color)
+      pass_next_after_texture_xe
+      pass_texture_xe(xe_resolve_host_color_source));
+  float exp_bias = resolve_info.dest_exp_bias_factor;
+  dont_flatten_xe if (resolve_info.sample_select >= kXenosCopySampleSelect_01) {
+    exp_bias *= 0.5f;
+    float4_xe sample_pixels_0123, sample_pixels_4567;
+    XeResolveHostColorFullLoad8RedSamples(
+        resolve_info, pixel_index, first_sample + 1u, sample_pixels_0123,
+        sample_pixels_4567 pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    pixels_0123 += sample_pixels_0123;
+    pixels_4567 += sample_pixels_4567;
+    dont_flatten_xe if (resolve_info.sample_select >=
+                        kXenosCopySampleSelect_0123) {
+      exp_bias *= 0.5f;
+      XeResolveHostColorFullLoad8RedSamples(
+          resolve_info, pixel_index, first_sample + 2u, sample_pixels_0123,
+          sample_pixels_4567 pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      pixels_0123 += sample_pixels_0123;
+      pixels_4567 += sample_pixels_4567;
+      XeResolveHostColorFullLoad8RedSamples(
+          resolve_info, pixel_index, first_sample + 3u, sample_pixels_0123,
+          sample_pixels_4567 pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      pixels_0123 += sample_pixels_0123;
+      pixels_4567 += sample_pixels_4567;
+    }
+  }
+  pixels_0123 *= exp_bias;
+  pixels_4567 *= exp_bias;
+}
+
+void XeResolveHostColorFullMain(
+    uint2_xe thread_index
+    param_next_after_byte_buffer_xe
+    param_byte_buffer_wo_xe(xe_resolve_dest)
+    param_next_after_push_consts_xe
+    param_push_consts_xe
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  XeResolveInfo resolve_info = XeResolveGetInfo(pass_push_consts_xe);
+  uint2_xe pixel_index;
+  if (!XeResolveHostColorGetPixelIndex(
+          resolve_info, thread_index, pixel_index
+          pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color))) {
+    return;
+  }
+
+  #if XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP == 8
+    #if XE_RESOLVE_HOST_COLOR_MSAA_SAMPLES == 4
+      float4_xe pixel_0, pixel_1, pixel_2, pixel_3;
+      XeResolveHostColorFullLoad4RGBAColors(
+          resolve_info, pixel_index, pixel_0, pixel_1, pixel_2, pixel_3
+          pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      float4_xe pixels_0123 =
+          float4_xe(pixel_0.r, pixel_1.r, pixel_2.r, pixel_3.r);
+      dont_flatten_xe
+      if (pixel_index.x == 0u &&
+          resolve_info.half_pixel_offset_fill_source.x != 0u) {
+        if (resolve_info.half_pixel_offset_fill_source.x >= 2u) {
+          if (resolve_info.half_pixel_offset_fill_source.x >= 3u) {
+            pixels_0123.z = pixels_0123.w;
+          }
+          pixels_0123.y = pixels_0123.z;
+        }
+        pixels_0123.x = pixels_0123.y;
+      }
+      byte_buffer_align4_store4_xe(
+          xe_resolve_dest,
+          XeResolveDestPixelAddress(resolve_info, pixel_index, 0u),
+          XePackR8G8B8A8UNorm(pixels_0123));
+    #else
+      float4_xe pixels_0123, pixels_4567;
+      XeResolveHostColorFullLoad8RedColors(
+          resolve_info, pixel_index, pixels_0123, pixels_4567
+          pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color)
+          pass_next_after_texture_xe
+          pass_texture_xe(xe_resolve_host_color_source));
+      dont_flatten_xe
+      if (pixel_index.x == 0u &&
+          resolve_info.half_pixel_offset_fill_source.x != 0u) {
+        if (resolve_info.half_pixel_offset_fill_source.x >= 2u) {
+          if (resolve_info.half_pixel_offset_fill_source.x >= 3u) {
+            pixels_0123.z = pixels_0123.w;
+          }
+          pixels_0123.y = pixels_0123.z;
+        }
+        pixels_0123.x = pixels_0123.y;
+      }
+      byte_buffer_align8_store8_xe(
+          xe_resolve_dest,
+          XeResolveDestPixelAddress(resolve_info, pixel_index, 0u),
+          uint2_xe(XePackR8G8B8A8UNorm(pixels_0123),
+                   XePackR8G8B8A8UNorm(pixels_4567)));
+    #endif
+  #elif XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP == 16
+    float4_xe pixel_0, pixel_1, pixel_2, pixel_3;
+    XeResolveHostColorFullLoad4RGBAColors(
+        resolve_info, pixel_index, pixel_0, pixel_1, pixel_2, pixel_3
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint2_xe packed = XePack16bpp4PixelsInUInt2(
+        pixel_0, pixel_1, pixel_2, pixel_3, resolve_info.dest_format);
+    dont_flatten_xe
+    if (pixel_index.x == 0u &&
+        resolve_info.half_pixel_offset_fill_source.x != 0u) {
+      if (resolve_info.half_pixel_offset_fill_source.x >= 2u) {
+        if (resolve_info.half_pixel_offset_fill_source.x >= 3u) {
+          packed.y = (packed.y >> 16u) | (packed.y & 0xFFFF0000u);
+        }
+        packed.x = (packed.x & 0xFFFFu) | (packed.y << 16u);
+      }
+      packed.x = (packed.x >> 16u) | (packed.x & 0xFFFF0000u);
+    }
+    byte_buffer_align8_store8_xe(
+        xe_resolve_dest,
+        XeResolveDestPixelAddress(resolve_info, pixel_index, 1u),
+        XeEndianSwap16(packed, resolve_info.dest_endian_128));
+  #elif XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP == 32
+    float4_xe pixel_0, pixel_1, pixel_2, pixel_3;
+    XeResolveHostColorFullLoad4RGBAColors(
+        resolve_info, pixel_index, pixel_0, pixel_1, pixel_2, pixel_3
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint4_xe packed = XePack32bpp4Pixels(pixel_0, pixel_1, pixel_2,
+                                         pixel_3, resolve_info.dest_format);
+    XeResolveHostColorApplyHalfPixelOffset32(resolve_info, pixel_index, packed);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest,
+        XeResolveDestPixelAddress(resolve_info, pixel_index, 2u),
+        XeEndianSwap32(packed, resolve_info.dest_endian_128));
+  #elif XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP == 64
+    float4_xe pixel_0, pixel_1, pixel_2, pixel_3;
+    XeResolveHostColorFullLoad4RGBAColors(
+        resolve_info, pixel_index, pixel_0, pixel_1, pixel_2, pixel_3
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    uint4_xe packed_01, packed_23;
+    XePack64bpp4Pixels(pixel_0, pixel_1, pixel_2, pixel_3,
+                       resolve_info.dest_format, packed_01, packed_23);
+    XeResolveHostColorApplyHalfPixelOffset64(resolve_info, pixel_index,
+                                             packed_01, packed_23);
+    uint dest_address = XeResolveDestPixelAddress(resolve_info, pixel_index,
+                                                  3u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap64(packed_01, resolve_info.dest_endian_128));
+    dest_address += XeResolveLocalXAddressXor(2u, 3u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap64(packed_23, resolve_info.dest_endian_128));
+  #else
+    uint2_xe source_pixel_index =
+        uint2_xe(max(pixel_index.x,
+                     resolve_info.half_pixel_offset_fill_source.x),
+                 pixel_index.y);
+    float4_xe pixel_0, pixel_1;
+    XeResolveHostColorFullLoad2RGBAColors(
+        resolve_info, source_pixel_index, pixel_0, pixel_1
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_color)
+        pass_next_after_texture_xe
+        pass_texture_xe(xe_resolve_host_color_source));
+    dont_flatten_xe
+    if (pixel_index.x < resolve_info.half_pixel_offset_fill_source.x) {
+      pixel_1 = pixel_0;
+    }
+    uint dest_address = XeResolveDestPixelAddress(resolve_info, pixel_index, 4u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap128(float_bits_to_uint_xe(pixel_0),
+                        resolve_info.dest_endian_128));
+    dest_address += XeResolveLocalXAddressXor(1u, 4u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap128(float_bits_to_uint_xe(pixel_1),
+                        resolve_info.dest_endian_128));
+  #endif
+}
+
+#else
+
+void XeResolveHostColorMain(
+    uint2_xe thread_index
+    param_next_after_byte_buffer_xe
+    param_byte_buffer_wo_xe(xe_resolve_dest)
+    param_next_after_push_consts_xe
+    param_push_consts_xe
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_color)
+    param_next_after_texture_xe
+    param_texture_xe(xe_resolve_host_color_source)) {
+  XeResolveInfo resolve_info = XeResolveGetInfo(pass_push_consts_xe);
+  uint2_xe pixel_index;
+  if (!XeResolveHostColorGetPixelIndex(
+          resolve_info, thread_index, pixel_index
+          pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_color))) {
+    return;
+  }
+
+  #if XE_RESOLVE_HOST_COLOR_BPP == 64
+    uint2_xe packed_0, packed_1, packed_2, packed_3;
+    #if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+      packed_0 = XeResolveHostColorPack64Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    0u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      packed_1 = XeResolveHostColorPack64Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    1u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      packed_2 = XeResolveHostColorPack64Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    2u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      packed_3 = XeResolveHostColorPack64Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    3u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+    #else
+      packed_0 = XeResolveHostColorPack64Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    0u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      packed_1 = XeResolveHostColorPack64Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    1u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      packed_2 = XeResolveHostColorPack64Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    2u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      packed_3 = XeResolveHostColorPack64Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    3u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+    #endif
+    uint4_xe pixels_01 =
+        uint4_xe(packed_0.x, packed_0.y, packed_1.x, packed_1.y);
+    uint4_xe pixels_23 =
+        uint4_xe(packed_2.x, packed_2.y, packed_3.x, packed_3.y);
+    XeResolveHostColorApplyHalfPixelOffset64(resolve_info, pixel_index,
+                                             pixels_01, pixels_23);
+    XeResolveSwap4PixelsRedBlue64bpp(resolve_info, pixels_01, pixels_23);
+    uint dest_address = XeResolveDestPixelAddress(resolve_info, pixel_index,
+                                                  3u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap64(pixels_01, resolve_info.dest_endian_128));
+    dest_address += XeResolveLocalXAddressXor(2u, 3u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap64(pixels_23, resolve_info.dest_endian_128));
+  #else
+    uint4_xe pixels_0123;
+    uint4_xe pixels_4567;
+    #if XE_RESOLVE_HOST_COLOR_SOURCE_UINT
+      pixels_0123.x = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    0u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_0123.y = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    1u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_0123.z = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    2u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_0123.w = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    3u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.x = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    4u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.y = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    5u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.z = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    6u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.w = XeResolveHostColorPack32Uint(
+          XeResolveHostColorFetchUint(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    7u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+    #else
+      pixels_0123.x = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    0u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_0123.y = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    1u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_0123.z = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    2u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_0123.w = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    3u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.x = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    4u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.y = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    5u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.z = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    6u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+      pixels_4567.w = XeResolveHostColorPack32Float(
+          XeResolveHostColorFetchFloat(
+              resolve_info,
+              XeResolveHostColorSourceSampleForLane(resolve_info, pixel_index,
+                                                    7u)
+              pass_next_after_const_buffer_xe
+              pass_const_buffer_xe(xe_resolve_host_color)
+              pass_next_after_texture_xe
+              pass_texture_xe(xe_resolve_host_color_source)),
+          resolve_info.edram_format);
+    #endif
+    XeResolveHostColorApplyHalfPixelOffset32(resolve_info, pixel_index,
+                                             pixels_0123);
+    XeResolveSwap8PixelsRedBlue32bpp(resolve_info, pixels_0123, pixels_4567);
+    uint dest_address = XeResolveDestPixelAddress(resolve_info, pixel_index,
+                                                  2u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap32(pixels_0123, resolve_info.dest_endian_128));
+    dest_address += XeResolveLocalXAddressXor(4u, 2u);
+    byte_buffer_align16_store16_xe(
+        xe_resolve_dest, dest_address,
+        XeEndianSwap32(pixels_4567, resolve_info.dest_endian_128));
+  #endif
+}
+
+#endif  // XE_RESOLVE_HOST_COLOR_FULL_DEST_BPP
+
+#endif  // XENIA_GPU_SHADERS_RESOLVE_HOST_COLOR_XESLI_

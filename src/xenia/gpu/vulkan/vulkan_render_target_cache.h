@@ -269,6 +269,19 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
     size_t scaled_size_bytes;
   };
 
+  struct DirectHostResolveShaderCode {
+    const uint32_t* code;
+    size_t size_bytes;
+    const char* debug_name;
+  };
+
+  static constexpr size_t kDirectHostResolveBppCount = 2;     // 32, 64
+  static constexpr size_t kDirectHostResolveMsaaCount = 3;    // 1, 2, 4
+  static constexpr size_t kDirectHostResolveScaledCount = 2;  // false, true
+  static constexpr size_t kDirectHostResolveSourceUintCount = 2;
+  static constexpr size_t kDirectHostResolveFullDestCount =
+      5;  // 8, 16, 32, 64, 128
+
   static void GetEdramBufferUsageMasks(EdramBufferUsage usage,
                                        VkPipelineStageFlags& stage_mask_out,
                                        VkAccessFlags& access_mask_out);
@@ -312,6 +325,29 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       kResolveCopyShaders[size_t(draw_util::ResolveCopyShaderIndex::kCount)];
   std::array<VkPipeline, size_t(draw_util::ResolveCopyShaderIndex::kCount)>
       resolve_copy_pipelines_{};
+
+  VkPipelineLayout direct_host_resolve_pipeline_layout_color_ = VK_NULL_HANDLE;
+  VkPipelineLayout direct_host_resolve_pipeline_layout_depth_ = VK_NULL_HANDLE;
+  static const DirectHostResolveShaderCode kDirectHostResolveColorShaders
+      [kDirectHostResolveBppCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveScaledCount][kDirectHostResolveSourceUintCount];
+  static const DirectHostResolveShaderCode kDirectHostResolveColorFullShaders
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount][kDirectHostResolveFullDestCount];
+  static const DirectHostResolveShaderCode
+      kDirectHostResolveDepthShaders[kDirectHostResolveMsaaCount]
+                                    [kDirectHostResolveScaledCount];
+  VkPipeline direct_host_resolve_pipelines_
+      [kDirectHostResolveBppCount][kDirectHostResolveMsaaCount]
+      [kDirectHostResolveScaledCount][kDirectHostResolveSourceUintCount] = {};
+  VkPipeline direct_host_color_full_resolve_pipelines_
+      [kDirectHostResolveMsaaCount][kDirectHostResolveScaledCount]
+      [kDirectHostResolveSourceUintCount][kDirectHostResolveFullDestCount] = {};
+  VkPipeline
+      direct_host_depth_resolve_pipelines_[kDirectHostResolveMsaaCount]
+                                          [kDirectHostResolveScaledCount] = {};
+  std::unique_ptr<ui::vulkan::VulkanUploadBufferPool>
+      direct_host_resolve_constants_pool_;
 
   // On the fragment shader interlock path, the render pass key is used purely
   // for passing parameters to pipeline setup - there's always only one render
@@ -874,6 +910,22 @@ class VulkanRenderTargetCache final : public RenderTargetCache {
       const Transfer::Rectangle* resolve_clear_rectangle = nullptr);
 
   VkPipeline GetDumpPipeline(DumpPipelineKey key);
+
+  VkPipeline GetDirectHostResolvePipeline(bool is_64bpp,
+                                          xenos::MsaaSamples msaa_samples,
+                                          bool scaled, bool source_is_uint);
+  VkPipeline GetDirectHostColorFullResolvePipeline(
+      xenos::MsaaSamples msaa_samples, bool scaled, bool source_is_uint,
+      draw_util::ResolveCopyShaderIndex copy_shader);
+  VkPipeline GetDirectHostDepthResolvePipeline(xenos::MsaaSamples msaa_samples,
+                                               bool scaled);
+  bool TryDirectHostResolveCopy(
+      const draw_util::ResolveInfo& resolve_info,
+      const draw_util::ResolveCopyShaderConstants& copy_shader_constants,
+      draw_util::ResolveCopyShaderIndex copy_shader, uint32_t dump_base,
+      uint32_t dump_row_length_used, uint32_t dump_rows, uint32_t dump_pitch,
+      VulkanSharedMemory& shared_memory, VulkanTextureCache& texture_cache,
+      uint32_t& written_address_out, uint32_t& written_length_out);
 
   // Writes contents of host render targets within rectangles from
   // ResolveInfo::GetCopyEdramTileSpan to edram_buffer_.

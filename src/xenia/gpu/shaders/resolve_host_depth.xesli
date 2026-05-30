@@ -1,0 +1,516 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#ifndef XENIA_GPU_SHADERS_RESOLVE_HOST_DEPTH_XESLI_
+#define XENIA_GPU_SHADERS_RESOLVE_HOST_DEPTH_XESLI_
+
+#include "endian.xesli"
+#include "resolve.xesli"
+
+#if SHADING_LANGUAGE_GLSL_XE
+  #define texture_2d_host_depth_stencil_uint_xe utexture2D
+  #define texture_2d_ms_host_depth_stencil_uint_xe utexture2DMS
+#elif SHADING_LANGUAGE_HLSL_XE
+  #define texture_2d_host_depth_stencil_uint_xe Texture2D<uint4_xe>
+  #define texture_2d_ms_host_depth_stencil_uint_xe Texture2DMS<uint4_xe>
+#elif SHADING_LANGUAGE_MSL_XE
+  #define texture_2d_host_depth_stencil_uint_xe texture2d<uint>
+  #define texture_2d_ms_host_depth_stencil_uint_xe texture2d_ms<uint>
+#else
+  #error Host depth stencil textures not defined for the target language.
+#endif
+
+#define XE_RESOLVE_HOST_DEPTH_FLAG_HAS_STENCIL (1u << 0u)
+#define XE_RESOLVE_HOST_DEPTH_FLAG_ROUND_DEPTH (1u << 1u)
+
+const_buffer_begin_xe(xe_resolve_host_depth, set=0, binding=1, b1, space0)
+  uint xe_resolve_host_depth_dispatch_offset;
+  uint xe_resolve_host_depth_dump_base;
+  uint xe_resolve_host_depth_dump_pitch_tiles;
+  uint xe_resolve_host_depth_source_base_tiles;
+  uint xe_resolve_host_depth_source_pitch_tiles;
+  uint xe_resolve_host_depth_thread_count_x;
+  uint xe_resolve_host_depth_thread_count_y;
+  uint xe_resolve_host_depth_height_scaled;
+  uint xe_resolve_host_depth_msaa_2x_sample_0;
+  uint xe_resolve_host_depth_msaa_2x_sample_1;
+  uint xe_resolve_host_depth_flags;
+const_buffer_end_xe(xe_resolve_host_depth)
+
+#define XE_RESOLVE_HOST_DEPTH_CONSTANTS_BINDING \
+    const_buffer_binding_xe(xe_resolve_host_depth, buffer(2))
+
+byte_buffer_align16_wo_declare_xe(xe_resolve_dest, set=1, binding=0, u0,
+                                  space0)
+
+#if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 1
+  #define XE_RESOLVE_HOST_DEPTH_SOURCE_TEXTURE_DECLARE                   \
+      texture_xe(texture_2d_xe, xe_resolve_host_depth_source, set=2,    \
+                 binding=0, t0, space0, texture(0))
+  #define XE_RESOLVE_HOST_DEPTH_STENCIL_TEXTURE_DECLARE                  \
+      texture_xe(texture_2d_host_depth_stencil_uint_xe,                  \
+                 xe_resolve_host_depth_stencil, set=2, binding=1, t1,    \
+                 space0, texture(1))
+#else
+  #define XE_RESOLVE_HOST_DEPTH_SOURCE_TEXTURE_DECLARE                   \
+      texture_xe(texture_2d_ms_xe, xe_resolve_host_depth_source, set=2, \
+                 binding=0, t0, space0, texture(0))
+  #define XE_RESOLVE_HOST_DEPTH_STENCIL_TEXTURE_DECLARE                  \
+      texture_xe(texture_2d_ms_host_depth_stencil_uint_xe,               \
+                 xe_resolve_host_depth_stencil, set=2, binding=1, t1,    \
+                 space0, texture(1))
+#endif
+
+#if SHADING_LANGUAGE_MSL_XE
+  #define XE_RESOLVE_HOST_DEPTH_SOURCE_TEXTURE_BINDING \
+      XE_RESOLVE_HOST_DEPTH_SOURCE_TEXTURE_DECLARE
+  #define XE_RESOLVE_HOST_DEPTH_STENCIL_TEXTURE_BINDING \
+      XE_RESOLVE_HOST_DEPTH_STENCIL_TEXTURE_DECLARE
+#else
+  XE_RESOLVE_HOST_DEPTH_SOURCE_TEXTURE_DECLARE
+  XE_RESOLVE_HOST_DEPTH_STENCIL_TEXTURE_DECLARE
+  #define XE_RESOLVE_HOST_DEPTH_SOURCE_TEXTURE_BINDING
+  #define XE_RESOLVE_HOST_DEPTH_STENCIL_TEXTURE_BINDING
+#endif
+
+#if SHADING_LANGUAGE_MSL_XE
+  #if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 1
+    #define param_depth_texture_xe(name) texture2d<float> name
+    #define param_stencil_texture_xe(name) texture2d<uint> name
+  #else
+    #define param_depth_texture_xe(name) texture2d_ms<float> name
+    #define param_stencil_texture_xe(name) texture2d_ms<uint> name
+  #endif
+  #define param_next_after_depth_texture_xe ,
+  #define pass_depth_texture_xe(name) name
+  #define pass_next_after_depth_texture_xe ,
+  #define param_next_after_stencil_texture_xe ,
+  #define pass_stencil_texture_xe(name) name
+  #define pass_next_after_stencil_texture_xe ,
+#endif
+#ifndef param_depth_texture_xe
+  #define param_depth_texture_xe(name)
+#endif
+#ifndef param_next_after_depth_texture_xe
+  #define param_next_after_depth_texture_xe
+#endif
+#ifndef pass_depth_texture_xe
+  #define pass_depth_texture_xe(name)
+#endif
+#ifndef pass_next_after_depth_texture_xe
+  #define pass_next_after_depth_texture_xe
+#endif
+#ifndef param_stencil_texture_xe
+  #define param_stencil_texture_xe(name)
+#endif
+#ifndef param_next_after_stencil_texture_xe
+  #define param_next_after_stencil_texture_xe
+#endif
+#ifndef pass_stencil_texture_xe
+  #define pass_stencil_texture_xe(name)
+#endif
+#ifndef pass_next_after_stencil_texture_xe
+  #define pass_next_after_stencil_texture_xe
+#endif
+
+uint XeResolveHostDepthTileSizeX(XeResolveInfo resolve_info) {
+  return 80u * resolve_info.resolution_scale.x;
+}
+
+uint XeResolveHostDepthTileSizeY(XeResolveInfo resolve_info) {
+  return 16u * resolve_info.resolution_scale.y;
+}
+
+uint XeResolveHostDepthTilePixelSizeX(XeResolveInfo resolve_info) {
+  #if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 4
+    return XeResolveHostDepthTileSizeX(resolve_info) >> 1u;
+  #else
+    return XeResolveHostDepthTileSizeX(resolve_info);
+  #endif
+}
+
+uint XeResolveHostDepthTilePixelSizeY(XeResolveInfo resolve_info) {
+  #if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES >= 2
+    return XeResolveHostDepthTileSizeY(resolve_info) >> 1u;
+  #else
+    return XeResolveHostDepthTileSizeY(resolve_info);
+  #endif
+}
+
+uint XeResolveHostDepthPixelsPerThread() { return 8u; }
+
+uint XeResolveHostDepthRoundToNearestEven(float value) {
+  float floor_value = floor(value);
+  float frac = value - floor_value;
+  uint result = uint(floor_value);
+  if (frac > 0.5f || (frac == 0.5f && ((result & 1u) != 0u))) {
+    result += 1u;
+  }
+  return result;
+}
+
+uint2_xe XeResolveHostDepthSourceSampleToTexel(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_depth)) {
+  uint tile_size_x = XeResolveHostDepthTileSizeX(resolve_info);
+  uint tile_size_y = XeResolveHostDepthTileSizeY(resolve_info);
+
+  uint source_tile_x = source_sample.x / tile_size_x;
+  uint source_tile_y = source_sample.y / tile_size_y;
+  uint sample_in_tile_x = source_sample.x - source_tile_x * tile_size_x;
+  uint sample_in_tile_y = source_sample.y - source_tile_y * tile_size_y;
+  uint source_local_tile =
+      source_tile_y *
+          constant_xe(xe_resolve_host_depth,
+                      xe_resolve_host_depth_dump_pitch_tiles) +
+      source_tile_x;
+  uint nonwrapped_tile =
+      constant_xe(xe_resolve_host_depth, xe_resolve_host_depth_dump_base) +
+      source_local_tile;
+  uint source_linear_tile =
+      nonwrapped_tile -
+      constant_xe(xe_resolve_host_depth,
+                  xe_resolve_host_depth_source_base_tiles);
+  uint source_pitch_tiles =
+      constant_xe(xe_resolve_host_depth,
+                  xe_resolve_host_depth_source_pitch_tiles);
+  uint source_rt_tile_y = source_linear_tile / source_pitch_tiles;
+  uint source_rt_tile_x =
+      source_linear_tile - source_rt_tile_y * source_pitch_tiles;
+  return uint2_xe(source_rt_tile_x * tile_size_x + sample_in_tile_x,
+                  source_rt_tile_y * tile_size_y + sample_in_tile_y);
+}
+
+uint2_xe XeResolveHostDepthSelectedSampleOffset(
+    XeResolveInfo resolve_info) {
+  #if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 1
+    return uint_x2_xe(0u);
+  #else
+    uint sample_index = XeResolveFirstSampleIndex(resolve_info.sample_select);
+    return (uint_x2_xe(sample_index) >> uint2_xe(1u, 0u)) & 1u;
+  #endif
+}
+
+uint XeResolveHostDepthGet2xSampleId(
+    uint source_sample_y
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_depth)) {
+  return ((source_sample_y & 1u) != 0u)
+             ? constant_xe(xe_resolve_host_depth,
+                           xe_resolve_host_depth_msaa_2x_sample_1)
+             : constant_xe(xe_resolve_host_depth,
+                           xe_resolve_host_depth_msaa_2x_sample_0);
+}
+
+float XeResolveHostDepthFetchDepth(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_depth)
+    param_next_after_depth_texture_xe
+    param_depth_texture_xe(xe_resolve_host_depth_source)) {
+  uint2_xe source_texel = XeResolveHostDepthSourceSampleToTexel(
+      resolve_info, source_sample
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth));
+  #if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 1
+    return texel_fetch_2d_xe(xe_resolve_host_depth_source,
+                             int2_xe(source_texel), 0).r;
+  #elif XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 2
+    uint sample_id = XeResolveHostDepthGet2xSampleId(
+        source_texel.y
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_depth));
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_depth_source,
+        int2_xe(source_texel.x, source_texel.y >> 1u), int(sample_id)).r;
+  #else
+    uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_depth_source,
+        int2_xe(source_texel.x >> 1u, source_texel.y >> 1u),
+        int(sample_id)).r;
+  #endif
+}
+
+uint XeResolveHostDepthFetchStencil(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_depth)
+    param_next_after_stencil_texture_xe
+    param_stencil_texture_xe(xe_resolve_host_depth_stencil)) {
+  if ((constant_xe(xe_resolve_host_depth, xe_resolve_host_depth_flags) &
+       XE_RESOLVE_HOST_DEPTH_FLAG_HAS_STENCIL) == 0u) {
+    return 0u;
+  }
+
+  uint2_xe source_texel = XeResolveHostDepthSourceSampleToTexel(
+      resolve_info, source_sample
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth));
+  #if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 1
+    return texel_fetch_2d_xe(xe_resolve_host_depth_stencil,
+                             int2_xe(source_texel), 0).r & 0xFFu;
+  #elif XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 2
+    uint sample_id = XeResolveHostDepthGet2xSampleId(
+        source_texel.y
+        pass_next_after_const_buffer_xe
+        pass_const_buffer_xe(xe_resolve_host_depth));
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_depth_stencil,
+        int2_xe(source_texel.x, source_texel.y >> 1u), int(sample_id)).r &
+        0xFFu;
+  #else
+    uint sample_id = (source_texel.x & 1u) | ((source_texel.y & 1u) << 1u);
+    return texel_fetch_2d_ms_xe(
+        xe_resolve_host_depth_stencil,
+        int2_xe(source_texel.x >> 1u, source_texel.y >> 1u),
+        int(sample_id)).r &
+        0xFFu;
+  #endif
+}
+
+uint2_xe XeResolveHostDepthSourceSampleForLane(XeResolveInfo resolve_info,
+                                               uint2_xe pixel_index,
+                                               uint lane) {
+  uint2_xe source_pixel =
+      uint2_xe(pixel_index.x + lane,
+               max(pixel_index.y,
+                   resolve_info.half_pixel_offset_fill_source.y)) +
+      resolve_info.edram_offset_scaled;
+  #if XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 1
+    return source_pixel;
+  #elif XE_RESOLVE_HOST_DEPTH_MSAA_SAMPLES == 2
+    return (source_pixel << uint2_xe(0u, 1u)) +
+           XeResolveHostDepthSelectedSampleOffset(resolve_info);
+  #else
+    return (source_pixel << uint_x2_xe(1u)) +
+           XeResolveHostDepthSelectedSampleOffset(resolve_info);
+  #endif
+}
+
+uint XeResolveHostDepthPack(
+    XeResolveInfo resolve_info, uint2_xe source_sample
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_depth)
+    param_next_after_depth_texture_xe
+    param_depth_texture_xe(xe_resolve_host_depth_source)
+    param_next_after_stencil_texture_xe
+    param_stencil_texture_xe(xe_resolve_host_depth_stencil)) {
+  float depth = XeResolveHostDepthFetchDepth(
+      resolve_info, source_sample
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source));
+  uint stencil = XeResolveHostDepthFetchStencil(
+      resolve_info, source_sample
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+
+  uint depth24;
+  if (resolve_info.edram_format == kXenosDepthRenderTargetFormat_D24FS8) {
+    bool round_depth =
+        (constant_xe(xe_resolve_host_depth, xe_resolve_host_depth_flags) &
+         XE_RESOLVE_HOST_DEPTH_FLAG_ROUND_DEPTH) != 0u;
+    depth24 = XeFloat32To20e4(float_bits_to_uint_xe(depth * 2.0f),
+                              round_depth);
+  } else {
+    float depth_f = min(max(depth, 0.0f), 1.0f) * 16777215.0f;
+    depth24 = XeResolveHostDepthRoundToNearestEven(depth_f);
+  }
+
+  return (depth24 << 8u) | (stencil & 0xFFu);
+}
+
+bool XeResolveHostDepthGetPixelIndex(
+    XeResolveInfo resolve_info, uint2_xe thread_index,
+    out_param_xe(uint2_xe, pixel_index)
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_depth)) {
+  if (thread_index.x >=
+          constant_xe(xe_resolve_host_depth,
+                      xe_resolve_host_depth_thread_count_x) ||
+      thread_index.y >=
+          constant_xe(xe_resolve_host_depth,
+                      xe_resolve_host_depth_thread_count_y)) {
+    return false;
+  }
+
+  uint pixels_per_thread = XeResolveHostDepthPixelsPerThread();
+  uint tile_pixel_size_x = XeResolveHostDepthTilePixelSizeX(resolve_info);
+  uint tile_pixel_size_y = XeResolveHostDepthTilePixelSizeY(resolve_info);
+  uint dispatch_pixel_x = thread_index.x * pixels_per_thread;
+  uint dispatch_pixel_y = thread_index.y;
+  uint dispatch_tile_x = dispatch_pixel_x / tile_pixel_size_x;
+  uint dispatch_tile_y = dispatch_pixel_y / tile_pixel_size_y;
+  uint pixel_in_tile_x =
+      dispatch_pixel_x - dispatch_tile_x * tile_pixel_size_x;
+  uint pixel_in_tile_y =
+      dispatch_pixel_y - dispatch_tile_y * tile_pixel_size_y;
+
+  uint local_tile =
+      constant_xe(xe_resolve_host_depth,
+                  xe_resolve_host_depth_dispatch_offset) +
+      dispatch_tile_y *
+          constant_xe(xe_resolve_host_depth,
+                      xe_resolve_host_depth_dump_pitch_tiles) +
+      dispatch_tile_x;
+  uint dump_pitch_tiles =
+      constant_xe(xe_resolve_host_depth,
+                  xe_resolve_host_depth_dump_pitch_tiles);
+  uint dump_tile_y = local_tile / dump_pitch_tiles;
+  uint dump_tile_x = local_tile - dump_tile_y * dump_pitch_tiles;
+  uint2_xe dump_pixel =
+      uint2_xe(dump_tile_x * tile_pixel_size_x + pixel_in_tile_x,
+               dump_tile_y * tile_pixel_size_y + pixel_in_tile_y);
+
+  if (dump_pixel.x < resolve_info.edram_offset_scaled.x ||
+      dump_pixel.y < resolve_info.edram_offset_scaled.y) {
+    return false;
+  }
+  pixel_index = dump_pixel - resolve_info.edram_offset_scaled;
+  if (pixel_index.x >= (resolve_info.width_div_8_scaled << 3u) ||
+      pixel_index.y >=
+          constant_xe(xe_resolve_host_depth,
+                      xe_resolve_host_depth_height_scaled)) {
+    return false;
+  }
+  return true;
+}
+
+void XeResolveHostDepthApplyHalfPixelOffset32(
+    XeResolveInfo resolve_info, uint2_xe pixel_index,
+    inout_param_xe(uint4_xe, pixels_0123),
+    inout_param_xe(uint4_xe, pixels_4567)) {
+  dont_flatten_xe
+  if (pixel_index.x == 0u &&
+      resolve_info.half_pixel_offset_fill_source.x != 0u) {
+    if (resolve_info.half_pixel_offset_fill_source.x >= 2u) {
+      if (resolve_info.half_pixel_offset_fill_source.x >= 3u) {
+        pixels_0123.z = pixels_0123.w;
+      }
+      pixels_0123.y = pixels_0123.z;
+    }
+    pixels_0123.x = pixels_0123.y;
+  }
+}
+
+void XeResolveHostDepthMain(
+    uint2_xe thread_index
+    param_next_after_byte_buffer_xe
+    param_byte_buffer_wo_xe(xe_resolve_dest)
+    param_next_after_push_consts_xe
+    param_push_consts_xe
+    param_next_after_const_buffer_xe
+    param_const_buffer_xe(xe_resolve_host_depth)
+    param_next_after_depth_texture_xe
+    param_depth_texture_xe(xe_resolve_host_depth_source)
+    param_next_after_stencil_texture_xe
+    param_stencil_texture_xe(xe_resolve_host_depth_stencil)) {
+  XeResolveInfo resolve_info = XeResolveGetInfo(pass_push_consts_xe);
+  uint2_xe pixel_index;
+  if (!XeResolveHostDepthGetPixelIndex(
+          resolve_info, thread_index, pixel_index
+          pass_next_after_const_buffer_xe
+          pass_const_buffer_xe(xe_resolve_host_depth))) {
+    return;
+  }
+
+  uint4_xe pixels_0123;
+  uint4_xe pixels_4567;
+  pixels_0123.x = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 0u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+  pixels_0123.y = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 1u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+  pixels_0123.z = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 2u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+  pixels_0123.w = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 3u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+  pixels_4567.x = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 4u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+  pixels_4567.y = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 5u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+  pixels_4567.z = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 6u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+  pixels_4567.w = XeResolveHostDepthPack(
+      resolve_info,
+      XeResolveHostDepthSourceSampleForLane(resolve_info, pixel_index, 7u)
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_depth)
+      pass_next_after_depth_texture_xe
+      pass_depth_texture_xe(xe_resolve_host_depth_source)
+      pass_next_after_stencil_texture_xe
+      pass_stencil_texture_xe(xe_resolve_host_depth_stencil));
+
+  XeResolveHostDepthApplyHalfPixelOffset32(resolve_info, pixel_index,
+                                           pixels_0123, pixels_4567);
+  XeResolveSwap8PixelsRedBlue32bpp(resolve_info, pixels_0123, pixels_4567);
+  uint dest_address = XeResolveDestPixelAddress(resolve_info, pixel_index, 2u);
+  byte_buffer_align16_store16_xe(
+      xe_resolve_dest, dest_address,
+      XeEndianSwap32(pixels_0123, resolve_info.dest_endian_128));
+  dest_address += XeResolveLocalXAddressXor(4u, 2u);
+  byte_buffer_align16_store16_xe(
+      xe_resolve_dest, dest_address,
+      XeEndianSwap32(pixels_4567, resolve_info.dest_endian_128));
+}
+
+#endif  // XENIA_GPU_SHADERS_RESOLVE_HOST_DEPTH_XESLI_

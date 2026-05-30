@@ -1,0 +1,40 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#include "resolve_host_color.xesli"
+
+#define LOCAL_SIZE_X_XE 8
+#define LOCAL_SIZE_Y_XE 8
+#define LOCAL_SIZE_Z_XE 1
+entry_bindings_begin_compute_xe
+  XE_RESOLVE_PUSH_CONST_BINDING
+  entry_binding_next_xe
+  byte_buffer_wo_binding_xe(xe_resolve_dest, buffer(1))
+  entry_binding_next_xe
+  XE_RESOLVE_HOST_COLOR_CONSTANTS_BINDING
+#if SHADING_LANGUAGE_MSL_XE
+  entry_binding_next_xe
+  XE_RESOLVE_HOST_COLOR_SOURCE_TEXTURE_BINDING
+#endif
+entry_bindings_end_inputs_begin_compute_xe
+  entry_in_global_thread_id_xe
+entry_inputs_end_code_begin_compute_xe
+{
+  XeResolveHostColorMain(
+      in_global_thread_id_xe.xy
+      pass_next_after_byte_buffer_xe
+      pass_byte_buffer_xe(xe_resolve_dest)
+      pass_next_after_push_consts_xe
+      pass_push_consts_xe
+      pass_next_after_const_buffer_xe
+      pass_const_buffer_xe(xe_resolve_host_color)
+      pass_next_after_texture_xe
+      pass_texture_xe(xe_resolve_host_color_source));
+}
+entry_code_end_compute_xe

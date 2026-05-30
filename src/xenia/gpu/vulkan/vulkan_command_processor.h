@@ -59,6 +59,9 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Single-descriptor layouts for use within a single frame.
   enum class SingleTransientDescriptorLayout {
     kStorageBufferCompute,
+    // Uniform buffer at binding 1 for shaders that keep binding 0 as push
+    // constants for D3D-style root constants.
+    kUniformBufferComputeB1,
     kCount,
   };
 

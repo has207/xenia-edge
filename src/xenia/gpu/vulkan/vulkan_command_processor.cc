@@ -354,6 +354,19 @@ bool VulkanCommandProcessor::SetupContext() {
         "bound to the compute shader");
     return false;
   }
+  descriptor_set_layout_binding_transient.binding = 1;
+  descriptor_set_layout_binding_transient.descriptorType =
+      VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  if (dfn.vkCreateDescriptorSetLayout(
+          device, &descriptor_set_layout_create_info, nullptr,
+          &descriptor_set_layouts_single_transient_[size_t(
+              SingleTransientDescriptorLayout::kUniformBufferComputeB1)]) !=
+      VK_SUCCESS) {
+    XELOGE(
+        "Failed to create a Vulkan descriptor set layout for a uniform buffer "
+        "bound to binding 1 in the compute shader");
+    return false;
+  }
 
   shared_memory_ = std::make_unique<VulkanSharedMemory>(
       *this, *memory_, trace_writer_, guest_shader_pipeline_stages_);
