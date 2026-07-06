@@ -56,6 +56,12 @@ jobs:
           name: xenia_edge_linux
           path: linux_artifacts
 
+      - name: Download Linux arm64 artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: xenia_edge_linux_arm64
+          path: linux_arm64_artifacts
+
       - name: Download Windows artifacts
         uses: actions/download-artifact@v8
         with:
@@ -132,6 +138,8 @@ jobs:
           cd linux_artifacts
           # For Linux, just rename the AppImage (no need to zip a single file)
           mv xenia_edge.AppImage ../xenia_edge_linux.AppImage
+          cd ../linux_arm64_artifacts
+          mv xenia_edge.AppImage ../xenia_edge_linux_arm64.AppImage
           cd ../windows_artifacts
           7z a ../xenia_edge_windows.zip * -xr!'*.pdb' -mx9 -bb3
           cd ..
@@ -159,6 +167,7 @@ jobs:
 
           # Create release
           gh release create $tag \
-            xenia_edge_linux.AppImage xenia_edge_windows.zip \
+            xenia_edge_linux.AppImage xenia_edge_linux_arm64.AppImage \
+            xenia_edge_windows.zip \
             xenia_edge_macos.dmg \
             --target $GITHUB_SHA -t "xenia_edge" --notes-file release_notes.md

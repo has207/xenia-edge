@@ -20,11 +20,24 @@ jobs:
         run: ./xenia-build.py lint --all
 
   build-linux:
-    name: Build Linux
+    name: Build Linux ${{ matrix.arch }}
     needs: lint
     # Build on the oldest supported LTS so the AppImage's glibc floor (taken from
-    # the build host) stays low enough for Ubuntu 22.04 / Debian 12 users.
-    runs-on: ubuntu-22.04
+    # the build host) stays low enough for Ubuntu 22.04 / Debian 12 users. The
+    # arm64 leg uses GitHub's native aarch64 runner so there's no cross-compile.
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+            linuxdeploy_arch: x86_64
+            artifact: xenia_edge_linux
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            linuxdeploy_arch: aarch64
+            artifact: xenia_edge_linux_arm64
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,9 +48,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/linuxdeploy
-          key: ${{ runner.os }}-linuxdeploy-tools
+          key: ${{ runner.os }}-${{ runner.arch }}-linuxdeploy-tools
           restore-keys: |
-            ${{ runner.os }}-linuxdeploy-
+            ${{ runner.os }}-${{ runner.arch }}-linuxdeploy-
 
       - name: Cache Slang
         id: cache-slang
@@ -71,8 +84,8 @@ jobs:
           # Download linuxdeploy if not cached.
           if [ '${{ steps.cache-linuxdeploy.outputs.cache-hit }}' != 'true' ]; then
             mkdir -p ~/linuxdeploy
-            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy
-            wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage -O ~/linuxdeploy/linuxdeploy-plugin-appimage
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.linuxdeploy_arch }}.AppImage -O ~/linuxdeploy/linuxdeploy
+            wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${{ matrix.linuxdeploy_arch }}.AppImage -O ~/linuxdeploy/linuxdeploy-plugin-appimage
             chmod +x ~/linuxdeploy/linuxdeploy ~/linuxdeploy/linuxdeploy-plugin-appimage
           fi
           echo "$HOME/linuxdeploy" >> $GITHUB_PATH
@@ -151,7 +164,7 @@ jobs:
         if: steps.prepare_artifacts.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: xenia_edge_linux
+          name: ${{ matrix.artifact }}
           path: artifacts/release
           if-no-files-found: error
 
