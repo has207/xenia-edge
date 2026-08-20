@@ -57,11 +57,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download Linux artifacts
+      - name: Download Linux x86_64 artifacts
         uses: actions/download-artifact@v8
         with:
-          name: xenia_edge_linux
-          path: linux_artifacts
+          name: xenia_edge_linux_x86_64
+          path: linux_x86_64_artifacts
+
+      - name: Download Linux aarch64 artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: xenia_edge_linux_aarch64
+          path: linux_aarch64_artifacts
 
       - name: Download Windows artifacts
         uses: actions/download-artifact@v8
@@ -139,10 +145,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           # Hoist linux/windows artifacts; macOS DMG is already at top level.
-          cd linux_artifacts
-          # For Linux, just rename the AppImage (no need to zip a single file)
-          mv xenia_edge.AppImage ../xenia_edge_linux.AppImage
-          cd ../windows_artifacts
+          # Keep the existing x86_64 asset name for compatibility and suffix the new aarch64 build.
+          # For Linux, just rename the AppImages (no need to zip a single file)
+          mv linux_x86_64_artifacts/xenia_edge.AppImage xenia_edge_linux.AppImage
+          mv linux_aarch64_artifacts/xenia_edge.AppImage xenia_edge_linux_aarch64.AppImage
+          cd windows_artifacts
           7z a ../xenia_edge_windows.zip * -xr!'*.pdb' -mx9 -bb3
           cd ..
 
@@ -169,6 +176,7 @@ jobs:
 
           # Create release
           gh release create $tag \
-            xenia_edge_linux.AppImage xenia_edge_windows.zip \
+            xenia_edge_linux.AppImage xenia_edge_linux_aarch64.AppImage \
+            xenia_edge_windows.zip \
             xenia_edge_macos.dmg \
             --target $GITHUB_SHA -t "xenia_edge" --notes-file release_notes.md
