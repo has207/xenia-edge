@@ -787,22 +787,8 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
           pixel_1 += msaa_resolve_pixel_1;
         }
       }
-      // For k_2_10_10_10_FLOAT, only apply exp_bias to RGB (7e3 float), not
-      // alpha (2-bit fixed-point [0, 1]) - unless the destination format can
-      // store alpha > 1.0 (float formats), in which case apply to all channels
-      // as the game expects the expanded range.
-      dont_flatten_xe if ((resolve_info.edram_format ==
-                               kXenosColorRenderTargetFormat_2_10_10_10_FLOAT ||
-                           resolve_info.edram_format ==
-                               kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16) &&
-                          resolve_info.dest_format != kXenosFormat_16_16_16_16_FLOAT &&
-                          resolve_info.dest_format != kXenosFormat_32_32_32_32_FLOAT) {
-        pixel_0.xyz *= exp_bias;
-        pixel_1.xyz *= exp_bias;
-      } else {
-        pixel_0 *= exp_bias;
-        pixel_1 *= exp_bias;
-      }
+      pixel_0 *= exp_bias;
+      pixel_1 *= exp_bias;
       dont_flatten_xe if (resolve_info.dest_swap) {
         pixel_0 = pixel_0.bgra;
         pixel_1 = pixel_1.bgra;
@@ -883,26 +869,10 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
           pixel_3 += msaa_resolve_pixel_3;
         }
       }
-      // For k_2_10_10_10_FLOAT, only apply exp_bias to RGB (7e3 float), not
-      // alpha (2-bit fixed-point [0, 1]) - unless the destination format can
-      // store alpha > 1.0 (float formats), in which case apply to all channels
-      // as the game expects the expanded range.
-      dont_flatten_xe if ((resolve_info.edram_format ==
-                               kXenosColorRenderTargetFormat_2_10_10_10_FLOAT ||
-                           resolve_info.edram_format ==
-                               kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16) &&
-                          resolve_info.dest_format != kXenosFormat_16_16_16_16_FLOAT &&
-                          resolve_info.dest_format != kXenosFormat_32_32_32_32_FLOAT) {
-        pixel_0.xyz *= exp_bias;
-        pixel_1.xyz *= exp_bias;
-        pixel_2.xyz *= exp_bias;
-        pixel_3.xyz *= exp_bias;
-      } else {
-        pixel_0 *= exp_bias;
-        pixel_1 *= exp_bias;
-        pixel_2 *= exp_bias;
-        pixel_3 *= exp_bias;
-      }
+      pixel_0 *= exp_bias;
+      pixel_1 *= exp_bias;
+      pixel_2 *= exp_bias;
+      pixel_3 *= exp_bias;
       dont_flatten_xe if (resolve_info.dest_swap) {
         pixel_0 = pixel_0.bgra;
         pixel_1 = pixel_1.bgra;
@@ -940,17 +910,7 @@ uint XeResolveEdramPixelStrideBytes(XeResolveInfo resolve_info) {
         pixels_0123 = XePWLGammaToLinear4(pixels_0123);
         pixels_4567 = XePWLGammaToLinear4(pixels_4567);
       }
-      // exp_bias adjusts the exponent of the 7e3 floats of k_2_10_10_10_FLOAT.
-      // Its alpha is 2-bit fixed-point [0, 1], so selecting it leaves only the
-      // MSAA averaging below.
-      bool alpha_is_fixed_2bit =
-          source_alpha &&
-          (resolve_info.edram_format ==
-               kXenosColorRenderTargetFormat_2_10_10_10_FLOAT ||
-           resolve_info.edram_format ==
-               kXenosColorRenderTargetFormat_2_10_10_10_FLOAT_AS_16_16_16_16);
-      float exp_bias =
-          alpha_is_fixed_2bit ? 1.0f : resolve_info.dest_exp_bias_factor;
+      float exp_bias = resolve_info.dest_exp_bias_factor;
       dont_flatten_xe
       if (resolve_info.sample_select >= kXenosCopySampleSelect_01) {
         uint tile_row_stride_bytes = 4u * 80u * resolve_info.resolution_scale.x;
