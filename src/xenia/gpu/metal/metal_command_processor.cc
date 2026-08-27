@@ -4507,10 +4507,19 @@ bool MetalCommandProcessor::IssueDrawDxil(
   MetalDxilBinder::Constants constants;
   constants.system = {&spirv_system_constants_,
                       uint32_t(sizeof(spirv_system_constants_))};
+  // The uniform block is declared as float_count vec4s (256 with
+  // float_dynamic_addressing), so nothing past that is addressable.
+  auto declared_float_bytes = [](const Shader* shader) -> uint32_t {
+    if (!shader) {
+      return 0;
+    }
+    return std::min(uint32_t(shader->constant_register_map().float_count) * 16u,
+                    uint32_t(kCbvSizeBytes));
+  };
   constants.float_vertex = {msl_cached_float_constants_vertex_.data(),
-                            uint32_t(kCbvSizeBytes)};
+                            declared_float_bytes(dxil_vertex_shader)};
   constants.float_pixel = {msl_cached_float_constants_pixel_.data(),
-                           uint32_t(kCbvSizeBytes)};
+                           declared_float_bytes(dxil_pixel_shader)};
   constants.bool_loop = {msl_cached_bool_loop_constants_.data(),
                          uint32_t(kBoolLoopConstantsSize)};
   constants.fetch = {msl_cached_fetch_constants_.data(),
