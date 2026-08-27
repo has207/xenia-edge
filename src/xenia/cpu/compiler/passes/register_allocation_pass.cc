@@ -76,26 +76,24 @@ bool RegisterAllocationPass::Run(HIRBuilder* builder) {
   // Really, it'd just be nice to have someone who knew what they
   // were doing lower SSA and do this right.
 
-  uint16_t block_ordinal = 0;
-  uint32_t instr_ordinal = 0;
+  // Uses sort by ordinal, so every block is numbered before any allocation.
+  {
+    uint16_t pre_block_ordinal = 0;
+    uint32_t pre_instr_ordinal = 0;
+    for (auto b = builder->first_block(); b; b = b->next) {
+      b->ordinal = pre_block_ordinal++;
+      for (auto i = b->instr_head; i; i = i->next) {
+        i->ordinal = pre_instr_ordinal++;
+      }
+    }
+  }
+
   auto block = builder->first_block();
   while (block) {
-    // Sequential block ordinals.
-    block->ordinal = block_ordinal++;
-
     // Reset all state.
     PrepareBlockState();
 
-    // Renumber all instructions in the block. This is required so that
-    // we can sort the usage pointers below.
     auto instr = block->instr_head;
-    while (instr) {
-      // Sequential global instruction ordinals.
-      instr->ordinal = instr_ordinal++;
-      instr = instr->next;
-    }
-
-    instr = block->instr_head;
     while (instr) {
       const auto info = instr->opcode;
       uint32_t signature = info->signature;
