@@ -255,37 +255,53 @@ EMITTER_OPCODE_TABLE(OPCODE_TRAP, TRAP);
 struct TRAP_TRUE_I8
     : Sequence<TRAP_TRUE_I8, I<OPCODE_TRAP_TRUE, VoidOp, I8Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Trap(i.instr->flags);
     e.L(skip);
+    // The trap path's host transition leaves the tracker Known-Fpu; the
+    // skip path kept entry state. Meet them.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct TRAP_TRUE_I16
     : Sequence<TRAP_TRUE_I16, I<OPCODE_TRAP_TRUE, VoidOp, I16Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Trap(i.instr->flags);
     e.L(skip);
+    // The trap path's host transition leaves the tracker Known-Fpu; the
+    // skip path kept entry state. Meet them.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct TRAP_TRUE_I32
     : Sequence<TRAP_TRUE_I32, I<OPCODE_TRAP_TRUE, VoidOp, I32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Trap(i.instr->flags);
     e.L(skip);
+    // The trap path's host transition leaves the tracker Known-Fpu; the
+    // skip path kept entry state. Meet them.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct TRAP_TRUE_I64
     : Sequence<TRAP_TRUE_I64, I<OPCODE_TRAP_TRUE, VoidOp, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Trap(i.instr->flags);
     e.L(skip);
+    // The trap path's host transition leaves the tracker Known-Fpu; the
+    // skip path kept entry state. Meet them.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_TRAP_TRUE, TRAP_TRUE_I8, TRAP_TRUE_I16,
@@ -339,44 +355,52 @@ struct CALL_TRUE_I8
     : Sequence<CALL_TRUE_I8, I<OPCODE_CALL_TRUE, VoidOp, I8Op, SymbolOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->is_guest());
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Call(i.instr, static_cast<GuestFunction*>(i.src2.value));
     e.L(skip);
-    e.ForgetFpcrMode();
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_TRUE_I16
     : Sequence<CALL_TRUE_I16, I<OPCODE_CALL_TRUE, VoidOp, I16Op, SymbolOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->is_guest());
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Call(i.instr, static_cast<GuestFunction*>(i.src2.value));
     e.L(skip);
-    e.ForgetFpcrMode();
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_TRUE_I32
     : Sequence<CALL_TRUE_I32, I<OPCODE_CALL_TRUE, VoidOp, I32Op, SymbolOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->is_guest());
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Call(i.instr, static_cast<GuestFunction*>(i.src2.value));
     e.L(skip);
-    e.ForgetFpcrMode();
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_TRUE_I64
     : Sequence<CALL_TRUE_I64, I<OPCODE_CALL_TRUE, VoidOp, I64Op, SymbolOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->is_guest());
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     e.Call(i.instr, static_cast<GuestFunction*>(i.src2.value));
     e.L(skip);
-    e.ForgetFpcrMode();
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_TRUE_F32
@@ -408,10 +432,12 @@ struct CALL_INDIRECT
         e.mov(e.w16, static_cast<uint32_t>(i.src1.constant()));
         e.CallIndirect(i.instr, 16);
       }
+    } else if (e.W16Holds(i.src1.value)) {
+      // The preceding LOAD_CONTEXT loaded the target straight into w16.
+      e.CallIndirect(i.instr, 16);
     } else {
       e.CallIndirect(i.instr, i.src1.reg().getIdx());
     }
-    e.ForgetFpcrMode();
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_CALL_INDIRECT, CALL_INDIRECT);
@@ -423,60 +449,80 @@ struct CALL_INDIRECT_TRUE_I8
     : Sequence<CALL_INDIRECT_TRUE_I8,
                I<OPCODE_CALL_INDIRECT_TRUE, VoidOp, I8Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     if (i.src2.is_constant) {
       e.mov(e.w16, static_cast<uint32_t>(i.src2.constant()));
       e.CallIndirect(i.instr, 16);
+    } else if (e.W16Holds(i.src2.value)) {
+      e.CallIndirect(i.instr, 16);
     } else {
       e.CallIndirect(i.instr, i.src2.reg().getIdx());
     }
     e.L(skip);
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_INDIRECT_TRUE_I16
     : Sequence<CALL_INDIRECT_TRUE_I16,
                I<OPCODE_CALL_INDIRECT_TRUE, VoidOp, I16Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     if (i.src2.is_constant) {
       e.mov(e.w16, static_cast<uint32_t>(i.src2.constant()));
       e.CallIndirect(i.instr, 16);
+    } else if (e.W16Holds(i.src2.value)) {
+      e.CallIndirect(i.instr, 16);
     } else {
       e.CallIndirect(i.instr, i.src2.reg().getIdx());
     }
     e.L(skip);
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_INDIRECT_TRUE_I32
     : Sequence<CALL_INDIRECT_TRUE_I32,
                I<OPCODE_CALL_INDIRECT_TRUE, VoidOp, I32Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     if (i.src2.is_constant) {
       e.mov(e.w16, static_cast<uint32_t>(i.src2.constant()));
       e.CallIndirect(i.instr, 16);
+    } else if (e.W16Holds(i.src2.value)) {
+      e.CallIndirect(i.instr, 16);
     } else {
       e.CallIndirect(i.instr, i.src2.reg().getIdx());
     }
     e.L(skip);
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_INDIRECT_TRUE_I64
     : Sequence<CALL_INDIRECT_TRUE_I64,
                I<OPCODE_CALL_INDIRECT_TRUE, VoidOp, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    const FPCRMode entry_mode = e.fpcr_mode();
     auto& skip = e.NewCachedLabel();
     e.cbz_near(i.src1, skip);
     if (i.src2.is_constant) {
       e.mov(e.w16, static_cast<uint32_t>(i.src2.constant()));
       e.CallIndirect(i.instr, 16);
+    } else if (e.W16Holds(i.src2.value)) {
+      e.CallIndirect(i.instr, 16);
     } else {
       e.CallIndirect(i.instr, i.src2.reg().getIdx());
     }
     e.L(skip);
+    // Post-call state is Known-Fpu; the skip path kept entry state.
+    e.MergeFpcrModeAfterConditional(entry_mode);
   }
 };
 struct CALL_INDIRECT_TRUE_F32

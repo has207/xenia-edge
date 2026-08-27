@@ -239,6 +239,23 @@ struct LOAD_CONTEXT_I64
     : Sequence<LOAD_CONTEXT_I64, I<OPCODE_LOAD_CONTEXT, I64Op, OffsetOp>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     auto offset = static_cast<uint32_t>(i.src1.value);
+    // Every blr/bctr is a single-use LOAD_CONTEXT of lr/ctr feeding the very
+    // next CALL_INDIRECT, whose thunk contract wants the target in w16 (the
+    // allocator can never satisfy that itself: w16 is outside the register
+    // map). Load w16 directly and skip the allocated dest entirely; the
+    // call reads only the low 32 bits of the target.
+    const hir::Instr* next = i.instr->next;
+    const bool single_use =
+        i.instr->dest->use_head && !i.instr->dest->use_head->next;
+    if (single_use && next &&
+        ((next->GetOpcodeNum() == OPCODE_CALL_INDIRECT &&
+          next->src1.value == i.instr->dest) ||
+         (next->GetOpcodeNum() == OPCODE_CALL_INDIRECT_TRUE &&
+          next->src2.value == i.instr->dest))) {
+      e.ldr(e.w16, ptr(e.GetContextReg(), offset));
+      e.DeclareW16Holds(i.instr->dest);
+      return;
+    }
     e.ldr(i.dest, ptr(e.GetContextReg(), offset));
   }
 };
@@ -575,20 +592,68 @@ struct ADD_I64 : Sequence<ADD_I64, I<OPCODE_ADD, I64Op, I64Op, I64Op>> {
 // operand needs nothing: ARM's default NaN is the one PPC produces.
 enum class FpBinOp { Add, Sub, Mul, Div };
 
+// Emits the hardware op and tests only its result: any NaN input propagates
+// to a NaN result, so one fcmp on dest replaces the two-operand screen. The
+// positional-NaN slow path sits in the function tail when the near-branch
+// bound allows, inline otherwise. NaN results are never canonicalised: a NaN
+// result with no NaN operand is an invalid operation, and dest already holds
+// the hardware default QNaN, which is PPC's (see the FPCR.DN invariant at
+// DEFAULT_FPU_FPCR).
 static void EmitFpBinOpWithPpcNan_F32(A64Emitter& e, SReg dest, SReg s1,
                                       SReg s2, FpBinOp op) {
-  // Ensure FPU FPCR (no flush-to-zero) for scalar operations.
   e.ChangeFpcrMode(FPCRMode::Fpu);
-  auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
-  // Check if either input is NaN. fccmp sets NZCV from immediate if the
-  // condition is false (i.e. s1 was already NaN), preserving V=1.
-  e.fcmp(s1, s1);
-  e.fccmp(s2, s2, 0b0001, VC);
-  e.b_near(VS, nan_path);
+  // Result-gated: the hardware op runs first and only its result is tested -
+  // any NaN input propagates to a NaN result. When dest aliases a source the
+  // slow path still needs the original value, preserved in scratch up front
+  // (a constant source already lives in scratch and cannot alias).
+  SReg t1 = s1;
+  SReg t2 = s2;
+  if (dest.getIdx() == s1.getIdx()) {
+    e.fmov(e.s2, s1);
+    t1 = e.s2;
+  }
+  if (dest.getIdx() == s2.getIdx()) {
+    if (s2.getIdx() == s1.getIdx()) {
+      t2 = t1;
+    } else {
+      e.fmov(e.s3, s2);
+      t2 = e.s3;
+    }
+  }
 
-  // Fast path: no NaN input — hardware op.
+  // Slow path: first NaN by position wins, quiet if SNaN. If neither operand
+  // is NaN, the result's NaN came from an invalid operation and dest already
+  // holds the hardware default QNaN, which is PPC's - leave it.
+  auto emit_nan_walk = [dest, t1, t2, &done](A64Emitter& e) {
+    auto& s1_not_nan = e.NewCachedLabel();
+    e.fcmp(t1, t1);
+    e.b_near(VC, s1_not_nan);
+    e.fmov(e.w0, t1);
+    e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
+    e.fmov(dest, e.w0);
+    e.b(done);
+    e.L(s1_not_nan);
+    e.fcmp(t2, t2);
+    e.b_near(VC, done);
+    e.fmov(e.w0, t2);
+    e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
+    e.fmov(dest, e.w0);
+    e.b(done);
+  };
+
+  const bool tail_ok = e.near_tail_branches_safe();
+  Xbyak_aarch64::Label* nan_path;
+  if (tail_ok) {
+    nan_path =
+        &e.AddToTail([emit_nan_walk](A64Emitter& e, Xbyak_aarch64::Label&) {
+          emit_nan_walk(e);
+        });
+  } else {
+    nan_path = &e.NewCachedLabel();
+  }
+
   switch (op) {
     case FpBinOp::Add:
       e.fadd(dest, s1, s2);
@@ -603,38 +668,73 @@ static void EmitFpBinOpWithPpcNan_F32(A64Emitter& e, SReg dest, SReg s1,
       e.fdiv(dest, s1, s2);
       break;
   }
-  e.b(done);
-
-  // Slow path: first NaN by position wins, quiet if SNaN.
-  e.L(nan_path);
-  auto& s1_not_nan = e.NewCachedLabel();
-  e.fcmp(s1, s1);
-  e.b_near(VC, s1_not_nan);
-  e.fmov(e.w0, s1);
-  e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
-  e.fmov(dest, e.w0);
-  e.b(done);
-  e.L(s1_not_nan);
-  e.fmov(e.w0, s2);
-  e.orr(e.w0, e.w0, static_cast<uint64_t>(1u << 22));
-  e.fmov(dest, e.w0);
-
+  e.fcmp(dest, dest);
+  e.b_near(VS, *nan_path);
+  if (!tail_ok) {
+    e.b(done);
+    e.L(*nan_path);
+    emit_nan_walk(e);
+  }
   e.L(done);
 }
 
+// See the F32 twin for the layout and the no-canonicalisation rationale (the
+// F64 default QNaN 0x7FF8000000000000 is likewise what hardware produces).
 static void EmitFpBinOpWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1,
                                       DReg s2, FpBinOp op) {
   e.ChangeFpcrMode(FPCRMode::Fpu);
-  auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
-  // Check if either input is NaN. fccmp sets NZCV from immediate if the
-  // condition is false (i.e. s1 was already NaN), preserving V=1.
-  e.fcmp(s1, s1);
-  e.fccmp(s2, s2, 0b0001, VC);
-  e.b_near(VS, nan_path);
+  // Result-gated: the hardware op runs first and only its result is tested -
+  // any NaN input propagates to a NaN result. When dest aliases a source the
+  // slow path still needs the original value, preserved in scratch up front
+  // (a constant source already lives in scratch and cannot alias).
+  DReg t1 = s1;
+  DReg t2 = s2;
+  if (dest.getIdx() == s1.getIdx()) {
+    e.fmov(e.d2, s1);
+    t1 = e.d2;
+  }
+  if (dest.getIdx() == s2.getIdx()) {
+    if (s2.getIdx() == s1.getIdx()) {
+      t2 = t1;
+    } else {
+      e.fmov(e.d3, s2);
+      t2 = e.d3;
+    }
+  }
 
-  // Fast path: no NaN input — hardware op.
+  // Slow path: first NaN by position wins, quiet if SNaN. If neither operand
+  // is NaN, the result's NaN came from an invalid operation and dest already
+  // holds the hardware default QNaN, which is PPC's - leave it.
+  auto emit_nan_walk = [dest, t1, t2, &done](A64Emitter& e) {
+    auto& s1_not_nan = e.NewCachedLabel();
+    e.fcmp(t1, t1);
+    e.b_near(VC, s1_not_nan);
+    e.fmov(e.x0, t1);
+    e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));
+    e.fmov(dest, e.x0);
+    e.b(done);
+    e.L(s1_not_nan);
+    e.fcmp(t2, t2);
+    e.b_near(VC, done);
+    e.fmov(e.x0, t2);
+    e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));
+    e.fmov(dest, e.x0);
+    e.b(done);
+  };
+
+  const bool tail_ok = e.near_tail_branches_safe();
+  Xbyak_aarch64::Label* nan_path;
+  if (tail_ok) {
+    nan_path =
+        &e.AddToTail([emit_nan_walk](A64Emitter& e, Xbyak_aarch64::Label&) {
+          emit_nan_walk(e);
+        });
+  } else {
+    nan_path = &e.NewCachedLabel();
+  }
+
   switch (op) {
     case FpBinOp::Add:
       e.fadd(dest, s1, s2);
@@ -649,24 +749,16 @@ static void EmitFpBinOpWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1,
       e.fdiv(dest, s1, s2);
       break;
   }
-  e.b(done);
-
-  // Slow path: first NaN by position wins, quiet if SNaN.
-  e.L(nan_path);
-  auto& s1_not_nan = e.NewCachedLabel();
-  e.fcmp(s1, s1);
-  e.b_near(VC, s1_not_nan);
-  e.fmov(e.x0, s1);
-  e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));
-  e.fmov(dest, e.x0);
-  e.b(done);
-  e.L(s1_not_nan);
-  e.fmov(e.x0, s2);
-  e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));
-  e.fmov(dest, e.x0);
-
+  e.fcmp(dest, dest);
+  e.b_near(VS, *nan_path);
+  if (!tail_ok) {
+    e.b(done);
+    e.L(*nan_path);
+    emit_nan_walk(e);
+  }
   e.L(done);
 }
+
 // PPC FMA NaN selection (PowerISA 4.6.7.2):
 // The first NaN operand by position (frA=s1, frC=s2, frB=s3) wins,
 // regardless of QNaN vs SNaN.  If it's an SNaN, quiet it (set the
@@ -681,101 +773,155 @@ static void EmitFpBinOpWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1,
 static void EmitFmaWithPpcNan_F64(A64Emitter& e, DReg dest, DReg s1, DReg s2,
                                   DReg s3, bool is_sub, bool negate) {
   e.ChangeFpcrMode(FPCRMode::Fpu);
-  auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
-  // Quick check: any NaN among the three operands?
-  e.fcmp(s1, s1);
-  e.fccmp(s2, s2, 0b0001, VC);
-  e.fccmp(s3, s3, 0b0001, VC);
-  e.b_near(VS, nan_path);
+  // Result-gated: the hardware FMA runs first and one fcmp on dest replaces
+  // the three-operand screen, since any NaN input propagates to the result.
+  // The slow path walks the operands in A, B, C order (HIR order is
+  // (A, C, B), so s1, s3, s2), takes the first NaN quieted, and if none is
+  // NaN leaves dest alone: the result NaN was generated (0*inf, inf-inf)
+  // and dest already holds the hardware default QNaN, which is PPC's. It
+  // sits in the function tail when the near-branch bound allows, inline
+  // otherwise, and every exit rejoins below the fneg, so NaNs are never
+  // negated.
+  // When dest aliases a source (reachable for non-Rc double forms via
+  // allocator eviction) the aliased value is preserved in v3 - the one
+  // vector scratch the call sites leave free - before the FMA overwrites
+  // it. The walk reads only the preserved operands, never dest: ARM FNMSUB
+  // negates the addend before the fused op, so a NaN addend can reach dest
+  // sign-flipped.
+  DReg t1 = s1;
+  DReg t2 = s2;
+  DReg t3 = s3;
+  if (dest.getIdx() == s1.getIdx() || dest.getIdx() == s2.getIdx() ||
+      dest.getIdx() == s3.getIdx()) {
+    const DReg preserved = DReg(3);
+    e.fmov(preserved, dest);
+    if (s1.getIdx() == dest.getIdx()) {
+      t1 = preserved;
+    }
+    if (s2.getIdx() == dest.getIdx()) {
+      t2 = preserved;
+    }
+    if (s3.getIdx() == dest.getIdx()) {
+      t3 = preserved;
+    }
+  }
+  auto emit_nan_walk = [dest, t1, t2, t3, &done](A64Emitter& e) {
+    DReg order[3] = {t1, t3, t2};
+    for (int step = 0; step < 3; ++step) {
+      auto& not_nan = e.NewCachedLabel();
+      e.fcmp(order[step], order[step]);
+      e.b_near(VC, not_nan);
+      e.fmov(e.x0, order[step]);
+      e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));  // ensure quiet
+      e.fmov(dest, e.x0);
+      e.b(done);
+      e.L(not_nan);
+    }
+    // No operand NaN: generated NaN, and dest already holds the PPC default
+    // QNaN (see DEFAULT_FPU_FPCR). Leave it.
+    e.b(done);
+  };
+  const bool tail_ok = e.near_tail_branches_safe();
+  Xbyak_aarch64::Label* nan_path;
+  if (tail_ok) {
+    nan_path =
+        &e.AddToTail([emit_nan_walk](A64Emitter& e, Xbyak_aarch64::Label&) {
+          emit_nan_walk(e);
+        });
+  } else {
+    nan_path = &e.NewCachedLabel();
+  }
 
-  // Fast path: no NaN input → hardware FMA, then negate the result. Not
-  // fnmadd: that negates the operands (-Ra - Rn*Rm), which differs from
+  // Not fnmadd: that negates the operands (-Ra - Rn*Rm), which differs from
   // -(Ra + Rn*Rm) when the two addends are zeros of opposite sign.
-  auto& invalid = e.NewCachedLabel();
   if (is_sub) {
     e.fnmsub(dest, s1, s2, s3);
   } else {
     e.fmadd(dest, s1, s2, s3);
   }
-  // If result is NaN (0*inf or inf-inf), canonicalize to PPC default.
   e.fcmp(dest, dest);
-  e.b_near(VS, invalid);
+  e.b_near(VS, *nan_path);
+  // Numeric results only: every NaN took the branch above.
   if (negate) {
     e.fneg(dest, dest);
   }
-  e.b(done);
-  e.L(invalid);
-  e.mov(e.x0, static_cast<uint64_t>(0x7FF8000000000000ull));
-  e.fmov(dest, e.x0);
-  e.b(done);
-
-  // Slow path: first NaN in A, B, C order wins (quiet if SNaN).
-  e.L(nan_path);
-  DReg order[3] = {s1, s3, s2};
-  for (int step = 0; step < 2; ++step) {
-    auto& not_nan = e.NewCachedLabel();
-    e.fcmp(order[step], order[step]);
-    e.b_near(VC, not_nan);
-    e.fmov(e.x0, order[step]);
-    e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));  // ensure quiet
-    e.fmov(dest, e.x0);
+  if (!tail_ok) {
     e.b(done);
-    e.L(not_nan);
+    e.L(*nan_path);
+    emit_nan_walk(e);
   }
-  // At least one operand is a NaN, so it must be this one.
-  e.fmov(e.x0, order[2]);
-  e.orr(e.x0, e.x0, static_cast<uint64_t>(1ull << 51));
-  e.fmov(dest, e.x0);
-
   e.L(done);
 }
 
 static void EmitFmaWithPpcNan_F32(A64Emitter& e, SReg dest, SReg s1, SReg s2,
                                   SReg s3, bool is_sub, bool negate) {
   e.ChangeFpcrMode(FPCRMode::Fpu);
-  auto& nan_path = e.NewCachedLabel();
   auto& done = e.NewCachedLabel();
 
-  e.fcmp(s1, s1);
-  e.fccmp(s2, s2, 0b0001, VC);
-  e.fccmp(s3, s3, 0b0001, VC);
-  e.b_near(VS, nan_path);
+  // See the F64 twin for the layout, including why an aliased dest is
+  // preserved in v3 before the FMA.
+  SReg t1 = s1;
+  SReg t2 = s2;
+  SReg t3 = s3;
+  if (dest.getIdx() == s1.getIdx() || dest.getIdx() == s2.getIdx() ||
+      dest.getIdx() == s3.getIdx()) {
+    const SReg preserved = SReg(3);
+    e.fmov(preserved, dest);
+    if (s1.getIdx() == dest.getIdx()) {
+      t1 = preserved;
+    }
+    if (s2.getIdx() == dest.getIdx()) {
+      t2 = preserved;
+    }
+    if (s3.getIdx() == dest.getIdx()) {
+      t3 = preserved;
+    }
+  }
+  auto emit_nan_walk = [dest, t1, t2, t3, &done](A64Emitter& e) {
+    SReg order[3] = {t1, t3, t2};
+    for (int step = 0; step < 3; ++step) {
+      auto& not_nan = e.NewCachedLabel();
+      e.fcmp(order[step], order[step]);
+      e.b_near(VC, not_nan);
+      e.fmov(e.w0, order[step]);
+      e.orr(e.w0, e.w0, static_cast<uint32_t>(1u << 22));
+      e.fmov(dest, e.w0);
+      e.b(done);
+      e.L(not_nan);
+    }
+    // No operand NaN: generated NaN, and dest already holds the PPC default
+    // QNaN (see DEFAULT_FPU_FPCR). Leave it.
+    e.b(done);
+  };
+  const bool tail_ok = e.near_tail_branches_safe();
+  Xbyak_aarch64::Label* nan_path;
+  if (tail_ok) {
+    nan_path =
+        &e.AddToTail([emit_nan_walk](A64Emitter& e, Xbyak_aarch64::Label&) {
+          emit_nan_walk(e);
+        });
+  } else {
+    nan_path = &e.NewCachedLabel();
+  }
 
-  auto& invalid = e.NewCachedLabel();
+  // See the F64 twin: result-gated, negation runs only on numeric results.
   if (is_sub) {
     e.fnmsub(dest, s1, s2, s3);
   } else {
     e.fmadd(dest, s1, s2, s3);
   }
   e.fcmp(dest, dest);
-  e.b_near(VS, invalid);
+  e.b_near(VS, *nan_path);
   if (negate) {
     e.fneg(dest, dest);
   }
-  e.b(done);
-  e.L(invalid);
-  e.mov(e.w0, static_cast<uint64_t>(0x7FC00000u));
-  e.fmov(dest, e.w0);
-  e.b(done);
-
-  e.L(nan_path);
-  SReg order[3] = {s1, s3, s2};
-  for (int step = 0; step < 2; ++step) {
-    auto& not_nan = e.NewCachedLabel();
-    e.fcmp(order[step], order[step]);
-    e.b_near(VC, not_nan);
-    e.fmov(e.w0, order[step]);
-    e.orr(e.w0, e.w0, static_cast<uint32_t>(1u << 22));
-    e.fmov(dest, e.w0);
+  if (!tail_ok) {
     e.b(done);
-    e.L(not_nan);
+    e.L(*nan_path);
+    emit_nan_walk(e);
   }
-  e.fmov(e.w0, order[2]);
-  e.orr(e.w0, e.w0, static_cast<uint32_t>(1u << 22));
-  e.fmov(dest, e.w0);
-
   e.L(done);
 }
 
@@ -1615,17 +1761,32 @@ EMITTER_OPCODE_TABLE(OPCODE_ABS, ABS_F32, ABS_F64, ABS_V128);
 // OPCODE_AND
 // ============================================================================
 struct AND_I8 : Sequence<AND_I8, I<OPCODE_AND, I8Op, I8Op, I8Op>> {
+  static void EmitAndsImm(A64Emitter& e, const WReg& dest, const WReg& src,
+                          uint32_t imm) {
+    if (IsValidLogicalImm(imm, 32)) {
+      e.ands(dest, src, imm);
+    } else {
+      e.mov(e.w0, static_cast<uint64_t>(imm));  // mov leaves NZCV alone
+      e.ands(dest, src, e.w0);
+    }
+  }
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // ANDS instead of AND: I8 values are zero-extended in their W registers,
+    // so the 32-bit Z flag equals the I8 zero test, and a following
+    // compare-vs-zero or select can skip its cmp. Same pattern as AND_I32/64.
     if (i.src1.is_constant && i.src2.is_constant) {
       e.mov(i.dest, static_cast<uint64_t>(
                         (i.src1.constant() & i.src2.constant()) & 0xFF));
-    } else if (i.src2.is_constant) {
-      e.and_imm(i.dest, i.src1, i.src2.constant() & 0xFF, e.w0);
-    } else if (i.src1.is_constant) {
-      e.and_imm(i.dest, i.src2, i.src1.constant() & 0xFF, e.w0);
-    } else {
-      e.and_(i.dest, i.src1, i.src2);
+      return;
     }
+    if (i.src2.is_constant) {
+      EmitAndsImm(e, i.dest, i.src1, i.src2.constant() & 0xFF);
+    } else if (i.src1.is_constant) {
+      EmitAndsImm(e, i.dest, i.src2, i.src1.constant() & 0xFF);
+    } else {
+      e.ands(i.dest, i.src1, i.src2);
+    }
+    e.DeclareFlagsZeroTest(i.dest.reg().getIdx(), false);
   }
 };
 struct AND_I16 : Sequence<AND_I16, I<OPCODE_AND, I16Op, I16Op, I16Op>> {
@@ -1643,40 +1804,59 @@ struct AND_I16 : Sequence<AND_I16, I<OPCODE_AND, I16Op, I16Op, I16Op>> {
   }
 };
 struct AND_I32 : Sequence<AND_I32, I<OPCODE_AND, I32Op, I32Op, I32Op>> {
+  static void EmitAndsImm(A64Emitter& e, const WReg& dest, const WReg& src,
+                          uint32_t imm) {
+    if (IsValidLogicalImm(imm, 32)) {
+      e.ands(dest, src, imm);
+    } else {
+      e.mov(e.w0, static_cast<uint64_t>(imm));  // mov leaves NZCV alone
+      e.ands(dest, src, e.w0);
+    }
+  }
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // ANDS instead of AND costs nothing and lets an immediately following
+    // compare-vs-zero of this dest drop its cmp (the hot
+    // IsFalse(And(x, mask)) pattern in the FPSCR derivation).
     if (i.src1.is_constant && i.src2.is_constant) {
       e.mov(i.dest, static_cast<uint64_t>(static_cast<uint32_t>(
                         i.src1.constant() & i.src2.constant())));
-    } else if (i.src2.is_constant) {
-      e.and_imm(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant()), e.w0);
-    } else if (i.src1.is_constant) {
-      e.and_imm(i.dest, i.src2, static_cast<uint32_t>(i.src1.constant()), e.w0);
-    } else {
-      e.and_(i.dest, i.src1, i.src2);
+      return;
     }
+    if (i.src2.is_constant) {
+      EmitAndsImm(e, i.dest, i.src1, static_cast<uint32_t>(i.src2.constant()));
+    } else if (i.src1.is_constant) {
+      EmitAndsImm(e, i.dest, i.src2, static_cast<uint32_t>(i.src1.constant()));
+    } else {
+      e.ands(i.dest, i.src1, i.src2);
+    }
+    e.DeclareFlagsZeroTest(i.dest.reg().getIdx(), false);
   }
 };
 struct AND_I64 : Sequence<AND_I64, I<OPCODE_AND, I64Op, I64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // See AND_I32: ANDS is free and feeds the compare-vs-zero fusion.
     if (i.src1.is_constant && i.src2.is_constant) {
       e.mov(i.dest,
             static_cast<uint64_t>(i.src1.constant() & i.src2.constant()));
-    } else if (i.src2.is_constant) {
-      EmitAndImm(e, i.dest, i.src1, static_cast<uint64_t>(i.src2.constant()));
-    } else if (i.src1.is_constant) {
-      EmitAndImm(e, i.dest, i.src2, static_cast<uint64_t>(i.src1.constant()));
-    } else {
-      e.and_(i.dest, i.src1, i.src2);
+      return;
     }
+    if (i.src2.is_constant) {
+      EmitAndsImm(e, i.dest, i.src1, static_cast<uint64_t>(i.src2.constant()));
+    } else if (i.src1.is_constant) {
+      EmitAndsImm(e, i.dest, i.src2, static_cast<uint64_t>(i.src1.constant()));
+    } else {
+      e.ands(i.dest, i.src1, i.src2);
+    }
+    e.DeclareFlagsZeroTest(i.dest.reg().getIdx(), true);
   }
 
-  static void EmitAndImm(A64Emitter& e, const XReg& dest, const XReg& src,
-                         uint64_t imm) {
+  static void EmitAndsImm(A64Emitter& e, const XReg& dest, const XReg& src,
+                          uint64_t imm) {
     if (IsValidLogicalImm(imm, 64)) {
-      e.and_(dest, src, imm);
+      e.ands(dest, src, imm);
     } else {
-      e.mov(e.x0, imm);
-      e.and_(dest, src, e.x0);
+      e.mov(e.x0, imm);  // mov leaves NZCV alone
+      e.ands(dest, src, e.x0);
     }
   }
 };
@@ -2017,16 +2197,23 @@ struct SHL_I8 : Sequence<SHL_I8, I<OPCODE_SHL, I8Op, I8Op, I8Op>> {
         e.uxtb(i.dest, i.dest);
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFF));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsl(i.dest, i.src1, WReg(i.src2.reg().getIdx()));
+        e.uxtb(i.dest, i.dest);
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFF));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsl(i.dest, i.dest, e.w0);
+        // Bits can shift past the type width; keep the I8 value zero-extended.
+        e.uxtb(i.dest, i.dest);
       }
-      e.lsl(i.dest, i.dest, e.w0);
-      // Bits can shift past the type width; keep the I8 value zero-extended.
-      e.uxtb(i.dest, i.dest);
     }
   }
 };
@@ -2048,16 +2235,23 @@ struct SHL_I16 : Sequence<SHL_I16, I<OPCODE_SHL, I16Op, I16Op, I8Op>> {
         e.uxth(i.dest, i.dest);
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFFFF));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsl(i.dest, i.src1, WReg(i.src2.reg().getIdx()));
+        e.uxth(i.dest, i.dest);
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFFFF));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsl(i.dest, i.dest, e.w0);
+        // Bits can shift past the type width; keep the I16 value zero-extended.
+        e.uxth(i.dest, i.dest);
       }
-      e.lsl(i.dest, i.dest, e.w0);
-      // Bits can shift past the type width; keep the I16 value zero-extended.
-      e.uxth(i.dest, i.dest);
     }
   }
 };
@@ -2071,15 +2265,21 @@ struct SHL_I32 : Sequence<SHL_I32, I<OPCODE_SHL, I32Op, I32Op, I8Op>> {
         e.lsl(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x1F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest,
-              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsl(i.dest, i.src1, WReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(
+                            static_cast<uint32_t>(i.src1.constant())));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsl(i.dest, i.dest, e.w0);
       }
-      e.lsl(i.dest, i.dest, e.w0);
     }
   }
 };
@@ -2093,14 +2293,20 @@ struct SHL_I64 : Sequence<SHL_I64, I<OPCODE_SHL, I64Op, I64Op, I8Op>> {
         e.lsl(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x3F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.x0, XReg(i.src2.reg().getIdx()));
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsl(i.dest, i.src1, XReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.x0, XReg(i.src2.reg().getIdx()));
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsl(i.dest, i.dest, e.x0);
       }
-      e.lsl(i.dest, i.dest, e.x0);
     }
   }
 };
@@ -2164,14 +2370,20 @@ struct SHR_I8 : Sequence<SHR_I8, I<OPCODE_SHR, I8Op, I8Op, I8Op>> {
         e.lsr(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x1F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFF));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsr(i.dest, i.src1, WReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFF));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsr(i.dest, i.dest, e.w0);
       }
-      e.lsr(i.dest, i.dest, e.w0);
     }
   }
 };
@@ -2191,14 +2403,20 @@ struct SHR_I16 : Sequence<SHR_I16, I<OPCODE_SHR, I16Op, I16Op, I8Op>> {
         e.lsr(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x1F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFFFF));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsr(i.dest, i.src1, WReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant() & 0xFFFF));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsr(i.dest, i.dest, e.w0);
       }
-      e.lsr(i.dest, i.dest, e.w0);
     }
   }
 };
@@ -2213,15 +2431,21 @@ struct SHR_I32 : Sequence<SHR_I32, I<OPCODE_SHR, I32Op, I32Op, I8Op>> {
         e.lsr(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x1F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest,
-              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsr(i.dest, i.src1, WReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(
+                            static_cast<uint32_t>(i.src1.constant())));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsr(i.dest, i.dest, e.w0);
       }
-      e.lsr(i.dest, i.dest, e.w0);
     }
   }
 };
@@ -2235,14 +2459,20 @@ struct SHR_I64 : Sequence<SHR_I64, I<OPCODE_SHR, I64Op, I64Op, I8Op>> {
         e.lsr(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x3F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.x0, XReg(i.src2.reg().getIdx()));
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.lsr(i.dest, i.src1, XReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.x0, XReg(i.src2.reg().getIdx()));
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.lsr(i.dest, i.dest, e.x0);
       }
-      e.lsr(i.dest, i.dest, e.x0);
     }
   }
 };
@@ -2337,15 +2567,21 @@ struct SHA_I32 : Sequence<SHA_I32, I<OPCODE_SHA, I32Op, I32Op, I8Op>> {
         e.asr(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x1F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest,
-              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.asr(i.dest, i.src1, WReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(
+                            static_cast<uint32_t>(i.src1.constant())));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.asr(i.dest, i.dest, e.w0);
       }
-      e.asr(i.dest, i.dest, e.w0);
     }
   }
 };
@@ -2359,14 +2595,20 @@ struct SHA_I64 : Sequence<SHA_I64, I<OPCODE_SHA, I64Op, I64Op, I8Op>> {
         e.asr(i.dest, i.src1, static_cast<uint32_t>(i.src2.constant() & 0x3F));
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.x0, XReg(i.src2.reg().getIdx()));
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.asr(i.dest, i.src1, XReg(i.src2.reg().getIdx()));
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.x0, XReg(i.src2.reg().getIdx()));
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        e.asr(i.dest, i.dest, e.x0);
       }
-      e.asr(i.dest, i.dest, e.x0);
     }
   }
 };
@@ -2448,17 +2690,24 @@ struct ROTATE_LEFT_I32
         }
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.w0, i.src2);
-      if (i.src1.is_constant) {
-        e.mov(i.dest,
-              static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV/RORV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.neg(e.w0, WReg(i.src2.reg().getIdx()));
+        e.ror(i.dest, i.src1, e.w0);
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.w0, i.src2);
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(
+                            static_cast<uint32_t>(i.src1.constant())));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        // ROL(x, n) = ROR(x, -n) since ROR uses amount mod 32
+        e.neg(e.w0, e.w0);
+        e.ror(i.dest, i.dest, e.w0);
       }
-      // ROL(x, n) = ROR(x, -n) since ROR uses amount mod 32
-      e.neg(e.w0, e.w0);
-      e.ror(i.dest, i.dest, e.w0);
     }
   }
 };
@@ -2482,16 +2731,23 @@ struct ROTATE_LEFT_I64
         }
       }
     } else {
-      // Read shift amount first — dest may alias src2.
-      e.mov(e.x0, XReg(i.src2.reg().getIdx()));
-      if (i.src1.is_constant) {
-        e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
-      } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
-        e.mov(i.dest, i.src1);
+      // LSLV/LSRV/ASRV/RORV read both sources before writing dest, so a
+      // register amount needs no staging copy even when dest aliases it.
+      if (!i.src1.is_constant) {
+        e.neg(e.x0, XReg(i.src2.reg().getIdx()));
+        e.ror(i.dest, i.src1, e.x0);
+      } else {
+        // Read shift amount first — dest may alias src2.
+        e.mov(e.x0, XReg(i.src2.reg().getIdx()));
+        if (i.src1.is_constant) {
+          e.mov(i.dest, static_cast<uint64_t>(i.src1.constant()));
+        } else if (i.dest.reg().getIdx() != i.src1.reg().getIdx()) {
+          e.mov(i.dest, i.src1);
+        }
+        // ROL(x, n) = ROR(x, -n) since ROR uses amount mod 64
+        e.neg(e.x0, e.x0);
+        e.ror(i.dest, i.dest, e.x0);
       }
-      // ROL(x, n) = ROR(x, -n) since ROR uses amount mod 64
-      e.neg(e.x0, e.x0);
-      e.ror(i.dest, i.dest, e.x0);
     }
   }
 };
@@ -2659,6 +2915,16 @@ EMITTER_OPCODE_TABLE(OPCODE_CNTLZ, CNTLZ_I8, CNTLZ_I16, CNTLZ_I32, CNTLZ_I64);
   struct NAME##_I32                                                            \
       : Sequence<NAME##_I32, I<OPCODE_##NAME, I8Op, I32Op, I32Op>> {           \
     static void Emit(A64Emitter& e, const EmitArgType& i) {                    \
+      /* If the previous sequence was an ANDS of this register, Z already   */ \
+      /* answers a compare against zero for EQ/NE (ANDS clears C and V).    */ \
+      if ((Xbyak_aarch64::COND == Xbyak_aarch64::EQ ||                         \
+           Xbyak_aarch64::COND == Xbyak_aarch64::NE) &&                        \
+          !i.src1.is_constant && i.src2.is_constant &&                         \
+          i.src2.constant() == 0 &&                                            \
+          e.FlagsHoldZeroTest(i.src1.reg().getIdx(), false)) {                 \
+        e.cset(i.dest, Xbyak_aarch64::COND);                                   \
+        return;                                                                \
+      }                                                                        \
       if (i.src1.is_constant) {                                                \
         e.mov(e.w0, static_cast<uint64_t>(                                     \
                         static_cast<uint32_t>(i.src1.constant())));            \
@@ -2680,6 +2946,14 @@ EMITTER_OPCODE_TABLE(OPCODE_CNTLZ, CNTLZ_I8, CNTLZ_I16, CNTLZ_I32, CNTLZ_I64);
   struct NAME##_I64                                                            \
       : Sequence<NAME##_I64, I<OPCODE_##NAME, I8Op, I64Op, I64Op>> {           \
     static void Emit(A64Emitter& e, const EmitArgType& i) {                    \
+      if ((Xbyak_aarch64::COND == Xbyak_aarch64::EQ ||                         \
+           Xbyak_aarch64::COND == Xbyak_aarch64::NE) &&                        \
+          !i.src1.is_constant && i.src2.is_constant &&                         \
+          i.src2.constant() == 0 &&                                            \
+          e.FlagsHoldZeroTest(i.src1.reg().getIdx(), true)) {                  \
+        e.cset(i.dest, Xbyak_aarch64::COND);                                   \
+        return;                                                                \
+      }                                                                        \
       if (i.src1.is_constant) {                                                \
         e.mov(e.x0, static_cast<uint64_t>(i.src1.constant()));                 \
         if (i.src2.is_constant) {                                              \
@@ -2810,7 +3084,15 @@ struct SELECT_I8
     if (i.src1.is_constant) {
       e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
     }
-    e.cmp(cond, 0);
+    // An adjacent producer may have left a condition equivalent to the
+    // nonzero test in NZCV (ANDS -> NE); the select picks on that condition
+    // directly. The constant loads below leave NZCV alone.
+    Xbyak_aarch64::Cond sel_cond = Xbyak_aarch64::NE;
+    if (i.src1.is_constant ||
+        !e.FlagsNonzeroCondHeld(i.src1.reg().getIdx(), false, &sel_cond)) {
+      e.cmp(cond, 0);
+      sel_cond = Xbyak_aarch64::NE;
+    }
     if (i.src2.is_constant) {
       e.mov(e.w1, static_cast<uint64_t>(i.src2.constant() & 0xFF));
     }
@@ -2819,7 +3101,7 @@ struct SELECT_I8
     }
     WReg s2 = i.src2.is_constant ? e.w1 : WReg(i.src2.reg().getIdx());
     WReg s3 = i.src3.is_constant ? e.w2 : WReg(i.src3.reg().getIdx());
-    e.csel(i.dest, s2, s3, Xbyak_aarch64::NE);
+    e.csel(i.dest, s2, s3, sel_cond);
   }
 };
 struct SELECT_I16
@@ -2829,7 +3111,15 @@ struct SELECT_I16
     if (i.src1.is_constant) {
       e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
     }
-    e.cmp(cond, 0);
+    // An adjacent producer may have left a condition equivalent to the
+    // nonzero test in NZCV (ANDS -> NE); the select picks on that condition
+    // directly. The constant loads below leave NZCV alone.
+    Xbyak_aarch64::Cond sel_cond = Xbyak_aarch64::NE;
+    if (i.src1.is_constant ||
+        !e.FlagsNonzeroCondHeld(i.src1.reg().getIdx(), false, &sel_cond)) {
+      e.cmp(cond, 0);
+      sel_cond = Xbyak_aarch64::NE;
+    }
     if (i.src2.is_constant) {
       e.mov(e.w1, static_cast<uint64_t>(i.src2.constant() & 0xFFFF));
     }
@@ -2838,7 +3128,7 @@ struct SELECT_I16
     }
     WReg s2 = i.src2.is_constant ? e.w1 : WReg(i.src2.reg().getIdx());
     WReg s3 = i.src3.is_constant ? e.w2 : WReg(i.src3.reg().getIdx());
-    e.csel(i.dest, s2, s3, Xbyak_aarch64::NE);
+    e.csel(i.dest, s2, s3, sel_cond);
   }
 };
 struct SELECT_I32
@@ -2848,7 +3138,15 @@ struct SELECT_I32
     if (i.src1.is_constant) {
       e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
     }
-    e.cmp(cond, 0);
+    // An adjacent producer may have left a condition equivalent to the
+    // nonzero test in NZCV (ANDS -> NE); the select picks on that condition
+    // directly. The constant loads below leave NZCV alone.
+    Xbyak_aarch64::Cond sel_cond = Xbyak_aarch64::NE;
+    if (i.src1.is_constant ||
+        !e.FlagsNonzeroCondHeld(i.src1.reg().getIdx(), false, &sel_cond)) {
+      e.cmp(cond, 0);
+      sel_cond = Xbyak_aarch64::NE;
+    }
     if (i.src2.is_constant) {
       e.mov(e.w1,
             static_cast<uint64_t>(static_cast<uint32_t>(i.src2.constant())));
@@ -2859,7 +3157,7 @@ struct SELECT_I32
     }
     WReg s2 = i.src2.is_constant ? e.w1 : WReg(i.src2.reg().getIdx());
     WReg s3 = i.src3.is_constant ? e.w2 : WReg(i.src3.reg().getIdx());
-    e.csel(i.dest, s2, s3, Xbyak_aarch64::NE);
+    e.csel(i.dest, s2, s3, sel_cond);
   }
 };
 struct SELECT_I64
@@ -2869,7 +3167,15 @@ struct SELECT_I64
     if (i.src1.is_constant) {
       e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
     }
-    e.cmp(cond, 0);
+    // An adjacent producer may have left a condition equivalent to the
+    // nonzero test in NZCV (ANDS -> NE); the select picks on that condition
+    // directly. The constant loads below leave NZCV alone.
+    Xbyak_aarch64::Cond sel_cond = Xbyak_aarch64::NE;
+    if (i.src1.is_constant ||
+        !e.FlagsNonzeroCondHeld(i.src1.reg().getIdx(), false, &sel_cond)) {
+      e.cmp(cond, 0);
+      sel_cond = Xbyak_aarch64::NE;
+    }
     if (i.src2.is_constant) {
       e.mov(e.x1, static_cast<uint64_t>(i.src2.constant()));
     }
@@ -2878,7 +3184,7 @@ struct SELECT_I64
     }
     XReg s2 = i.src2.is_constant ? e.x1 : XReg(i.src2.reg().getIdx());
     XReg s3 = i.src3.is_constant ? e.x2 : XReg(i.src3.reg().getIdx());
-    e.csel(i.dest, s2, s3, Xbyak_aarch64::NE);
+    e.csel(i.dest, s2, s3, sel_cond);
   }
 };
 struct SELECT_F32
@@ -2888,7 +3194,15 @@ struct SELECT_F32
     if (i.src1.is_constant) {
       e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
     }
-    e.cmp(cond, 0);
+    // An adjacent producer may have left a condition equivalent to the
+    // nonzero test in NZCV (ANDS -> NE); the select picks on that condition
+    // directly. The constant loads below leave NZCV alone.
+    Xbyak_aarch64::Cond sel_cond = Xbyak_aarch64::NE;
+    if (i.src1.is_constant ||
+        !e.FlagsNonzeroCondHeld(i.src1.reg().getIdx(), false, &sel_cond)) {
+      e.cmp(cond, 0);
+      sel_cond = Xbyak_aarch64::NE;
+    }
     if (i.src2.is_constant) {
       union {
         float f;
@@ -2909,7 +3223,7 @@ struct SELECT_F32
     }
     SReg s2 = i.src2.is_constant ? e.s0 : SReg(i.src2.reg().getIdx());
     SReg s3 = i.src3.is_constant ? e.s1 : SReg(i.src3.reg().getIdx());
-    e.fcsel(i.dest, s2, s3, Xbyak_aarch64::NE);
+    e.fcsel(i.dest, s2, s3, sel_cond);
   }
 };
 struct SELECT_F64
@@ -2919,7 +3233,15 @@ struct SELECT_F64
     if (i.src1.is_constant) {
       e.mov(e.w0, static_cast<uint64_t>(i.src1.constant() & 0xFF));
     }
-    e.cmp(cond, 0);
+    // An adjacent producer may have left a condition equivalent to the
+    // nonzero test in NZCV (ANDS -> NE); the select picks on that condition
+    // directly. The constant loads below leave NZCV alone.
+    Xbyak_aarch64::Cond sel_cond = Xbyak_aarch64::NE;
+    if (i.src1.is_constant ||
+        !e.FlagsNonzeroCondHeld(i.src1.reg().getIdx(), false, &sel_cond)) {
+      e.cmp(cond, 0);
+      sel_cond = Xbyak_aarch64::NE;
+    }
     if (i.src2.is_constant) {
       union {
         double d;
@@ -2940,7 +3262,7 @@ struct SELECT_F64
     }
     DReg s2 = i.src2.is_constant ? e.d0 : DReg(i.src2.reg().getIdx());
     DReg s3 = i.src3.is_constant ? e.d1 : DReg(i.src3.reg().getIdx());
-    e.fcsel(i.dest, s2, s3, Xbyak_aarch64::NE);
+    e.fcsel(i.dest, s2, s3, sel_cond);
   }
 };
 struct SELECT_V128_V128
@@ -2959,20 +3281,13 @@ struct SELECT_V128_V128
       // dest already holds the mask. BSL is safe here.
       e.bsl(VReg(d).b16, VReg(s3).b16, VReg(s2).b16);
     } else if (d == s3) {
-      // dest holds the mask=1 value. BIT inserts mask=1 bits from s3, keeps
-      // dest (=s2-candidate) where mask=0... no, dest=s3 not s2.
-      // Use: copy s2 to scratch, then BIT(scratch, s3, mask), move to dest.
-      // Or: copy mask to scratch v0, copy s2 to dest, BIT(dest, s3_orig, v0).
-      // Simplest: use scratch v0 for mask, then BSL.
-      e.orr(VReg(0).b16, VReg(s1).b16, VReg(s1).b16);  // v0 = mask
-      e.bsl(VReg(0).b16, VReg(s3).b16, VReg(s2).b16);  // v0 = result
-      e.orr(VReg(d).b16, VReg(0).b16, VReg(0).b16);    // dest = result
+      // dest already holds the mask=1 value: keep it where the mask is set
+      // and take s2 elsewhere, which is BIF exactly.
+      e.bif(VReg(d).b16, VReg(s2).b16, VReg(s1).b16);
     } else if (d == s2) {
-      // dest holds the mask=0 value. BIF inserts ~mask bits from s2,
-      // but dest=s2... Use scratch for mask.
-      e.orr(VReg(0).b16, VReg(s1).b16, VReg(s1).b16);  // v0 = mask
-      e.bsl(VReg(0).b16, VReg(s3).b16, VReg(s2).b16);  // v0 = result
-      e.orr(VReg(d).b16, VReg(0).b16, VReg(0).b16);    // dest = result
+      // dest already holds the mask=0 value: insert s3 where the mask is set
+      // and keep dest elsewhere, which is BIT exactly.
+      e.bit(VReg(d).b16, VReg(s3).b16, VReg(s1).b16);
     } else {
       // No aliasing — copy mask to dest, then BSL.
       e.orr(VReg(d).b16, VReg(s1).b16, VReg(s1).b16);
@@ -3274,6 +3589,10 @@ EMITTER_OPCODE_TABLE(OPCODE_DID_SATURATE, DID_SATURATE);
 // ============================================================================
 struct MAX_F32 : Sequence<MAX_F32, I<OPCODE_MAX, F32Op, F32Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         float f;
@@ -3282,7 +3601,16 @@ struct MAX_F32 : Sequence<MAX_F32, I<OPCODE_MAX, F32Op, F32Op, F32Op>> {
       c.f = i.src1.constant();
       e.mov(e.w0, static_cast<uint64_t>(c.u));
       e.fmov(e.s0, e.w0);
-      e.fmax(i.dest, e.s0, i.src2.is_constant ? e.s1 : i.src2);
+      if (i.src2.is_constant) {
+        // Both constant: the second one has to be materialised too, or the
+        // fmax reads whatever the previous sequence left in s1.
+        c.f = i.src2.constant();
+        e.mov(e.w0, static_cast<uint64_t>(c.u));
+        e.fmov(e.s1, e.w0);
+        e.fmax(i.dest, e.s0, e.s1);
+      } else {
+        e.fmax(i.dest, e.s0, i.src2);
+      }
     } else if (i.src2.is_constant) {
       union {
         float f;
@@ -3299,6 +3627,10 @@ struct MAX_F32 : Sequence<MAX_F32, I<OPCODE_MAX, F32Op, F32Op, F32Op>> {
 };
 struct MAX_F64 : Sequence<MAX_F64, I<OPCODE_MAX, F64Op, F64Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3307,7 +3639,14 @@ struct MAX_F64 : Sequence<MAX_F64, I<OPCODE_MAX, F64Op, F64Op, F64Op>> {
       c.d = i.src1.constant();
       e.mov(e.x0, c.u);
       e.fmov(e.d0, e.x0);
-      e.fmax(i.dest, e.d0, i.src2.is_constant ? e.d1 : i.src2);
+      if (i.src2.is_constant) {
+        c.d = i.src2.constant();
+        e.mov(e.x0, c.u);
+        e.fmov(e.d1, e.x0);
+        e.fmax(i.dest, e.d0, e.d1);
+      } else {
+        e.fmax(i.dest, e.d0, i.src2);
+      }
     } else if (i.src2.is_constant) {
       union {
         double d;
@@ -3419,6 +3758,10 @@ struct MIN_I64 : Sequence<MIN_I64, I<OPCODE_MIN, I64Op, I64Op, I64Op>> {
 };
 struct MIN_F32 : Sequence<MIN_F32, I<OPCODE_MIN, F32Op, F32Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         float f;
@@ -3427,7 +3770,14 @@ struct MIN_F32 : Sequence<MIN_F32, I<OPCODE_MIN, F32Op, F32Op, F32Op>> {
       c.f = i.src1.constant();
       e.mov(e.w0, static_cast<uint64_t>(c.u));
       e.fmov(e.s0, e.w0);
-      e.fmin(i.dest, e.s0, i.src2.is_constant ? e.s1 : i.src2);
+      if (i.src2.is_constant) {
+        c.f = i.src2.constant();
+        e.mov(e.w0, static_cast<uint64_t>(c.u));
+        e.fmov(e.s1, e.w0);
+        e.fmin(i.dest, e.s0, e.s1);
+      } else {
+        e.fmin(i.dest, e.s0, i.src2);
+      }
     } else if (i.src2.is_constant) {
       union {
         float f;
@@ -3444,6 +3794,10 @@ struct MIN_F32 : Sequence<MIN_F32, I<OPCODE_MIN, F32Op, F32Op, F32Op>> {
 };
 struct MIN_F64 : Sequence<MIN_F64, I<OPCODE_MIN, F64Op, F64Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3452,7 +3806,14 @@ struct MIN_F64 : Sequence<MIN_F64, I<OPCODE_MIN, F64Op, F64Op, F64Op>> {
       c.d = i.src1.constant();
       e.mov(e.x0, c.u);
       e.fmov(e.d0, e.x0);
-      e.fmin(i.dest, e.d0, i.src2.is_constant ? e.d1 : i.src2);
+      if (i.src2.is_constant) {
+        c.d = i.src2.constant();
+        e.mov(e.x0, c.u);
+        e.fmov(e.d1, e.x0);
+        e.fmin(i.dest, e.d0, e.d1);
+      } else {
+        e.fmin(i.dest, e.d0, i.src2);
+      }
     } else if (i.src2.is_constant) {
       union {
         double d;
@@ -3491,6 +3852,10 @@ EMITTER_OPCODE_TABLE(OPCODE_MIN, MIN_I8, MIN_I16, MIN_I32, MIN_I64, MIN_F32,
 struct CONVERT_I32_F32
     : Sequence<CONVERT_I32_F32, I<OPCODE_CONVERT, I32Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         float f;
@@ -3512,6 +3877,10 @@ struct CONVERT_I32_F32
 struct CONVERT_I32_F64
     : Sequence<CONVERT_I32_F64, I<OPCODE_CONVERT, I32Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3534,6 +3903,10 @@ struct CONVERT_I32_F64
 struct CONVERT_I64_F64
     : Sequence<CONVERT_I64_F64, I<OPCODE_CONVERT, I64Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3555,6 +3928,10 @@ struct CONVERT_I64_F64
 struct CONVERT_F32_I32
     : Sequence<CONVERT_F32_I32, I<OPCODE_CONVERT, F32Op, I32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       e.mov(e.w0,
             static_cast<uint64_t>(static_cast<uint32_t>(i.src1.constant())));
@@ -3567,6 +3944,10 @@ struct CONVERT_F32_I32
 struct CONVERT_F64_I64
     : Sequence<CONVERT_F64_I64, I<OPCODE_CONVERT, F64Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       e.mov(e.x0, static_cast<uint64_t>(i.src1.constant()));
       e.scvtf(i.dest, e.x0);
@@ -3620,6 +4001,10 @@ EMITTER_OPCODE_TABLE(OPCODE_CONVERT, CONVERT_I32_F32, CONVERT_I32_F64,
 // ============================================================================
 struct ROUND_F32 : Sequence<ROUND_F32, I<OPCODE_ROUND, F32Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     // Round mode is in i.instr->flags.
     if (i.src1.is_constant) {
       union {
@@ -3653,6 +4038,10 @@ struct ROUND_F32 : Sequence<ROUND_F32, I<OPCODE_ROUND, F32Op, F32Op>> {
 };
 struct ROUND_F64 : Sequence<ROUND_F64, I<OPCODE_ROUND, F64Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3789,6 +4178,10 @@ EMITTER_OPCODE_TABLE(OPCODE_SQRT, SQRT_F32, SQRT_F64, SQRT_V128);
 // ============================================================================
 struct IS_NAN_F32 : Sequence<IS_NAN_F32, I<OPCODE_IS_NAN, I8Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         float f;
@@ -3807,6 +4200,10 @@ struct IS_NAN_F32 : Sequence<IS_NAN_F32, I<OPCODE_IS_NAN, I8Op, F32Op>> {
 };
 struct IS_NAN_F64 : Sequence<IS_NAN_F64, I<OPCODE_IS_NAN, I8Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3830,6 +4227,10 @@ EMITTER_OPCODE_TABLE(OPCODE_IS_NAN, IS_NAN_F32, IS_NAN_F64);
 struct COMPARE_EQ_F32
     : Sequence<COMPARE_EQ_F32, I<OPCODE_COMPARE_EQ, I8Op, F32Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         float f;
@@ -3868,6 +4269,10 @@ struct COMPARE_EQ_F32
 struct COMPARE_EQ_F64
     : Sequence<COMPARE_EQ_F64, I<OPCODE_COMPARE_EQ, I8Op, F64Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3907,6 +4312,10 @@ struct COMPARE_EQ_F64
 struct COMPARE_NE_F32
     : Sequence<COMPARE_NE_F32, I<OPCODE_COMPARE_NE, I8Op, F32Op, F32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         float f;
@@ -3945,6 +4354,10 @@ struct COMPARE_NE_F32
 struct COMPARE_NE_F64
     : Sequence<COMPARE_NE_F64, I<OPCODE_COMPARE_NE, I8Op, F64Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     if (i.src1.is_constant) {
       union {
         double d;
@@ -3982,82 +4395,88 @@ struct COMPARE_NE_F64
 };
 
 // Float compares for SLT/SLE/SGT/SGE (use MI/LS/GT/GE for ordered compares)
-#define DEFINE_FLOAT_COMPARE(NAME, COND_S, COND_D)                   \
-  struct NAME##_F32                                                  \
-      : Sequence<NAME##_F32, I<OPCODE_##NAME, I8Op, F32Op, F32Op>> { \
-    static void Emit(A64Emitter& e, const EmitArgType& i) {          \
-      if (i.src1.is_constant) {                                      \
-        union {                                                      \
-          float f;                                                   \
-          uint32_t u;                                                \
-        } c;                                                         \
-        c.f = i.src1.constant();                                     \
-        e.mov(e.w0, static_cast<uint64_t>(c.u));                     \
-        e.fmov(e.s0, e.w0);                                          \
-        if (i.src2.is_constant) {                                    \
-          union {                                                    \
-            float f;                                                 \
-            uint32_t u;                                              \
-          } c2;                                                      \
-          c2.f = i.src2.constant();                                  \
-          e.mov(e.w0, static_cast<uint64_t>(c2.u));                  \
-          e.fmov(e.s1, e.w0);                                        \
-          e.fcmp(e.s0, e.s1);                                        \
-        } else {                                                     \
-          e.fcmp(e.s0, i.src2);                                      \
-        }                                                            \
-      } else if (i.src2.is_constant) {                               \
-        union {                                                      \
-          float f;                                                   \
-          uint32_t u;                                                \
-        } c;                                                         \
-        c.f = i.src2.constant();                                     \
-        e.mov(e.w0, static_cast<uint64_t>(c.u));                     \
-        e.fmov(e.s0, e.w0);                                          \
-        e.fcmp(i.src1, e.s0);                                        \
-      } else {                                                       \
-        e.fcmp(i.src1, i.src2);                                      \
-      }                                                              \
-      e.cset(i.dest, Xbyak_aarch64::COND_S);                         \
-    }                                                                \
-  };                                                                 \
-  struct NAME##_F64                                                  \
-      : Sequence<NAME##_F64, I<OPCODE_##NAME, I8Op, F64Op, F64Op>> { \
-    static void Emit(A64Emitter& e, const EmitArgType& i) {          \
-      if (i.src1.is_constant) {                                      \
-        union {                                                      \
-          double d;                                                  \
-          uint64_t u;                                                \
-        } c;                                                         \
-        c.d = i.src1.constant();                                     \
-        e.mov(e.x0, c.u);                                            \
-        e.fmov(e.d0, e.x0);                                          \
-        if (i.src2.is_constant) {                                    \
-          union {                                                    \
-            double d;                                                \
-            uint64_t u;                                              \
-          } c2;                                                      \
-          c2.d = i.src2.constant();                                  \
-          e.mov(e.x0, c2.u);                                         \
-          e.fmov(e.d1, e.x0);                                        \
-          e.fcmp(e.d0, e.d1);                                        \
-        } else {                                                     \
-          e.fcmp(e.d0, i.src2);                                      \
-        }                                                            \
-      } else if (i.src2.is_constant) {                               \
-        union {                                                      \
-          double d;                                                  \
-          uint64_t u;                                                \
-        } c;                                                         \
-        c.d = i.src2.constant();                                     \
-        e.mov(e.x0, c.u);                                            \
-        e.fmov(e.d0, e.x0);                                          \
-        e.fcmp(i.src1, e.d0);                                        \
-      } else {                                                       \
-        e.fcmp(i.src1, i.src2);                                      \
-      }                                                              \
-      e.cset(i.dest, Xbyak_aarch64::COND_D);                         \
-    }                                                                \
+#define DEFINE_FLOAT_COMPARE(NAME, COND_S, COND_D)                     \
+  struct NAME##_F32                                                    \
+      : Sequence<NAME##_F32, I<OPCODE_##NAME, I8Op, F32Op, F32Op>> {   \
+    static void Emit(A64Emitter& e, const EmitArgType& i) {            \
+      /* fcmp reads FPCR, and the last vector float op in the block */ \
+      /* left it in VMX mode. Free when the mode already matches.   */ \
+      e.ChangeFpcrMode(FPCRMode::Fpu);                                 \
+      if (i.src1.is_constant) {                                        \
+        union {                                                        \
+          float f;                                                     \
+          uint32_t u;                                                  \
+        } c;                                                           \
+        c.f = i.src1.constant();                                       \
+        e.mov(e.w0, static_cast<uint64_t>(c.u));                       \
+        e.fmov(e.s0, e.w0);                                            \
+        if (i.src2.is_constant) {                                      \
+          union {                                                      \
+            float f;                                                   \
+            uint32_t u;                                                \
+          } c2;                                                        \
+          c2.f = i.src2.constant();                                    \
+          e.mov(e.w0, static_cast<uint64_t>(c2.u));                    \
+          e.fmov(e.s1, e.w0);                                          \
+          e.fcmp(e.s0, e.s1);                                          \
+        } else {                                                       \
+          e.fcmp(e.s0, i.src2);                                        \
+        }                                                              \
+      } else if (i.src2.is_constant) {                                 \
+        union {                                                        \
+          float f;                                                     \
+          uint32_t u;                                                  \
+        } c;                                                           \
+        c.f = i.src2.constant();                                       \
+        e.mov(e.w0, static_cast<uint64_t>(c.u));                       \
+        e.fmov(e.s0, e.w0);                                            \
+        e.fcmp(i.src1, e.s0);                                          \
+      } else {                                                         \
+        e.fcmp(i.src1, i.src2);                                        \
+      }                                                                \
+      e.cset(i.dest, Xbyak_aarch64::COND_S);                           \
+    }                                                                  \
+  };                                                                   \
+  struct NAME##_F64                                                    \
+      : Sequence<NAME##_F64, I<OPCODE_##NAME, I8Op, F64Op, F64Op>> {   \
+    static void Emit(A64Emitter& e, const EmitArgType& i) {            \
+      /* fcmp reads FPCR, and the last vector float op in the block */ \
+      /* left it in VMX mode. Free when the mode already matches.   */ \
+      e.ChangeFpcrMode(FPCRMode::Fpu);                                 \
+      if (i.src1.is_constant) {                                        \
+        union {                                                        \
+          double d;                                                    \
+          uint64_t u;                                                  \
+        } c;                                                           \
+        c.d = i.src1.constant();                                       \
+        e.mov(e.x0, c.u);                                              \
+        e.fmov(e.d0, e.x0);                                            \
+        if (i.src2.is_constant) {                                      \
+          union {                                                      \
+            double d;                                                  \
+            uint64_t u;                                                \
+          } c2;                                                        \
+          c2.d = i.src2.constant();                                    \
+          e.mov(e.x0, c2.u);                                           \
+          e.fmov(e.d1, e.x0);                                          \
+          e.fcmp(e.d0, e.d1);                                          \
+        } else {                                                       \
+          e.fcmp(e.d0, i.src2);                                        \
+        }                                                              \
+      } else if (i.src2.is_constant) {                                 \
+        union {                                                        \
+          double d;                                                    \
+          uint64_t u;                                                  \
+        } c;                                                           \
+        c.d = i.src2.constant();                                       \
+        e.mov(e.x0, c.u);                                              \
+        e.fmov(e.d0, e.x0);                                            \
+        e.fcmp(i.src1, e.d0);                                          \
+      } else {                                                         \
+        e.fcmp(i.src1, i.src2);                                        \
+      }                                                                \
+      e.cset(i.dest, Xbyak_aarch64::COND_D);                           \
+    }                                                                  \
   }
 
 DEFINE_FLOAT_COMPARE(COMPARE_SLT, MI, MI);
@@ -4184,6 +4603,30 @@ struct MUL_ADD_F64
                           i.instr->flags & ARITHMETIC_NEGATE_RESULT);
   }
 };
+// Register plan for the V128 FMA sequences. `tmp` is live scratch across the
+// NaN fixup while the sources still matter: the dest register serves unless it
+// aliases a source (vmaddfp v3,v1,v2,v3), in which case a free scratch-bank
+// register does - one always exists, because an all-constant operand set
+// occupies the whole bank but then no source is allocated and dest cannot
+// alias. `qs` is written only after the sources are dead, so the first
+// scratch-bank register that is not tmp serves.
+static void PickFmaFixupScratch(int a, int c, int b, int d, int* out_tmp,
+                                int* out_qs) {
+  auto in_sources = [&](int r) { return r == a || r == c || r == b; };
+  int tmp;
+  if (!in_sources(d)) {
+    tmp = d;
+  } else if (!in_sources(0)) {
+    tmp = 0;
+  } else if (!in_sources(1)) {
+    tmp = 1;
+  } else {
+    tmp = 3;
+  }
+  *out_tmp = tmp;
+  *out_qs = tmp != 0 ? 0 : 1;
+}
+
 struct MUL_ADD_V128
     : Sequence<MUL_ADD_V128,
                I<OPCODE_MUL_ADD, V128Op, V128Op, V128Op, V128Op>> {
@@ -4192,19 +4635,25 @@ struct MUL_ADD_V128
     EmitWithVmxDenormalFlushFpcr(e, [&] {
       const int d = i.dest.reg().getIdx();
 
-      // dest is free until the result is stored, so it lends the fixup the
-      // scratch register v0-v3 cannot cover.
-      PrepareVmxFmaSources(e, i.src1, i.src2, i.src3, d);
+      // On software-flush hosts the sources are copied to v0/v1/v3 and dest
+      // lends the fixup its scratch; on FZ hosts allocated sources feed the
+      // FMA directly and the scratch plan below avoids them.
+      int a, c, b;
+      PrepareVmxFmaSources(e, i.src1, i.src2, i.src3, d, &a, &c, &b);
+      int tmp, qs;
+      PickFmaFixupScratch(a, c, b, d, &tmp, &qs);
 
-      e.mov(VReg(2).b16, VReg(3).b16);
-      e.fmla(VReg(2).s4, VReg(0).s4, VReg(1).s4);
+      e.mov(VReg(2).b16, VReg(b).b16);
+      e.fmla(VReg(2).s4, VReg(a).s4, VReg(c).s4);
 
       if (i.instr->flags & ARITHMETIC_NEGATE_RESULT) {
         e.fneg(VReg(2).s4, VReg(2).s4);
       }
-      FixupVmxNan_V128_Fma(e, d);
+      FixupVmxNan_V128_Fma(e, a, c, b, tmp, qs);
 
-      // Flush output denormals.
+      // Flush output denormals (NJ-gated). With accurate_vmx_denormal_flush
+      // the input flush is pinned on while this one stays NJ-gated; harmless,
+      // since the VmxDaz FPCR flushes outputs in hardware.
       if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
         FlushDenormals_V128(e, 2, 0, 1);
       }
@@ -4261,26 +4710,33 @@ struct MUL_SUB_V128
                I<OPCODE_MUL_SUB, V128Op, V128Op, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     // dest = s1*s2 - s3 with VMX denormal flushing and PPC NaN propagation.
-    // Same as MUL_ADD but negate s3 before the fmla. v3 keeps the un-negated
-    // s3, which is the operand the fixup propagates.
+    // Same as MUL_ADD but negate s3 before the fmla. The source register
+    // keeps the un-negated s3, which is the operand the fixup propagates.
     EmitWithVmxDenormalFlushFpcr(e, [&] {
       const int d = i.dest.reg().getIdx();
 
-      PrepareVmxFmaSources(e, i.src1, i.src2, i.src3, d);
+      int a, c, b;
+      PrepareVmxFmaSources(e, i.src1, i.src2, i.src3, d, &a, &c, &b);
+      int tmp, qs;
+      PickFmaFixupScratch(a, c, b, d, &tmp, &qs);
 
-      e.mov(VReg(2).b16, VReg(3).b16);
+      e.mov(VReg(2).b16, VReg(b).b16);
       e.fneg(VReg(2).s4, VReg(2).s4);
-      e.fmla(VReg(2).s4, VReg(0).s4, VReg(1).s4);
+      e.fmla(VReg(2).s4, VReg(a).s4, VReg(c).s4);
 
-      // Negate before the fixup, never after: the fixup overwrites every NaN
-      // lane, and hardware leaves a NaN result's sign alone.
+      // Negate before the fixup, never after: the fixup inserts operand NaNs
+      // over the negated result, and hardware leaves a NaN result's sign
+      // alone. A NaN generated by the multiply itself (0*inf) is not an
+      // operand NaN and keeps the sign the negation gave it.
       if (i.instr->flags & ARITHMETIC_NEGATE_RESULT) {
         e.fneg(VReg(2).s4, VReg(2).s4);
       }
 
-      FixupVmxNan_V128_Fma(e, d);
+      FixupVmxNan_V128_Fma(e, a, c, b, tmp, qs);
 
-      // Flush output denormals.
+      // Flush output denormals (NJ-gated). With accurate_vmx_denormal_flush
+      // the input flush is pinned on while this one stays NJ-gated; harmless,
+      // since the VmxDaz FPCR flushes outputs in hardware.
       if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
         FlushDenormals_V128(e, 2, 0, 1);
       }
@@ -4625,6 +5081,10 @@ struct RSQRT_F32 : Sequence<RSQRT_F32, I<OPCODE_RSQRT, F32Op, F32Op>> {
 };
 struct RSQRT_F64 : Sequence<RSQRT_F64, I<OPCODE_RSQRT, F64Op, F64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // FPCR is left in VMX mode by the last vector float op in the block, and
+    // this sequence's result depends on it (flush-to-zero, rounding, NaN
+    // default). The call is free when the mode already matches.
+    e.ChangeFpcrMode(FPCRMode::Fpu);
     // PPC frsqrte uses a specific lookup table, not a high-precision estimate.
     DReg src = i.src1.is_constant ? e.d0 : DReg(i.src1.reg().getIdx());
     if (i.src1.is_constant) {

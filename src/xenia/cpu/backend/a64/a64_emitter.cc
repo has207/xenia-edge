@@ -27,7 +27,6 @@
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
 
-DECLARE_int64(a64_max_stackpoints);
 DECLARE_bool(a64_enable_host_guest_stack_synchronization);
 
 DECLARE_bool(log_safepoint_pc);
@@ -102,7 +101,12 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
   source_map_arena_.Reset();
   tail_code_.clear();
   label_bind_offsets_.clear();
-  fpcr_mode_ = FPCRMode::Unknown;
+  // Every path into a guest function runs in the scalar FPU mode (see the
+  // FPCR tracking contract in a64_emitter.h). The pre-scan records that
+  // entry edge on the first block, so a function whose first block is not a
+  // loop header starts Known-Fpu and skips both the first
+  // ChangeFpcrMode(Fpu) msr and the exit transition guard.
+  fpcr_mode_ = FPCRMode::Fpu;
 
   // The prolog, epilog and helpers emit outside the per-opcode guard below, so
   // an unencodable operand needs catching here too.
@@ -138,6 +142,94 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
 }
 
 bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
+  // Decide up front whether single-instruction branches to tail labels are
+  // safe; the prolog's stackpoint check needs the answer too. cbnz/b.cond
+  // reach +/-1 MiB and the distance to a tail is bounded by the rest of the
+  // body plus every tail block plus the literal-pool islands that
+  // MaybeFlushV128ConstPool emits at block ends and between tails. All of
+  // that is counted against 256 bytes per HIR instruction: the budget is far
+  // above the fattest sequence this backend emits, and every pool entry (16
+  // bytes) is referenced by at least one instruction of a sequence, so a
+  // function passing this test cannot place any tail out of range. Functions
+  // failing it (which would need ~3000+ HIR instructions) keep the expanded
+  // far form.
+  function_has_vmx_ = false;
+  expected_preds_.clear();
+  incoming_fpcr_.clear();
+  label_block_.clear();
+  {
+    // Labels resolve to blocks through each block's own label chain - the
+    // same mapping the emitter binds branch targets from. A label's ->block
+    // back-pointer can be stale after the passes reshape blocks, exactly like
+    // the edges ControlFlowAnalysisPass recorded (which also never included
+    // fall-through), so neither is trusted here.
+    auto& label_block = label_block_;
+    for (auto* b = builder->first_block(); b; b = b->next) {
+      for (auto* label = b->label_head; label; label = label->next) {
+        label_block[label] = b;
+      }
+    }
+    size_t hir_instr_count = 0;
+    for (auto* b = builder->first_block(); b; b = b->next) {
+      // Expected predecessor count, recomputed from the final HIR. Branches
+      // can sit MID-block (the not-taken path continues inside the same
+      // block), so every instruction is scanned, not just the tail - the
+      // edges ControlFlowAnalysisPass recorded are both stale and
+      // tail-only.
+      for (auto* i = b->instr_head; i; i = i->next) {
+        const hir::Label* label = nullptr;
+        if (i->opcode == &hir::OPCODE_BRANCH_info) {
+          label = i->src1.label;
+        } else if (i->opcode == &hir::OPCODE_BRANCH_TRUE_info ||
+                   i->opcode == &hir::OPCODE_BRANCH_FALSE_info) {
+          label = i->src2.label;
+        }
+        if (label) {
+          auto it = label_block.find(label);
+          if (it != label_block.end()) {
+            ++expected_preds_[it->second];
+          }
+        }
+      }
+      // Fall-through exists unless the block's final instruction is an
+      // unconditional branch. A block ending in RETURN or a tail
+      // CALL_INDIRECT also counts one here, and the emit loop records the
+      // matching edge for it, so the two sides always agree.
+      auto* last = b->instr_tail;
+      if (b->next && !(last && last->opcode == &hir::OPCODE_BRANCH_info)) {
+        ++expected_preds_[b->next];
+      }
+      for (auto* i = b->instr_head; i; i = i->next) {
+        ++hir_instr_count;
+        if (i->dest && i->dest->type == hir::VEC128_TYPE) {
+          function_has_vmx_ = true;
+        } else if (!function_has_vmx_) {
+          uint32_t sig = i->opcode->signature;
+          const hir::Instr::Op* ops[3] = {&i->src1, &i->src2, &i->src3};
+          for (int k = 0; k < 3; ++k) {
+            auto t = static_cast<hir::OpcodeSignatureType>(
+                (sig >> (3 * (k + 1))) & 0x7);
+            if (t == hir::OPCODE_SIG_TYPE_V &&
+                ops[k]->value->type == hir::VEC128_TYPE) {
+              function_has_vmx_ = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    // The function entry is a predecessor edge of the first block like any
+    // other: it contributes Fpu (the entry contract) and counts toward the
+    // block's expected total. A first block that is also a loop header
+    // therefore has one more expected edge than has been recorded when it
+    // is emitted and starts Unknown, exactly like any other loop header.
+    ++expected_preds_[builder->first_block()];
+    RecordIncomingFpcr(builder->first_block(), FPCRMode::Fpu);
+    near_tail_branches_safe_ = hir_instr_count * 256 < (768 * 1024);
+    // tbnz reaches only +/-32 KiB, so its tail form needs a tighter bound.
+    near_tbz_branches_safe_ = hir_instr_count * 256 < (24 * 1024);
+  }
+
   // Calculate local variable stack offsets.
   auto locals = builder->locals();
   size_t stack_offset = StackLayout::GUEST_STACK_SIZE;
@@ -183,14 +275,15 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   }
   code_offsets.prolog_stack_alloc = getSize();
 
-  // Store host return address (x30/LR) so the epilog can restore it.
-  str(x30, ptr(sp, static_cast<uint32_t>(StackLayout::HOST_RET_ADDR)));
-  // Store guest PPC return address (passed in x0 by convention).
-  str(x0, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
-  // Store zero for call return address (we haven't made a call yet).
-  str(xzr, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_CALL_RET_ADDR)));
+  // Store the guest PPC return address (passed in x0 by convention) and the
+  // host return address (x30/LR) with one paired store; the layout keeps the
+  // two slots adjacent for exactly this.
+  static_assert(StackLayout::HOST_RET_ADDR == StackLayout::GUEST_RET_ADDR + 8);
+  stp(x0, x30, ptr(sp, static_cast<int32_t>(StackLayout::GUEST_RET_ADDR)));
 
-  // Record stackpoint for longjmp recovery.
+  // Record stackpoint for longjmp recovery. Also zeroes the call-return slot
+  // (no call made yet), paired with the entry-depth spill when the
+  // synchronizer is on.
   PushStackpoint();
 
   // ========================================================================
@@ -214,9 +307,25 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   auto block = builder->first_block();
   synchronize_stack_on_next_instruction_ = false;
   while (block) {
-    // Reset FPCR tracking on each block entry (we don't know which
-    // predecessor ran, so mode is unknown).
-    ForgetFpcrMode();
+    // Block-entry FPCR mode: the meet of the modes recorded on the block's
+    // incoming edges (each branch emission records the tracker's mode at the
+    // branch point, block ends record the fall-through mode, and the
+    // function entry records Fpu for the first block), used only when every
+    // expected edge has been recorded. An edge that has not been emitted
+    // yet - a loop back edge - leaves the count short, so a loop header
+    // starts Unknown. See the FPCR tracking contract in a64_emitter.h.
+    {
+      FPCRMode incoming = FPCRMode::Unknown;
+      auto exp_it = expected_preds_.find(block);
+      auto in_it = incoming_fpcr_.find(block);
+      if (exp_it != expected_preds_.end() && in_it != incoming_fpcr_.end() &&
+          in_it->second.count == exp_it->second) {
+        incoming = in_it->second.meet;
+      }
+      fpcr_mode_ = incoming;
+    }
+    // Flags from a previous block cannot be trusted either.
+    ResetFlagsZeroTest();
 
     // Bind all labels targeting this block.
     auto label = block->label_head;
@@ -232,15 +341,42 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
       // Skip SOURCE_OFFSET because the return address from the call would
       // point past the check, so it would never execute.
       if (synchronize_stack_on_next_instruction_) {
-        if (instr->GetOpcodeNum() != hir::OPCODE_SOURCE_OFFSET) {
+        // Skip annotations as well as SOURCE_OFFSET: under full debug info
+        // the frontend emits COMMENT first, and a check emitted there sits
+        // before the recorded source-map offset, so a longjmp repair would
+        // land past it and it would never run.
+        if (instr->GetOpcodeNum() != hir::OPCODE_SOURCE_OFFSET &&
+            instr->GetOpcodeNum() != hir::OPCODE_COMMENT) {
           synchronize_stack_on_next_instruction_ = false;
           EnsureSynchronizedGuestAndHostStack();
+          // The helper call clobbers NZCV.
+          ResetFlagsZeroTest();
         }
       }
       const hir::Instr* new_tail = instr;
       bool selected = false;
       try {
         selected = SelectSequence(this, instr, &new_tail);
+        // One-shot handoff: whatever this sequence declared about NZCV is
+        // visible to exactly the next sequence and nothing later.
+        ShiftFlagsZeroTest();
+        // Record the FPCR mode this branch carries to its target (branches
+        // can sit mid-block; the mode here is the mode the jump takes).
+        {
+          const hir::Label* label = nullptr;
+          if (instr->opcode == &hir::OPCODE_BRANCH_info) {
+            label = instr->src1.label;
+          } else if (instr->opcode == &hir::OPCODE_BRANCH_TRUE_info ||
+                     instr->opcode == &hir::OPCODE_BRANCH_FALSE_info) {
+            label = instr->src2.label;
+          }
+          if (label) {
+            auto it = label_block_.find(label);
+            if (it != label_block_.end()) {
+              RecordIncomingFpcr(it->second, fpcr_mode_);
+            }
+          }
+        }
       } catch (const Xbyak_aarch64::Error& e) {
         // Uncaught this aborts the process with no context, so name the opcode
         // and the guest function and fail just this compile.
@@ -265,6 +401,14 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
       return false;
     }
 
+    // Fall-through edge to the next block, unless this block cannot fall
+    // through.
+    {
+      auto* last = block->instr_tail;
+      if (block->next && !(last && last->opcode == &hir::OPCODE_BRANCH_info)) {
+        RecordIncomingFpcr(block->next, fpcr_mode_);
+      }
+    }
     block = block->next;
   }
 
@@ -558,9 +702,65 @@ void A64Emitter::UnimplementedInstr(const hir::Instr* i) {
   DebugBreak();
 }
 
+// Encoded indirection mode: see A64CodeCache for the entry format. Reads the
+// guest address from w16 and leaves the host target in x9; clobbers x14/x15.
+// The three constants live in the backend context, one ldr each. External
+// targets (host thunks and trampolines) number in the dozens per title, so
+// that case is cold and goes in the tail whenever tbnz's +/-32 KiB reach is
+// provable; otherwise it stays inline behind a branch-over.
+void A64Emitter::EmitEncodedIndirectionLookup() {
+  static_assert(offsetof(A64BackendContext, indirection_table_bias) < 4096 &&
+                offsetof(A64BackendContext, external_indirection_table) < 4096);
+  ldr(x14, ptr(x19, static_cast<uint32_t>(
+                        offsetof(A64BackendContext, indirection_table_bias))));
+  add(x14, x14, w16, UXTW);
+  ldr(w9, ptr(x14, static_cast<uint32_t>(0)));
+
+  if (near_tbz_branches_safe_) {
+    auto& indirection_ready = NewCachedLabel();
+    auto& external_target = AddToTail([&indirection_ready](A64Emitter& e,
+                                                           Label&) {
+      e.and_(e.w15, e.w9, A64CodeCache::kIndirectionExternalIndexMask);
+      e.ldr(e.x14,
+            ptr(e.x19, static_cast<uint32_t>(offsetof(
+                           A64BackendContext, external_indirection_table))));
+      e.add(e.x14, e.x14, e.x15, LSL, 3);
+      e.ldr(e.x9, ptr(e.x14, static_cast<uint32_t>(0)));
+      e.b(indirection_ready);
+    });
+    tbnz_near(w9, 31, external_target);
+
+    // Internal: rel32 from code cache base.
+    ldr(x14, ptr(x19, static_cast<uint32_t>(
+                          offsetof(A64BackendContext, code_execute_base))));
+    add(x9, x14, w9, UXTW);
+    L(indirection_ready);
+  } else {
+    Label external_target;
+    Label indirection_ready;
+    tbnz(w9, 31, external_target);
+
+    // Internal: rel32 from code cache base.
+    ldr(x14, ptr(x19, static_cast<uint32_t>(
+                          offsetof(A64BackendContext, code_execute_base))));
+    add(x9, x14, w9, UXTW);
+    b(indirection_ready);
+
+    // External: tagged index into the side table.
+    L(external_target);
+    and_(w15, w9, A64CodeCache::kIndirectionExternalIndexMask);
+    ldr(x14, ptr(x19, static_cast<uint32_t>(offsetof(
+                          A64BackendContext, external_indirection_table))));
+    add(x14, x14, x15, LSL, 3);
+    ldr(x9, ptr(x14, static_cast<uint32_t>(0)));
+
+    L(indirection_ready);
+  }
+}
+
 void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   assert_not_null(function);
-  ForgetFpcrMode();
+  EnsureFpuFpcrModeForTransition();
   if (TryInlinePPCGprLrSaveRestore(instr, function)) {
     return;
   }
@@ -578,8 +778,7 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
     } else {
       // Tail call: pass our return address to the callee.
       PopStackpoint();
-      ldr(x0, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
-      ldr(x30, ptr(sp, static_cast<uint32_t>(StackLayout::HOST_RET_ADDR)));
+      ldp(x0, x30, ptr(sp, static_cast<int32_t>(StackLayout::GUEST_RET_ADDR)));
       if (stack_size() <= 4095) {
         add(sp, sp, static_cast<uint32_t>(stack_size()));
       } else {
@@ -599,29 +798,7 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
       // 32-bit host target.
       ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
     } else {
-      // Encoded path: see A64CodeCache for the entry format.
-      Label external_target;
-      Label indirection_ready;
-
-      mov(x14, code_cache_->indirection_table_base_bias());
-      add(x14, x14, w16, UXTW);
-      ldr(w9, ptr(x14, static_cast<uint32_t>(0)));
-      tbnz(w9, 31, external_target);
-
-      // Internal: rel32 from code cache base.
-      mov(x14, code_cache_->execute_base_address());
-      add(x9, x14, w9, UXTW);
-      b(indirection_ready);
-
-      // External: tagged index into the side table.
-      L(external_target);
-      and_(w15, w9, A64CodeCache::kIndirectionExternalIndexMask);
-      mov(x14, code_cache_->external_indirection_table_base_address());
-      lsl(x15, x15, 3);
-      add(x14, x14, x15);
-      ldr(x9, ptr(x14, static_cast<uint32_t>(0)));
-
-      L(indirection_ready);
+      EmitEncodedIndirectionLookup();
     }
   } else {
     // No indirection table: resolve at runtime.
@@ -634,8 +811,7 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
 
   if (instr->flags & hir::CALL_TAIL) {
     PopStackpoint();
-    ldr(x0, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
-    ldr(x30, ptr(sp, static_cast<uint32_t>(StackLayout::HOST_RET_ADDR)));
+    ldp(x0, x30, ptr(sp, static_cast<int32_t>(StackLayout::GUEST_RET_ADDR)));
     if (stack_size() <= 4095) {
       add(sp, sp, static_cast<uint32_t>(stack_size()));
     } else {
@@ -716,21 +892,47 @@ bool A64Emitter::TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
   // indirection lookup and, for a tail call, the stack teardown and jump.
   ldr(w15, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
   cmp(w16, w15);
-  b(EQ, epilog_label());
+  if (near_tail_branches_safe_) {
+    // The epilog is bound at function end, inside the same +/-1 MiB bound
+    // that gates the other tail branches.
+    b_near(EQ, epilog_label());
+  } else {
+    b(EQ, epilog_label());
+  }
   CallIndirect(instr, 16);
   return true;
 }
 
 void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
-  ForgetFpcrMode();
+  EnsureFpuFpcrModeForTransition();
   auto target_w = WReg(reg_index);
+
+  // A tail call through the indirection table reloads x0/x30 from the same
+  // slot pair the ret-check reads, so one ldp up front serves both: the
+  // b.eq-to-epilog path may clobber x0/x30 freely (the epilog reloads x30
+  // itself and ignores x0), and the indirection loads touch neither. The
+  // no-table fallback keeps the late reload because its resolve blr clobbers
+  // x0/x30.
+  const bool hoist_ret_slots =
+      (instr->flags & hir::CALL_TAIL) && code_cache_->has_indirection_table();
+  if (hoist_ret_slots) {
+    ldp(x0, x30, ptr(sp, static_cast<int32_t>(StackLayout::GUEST_RET_ADDR)));
+  }
 
   // Check if this is a possible return (e.g., PPC blr).
   if (instr->flags & hir::CALL_POSSIBLE_RETURN) {
     // Compare target guest address with our function's return address.
-    ldr(w0, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
+    if (!hoist_ret_slots) {
+      ldr(w0, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
+    }
     cmp(target_w, w0);
-    b(EQ, epilog_label());
+    if (near_tail_branches_safe_) {
+      // The epilog is bound at function end, inside the same +/-1 MiB bound
+      // that gates the other tail branches.
+      b_near(EQ, epilog_label());
+    } else {
+      b(EQ, epilog_label());
+    }
   }
 
   // Load host code address from indirection table.
@@ -744,29 +946,7 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
       // 32-bit host target.
       ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
     } else {
-      // Encoded path: see A64CodeCache for the entry format.
-      Label external_target;
-      Label indirection_ready;
-
-      mov(x14, code_cache_->indirection_table_base_bias());
-      add(x14, x14, w16, UXTW);
-      ldr(w9, ptr(x14, static_cast<uint32_t>(0)));
-      tbnz(w9, 31, external_target);
-
-      // Internal: rel32 from code cache base.
-      mov(x14, code_cache_->execute_base_address());
-      add(x9, x14, w9, UXTW);
-      b(indirection_ready);
-
-      // External: tagged index into the side table.
-      L(external_target);
-      and_(w15, w9, A64CodeCache::kIndirectionExternalIndexMask);
-      mov(x14, code_cache_->external_indirection_table_base_address());
-      lsl(x15, x15, 3);
-      add(x14, x14, x15);
-      ldr(x9, ptr(x14, static_cast<uint32_t>(0)));
-
-      L(indirection_ready);
+      EmitEncodedIndirectionLookup();
     }
   } else {
     // No indirection table: resolve at runtime.
@@ -781,8 +961,9 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
   if (instr->flags & hir::CALL_TAIL) {
     // Tail call: pass our return address to the callee.
     PopStackpoint();
-    ldr(x0, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_RET_ADDR)));
-    ldr(x30, ptr(sp, static_cast<uint32_t>(StackLayout::HOST_RET_ADDR)));
+    if (!hoist_ret_slots) {
+      ldp(x0, x30, ptr(sp, static_cast<int32_t>(StackLayout::GUEST_RET_ADDR)));
+    }
     if (stack_size() <= 4095) {
       add(sp, sp, static_cast<uint32_t>(stack_size()));
     } else {
@@ -799,7 +980,7 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
 }
 
 void A64Emitter::CallExtern(const hir::Instr* instr, const Function* function) {
-  ForgetFpcrMode();
+  EnsureFpuFpcrModeForTransition();
   bool undefined = true;
   if (function->behavior() == Function::Behavior::kBuiltin) {
     auto builtin_function = static_cast<const BuiltinFunction*>(function);
@@ -810,7 +991,9 @@ void A64Emitter::CallExtern(const hir::Instr* instr, const Function* function) {
       mov(x0, reinterpret_cast<uint64_t>(builtin_function->handler()));
       mov(x1, reinterpret_cast<uint64_t>(builtin_function->arg0()));
       mov(x2, reinterpret_cast<uint64_t>(builtin_function->arg1()));
-      mov(x9, reinterpret_cast<uint64_t>(backend()->guest_to_host_thunk()));
+      ldr(x9, ptr(GetBackendCtxReg(),
+                  static_cast<uint32_t>(offsetof(
+                      A64BackendContext, guest_to_host_thunk_no_vec_address))));
       blr(x9);
     }
   } else if (function->behavior() == Function::Behavior::kExtern) {
@@ -821,7 +1004,9 @@ void A64Emitter::CallExtern(const hir::Instr* instr, const Function* function) {
       mov(x0, reinterpret_cast<uint64_t>(extern_function->extern_handler()));
       ldr(x1, ptr(GetContextReg(), static_cast<int32_t>(offsetof(
                                        ppc::PPCContext, kernel_state))));
-      mov(x9, reinterpret_cast<uint64_t>(backend()->guest_to_host_thunk()));
+      ldr(x9, ptr(GetBackendCtxReg(),
+                  static_cast<uint32_t>(offsetof(
+                      A64BackendContext, guest_to_host_thunk_no_vec_address))));
       blr(x9);
     }
   }
@@ -835,11 +1020,22 @@ void A64Emitter::CallExtern(const hir::Instr* instr, const Function* function) {
 void A64Emitter::CallNative(void* fn) { CallNativeSafe(fn); }
 
 void A64Emitter::CallNativeSafe(void* fn) {
+  // The transition guard sits here, inside any inline-MMIO taken branch, so
+  // the switch executes exactly on the path that reaches the thunk. The
+  // fall-through path of such a branch keeps its entry mode, so after the
+  // call the tracker is met with the entry mode: still Fpu when nothing had
+  // to be switched, Unknown otherwise, which makes later ops re-establish
+  // the mode on both paths.
+  const FPCRMode entry_mode = fpcr_mode_;
+  EnsureFpuFpcrModeForTransition();
   // GuestToHostThunk: x0=target function, x1/x2=args (set by caller).
   // The thunk rearranges: saves x0 in x9, sets x0=context, calls x9.
   mov(x0, reinterpret_cast<uint64_t>(fn));
-  mov(x9, reinterpret_cast<uint64_t>(backend()->guest_to_host_thunk()));
+  ldr(x9, ptr(GetBackendCtxReg(),
+              static_cast<uint32_t>(
+                  offsetof(A64BackendContext, guest_to_host_thunk_address))));
   blr(x9);
+  MergeFpcrModeAfterConditional(entry_mode);
 }
 
 void A64Emitter::SetReturnAddress(uint64_t value) {
@@ -930,26 +1126,58 @@ uint32_t A64Emitter::MapReg(const hir::Value* v, const uint32_t* map, int count,
 
 void A64Emitter::EmitPreemptCheck(uint32_t guest_address) {
   // Only safe at a block head, where the per-block register allocator leaves no
-  // guest value live and ForgetFpcrMode has already run, so the unannounced
-  // guest->host call cannot lose a register or desync the mode tracking.
+  // guest value live and the block-entry seeding has just set the tracker, so
+  // the unannounced guest->host call cannot lose a register or desync the
+  // mode tracking.
   //
   // Tests the preempt flag other threads raise. The cold path clears it, a
   // deferred yield re-sets it.
+  // The yield path clobbers FPCR at runtime, but it is cold: when the
+  // tracker holds a known mode here (block-entry seeding often just
+  // established one), the yield tail restores that mode after the host
+  // call, so the hot path's static mode survives the check untouched. Only
+  // an already-unknown mode stays unknown.
   Label& after = NewCachedLabel();
   // ldrb/strb unsigned-offset encoding caps at 4095.
   static_assert(offsetof(ppc::PPCContext, preempt_requested) < 4096);
   const uint32_t flag_offset =
       static_cast<uint32_t>(offsetof(ppc::PPCContext, preempt_requested));
-  Label& do_yield = AddToTail([&after, flag_offset](A64Emitter& e, Label&) {
+  const bool has_vmx = function_has_vmx_;
+  const FPCRMode held_mode = fpcr_mode_;
+  Label& do_yield = AddToTail([&after, flag_offset, has_vmx, held_mode](
+                                  A64Emitter& e, Label&) {
+    // The yield calls host code, which must run in FPU mode. The runtime mode
+    // here is whatever the interrupted block was in - unknowable at emission
+    // - so functions that touch VEC128 switch unconditionally (cold path).
+    if (has_vmx) {
+      e.ldr(e.w0, ptr(e.x19, static_cast<uint32_t>(
+                                 offsetof(A64BackendContext, fpcr_fpu))));
+      e.msr(3, 3, 4, 4, 0, e.x0);  // msr FPCR, x0
+    }
     e.strb(e.wzr, ptr(e.x20, flag_offset));
     // Null until the scheduler starts, and a stale flag can reach here after
     // it shuts down, so check before calling.
     e.mov(e.x0,
           reinterpret_cast<uint64_t>(&xe::cpu::backend::preempt_yield_handler));
     e.ldr(e.x0, ptr(e.x0));
-    e.cbz(e.x0, after);
-    e.mov(e.x9, reinterpret_cast<uint64_t>(e.backend()->guest_to_host_thunk()));
+    const bool restore_held =
+        held_mode != FPCRMode::Unknown && held_mode != FPCRMode::Fpu;
+    Xbyak_aarch64::Label rejoin;
+    // A null handler (scheduler not yet started, or shut down with a stale
+    // flag) must still pass through the held-mode restore below: the FPU
+    // switch above already ran, and the hot path continues assuming
+    // held_mode.
+    e.cbz(e.x0, restore_held ? rejoin : after);
+    e.ldr(e.x9, ptr(e.GetBackendCtxReg(),
+                    static_cast<uint32_t>(offsetof(
+                        A64BackendContext, guest_to_host_thunk_address))));
     e.blr(e.x9);
+    // Re-establish the mode the hot path still assumes (the host call left
+    // FPCR in the scalar FPU state via the guest-to-host thunk).
+    if (restore_held) {
+      e.L(rejoin);
+      e.ReloadFpcrMode(held_mode);
+    }
     e.b(after);
   });
   if (cvars::log_safepoint_pc && guest_address) {
@@ -961,7 +1189,13 @@ void A64Emitter::EmitPreemptCheck(uint32_t guest_address) {
                          offsetof(ppc::PPCContext, last_safepoint_pc))));
   }
   ldrb(w8, ptr(x20, flag_offset));
-  cbnz(w8, do_yield);
+  if (near_tail_branches_safe_) {
+    // Not-taken fall-through: two instructions on the hot path instead of an
+    // inverted branch over an unconditional one.
+    cbnz_near(w8, do_yield);
+  } else {
+    cbnz(w8, do_yield);
+  }
   L(after);
 }
 
@@ -1037,68 +1271,43 @@ bool A64Emitter::MaybeFlushV128ConstPool() {
   return FlushV128ConstPool(true);
 }
 
-void A64Emitter::HandleStackpointOverflowError(ppc::PPCContext* context) {
-  if (debugging::IsDebuggerAttached()) {
-    debugging::Break();
-  }
-  xe::FatalError(
-      "Overflowed stackpoints! Please report this error for this title to "
-      "Xenia developers.");
-}
-
 void A64Emitter::PushStackpoint() {
   if (!cvars::a64_enable_host_guest_stack_synchronization) {
+    // Still owns zeroing the call-return slot (see the prolog).
+    str(xzr, ptr(sp, static_cast<uint32_t>(StackLayout::GUEST_CALL_RET_ADDR)));
     return;
   }
-  // x8 = stackpoints array, w9 = current depth
-  ldr(x8, ptr(x19,
-              static_cast<uint32_t>(offsetof(A64BackendContext, stackpoints))));
-  ldr(w9, ptr(x19, static_cast<uint32_t>(
-                       offsetof(A64BackendContext, current_stackpoint_depth))));
-
-  // x8 += w9 * sizeof(A64BackendStackpoint) via scaled extended-register add.
-  static_assert(sizeof(A64BackendStackpoint) == 16,
-                "stackpoint indexing relies on a 16-byte element size");
-  add(x8, x8, w9, UXTW, 4);
-
-  // Store host SP.
-  mov(x10, sp);
-  str(x10, ptr(x8, static_cast<uint32_t>(
-                       offsetof(A64BackendStackpoint, host_stack_))));
-  // Store guest r1 (32-bit).
-  ldr(w10, ptr(x20, static_cast<int32_t>(offsetof(ppc::PPCContext, r[1]))));
-  str(w10, ptr(x8, static_cast<uint32_t>(
-                       offsetof(A64BackendStackpoint, guest_stack_))));
-  // Store guest LR (32-bit).
+  // Link this frame's node into the chain. All node fields are written
+  // before the head store, so an async signal never observes a head
+  // pointing at an uninitialized node, and the node sits above live SP so
+  // signal frames cannot smash it. The chain has no depth bound: runaway
+  // recursion is stopped by the host stack guard page.
+  static_assert(StackLayout::STACKPOINT_PREV ==
+                StackLayout::GUEST_CALL_RET_ADDR + 8);
+  static_assert(StackLayout::STACKPOINT_GUEST_SP ==
+                StackLayout::STACKPOINT_PREV + 8);
+  static_assert(StackLayout::STACKPOINT_GUEST_RET ==
+                StackLayout::STACKPOINT_GUEST_SP + 4);
+  ldr(x8, ptr(x19, static_cast<uint32_t>(
+                       offsetof(A64BackendContext, stackpoint_head))));
+  ldr(w9, ptr(x20, static_cast<int32_t>(offsetof(ppc::PPCContext, r[1]))));
   ldr(w10, ptr(x20, static_cast<int32_t>(offsetof(ppc::PPCContext, lr))));
-  str(w10, ptr(x8, static_cast<uint32_t>(
-                       offsetof(A64BackendStackpoint, guest_return_address_))));
-
-  // Increment depth.
-  add(w9, w9, 1);
-  str(w9, ptr(x19, static_cast<uint32_t>(
-                       offsetof(A64BackendContext, current_stackpoint_depth))));
-
-  // Check for overflow.
-  mov(w10, static_cast<uint32_t>(cvars::a64_max_stackpoints));
-  cmp(w9, w10);
-  auto& overflow_label = AddToTail([](A64Emitter& e, Label& lbl) {
-    e.CallNativeSafe(
-        reinterpret_cast<void*>(A64Emitter::HandleStackpointOverflowError));
-  });
-  b(GE, overflow_label);
+  // Zero the call-return slot and store prev_ with one pair.
+  stp(xzr, x8, ptr(sp, static_cast<int32_t>(StackLayout::GUEST_CALL_RET_ADDR)));
+  stp(w9, w10, ptr(sp, static_cast<int32_t>(StackLayout::STACKPOINT_GUEST_SP)));
+  add(x11, sp, static_cast<uint32_t>(StackLayout::STACKPOINT_PREV));
+  str(x11, ptr(x19, static_cast<uint32_t>(
+                        offsetof(A64BackendContext, stackpoint_head))));
 }
-
 void A64Emitter::PopStackpoint() {
   if (!cvars::a64_enable_host_guest_stack_synchronization) {
     return;
   }
-  // Decrement current_stackpoint_depth.
-  ldr(w8, ptr(x19, static_cast<uint32_t>(
-                       offsetof(A64BackendContext, current_stackpoint_depth))));
-  sub(w8, w8, 1);
-  str(w8, ptr(x19, static_cast<uint32_t>(
-                       offsetof(A64BackendContext, current_stackpoint_depth))));
+  // head = this frame's prev_. Runs before the frame teardown at every pop
+  // site, so there is no window where head points below live SP.
+  ldr(x8, ptr(sp, static_cast<uint32_t>(StackLayout::STACKPOINT_PREV)));
+  str(x8, ptr(x19, static_cast<uint32_t>(
+                       offsetof(A64BackendContext, stackpoint_head))));
 }
 
 void A64Emitter::EnsureSynchronizedGuestAndHostStack() {
@@ -1110,10 +1319,10 @@ void A64Emitter::EnsureSynchronizedGuestAndHostStack() {
   // still point at a skipped frame here.
   auto& return_from_sync = NewCachedLabel();
 
-  ldr(w16, ptr(x19, static_cast<uint32_t>(offsetof(
-                        A64BackendContext, pending_stackpoint_sync_depth))));
+  ldr(x16, ptr(x19, static_cast<uint32_t>(offsetof(
+                        A64BackendContext, pending_stackpoint_sync_node))));
   // Bound forward target (adr + b below) — short form is safe.
-  cbz_near(w16, return_from_sync);
+  cbz_near(x16, return_from_sync);
 
   auto& sync_label = AddToTail([](A64Emitter& e, Label& lbl) {
     // x8 was set up in the body to point at return_from_sync; do that there

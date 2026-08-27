@@ -151,13 +151,12 @@ static size_t BuildThunkUnwindCodes(uint8_t* buf) {
 }
 
 // Build minimal unwind codes for a guest function prolog.
-// Guest functions only do: sub sp, sp, #N; str x30, [sp, #64]
+// Guest functions only do: sub sp, sp, #N; stp x0, x30, [sp, #48]
 // The callee-saved registers were already saved by the thunk.
 static size_t BuildGuestUnwindCodes(uint8_t* buf, uint32_t stack_size) {
   size_t off = 0;
-  // The guest function stores x30 at [sp + HOST_RET_ADDR] via STR, not STP.
-  // Windows unwinder needs to know where LR is to unwind. We encode this as
-  // save_lrpair — but there's no single-register LR save opcode on ARM64.
+  // The guest function stores x0/x30 at [sp + GUEST_RET_ADDR] with an
+  // unpaired-with-FP stp the unwind opcodes cannot describe directly.
   // Instead we describe the stack allocation only. The host return address
   // is stored by the JIT but is not a callee-save operation (it's the thunk's
   // LR, not the guest function's). The unwinder will walk up to the thunk

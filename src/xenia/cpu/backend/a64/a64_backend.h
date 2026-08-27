@@ -58,14 +58,23 @@ struct ReserveHelper {
   }
 };
 
-struct A64BackendStackpoint {
-  uint64_t host_stack_;
-  unsigned guest_stack_;
-  unsigned guest_return_address_;
+// One record per live guest frame, embedded in that frame's host stack at
+// StackLayout::STACKPOINT_PREV and linked through stackpoint_head. The
+// record's own address identifies the frame: address - STACKPOINT_PREV is
+// the frame's post-alloc SP.
+struct A64StackpointNode {
+  const A64StackpointNode* prev_;  // older frame's node, null at chain root
+  uint32_t guest_stack_;           // guest r1 at function entry
+  uint32_t guest_return_address_;  // guest lr at function entry
 };
+static_assert(sizeof(A64StackpointNode) == 16,
+              "the push emission pairs prev_ with the ret-slot zeroing and "
+              "the two guest words with one stp");
 
-uint32_t FindStackpointSyncDepth(const A64BackendStackpoint* stackpoints,
-                                 uint32_t current_depth, uint32_t guest_sp);
+// Walks the chain looking for a longjmp: more than one live frame skipped
+// by |guest_sp|. Returns the node to restore, or null (no repair).
+const A64StackpointNode* FindStackpointSyncNode(const A64StackpointNode* head,
+                                                uint32_t guest_sp);
 
 enum : uint32_t {
   kA64BackendFPCRModeBit = 0,
@@ -108,12 +117,22 @@ struct A64BackendContext {
   ReserveHelper* reserve_helper_;
   uint64_t cached_reserve_value_;
   uint64_t* guest_tick_count;
-  A64BackendStackpoint* stackpoints;
+  // Constants for CALL_INDIRECT's encoded indirection mode; a call site
+  // loads each with one ldr from x19. Stable after code-cache Initialize.
+  uint64_t indirection_table_bias;
+  uint64_t code_execute_base;
+  uint64_t external_indirection_table;
+  // The guest-to-host thunk's address, loaded the same way by CallNativeSafe
+  // and the preempt yield. Stable once Initialize emits the thunk.
+  uint64_t guest_to_host_thunk_address;
+  // Same thunk without the vector save/restore, for transitions where
+  // no HIR value can be live in q4-q31. See EmitGuestToHostThunkNoVec.
+  uint64_t guest_to_host_thunk_no_vec_address;
+  const A64StackpointNode* stackpoint_head;
   // address of the live reservation, and its granule generation when taken
   uint32_t reserve_address;
   uint32_t reserve_generation;
-  unsigned int current_stackpoint_depth;
-  unsigned int pending_stackpoint_sync_depth;
+  const A64StackpointNode* pending_stackpoint_sync_node;
   unsigned int fpcr_fpu;
   unsigned int fpcr_vmx;
   // bit 0 = 0 if fpcr is fpu, else it is vmx
@@ -128,6 +147,12 @@ struct A64BackendContext {
 constexpr unsigned int DEFAULT_FPU_FPCR = 0;
 // Default FPCR for VMX mode (flush to zero, preserve NaN payloads).
 constexpr unsigned int DEFAULT_VMX_FPCR = (1 << 24);  // FZ
+// Invariant: FPCR.DN is clear in every FPCR image this backend installs
+// (these defaults, SET_ROUNDING_MODE's fpcr_table, SET_NJM's FZ toggle).
+// With DN clear a NaN operand propagates its payload and an invalid
+// operation with no NaN operand produces the default QNaN (0x7FC00000 /
+// 0x7FF8000000000000), which is also PPC's default QNaN. The scalar and
+// vector NaN fixups in a64_sequences.cc and a64_seq_util.h rely on both.
 
 class A64Backend : public Backend {
  public:
@@ -143,6 +168,9 @@ class A64Backend : public Backend {
 
   HostToGuestThunk host_to_guest_thunk() const { return host_to_guest_thunk_; }
   GuestToHostThunk guest_to_host_thunk() const { return guest_to_host_thunk_; }
+  GuestToHostThunk guest_to_host_thunk_no_vec() const {
+    return guest_to_host_thunk_no_vec_;
+  }
   ResolveFunctionThunk resolve_function_thunk() const {
     return resolve_function_thunk_;
   }
@@ -214,6 +242,7 @@ class A64Backend : public Backend {
 
   HostToGuestThunk host_to_guest_thunk_ = nullptr;
   GuestToHostThunk guest_to_host_thunk_ = nullptr;
+  GuestToHostThunk guest_to_host_thunk_no_vec_ = nullptr;
   ResolveFunctionThunk resolve_function_thunk_ = nullptr;
   void* synchronize_guest_and_host_stack_helper_ = nullptr;
   void* vrsqrtefp_scalar_helper_ = nullptr;

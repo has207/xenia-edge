@@ -11,6 +11,7 @@
 #define XENIA_CPU_RAW_MODULE_H_
 
 #include <string>
+#include <vector>
 
 #include "xenia/cpu/module.h"
 
@@ -28,6 +29,8 @@ class RawModule : public Module {
   // in it.
   void SetAddressRange(uint32_t base_address, uint32_t size);
 
+  InfoCacheFlags* GetInstructionAddressFlags(uint32_t guest_address) override;
+
   const std::string& name() const override { return name_; }
   bool is_executable() const override { return is_executable_; }
   void set_name(const std::string_view name) { name_ = name; }
@@ -44,6 +47,9 @@ class RawModule : public Module {
   uint32_t base_address_;
   uint32_t low_address_;
   uint32_t high_address_;
+  // One slot per instruction, sized on load; empty when the module was set
+  // up via SetAddressRange without a file (the accessor then returns null).
+  std::vector<InfoCacheFlags> instruction_flags_;
 };
 
 }  // namespace cpu

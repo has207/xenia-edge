@@ -27,7 +27,6 @@
 #include "xenia/cpu/ppc/ppc_frontend.h"
 #include "xenia/cpu/ppc/ppc_opcode_info.h"
 #include "xenia/cpu/processor.h"
-#include "xenia/cpu/xex_module.h"
 DEFINE_bool(
     break_on_unimplemented_instructions, true,
     "Break to the host debugger (or crash if no debugger attached) if an "
@@ -516,9 +515,11 @@ static Value* FpIsSignalingNan(PPCHIRBuilder& f, Value* value) {
                                f.LoadConstantUint64(0x0008000000000000ull))));
 }
 
-// VXSNAN is unconditional on PPC, and the host cannot be relied on for it: the
-// a64 sequences branch around the arithmetic when an operand is a NaN, so a
-// signalling operand may never reach an instruction that would signal.
+// VXSNAN is unconditional on PPC, and the host cannot be relied on for it:
+// several sequences still branch around the arithmetic when an operand is a
+// NaN (and result-gated ones clear host status per Rc instruction anyway),
+// so a signalling operand may never reach an instruction that would signal.
+// This software term is load-bearing even where the hardware op now runs.
 Value* PPCHIRBuilder::FpInvalidFromOperands(
     std::initializer_list<Value*> operands) {
   Value* any_snan = nullptr;
@@ -780,14 +781,11 @@ void PPCHIRBuilder::SetReturnAddress(Value* value) {
   Module* mod = this->function_->module();
   if (value && value->IsConstant()) {
     if (mod) {
-      XexModule* xexmod = dynamic_cast<XexModule*>(mod);
-      if (xexmod) {
-        auto flags = xexmod->GetInstructionAddressFlags(value->AsUint32());
-        if (flags) {
-          InfoCacheFlags bits{};
-          bits.is_return_site = true;
-          AtomicSetInfoCacheFlags(flags, bits);
-        }
+      auto flags = mod->GetInstructionAddressFlags(value->AsUint32());
+      if (flags) {
+        InfoCacheFlags bits{};
+        bits.is_return_site = true;
+        AtomicSetInfoCacheFlags(flags, bits);
       }
     }
   }

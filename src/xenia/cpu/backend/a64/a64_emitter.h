@@ -109,11 +109,64 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   static void SetupReg(const hir::Value* v, Xbyak_aarch64::VReg& r) {
     r = Xbyak_aarch64::VReg(MapReg(v, vec_reg_map_, VEC_COUNT, "vec"));
   }
+  // True when branches to tail labels may use the single-instruction near
+  // forms (see Emit); sequences use this to place cold paths out of line.
+  bool near_tail_branches_safe() const { return near_tail_branches_safe_; }
 
   Xbyak_aarch64::Label& epilog_label() { return *epilog_label_; }
 
   FunctionDebugInfo* debug_info() const { return debug_info_; }
   size_t stack_size() const { return stack_size_; }
+
+  // NZCV fusion between adjacent HIR instructions. The classic producer is
+  // ANDS (condition NE); a producer may instead declare any condition code
+  // that is true at runtime exactly when the register is nonzero, on every
+  // path reaching the next instruction.
+  void DeclareFlagsZeroTest(int gpr_reg, bool is64) {
+    DeclareFlagsNonzeroCond(gpr_reg, is64, Xbyak_aarch64::NE);
+  }
+  void DeclareFlagsNonzeroCond(int gpr_reg, bool is64,
+                               Xbyak_aarch64::Cond cond) {
+    flags_zero_fresh_reg_ = gpr_reg;
+    flags_zero_fresh_is64_ = is64;
+    flags_zero_fresh_cond_ = cond;
+  }
+  bool FlagsNonzeroCondHeld(int gpr_reg, bool is64,
+                            Xbyak_aarch64::Cond* out_cond) const {
+    if (flags_zero_armed_reg_ == gpr_reg && flags_zero_armed_is64_ == is64 &&
+        gpr_reg >= 0) {
+      *out_cond = flags_zero_armed_cond_;
+      return true;
+    }
+    return false;
+  }
+  bool FlagsHoldZeroTest(int gpr_reg, bool is64) const {
+    return flags_zero_armed_reg_ == gpr_reg && flags_zero_armed_is64_ == is64 &&
+           gpr_reg >= 0 && flags_zero_armed_cond_ == Xbyak_aarch64::NE;
+  }
+  // Reset and Shift govern every adjacent-sequence handoff, not just the
+  // flags: the w16 forwarding below rides on the same fresh/armed pair.
+  void ResetFlagsZeroTest() {
+    flags_zero_fresh_reg_ = flags_zero_armed_reg_ = -1;
+    w16_holds_fresh_ = w16_holds_armed_ = nullptr;
+  }
+  void ShiftFlagsZeroTest() {
+    flags_zero_armed_reg_ = flags_zero_fresh_reg_;
+    flags_zero_armed_is64_ = flags_zero_fresh_is64_;
+    flags_zero_armed_cond_ = flags_zero_fresh_cond_;
+    flags_zero_fresh_reg_ = -1;
+    w16_holds_armed_ = w16_holds_fresh_;
+    w16_holds_fresh_ = nullptr;
+  }
+
+  // One-shot forwarding of an indirect-call target into w16: LOAD_CONTEXT
+  // declares that it loaded this HIR value directly into w16, and only the
+  // immediately following instruction may consume it (same shift/reset rules
+  // as the flags fusion; nothing between the two can touch w16).
+  void DeclareW16Holds(const hir::Value* value) { w16_holds_fresh_ = value; }
+  bool W16Holds(const hir::Value* value) const {
+    return value && w16_holds_armed_ == value;
+  }
 
   void MarkSourceOffset(const hir::Instr* i);
 
@@ -128,6 +181,8 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
 
   void Call(const hir::Instr* instr, GuestFunction* function);
   void CallIndirect(const hir::Instr* instr, int reg_index);
+  // Shared by Call and CallIndirect: w16 (guest address) -> x9 (host target).
+  void EmitEncodedIndirectionLookup();
   void CallExtern(const hir::Instr* instr, const Function* function);
   // Emits a PPC __savegprlr_N/__restgprlr_N helper body inline instead of
   // calling it. Returns false when the callee is not a GPR saverest helper.
@@ -151,13 +206,47 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   void PopStackpoint();
   void EnsureSynchronizedGuestAndHostStack();
 
-  static void HandleStackpointOverflowError(ppc::PPCContext* context);
-
+  // After a conditional region (TRAP_TRUE / CALL_*_TRUE), the taken path's
+  // tracker state must meet the skip path's entry state: keep it only when
+  // both agree.
+  void MergeFpcrModeAfterConditional(FPCRMode skip_path_mode) {
+    if (fpcr_mode_ != skip_path_mode) {
+      fpcr_mode_ = FPCRMode::Unknown;
+    }
+  }
+  FPCRMode fpcr_mode() const { return fpcr_mode_; }
+  // Switches to Fpu if a VMX mode is tracked and drops to Unknown. Only
+  // SET_NJM needs this: it rewrites the VMX FPCR images, so a tracked VMX
+  // mode no longer describes the register.
   void ForgetFpcrMode() {
     if (IsVmxFpcrMode(fpcr_mode_)) {
       ChangeFpcrMode(FPCRMode::Fpu);
     }
     fpcr_mode_ = FPCRMode::Unknown;
+  }
+  // Re-emits the switch to |mode| even though the tracker already claims it:
+  // for a cold path whose host call clobbered FPCR at runtime while the hot
+  // path's static mode stays |mode|.
+  void ReloadFpcrMode(FPCRMode mode) {
+    fpcr_mode_ = FPCRMode::Unknown;
+    ChangeFpcrMode(mode);
+    fpcr_mode_ = mode;
+  }
+  // Host and cross-function transitions must run in FPU mode. The switch is
+  // emitted when a VMX mode is tracked, and also when the tracker holds
+  // Unknown in a function that touches VEC128 at all, since Unknown may be
+  // VMX at runtime; a function with no VEC128 can never be in a VMX mode and
+  // skips the guard entirely.
+  void EnsureFpuFpcrModeForTransition() {
+    if (IsVmxFpcrMode(fpcr_mode_) ||
+        (fpcr_mode_ == FPCRMode::Unknown && function_has_vmx_)) {
+      ChangeFpcrMode(FPCRMode::Fpu);
+    }
+    // The transition this guards returns with FPCR back in the scalar FPU
+    // state: a guest callee restores it before returning, and host calls
+    // come back through the guest-to-host or resolve thunk, both of which
+    // reload fpcr_fpu. The post-call code may rely on that.
+    fpcr_mode_ = FPCRMode::Fpu;
   }
   bool ChangeFpcrMode(FPCRMode new_mode, bool already_set = false);
   bool IsFeatureEnabled(uint64_t feature_flag) const {
@@ -231,6 +320,11 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
                  const Xbyak_aarch64::Label& label) {
     CodeGenerator::cbnz(rt, label);
   }
+  // +/-32 KiB only; guard with near_tbz_branches_safe_.
+  void tbnz_near(const Xbyak_aarch64::WReg& rt, uint32_t bit,
+                 const Xbyak_aarch64::Label& label) {
+    CodeGenerator::tbnz(rt, bit, label);
+  }
 
   // Shadow of CodeGenerator::L that records the bind offset so later
   // branches to this label can be emitted in single-instruction form.
@@ -284,6 +378,24 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   Arena source_map_arena_;
 
   size_t stack_size_ = 0;
+  // True when every tail label of the current function provably sits within
+  // the +/-1 MiB reach of cbnz/b.cond (set per function in Emit).
+  bool near_tail_branches_safe_ = false;
+  // Same, for tbnz's +/-32 KiB reach.
+  bool near_tbz_branches_safe_ = false;
+  // NZCV fusion: the previous HIR instruction's sequence declared that the
+  // flags currently hold a zero-test of this GPR (ANDS). -1 = nothing.
+  // `fresh` is what the current sequence declares; the emit loop shifts it
+  // into `armed` between instructions, so `armed` can never leak past one
+  // instruction, a label bind, or a block boundary.
+  int flags_zero_fresh_reg_ = -1;
+  Xbyak_aarch64::Cond flags_zero_fresh_cond_ = Xbyak_aarch64::NE;
+  Xbyak_aarch64::Cond flags_zero_armed_cond_ = Xbyak_aarch64::NE;
+  bool flags_zero_fresh_is64_ = false;
+  int flags_zero_armed_reg_ = -1;
+  bool flags_zero_armed_is64_ = false;
+  const hir::Value* w16_holds_fresh_ = nullptr;
+  const hir::Value* w16_holds_armed_ = nullptr;
 
   static const uint32_t gpr_reg_map_[GPR_COUNT];
   static const uint32_t vec_reg_map_[VEC_COUNT];
@@ -329,6 +441,42 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   static constexpr int64_t kTestBranchBackwardRange = (1ll << 15) - 8;
 
   FPCRMode fpcr_mode_ = FPCRMode::Unknown;
+  // Whether the current function contains any VEC128-typed instruction (set
+  // per function in Emit); gates the Unknown-mode transition guard.
+  bool function_has_vmx_ = false;
+  // FPCR tracking contract. Lattice {Unknown, Fpu, Vmx, VmxDaz} with
+  // meet(a, b) = a if a == b else Unknown. Every guest function is entered
+  // in Fpu: the host-to-guest thunk restores fpcr_fpu on entry, every call
+  // site runs EnsureFpuFpcrModeForTransition, every callee returns in Fpu,
+  // the guest-to-host thunks restore fpcr_fpu after host callbacks and the
+  // resolve thunk restores it after the host resolve. Within a function,
+  // every branch records the tracker's mode at the branch point on its
+  // target's incoming edges, block ends record the fall-through mode unless
+  // the last instruction is an unconditional BRANCH, and the function entry
+  // records Fpu on the first block; a block is seeded with the meet only
+  // when its recorded count equals the expected count from the pre-scan,
+  // otherwise it starts Unknown. RETURN/RETURN_TRUE do not participate and
+  // the epilog has no guard: PPC blr lowers to CALL_INDIRECT, which carries
+  // the guard, so they are unreachable from the frontend today.
+  // FPCR seeding state, per function: how many predecessor edges each block
+  // expects (from the final-HIR pre-scan), the meet of the modes recorded so
+  // far on its incoming edges, and the authoritative label->block mapping.
+  struct IncomingFpcr {
+    FPCRMode meet = FPCRMode::Unknown;
+    uint32_t count = 0;
+  };
+  std::unordered_map<const hir::Block*, uint32_t> expected_preds_;
+  std::unordered_map<const hir::Block*, IncomingFpcr> incoming_fpcr_;
+  std::unordered_map<const hir::Label*, const hir::Block*> label_block_;
+  void RecordIncomingFpcr(const hir::Block* target, FPCRMode mode) {
+    auto& in = incoming_fpcr_[target];
+    if (in.count == 0) {
+      in.meet = mode;
+    } else if (in.meet != mode) {
+      in.meet = FPCRMode::Unknown;
+    }
+    ++in.count;
+  }
   bool synchronize_stack_on_next_instruction_ = false;
 };
 

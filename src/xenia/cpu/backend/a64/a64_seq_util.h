@@ -50,8 +50,10 @@ inline void EmitWithFpcrMode(A64Emitter& e, FPCRMode mode, Fn&& emit_op) {
   // Enter the requested FPCR mode using tracked lazy switching.  If the
   // emitter is already in that mode (e.g. consecutive VMX ops in the same
   // basic block) this is a no-op — no system register access at all.
-  // FPU mode is restored at block boundaries and calls via ForgetFpcrMode,
-  // or on demand by scalar FP sequences via ChangeFpcrMode(Fpu).
+  // FPU mode is re-established at host and cross-function transitions via
+  // EnsureFpuFpcrModeForTransition, or on demand by scalar FP sequences via
+  // ChangeFpcrMode(Fpu); block entries seed the tracker from the
+  // predecessors' recorded modes (see a64_emitter.h).
   e.ChangeFpcrMode(mode);
   emit_op();
 }
@@ -298,6 +300,13 @@ inline int SrcVReg(A64Emitter& e, const T& op, int scratch_idx) {
   return op.reg().getIdx();
 }
 
+// Copies a source into scratch register `slot` unless it already sits there.
+inline void MoveToScratchVReg(A64Emitter& e, int src, int slot) {
+  if (src != slot) {
+    e.mov(VReg(slot).b16, VReg(src).b16);
+  }
+}
+
 // Compute a guest memory address, returning the XReg for [x21, xN] addressing.
 // For constants, loads the address into x0 (scratch).
 inline XReg ComputeMemoryAddress(A64Emitter& e, const I64Op& guest) {
@@ -359,26 +368,48 @@ inline XReg AddGuestMemoryOffset(A64Emitter& e, const XReg& base,
 
 // Flush denormal float32 lanes to zero in a NEON register (in-place).
 // A float32 is denormal when 0 < abs(val) < 0x00800000.
-// vreg must not equal sa or sb.
 // This is needed because FPCR.FZ may not flush denormal inputs on all ARM64
 // implementations (the ARM spec says input flushing is implementation-defined).
+//
+// Loads the threshold the comparison below needs: 0x01000000, the smallest
+// normal magnitude with the sign shifted out.
+inline void LoadDenormalThreshold_V128(A64Emitter& e, int k) {
+  e.movi(VReg(k).s4, 0x1, LSL, 24);
+}
+
+// The K-preloaded body. val<<1 drops the sign and doubles the magnitude:
+// denormals land in [0x00000002, 0x00FFFFFE] and zeros at 0, both below
+// 0x01000000; the smallest normal lands exactly on it. Masking zero lanes too
+// is deliberate - bic of bits 30:0 is a no-op on a zero of either sign - so no
+// instruction is spent excluding them. ushr clears bit 31 of the mask, which
+// keeps the sign: -denormal flushes to -0, +denormal to +0.
+// vreg must equal neither k nor t.
+inline void FlushDenormalsWithK_V128(A64Emitter& e, int vreg, int k, int t) {
+  e.shl(VReg(t).s4, VReg(vreg).s4, 1);
+  e.cmhi(VReg(t).s4, VReg(k).s4,
+         VReg(t).s4);                 // mask: all-1s for denormal-or-zero lanes
+  e.ushr(VReg(t).s4, VReg(t).s4, 1);  // clear bit 31: preserve the sign
+  e.bic(VReg(vreg).b16, VReg(vreg).b16, VReg(t).b16);
+}
+
+// One-shot form for single flushes; multi-flush sites load K once themselves.
+// Runtime NJ gate: with VSCR.NJ clear, denormals pass through untouched, so
+// the software flushes must not run. One flags load + tbz brackets a flush
+// block; FZ-input hosts never emit these blocks at all. w17 is free in every
+// vector FP sequence (the emitter reserves it as scratch).
+inline void EmitSkipFlushUnlessNJM(A64Emitter& e, Xbyak_aarch64::Label& skip) {
+  e.ldr(e.w17, Xbyak_aarch64::ptr(e.x19, static_cast<uint32_t>(offsetof(
+                                             A64BackendContext, flags))));
+  e.tbz(e.w17, kA64BackendNJMOn, skip);
+}
+
 inline void FlushDenormals_V128(A64Emitter& e, int vreg, int sa = 2,
                                 int sb = 3) {
-  // val<<1 removes the sign bit and doubles the value.
-  // Denormals become [0x00000002, 0x00FFFFFE]; zeros become 0x00000000.
-  // (val<<1) - 1: wraps 0→0xFFFFFFFF (excluded),
-  // denorms→[0x00000001,0x00FFFFFD]. Denormal iff ((val<<1) - 1) < 0x00FFFFFF
-  // (unsigned).
-  e.shl(VReg(sa).s4, VReg(vreg).s4, 1);
-  e.movi(VReg(sb).s4, 1u);
-  e.sub(VReg(sa).s4, VReg(sa).s4, VReg(sb).s4);
-  e.mvni(VReg(sb).s4, 0xFFu, LSL, 24);  // 0x00FFFFFF
-  e.cmhi(VReg(sb).s4, VReg(sb).s4,
-         VReg(sa).s4);  // mask: all-1s for denormal lanes
-  // Clear only bits 30:0 (preserve sign bit 31) so -denormal → -0, +denormal →
-  // +0.
-  e.ushr(VReg(sa).s4, VReg(sb).s4, 1);  // sa = mask with bit 31 cleared
-  e.bic(VReg(vreg).b16, VReg(vreg).b16, VReg(sa).b16);
+  Xbyak_aarch64::Label no_flush;
+  EmitSkipFlushUnlessNJM(e, no_flush);
+  LoadDenormalThreshold_V128(e, sa);
+  FlushDenormalsWithK_V128(e, vreg, sa, sb);
+  e.L(no_flush);
 }
 
 // Fixup for vmaxfp/vminfp NaN lanes.
@@ -409,16 +440,17 @@ inline void PrepareVmxFpSources(A64Emitter& e, const T1& op1, const T2& op2,
   int s1 = SrcVReg(e, op1, 0);
   int s2 = SrcVReg(e, op2, 1);
   // Copy to scratch v0/v1 so we don't modify live allocated registers.
-  if (s1 != 0) {
-    e.mov(VReg(0).b16, VReg(s1).b16);
-  }
-  if (s2 != 1) {
-    e.mov(VReg(1).b16, VReg(s2).b16);
-  }
-  // Flush denormal inputs in software only if FPCR.FZ doesn't handle it.
+  MoveToScratchVReg(e, s1, 0);
+  MoveToScratchVReg(e, s2, 1);
+  // Flush denormal inputs in software only if FPCR.FZ doesn't handle it,
+  // and only while the guest actually has NJ on.
   if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
-    FlushDenormals_V128(e, 0);
-    FlushDenormals_V128(e, 1);
+    Xbyak_aarch64::Label no_flush;
+    EmitSkipFlushUnlessNJM(e, no_flush);
+    LoadDenormalThreshold_V128(e, 2);
+    FlushDenormalsWithK_V128(e, 0, 2, 3);
+    FlushDenormalsWithK_V128(e, 1, 2, 3);
+    e.L(no_flush);
   }
   out_s1 = 0;
   out_s2 = 1;
@@ -448,57 +480,107 @@ inline void FixupVmxNan_V128(A64Emitter& e) {
   e.orr(VReg(2).b16, VReg(2).b16, VReg(1).b16);
 }
 
-// Load an FMA's three sources into the registers FixupVmxNan_V128_Fma reads:
-// v0 = src1 (A), v1 = src2 (C), v3 = src3 (B), flushing input denormals in
-// software where FPCR.FZ does not. Uses v2 and `tmp` as flush scratch.
+// Load an FMA's three sources for the FMA and its NaN fixup, flushing input
+// denormals in software where FPCR.FZ does not. Writes the register indices
+// holding A, C, B to out_a/out_c/out_b.
+//
+// Where software flushing runs, the sources are copied into scratch v0/v1/v3
+// so the flush can modify them in place (allocated registers may be live-out).
+// On kA64FZFlushesInputs hosts nothing modifies them, so allocated sources
+// feed the FMA and fixup directly and the three copies disappear; constants
+// still materialise into the scratch bank via SrcVReg.
 template <typename T1, typename T2, typename T3>
 inline void PrepareVmxFmaSources(A64Emitter& e, const T1& op1, const T2& op2,
-                                 const T3& op3, int tmp) {
+                                 const T3& op3, int tmp, int* out_a, int* out_c,
+                                 int* out_b) {
   const int s1 = SrcVReg(e, op1, 0);
-  if (s1 != 0) {
-    e.mov(VReg(0).b16, VReg(s1).b16);
-  }
   const int s2 = SrcVReg(e, op2, 1);
-  if (s2 != 1) {
-    e.mov(VReg(1).b16, VReg(s2).b16);
-  }
   const int s3 = SrcVReg(e, op3, 3);
-  if (s3 != 3) {
-    e.mov(VReg(3).b16, VReg(s3).b16);
+  if (e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
+    *out_a = s1;
+    *out_c = s2;
+    *out_b = s3;
+    return;
   }
-  if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
-    FlushDenormals_V128(e, 0, 2, tmp);
-    FlushDenormals_V128(e, 1, 2, tmp);
-    FlushDenormals_V128(e, 3, 2, tmp);
+  MoveToScratchVReg(e, s1, 0);
+  MoveToScratchVReg(e, s2, 1);
+  MoveToScratchVReg(e, s3, 3);
+  // The FMA family follows NJ like every other VMX op unless the
+  // accurate-flush mode pins it always-on (see VmxDenormalFlushFpcrMode).
+  Xbyak_aarch64::Label no_flush;
+  const bool gate_on_njm = !cvars::accurate_vmx_denormal_flush;
+  if (gate_on_njm) {
+    EmitSkipFlushUnlessNJM(e, no_flush);
   }
+  LoadDenormalThreshold_V128(e, 2);
+  FlushDenormalsWithK_V128(e, 0, 2, tmp);
+  FlushDenormalsWithK_V128(e, 1, 2, tmp);
+  FlushDenormalsWithK_V128(e, 3, 2, tmp);
+  if (gate_on_njm) {
+    e.L(no_flush);
+  }
+  *out_a = 0;
+  *out_c = 1;
+  *out_b = 3;
 }
 
 // Fix PPC NaN propagation for a V128 FMA result (3 source operands).
 // Hardware returns the first NaN in A, B, C order, quieted, and the HIR
 // operands are (A, C, B). An invalid operation with no NaN operand needs
 // nothing: ARM's default NaN is already the one PPC produces.
-// Expects: v0 = flushed A, v1 = flushed C, v3 = flushed B, v2 = the FMA result.
-// `tmp` must be a register free until the result is stored, which v0-v3 cannot
-// supply. Modifies v2 in place. Clobbers v1 and tmp.
-inline void FixupVmxNan_V128_Fma(A64Emitter& e, int tmp) {
+// a/c/b hold the (flushed) sources; v2 holds the FMA result, modified in
+// place. `tmp` is live scratch across the whole fixup: it must differ from
+// a, c, b and v2 and must not alias a live allocated register. `qs` is
+// clobbered only after the sources are dead, so any scratch-bank register
+// other than tmp and v2 serves, even one that held a source.
+inline void FixupVmxNan_V128_Fma(A64Emitter& e, int a, int c, int b, int tmp,
+                                 int qs) {
   using namespace Xbyak_aarch64;
-  // Lowest priority first, so an earlier operand overwrites a later one: C,
-  // then B, then A. BIF inserts an operand wherever its self-compare is false,
-  // which is exactly where that operand is NaN.
-  e.fcmeq(VReg(tmp).s4, VReg(1).s4, VReg(1).s4);
-  e.bif(VReg(2).b16, VReg(1).b16, VReg(tmp).b16);
-  e.fcmeq(VReg(tmp).s4, VReg(3).s4, VReg(3).s4);
-  e.bif(VReg(2).b16, VReg(3).b16, VReg(tmp).b16);
-  e.fcmeq(VReg(tmp).s4, VReg(0).s4, VReg(0).s4);
-  e.bif(VReg(2).b16, VReg(0).b16, VReg(tmp).b16);
+  // Result-gated: FMLA propagates any operand NaN into that result lane, and
+  // an invalid operation produces the default NaN, so a result with no NaN
+  // lane needs no fixing. Four inline instructions decide it; the
+  // ten-instruction fixup sits in the function tail when the near-branch
+  // bound allows, inline behind a branch-over otherwise. (The x64 backend's
+  // vptest gate relies on the same invariant.)
+  auto& done = e.NewCachedLabel();
+  auto emit_fixup = [a, c, b, tmp, qs, &done](A64Emitter& e) {
+    // Lowest priority first, so an earlier operand overwrites a later one: C,
+    // then B, then A. BIF inserts an operand wherever its self-compare is
+    // false, which is exactly where that operand is NaN.
+    e.fcmeq(VReg(tmp).s4, VReg(c).s4, VReg(c).s4);
+    e.bif(VReg(2).b16, VReg(c).b16, VReg(tmp).b16);
+    e.fcmeq(VReg(tmp).s4, VReg(b).s4, VReg(b).s4);
+    e.bif(VReg(2).b16, VReg(b).b16, VReg(tmp).b16);
+    e.fcmeq(VReg(tmp).s4, VReg(a).s4, VReg(a).s4);
+    e.bif(VReg(2).b16, VReg(a).b16, VReg(tmp).b16);
 
-  // Quiet whatever NaN each lane ended up with. A lane still holding the
-  // arithmetic result is either not NaN or already the default NaN, so this
-  // only ever quiets an operand that was signalling.
-  e.fcmeq(VReg(tmp).s4, VReg(2).s4, VReg(2).s4);
-  e.movi(VReg(1).s4, 0x40, LSL, 16);
-  e.bic(VReg(1).b16, VReg(1).b16, VReg(tmp).b16);
-  e.orr(VReg(2).b16, VReg(2).b16, VReg(1).b16);
+    // Quiet whatever NaN each lane ended up with. A lane still holding the
+    // arithmetic result is either not NaN or already the default NaN, so this
+    // only ever quiets an operand that was signalling.
+    e.fcmeq(VReg(tmp).s4, VReg(2).s4, VReg(2).s4);
+    e.movi(VReg(qs).s4, 0x40, LSL, 16);
+    e.bic(VReg(qs).b16, VReg(qs).b16, VReg(tmp).b16);
+    e.orr(VReg(2).b16, VReg(2).b16, VReg(qs).b16);
+    e.b(done);
+  };
+
+  e.fcmeq(VReg(tmp).s4, VReg(2).s4, VReg(2).s4);  // all-ones where not NaN
+  e.uminv(SReg(tmp), VReg(tmp).s4);               // 0 iff any lane is NaN
+  e.fmov(WReg(0), SReg(tmp));
+  if (e.near_tail_branches_safe()) {
+    auto& slow = e.AddToTail(
+        [emit_fixup](A64Emitter& e, Xbyak_aarch64::Label&) { emit_fixup(e); });
+    e.cbz_near(WReg(0), slow);
+  } else {
+    // Function too large to prove the +/-1 MiB reach of a near branch to the
+    // tail: keep the fixup inline, jumped over on the fast path.
+    auto& slow = e.NewCachedLabel();
+    e.cbz(WReg(0), slow);
+    e.b(done);
+    e.L(slow);
+    emit_fixup(e);
+  }
+  e.L(done);
 }
 
 // VMX float32x4 binary operations with full PPC semantics.

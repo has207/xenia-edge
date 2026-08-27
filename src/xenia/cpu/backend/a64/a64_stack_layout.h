@@ -44,26 +44,37 @@ class StackLayout {
    *  +------------------+
    *  | scratch, 48b     | sp + 0x000  (3 x Q for VMX FP scratch)
    *  | guest ret addr   | sp + 0x030  (guest PPC return address)
-   *  | call ret addr    | sp + 0x038  (next call's guest PPC return addr)
-   *  | host ret addr    | sp + 0x040  (host x30/LR, for ret instruction)
-   *  | reserved         | sp + 0x048
-   *  |  ... locals ...  |
+   *  | host ret addr    | sp + 0x038  (host x30/LR, for ret instruction)
+   *  | call ret addr    | sp + 0x040  (next call's guest PPC return addr)
+   *  | stackpoint prev  | sp + 0x048  (A64StackpointNode::prev_)
+   *  | guest r1, lr     | sp + 0x050  (A64StackpointNode guest words)
+   *  | padding          | sp + 0x058
+   *  |  ... locals ...  | sp + 0x060
    *  +------------------+
    *
-   * Minimum size: 80 bytes (aligned to 16).
+   * Minimum size: 96 bytes (aligned to 16).
    *
    * Convention: at guest function entry, x0 holds the guest PPC return
    * address. The prolog stores it to GUEST_RET_ADDR and saves x30 (host
    * LR) to HOST_RET_ADDR.
    */
-  static constexpr size_t GUEST_STACK_SIZE = 80;  // 16-byte aligned
+  static constexpr size_t GUEST_STACK_SIZE = 96;  // 16-byte aligned
   static constexpr size_t GUEST_SCRATCH = 0;      // 48 bytes (3 x Q)
+  // GUEST_RET_ADDR and HOST_RET_ADDR are adjacent on purpose: the prolog
+  // saves both with one stp and the call-return teardown reloads both with
+  // one ldp.
   static constexpr size_t GUEST_RET_ADDR = 48;
-  static constexpr size_t GUEST_CALL_RET_ADDR = 56;
-  static constexpr size_t HOST_RET_ADDR = 64;
-  // Reserved padding. Longjmp detection state lives in A64BackendContext so it
-  // can be checked even when native SP still points at a skipped frame.
-  static constexpr size_t GUEST_RESERVED = 72;
+  static constexpr size_t HOST_RET_ADDR = 56;
+  static constexpr size_t GUEST_CALL_RET_ADDR = 64;
+  // This frame's stackpoint node (A64StackpointNode), linked through
+  // stackpoint_head in A64BackendContext. The chain has no depth counter or
+  // bound; the node address minus STACKPOINT_PREV is the frame's post-alloc
+  // SP, which is what the longjmp repair restores. (The pending-repair marker
+  // itself stays in A64BackendContext so it can be checked even when native
+  // SP still points at a skipped frame.)
+  static constexpr size_t STACKPOINT_PREV = 72;
+  static constexpr size_t STACKPOINT_GUEST_SP = 80;
+  static constexpr size_t STACKPOINT_GUEST_RET = 84;
 };
 
 }  // namespace a64

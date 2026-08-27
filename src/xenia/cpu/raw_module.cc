@@ -55,6 +55,8 @@ bool RawModule::LoadFile(uint32_t base_address,
 
   // Notify backend about executable code.
   processor_->backend()->CommitExecutableRange(low_address_, high_address_);
+  instruction_flags_.assign((high_address_ - low_address_ + 3) / 4,
+                            InfoCacheFlags{});
   return true;
 }
 
@@ -74,6 +76,14 @@ bool RawModule::ContainsAddress(uint32_t address) {
 std::unique_ptr<Function> RawModule::CreateFunction(uint32_t address) {
   return std::unique_ptr<Function>(
       processor_->backend()->CreateGuestFunction(this, address));
+}
+
+InfoCacheFlags* RawModule::GetInstructionAddressFlags(uint32_t guest_address) {
+  if (instruction_flags_.empty() || guest_address < low_address_ ||
+      guest_address >= high_address_) {
+    return nullptr;
+  }
+  return &instruction_flags_[(guest_address - low_address_) / 4];
 }
 
 }  // namespace cpu
