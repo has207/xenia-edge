@@ -51,6 +51,8 @@ struct EmitFunctionInfo {
   } code_size;
   size_t prolog_stack_alloc_offset;
   size_t stack_size;
+  // Set only by EmitHostToGuestThunk; a guest frame can look identical.
+  bool is_host_to_guest_thunk;
 #if XE_ARCH_ARM64
   // Offset from SP where x30 (LR) is saved.  ARM64 callees save LR
   // explicitly at varying offsets; the unwind info generator needs this

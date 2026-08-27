@@ -205,6 +205,7 @@ HostToGuestThunk A64HelperEmitter::EmitHostToGuestThunk() {
   func_info.prolog_stack_alloc_offset =
       code_offsets.prolog_stack_alloc - code_offsets.prolog;
   func_info.stack_size = thunk_stack;
+  func_info.is_host_to_guest_thunk = true;
   func_info.lr_save_offset = 0x058;  // stp x29, x30, [sp, #0x50]
 
   void* fn = Emplace(func_info);
