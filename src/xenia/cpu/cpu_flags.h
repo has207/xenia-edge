@@ -36,4 +36,8 @@ DECLARE_bool(break_condition_truncate);
 
 DECLARE_bool(break_on_debugbreak);
 
+DECLARE_uint32(db16cyc_yield_after);
+DECLARE_uint32(spin_wait_yield_after);
+DECLARE_uint32(spin_wait_max_iter_ns);
+
 #endif  // XENIA_CPU_CPU_FLAGS_H_
