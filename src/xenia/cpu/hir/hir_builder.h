@@ -220,6 +220,7 @@ class HIRBuilder {
   void DelayExecution();
   void SetRoundingMode(Value* value);
   Value* Max(Value* value1, Value* value2);
+  Value* DenormalQuirk(Value* value1, Value* value2, Value* value3);
   Value* VectorMax(Value* value1, Value* value2, TypeName part_type,
                    uint32_t arithmetic_flags = 0);
   Value* Min(Value* value1, Value* value2);

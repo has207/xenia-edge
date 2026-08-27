@@ -19,6 +19,7 @@ DECLARE_bool(accurate_vmx_denormal_flush);
 
 DECLARE_bool(disassemble_functions);
 
+DECLARE_bool(no_round_to_single);
 DECLARE_bool(trace_function_coverage);
 
 DECLARE_uint32(cpu_trace_mask);
