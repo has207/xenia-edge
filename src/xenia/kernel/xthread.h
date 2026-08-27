@@ -715,6 +715,9 @@ class XThread : public XObject, public cpu::Thread {
   SchedulerLinks scheduler_links_;
   // Set by the first ReclaimExited so both terminal paths reclaim once.
   std::atomic<bool> self_reference_dropped_{false};
+  // Owning thread only; no atomics.
+  uint32_t zero_delay_spins_ = 0;
+  uint64_t zero_delay_last_tick_ = 0;
   // Owned by XObject::Enter/LeaveCooperativeWait.
   std::atomic<XObject*> cooperative_wait_object_{nullptr};
   // Signaled when a fiber-backed thread exits, so waits on the thread object
