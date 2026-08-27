@@ -458,8 +458,8 @@ typedef struct alignas(64) PPCContext_s {
     }
 #else
     // Match vE0000000 PhysicalHeap shift (see Memory::TranslateVirtual).
-    if (xe::memory::allocation_granularity() > 0x1000 &&
-        guest_address >= 0xE0000000u) {
+    if (guest_address >= 0xE0000000u &&
+        xe::memory::allocation_granularity() > 0x1000) {
       host_address += 0x1000;
     }
 #endif

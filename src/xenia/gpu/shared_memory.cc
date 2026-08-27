@@ -102,7 +102,8 @@ void SharedMemory::ShutdownCommon() {
 
   // One AllocFixed backs both flag arrays; valid_ is its base pointer.
   if (system_page_flags_valid_) {
-    memory::DeallocFixed(system_page_flags_valid_, 0,
+    memory::DeallocFixed(system_page_flags_valid_,
+                         num_system_page_flags_ * 2 * sizeof(uint64_t),
                          memory::DeallocationType::kRelease);
     system_page_flags_valid_ = nullptr;
   }

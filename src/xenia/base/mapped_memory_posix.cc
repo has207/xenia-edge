@@ -16,18 +16,23 @@
 #include <memory>
 
 #include "xenia/base/filesystem.h"
+#include "xenia/base/memory.h"
 #include "xenia/base/platform.h"
 
 namespace xe {
 
 class PosixMappedMemory : public MappedMemory {
  public:
-  PosixMappedMemory(void* data, size_t size, int file_descriptor)
-      : MappedMemory(data, size), file_descriptor_(file_descriptor) {}
+  PosixMappedMemory(void* data, size_t size, int file_descriptor,
+                    void* map_base, size_t map_length)
+      : MappedMemory(data, size),
+        file_descriptor_(file_descriptor),
+        map_base_(map_base),
+        map_length_(map_length) {}
 
   ~PosixMappedMemory() override {
-    if (data_) {
-      munmap(data_, size());
+    if (map_base_) {
+      munmap(map_base_, map_length_);
     }
     if (file_descriptor_ >= 0) {
       close(file_descriptor_);
@@ -63,20 +68,36 @@ class PosixMappedMemory : public MappedMemory {
       return nullptr;
     }
 
-    void* data =
-        mmap(0, map_length, protection, MAP_SHARED, file_descriptor, offset);
-    if (data == MAP_FAILED) {
+    // mmap past EOF faults with SIGBUS; grow the file as CreateFileMapping
+    // does.
+    if (mode == Mode::kReadWrite && offset + map_length > file_size) {
+      if (ftruncate(file_descriptor, off_t(offset + map_length))) {
+        close(file_descriptor);
+        return nullptr;
+      }
+    }
+
+    const size_t page = xe::memory::page_size();
+    const size_t aligned_offset = offset & ~(page - 1);
+    const size_t delta = offset - aligned_offset;
+    const size_t map_span = map_length + delta;
+
+    void* map_base = mmap(0, map_span, protection, MAP_SHARED, file_descriptor,
+                          off_t(aligned_offset));
+    if (map_base == MAP_FAILED) {
       close(file_descriptor);
       return nullptr;
     }
 
-    return std::make_unique<PosixMappedMemory>(data, map_length,
-                                               file_descriptor);
+    void* data = static_cast<uint8_t*>(map_base) + delta;
+    return std::make_unique<PosixMappedMemory>(
+        data, map_length, file_descriptor, map_base, map_span);
   }
 
   void Close(uint64_t truncate_size) override {
-    if (data_) {
-      munmap(data_, size());
+    if (map_base_) {
+      munmap(map_base_, map_length_);
+      map_base_ = nullptr;
       data_ = nullptr;
     }
     if (file_descriptor_ >= 0) {
@@ -88,10 +109,12 @@ class PosixMappedMemory : public MappedMemory {
     }
   }
 
-  void Flush() override { msync(data(), size(), MS_ASYNC); }
+  void Flush() override { msync(map_base_, map_length_, MS_ASYNC); }
 
  private:
   int file_descriptor_;
+  void* map_base_ = nullptr;
+  size_t map_length_ = 0;
 };
 
 std::unique_ptr<MappedMemory> MappedMemory::Open(

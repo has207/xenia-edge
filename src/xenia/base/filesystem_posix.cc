@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <cstring>
 #if XE_PLATFORM_MAC
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -91,10 +92,15 @@ std::filesystem::path GetUserFolder() {
   // if HOME not set, fall back to this
   if (home == NULL) {
     struct passwd pw1;
-    struct passwd* pw;
+    struct passwd* pw = nullptr;
     char buf[4096];  // could potentionally lower this
-    getpwuid_r(getuid(), &pw1, buf, sizeof(buf), &pw);
-    assert(&pw1 == pw);  // sanity check
+    // getpwuid_r returns 0 with a null result for "no entry".
+    if (getpwuid_r(getuid(), &pw1, buf, sizeof(buf), &pw) != 0 || !pw) {
+      XELOGW(
+          "GetUserFolder: no HOME and no passwd entry; using the current "
+          "directory");
+      return std::filesystem::current_path() / ".local" / "share";
+    }
     home = pw->pw_dir;
   }
 
@@ -149,8 +155,10 @@ bool CreateEmptyFile(const std::filesystem::path& path) {
 
 class PosixFileHandle : public FileHandle {
  public:
-  PosixFileHandle(std::filesystem::path path, int handle)
-      : FileHandle(std::move(path)), handle_(handle) {}
+  PosixFileHandle(std::filesystem::path path, int handle, bool append_only)
+      : FileHandle(std::move(path)),
+        handle_(handle),
+        append_only_(append_only) {}
   ~PosixFileHandle() override {
     close(handle_);
     handle_ = -1;
@@ -168,7 +176,9 @@ class PosixFileHandle : public FileHandle {
   }
   bool Write(size_t file_offset, const void* buffer, size_t buffer_length,
              size_t* out_bytes_written) override {
-    ssize_t out = pwrite(handle_, buffer, buffer_length, file_offset);
+    ssize_t out = append_only_
+                      ? write(handle_, buffer, buffer_length)
+                      : pwrite(handle_, buffer, buffer_length, file_offset);
     if (out >= 0) {
       *out_bytes_written = out;
       return true;
@@ -184,6 +194,7 @@ class PosixFileHandle : public FileHandle {
 
  private:
   int handle_ = -1;
+  bool append_only_ = false;
 };
 
 std::unique_ptr<FileHandle> FileHandle::OpenExisting(
@@ -196,7 +207,7 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
                         FileAccess::kGenericExecute | FileAccess::kGenericAll);
   const bool wants_write =
       desired_access & (FileAccess::kGenericWrite | FileAccess::kFileWriteData |
-                        FileAccess::kGenericAll);
+                        FileAccess::kFileAppendData | FileAccess::kGenericAll);
   int open_access;
   if (wants_read && wants_write) {
     open_access = O_RDWR;
@@ -205,7 +216,12 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
   } else {
     open_access = O_RDONLY;
   }
-  if (desired_access & FileAccess::kFileAppendData) {
+  // pwrite(2) ignores the offset on an O_APPEND descriptor.
+  const bool append_only = (desired_access & FileAccess::kFileAppendData) &&
+                           !(desired_access & (FileAccess::kGenericWrite |
+                                               FileAccess::kFileWriteData |
+                                               FileAccess::kGenericAll));
+  if (append_only) {
     open_access |= O_APPEND;
   }
   int handle = open(path.c_str(), open_access);
@@ -213,7 +229,7 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
     // TODO(benvanik): pick correct response.
     return nullptr;
   }
-  return std::make_unique<PosixFileHandle>(path, handle);
+  return std::make_unique<PosixFileHandle>(path, handle, append_only);
 }
 
 std::optional<FileInfo> GetInfo(const std::filesystem::path& path) {
@@ -257,12 +273,17 @@ std::vector<FileInfo> ListFilesUnsorted(const std::filesystem::path& path) {
 
     info.name = ent->d_name;
     struct stat st;
-    stat((path / info.name).c_str(), &st);
+    if (stat((path / info.name).c_str(), &st) != 0) {
+      if (lstat((path / info.name).c_str(), &st) != 0) {
+        std::memset(&st, 0, sizeof(st));
+      }
+    }
     info.create_timestamp = convertUnixtimeToWinFiletime(st.st_ctime);
     info.access_timestamp = convertUnixtimeToWinFiletime(st.st_atime);
     info.write_timestamp = convertUnixtimeToWinFiletime(st.st_mtime);
     info.path = path;
-    if (ent->d_type == DT_DIR) {
+    // d_type is DT_LNK for a symlink to a directory; classify from the stat.
+    if (S_ISDIR(st.st_mode)) {
       info.type = FileInfo::Type::kDirectory;
       info.total_size = 0;
     } else {

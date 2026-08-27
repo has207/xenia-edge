@@ -63,9 +63,21 @@ uint64_t Clock::QueryHostSystemTime() {
       now.tv_usec * 10);
 }
 
-uint64_t Clock::QueryHostUptimeMillis() {
-  return host_tick_count_platform() * 1000 / host_tick_frequency_platform();
+// ticks * 10000000 overflows uint64 after ~213 days of nanosecond ticks.
+static uint64_t TicksTo(uint64_t ticks, uint64_t units) {
+  static const uint64_t freq = Clock::host_tick_frequency_platform();
+  if (!freq) {
+    return 0;
+  }
+  return (ticks / freq) * units + ((ticks % freq) * units) / freq;
 }
 
-uint64_t Clock::QueryHostInterruptTime() { return host_tick_count_platform(); }
+uint64_t Clock::QueryHostUptimeMillis() {
+  return TicksTo(Clock::host_tick_count_platform(), 1000);
+}
+
+uint64_t Clock::QueryHostInterruptTime() {
+  // 100 ns units, as KUSER_SHARED InterruptTime on Windows.
+  return TicksTo(Clock::host_tick_count_platform(), 10000000ull);
+}
 }  // namespace xe

@@ -7,22 +7,43 @@
  ******************************************************************************
  */
 
+#include <crt_externs.h>
+#include <spawn.h>
+#include <sys/wait.h>
+
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 #include "xenia/base/system.h"
 
 namespace xe {
+namespace {
+
+void SpawnAndWait(const std::vector<std::string>& args) {
+  std::vector<char*> argv;
+  argv.reserve(args.size() + 1);
+  for (const auto& arg : args) {
+    argv.push_back(const_cast<char*>(arg.c_str()));
+  }
+  argv.push_back(nullptr);
+  pid_t pid = 0;
+  if (posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(),
+                   *_NSGetEnviron())) {
+    return;
+  }
+  int status = 0;
+  waitpid(pid, &status, 0);
+}
+
+}  // namespace
 
 void LaunchWebBrowser(const std::string_view url) {
-  auto cmd = std::string("open ");
-  cmd.append(url);
-  system(cmd.c_str());
+  SpawnAndWait({"open", std::string(url)});
 }
 
 void LaunchFileExplorer(const std::filesystem::path& path) {
-  auto cmd = std::string("open ");
-  cmd.append(path.string());
-  system(cmd.c_str());
+  SpawnAndWait({"open", path.string()});
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
@@ -39,22 +60,33 @@ void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
       icon = "stop";
       break;
   }
-  // Use osascript to display a native macOS dialog.
-  auto cmd = std::string("osascript -e 'display dialog \"");
-  // Escape double quotes in the message.
+  std::string script = "display dialog \"";
+  // A raw newline is a syntax error inside an AppleScript string.
   for (char c : message) {
-    if (c == '"') {
-      cmd += "\\\"";
-    } else if (c == '\\') {
-      cmd += "\\\\";
-    } else {
-      cmd += c;
+    switch (c) {
+      case '"':
+      case '\\':
+        script += '\\';
+        script += c;
+        break;
+      case '\n':
+        script += "\\n";
+        break;
+      case '\r':
+        script += "\\r";
+        break;
+      case '\t':
+        script += "\\t";
+        break;
+      default:
+        script += c;
+        break;
     }
   }
-  cmd += "\" with icon ";
-  cmd += icon;
-  cmd += " buttons {\"OK\"} default button \"OK\" with title \"Xenia\"'";
-  system(cmd.c_str());
+  script += "\" with icon ";
+  script += icon;
+  script += " buttons {\"OK\"} default button \"OK\" with title \"Xenia\"";
+  SpawnAndWait({"osascript", "-e", script});
 }
 
 bool SetProcessPriorityClass(const uint32_t priority_class) { return true; }

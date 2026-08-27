@@ -23,6 +23,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 
 #if XE_PLATFORM_MAC
 #include <mach/mach.h>
@@ -90,7 +91,10 @@ void AndroidShutdown() {
 }
 #endif
 
-size_t page_size() { return getpagesize(); }
+size_t page_size() {
+  static const size_t page_size_ = static_cast<size_t>(getpagesize());
+  return page_size_;
+}
 size_t allocation_granularity() { return page_size(); }
 
 uint32_t ToPosixProtectFlags(PageAccess access) {
@@ -187,6 +191,27 @@ static void InstallCleanupHandlers() {
 }
 #endif  // !XE_PLATFORM_ANDROID
 
+// Lets a Win32-style length-0 release find the reservation's extent.
+static std::mutex g_reservations_mutex;
+static std::unordered_map<void*, size_t> g_reservations;
+
+static void RememberReservation(void* base_address, size_t length) {
+  std::lock_guard guard(g_reservations_mutex);
+  g_reservations[base_address] = length;
+}
+
+// Erase before munmap: a concurrent AllocFixed may reuse the address.
+static size_t TakeReservationLength(void* base_address) {
+  std::lock_guard guard(g_reservations_mutex);
+  auto it = g_reservations.find(base_address);
+  if (it == g_reservations.end()) {
+    return 0;
+  }
+  const size_t length = it->second;
+  g_reservations.erase(it);
+  return length;
+}
+
 void* AllocFixed(void* base_address, size_t length,
                  AllocationType allocation_type, PageAccess access) {
   // mmap does not support reserve / commit, so ignore allocation_type.
@@ -236,6 +261,7 @@ void* AllocFixed(void* base_address, size_t length,
     return nullptr;
   }
 
+  RememberReservation(result, length);
   return result;
 }
 
@@ -248,6 +274,7 @@ bool DeallocFixed(void* base_address, size_t length,
   std::lock_guard guard(g_mapped_file_ranges_mutex);
   for (const auto& mapped_range : mapped_file_ranges) {
     if (region_begin >= mapped_range.region_begin &&
+        region_begin < mapped_range.region_end &&
         region_end <= mapped_range.region_end) {
       switch (deallocation_type) {
         case DeallocationType::kDecommit:
@@ -263,8 +290,25 @@ bool DeallocFixed(void* base_address, size_t length,
   switch (deallocation_type) {
     case DeallocationType::kDecommit:
       return Protect(base_address, length, PageAccess::kNoAccess);
-    case DeallocationType::kRelease:
-      return munmap(base_address, length) == 0;
+    case DeallocationType::kRelease: {
+      // memory_win.cc passes length 0 for MEM_RELEASE; munmap rejects 0.
+      const size_t recorded = TakeReservationLength(base_address);
+      const size_t release_length = length ? length : recorded;
+      if (!release_length) {
+        XELOGE(
+            "DeallocFixed: release of {} with length 0, but that address is "
+            "not a known reservation; refusing to guess",
+            base_address);
+        return false;
+      }
+      if (munmap(base_address, release_length) != 0) {
+        if (recorded) {
+          RememberReservation(base_address, recorded);
+        }
+        return false;
+      }
+      return true;
+    }
     default:
       assert_unhandled_case(deallocation_type);
   }
@@ -274,7 +318,14 @@ bool Protect(void* base_address, size_t length, PageAccess access,
              PageAccess* out_old_access) {
   if (out_old_access) {
     size_t length_copy = length;
-    QueryProtect(base_address, length_copy, *out_old_access);
+    if (!QueryProtect(base_address, length_copy, *out_old_access)) {
+      // Fail closed: callers restore whatever this reports.
+      *out_old_access = PageAccess::kNoAccess;
+      XELOGW(
+          "Protect: could not read the current protection of {}; reporting "
+          "kNoAccess",
+          base_address);
+    }
   }
 
   uint32_t prot = ToPosixProtectFlags(access);
@@ -287,6 +338,8 @@ bool Protect(void* base_address, size_t length, PageAccess access,
 }
 
 bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
+  access_out = PageAccess::kNoAccess;
+  length = 0;
 #if XE_PLATFORM_MAC
   mach_vm_address_t address = reinterpret_cast<mach_vm_address_t>(base_address);
   mach_vm_size_t region_size = 0;
@@ -360,6 +413,7 @@ bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
             access_out == ToXeniaProtectFlags(next_protection)) {
           length =
               next_map_region_end - reinterpret_cast<uintptr_t>(base_address);
+          map_region_end = next_map_region_end;
           continue;
         }
         break;
@@ -418,7 +472,7 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
       assert_always();
       return kFileMappingHandleInvalid;
   }
-  oflag |= O_CREAT;
+  oflag |= O_CREAT | O_EXCL;
 
 #if XE_PLATFORM_MAC
   std::string shm_name = "/" + path.filename().string();
@@ -428,7 +482,7 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
     std::snprintf(hash_buf, sizeof(hash_buf), "/%016zx", h);
     shm_name = hash_buf;
   }
-  int ret = shm_open(shm_name.c_str(), oflag, 0777);
+  int ret = shm_open(shm_name.c_str(), oflag, 0600);
   if (ret < 0) {
     XELOGE("shm_open({}) failed: {} ({})", shm_name, strerror(errno), errno);
     return kFileMappingHandleInvalid;
@@ -475,7 +529,7 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path,
            path.string(), strerror(errno), errno);
   }
 #endif  // XE_PLATFORM_GNU_LINUX
-  int ret = shm_open(full_path.c_str(), oflag, 0777);
+  int ret = shm_open(full_path.c_str(), oflag, 0600);
   if (ret < 0) {
     XELOGE("shm_open({}) failed: {} ({})", full_path.string(), strerror(errno),
            errno);
