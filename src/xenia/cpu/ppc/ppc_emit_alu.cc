@@ -30,11 +30,7 @@ Value* AddDidCarry(PPCHIRBuilder& f, Value* v1, Value* v2) {
 }
 
 Value* SubDidCarry(PPCHIRBuilder& f, Value* v1, Value* v2) {
-  Value* trunc_v2 = f.Truncate(v2, INT32_TYPE);
-
-  return f.Or(f.CompareUGT(f.Truncate(v1, INT32_TYPE),
-                           f.Sub(trunc_v2, f.LoadConstantInt32(1))),
-              f.IsFalse(trunc_v2));
+  return f.CompareUGE(f.Truncate(v1, INT32_TYPE), f.Truncate(v2, INT32_TYPE));
 }
 
 // https://github.com/sebastianbiallas/pearpc/blob/0b3c823f61456faa677f6209545a7b906e797421/src/cpu/cpu_generic/ppc_tools.h#L26
@@ -43,8 +39,8 @@ Value* AddWithCarryDidCarry(PPCHIRBuilder& f, Value* v1, Value* v2, Value* v3) {
   v2 = f.Truncate(v2, INT32_TYPE);
   assert_true(v3->type == INT8_TYPE);
   v3 = f.ZeroExtend(v3, INT32_TYPE);
-  return f.Or(f.CompareULT(f.Add(f.Add(v1, v2), v3), v3),
-              f.CompareULT(f.Add(v1, v2), v1));
+  Value* sum = f.Add(v1, v2);
+  return f.Or(f.CompareULT(f.Add(sum, v3), v3), f.CompareULT(sum, v1));
 }
 
 int InstrEmit_addx(PPCHIRBuilder& f, const InstrData& i) {
@@ -1272,7 +1268,7 @@ int InstrEmit_srawx(PPCHIRBuilder& f, const InstrData& i) {
   Value* sh =
       f.And(f.Truncate(f.LoadGPR(i.X.RB), INT8_TYPE), f.LoadConstantInt8(0x3F));
   Value* clamp_sh = f.Min(sh, f.LoadConstantInt8(0x1F));
-  Value* v = f.Sha(rt, f.Min(sh, clamp_sh));
+  Value* v = f.Sha(rt, clamp_sh);
 
   // CA is set if any bits are shifted out of the right and if the result
   // is negative.
