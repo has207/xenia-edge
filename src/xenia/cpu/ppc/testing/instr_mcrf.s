@@ -51,7 +51,7 @@ test_mcrf_3:
   blr
   #_ REGISTER_OUT r3 5
   #_ REGISTER_OUT r4 5
-  #_ REGISTER_OUT r12 0x40020000
+  #_ REGISTER_OUT r12 0x20020000
 
 test_mcrf_3_constant:
   li r3, 5
@@ -62,7 +62,7 @@ test_mcrf_3_constant:
   blr
   #_ REGISTER_OUT r3 5
   #_ REGISTER_OUT r4 5
-  #_ REGISTER_OUT r12 0x40020000
+  #_ REGISTER_OUT r12 0x20020000
 
 test_mcrf_4:
   #_ REGISTER_IN r3 100
@@ -100,7 +100,7 @@ test_mcrf_5:
   #_ REGISTER_OUT r4 20
   #_ REGISTER_OUT r5 30
   #_ REGISTER_OUT r6 30
-  #_ REGISTER_OUT r12 0x00802040
+  #_ REGISTER_OUT r12 0x00802080
 
 test_mcrf_5_constant:
   li r3, 10
@@ -116,4 +116,4 @@ test_mcrf_5_constant:
   #_ REGISTER_OUT r4 20
   #_ REGISTER_OUT r5 30
   #_ REGISTER_OUT r6 30
-  #_ REGISTER_OUT r12 0x00802040
+  #_ REGISTER_OUT r12 0x00802080
