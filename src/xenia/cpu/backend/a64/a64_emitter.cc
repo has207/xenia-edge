@@ -10,6 +10,7 @@
 #include "xenia/cpu/backend/a64/a64_emitter.h"
 
 #include <cstring>
+#include <string>
 
 #include "xenia/base/debugging.h"
 #include "xenia/base/logging.h"
@@ -26,6 +27,7 @@
 #include "xenia/cpu/hir/label.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
+#include "xenia/cpu/thread_state.h"
 
 DECLARE_int64(a64_max_stackpoints);
 DECLARE_bool(a64_enable_host_guest_stack_synchronization);
@@ -442,7 +444,33 @@ void A64Emitter::RecordSequenceSample(const hir::Instr* i, uint32_t backend_key,
 
 void A64Emitter::DebugBreak() { brk(0xF000); }
 
-void A64Emitter::Trap(uint16_t trap_type) { brk(trap_type); }
+static uint64_t TrapDebugBreak(void*) {
+  XELOGE("tw/td forced trap hit! This should be a crash!");
+  if (cvars::break_on_debugbreak) {
+    xe::debugging::Break();
+  }
+  return 0;
+}
+
+void A64Emitter::Trap(uint16_t trap_type) {
+  switch (trap_type) {
+    case 20:
+    case 26:
+      CallNative(reinterpret_cast<void*>(&backend::TrapDebugPrint));
+      break;
+    case 0:
+    case 22:
+      CallNative(reinterpret_cast<void*>(&TrapDebugBreak));
+      break;
+    case 25:
+      break;
+    default:
+      XELOGW("Unknown trap type {}", trap_type);
+      // Not brk #0: that is the breakpoint encoding.
+      brk(0xF002);
+      break;
+  }
+}
 
 void A64Emitter::b(const Xbyak_aarch64::Cond cond,
                    const Xbyak_aarch64::Label& label) {

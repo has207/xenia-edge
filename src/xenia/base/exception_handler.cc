@@ -41,6 +41,8 @@ namespace xe {
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 bool IsArm64LoadPrefetchStore(uint32_t instruction, bool& is_store_out) {
   if ((instruction & kArm64LoadLiteralFMask) == kArm64LoadLiteralFixed) {
+    // LDR/LDRSW/PRFM (literal) only read.
+    is_store_out = false;
     return true;
   }
   if ((instruction & kArm64SystemSysFMask) == kArm64SystemSysFixed) {

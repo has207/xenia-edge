@@ -40,8 +40,6 @@
 #include "xenia/cpu/symbol.h"
 #include "xenia/cpu/thread_state.h"
 
-DEFINE_bool(debugprint_trap_log, false,
-            "Log debugprint traps to the active debugger", "CPU");
 DEFINE_bool(ignore_undefined_externs, true,
             "Don't exit when an undefined extern is called.", "CPU");
 DEFINE_bool(emit_source_annotations, false,
@@ -435,26 +433,7 @@ void X64Emitter::DebugBreak() {
 }
 
 uint64_t TrapDebugPrint(void* raw_context, uint64_t address) {
-  auto thread_state =
-      reinterpret_cast<ppc::PPCContext_s*>(raw_context)->thread_state;
-  uint32_t str_ptr = uint32_t(thread_state->context()->r[3]);
-  uint32_t str_length = uint32_t(thread_state->context()->r[4]);
-
-  auto str = thread_state->memory()->TranslateVirtual<const char*>(str_ptr);
-
-  // Allocate temporary buffer and null-terminate to respect length parameter
-  char* string_tmp = new char[str_length + 1];
-  std::memcpy(string_tmp, str, str_length);
-  string_tmp[str_length] = 0;
-
-  XELOGD("(DebugPrint) {}", string_tmp);
-
-  if (cvars::debugprint_trap_log) {
-    debugging::DebugPrint("(DebugPrint) {}", string_tmp);
-  }
-
-  delete[] string_tmp;
-  return 0;
+  return backend::TrapDebugPrint(raw_context);
 }
 
 uint64_t TrapDebugBreak(void* raw_context, uint64_t address) {

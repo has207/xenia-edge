@@ -13,7 +13,6 @@
 #include <cstdarg>
 #include <fstream>
 #include <iostream>
-#include <mutex>
 #include <sstream>
 
 #include "xenia/base/string_buffer.h"
@@ -41,15 +40,14 @@ bool IsDebuggerAttached() {
 }
 
 void Break() {
-  static std::once_flag flag;
-  std::call_once(flag, []() {
-    // Install handler for sigtrap only once
-    std::signal(SIGTRAP, [](int) {
-      // Forward signal to default handler after being caught
-      std::signal(SIGTRAP, SIG_DFL);
-    });
-  });
+  if (!IsDebuggerAttached()) {
+    return;
+  }
+#if defined(__clang__)
+  __builtin_debugtrap();
+#else
   std::raise(SIGTRAP);
+#endif
 }
 
 namespace internal {

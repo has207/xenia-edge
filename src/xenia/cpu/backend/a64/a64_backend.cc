@@ -41,6 +41,7 @@
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/stack_walker.h"
+#include "xenia/cpu/thread_debug_info.h"
 #include "xenia/cpu/thread_state.h"
 #include "xenia/cpu/xex_module.h"
 
@@ -1129,21 +1130,118 @@ std::unique_ptr<GuestFunction> A64Backend::CreateGuestFunction(
   return std::make_unique<A64Function>(module, address);
 }
 
+namespace {
+
+// Encoding 31 reads as XZR in every branch form below.
+uint64_t ReadXReg(const HostThreadContext& ctx, uint32_t n) {
+  return n == 31 ? 0 : ctx.x[n];
+}
+
+bool TestCondition(uint64_t pstate, uint32_t cond) {
+  const bool n = (pstate >> 31) & 1;
+  const bool z = (pstate >> 30) & 1;
+  const bool c = (pstate >> 29) & 1;
+  const bool v = (pstate >> 28) & 1;
+  bool result;
+  switch (cond >> 1) {
+    case 0b000:
+      result = z;
+      break;
+    case 0b001:
+      result = c;
+      break;
+    case 0b010:
+      result = n;
+      break;
+    case 0b011:
+      result = v;
+      break;
+    case 0b100:
+      result = c && !z;
+      break;
+    case 0b101:
+      result = n == v;
+      break;
+    case 0b110:
+      result = (n == v) && !z;
+      break;
+    default:
+      result = true;
+      break;
+  }
+  if ((cond & 1) && cond != 0b1111) {
+    result = !result;
+  }
+  return result;
+}
+
+int64_t SignExtend(uint64_t value, uint32_t bits) {
+  const uint32_t shift = 64 - bits;
+  return int64_t(value << shift) >> shift;
+}
+
+}  // namespace
+
 uint64_t A64Backend::CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
                                                   uint64_t current_pc) {
-  // ARM64 instructions are fixed 4 bytes.
-  return current_pc + 4;
+  const auto& ctx = thread_info->host_context;
+  const uint32_t insn = xe::load<uint32_t>(reinterpret_cast<void*>(current_pc));
+  const uint64_t next_pc = current_pc + 4;
+
+  // B  imm26  0b000101...    BL imm26  0b100101...
+  if ((insn & 0x7C000000) == 0x14000000) {
+    return current_pc + SignExtend(insn & 0x03FFFFFF, 26) * 4;
+  }
+  // B.cond / BC.cond imm19   0b01010100 imm19 x cond
+  if ((insn & 0xFF000000) == 0x54000000) {
+    if (!TestCondition(ctx.pstate, insn & 0xF)) {
+      return next_pc;
+    }
+    return current_pc + SignExtend((insn >> 5) & 0x7FFFF, 19) * 4;
+  }
+  // CBZ / CBNZ  sf 011010 op imm19 Rt
+  if ((insn & 0x7E000000) == 0x34000000) {
+    uint64_t value = ReadXReg(ctx, insn & 0x1F);
+    if (!(insn & 0x80000000)) {
+      value = uint32_t(value);
+    }
+    const bool nonzero = value != 0;
+    const bool is_cbnz = (insn >> 24) & 1;
+    if (nonzero != is_cbnz) {
+      return next_pc;
+    }
+    return current_pc + SignExtend((insn >> 5) & 0x7FFFF, 19) * 4;
+  }
+  // TBZ / TBNZ  b5 011011 op b40 imm14 Rt
+  if ((insn & 0x7E000000) == 0x36000000) {
+    const uint32_t bit = ((insn >> 26) & 0x20) | ((insn >> 19) & 0x1F);
+    const bool set = (ReadXReg(ctx, insn & 0x1F) >> bit) & 1;
+    const bool is_tbnz = (insn >> 24) & 1;
+    if (set != is_tbnz) {
+      return next_pc;
+    }
+    return current_pc + SignExtend((insn >> 5) & 0x3FFF, 14) * 4;
+  }
+  // BR / BLR / RET  Rn
+  if ((insn & 0xFFFFFC1F) == 0xD61F0000 || (insn & 0xFFFFFC1F) == 0xD63F0000 ||
+      (insn & 0xFFFFFC1F) == 0xD65F0000) {
+    return ReadXReg(ctx, (insn >> 5) & 0x1F);
+  }
+  return next_pc;
 }
 
 // ARM64 BRK #0 encoding (4 bytes, fixed-width instruction).
 static constexpr uint32_t kArm64Brk0 = 0xD4200000;
 
 void A64Backend::InstallBreakpoint(Breakpoint* breakpoint) {
-  breakpoint->ForEachHostAddress([breakpoint](uint64_t host_address) {
+  breakpoint->ForEachHostAddress([this, breakpoint](uint64_t host_address) {
     auto ptr = reinterpret_cast<void*>(host_address);
     auto original_bytes = xe::load<uint32_t>(ptr);
     assert_true(original_bytes != kArm64Brk0);
-    xe::store<uint32_t>(ptr, kArm64Brk0);
+    if (!code_cache()->PatchCode(ptr, &kArm64Brk0, sizeof(kArm64Brk0))) {
+      assert_always();
+      return;
+    }
     breakpoint->backend_data().emplace_back(host_address, original_bytes);
   });
 }
@@ -1162,7 +1260,10 @@ void A64Backend::InstallBreakpoint(Breakpoint* breakpoint, Function* fn) {
   auto ptr = reinterpret_cast<void*>(host_address);
   auto original_bytes = xe::load<uint32_t>(ptr);
   assert_true(original_bytes != kArm64Brk0);
-  xe::store<uint32_t>(ptr, kArm64Brk0);
+  if (!code_cache()->PatchCode(ptr, &kArm64Brk0, sizeof(kArm64Brk0))) {
+    assert_always();
+    return;
+  }
   breakpoint->backend_data().emplace_back(host_address, original_bytes);
 }
 
@@ -1171,7 +1272,8 @@ void A64Backend::UninstallBreakpoint(Breakpoint* breakpoint) {
     auto ptr = reinterpret_cast<uint8_t*>(pair.first);
     auto instruction_bytes = xe::load<uint32_t>(ptr);
     assert_true(instruction_bytes == kArm64Brk0);
-    xe::store<uint32_t>(ptr, static_cast<uint32_t>(pair.second));
+    const uint32_t original_bytes = static_cast<uint32_t>(pair.second);
+    code_cache()->PatchCode(ptr, &original_bytes, sizeof(original_bytes));
   }
   breakpoint->backend_data().clear();
 }

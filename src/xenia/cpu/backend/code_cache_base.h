@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_BACKEND_CODE_CACHE_BASE_H_
 #define XENIA_CPU_BACKEND_CODE_CACHE_BASE_H_
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -124,6 +125,33 @@ class CodeCacheBase : public CodeCache {
                : kGeneratedCodeExecuteBase;
   }
   size_t total_size() const override { return kGeneratedCodeSize; }
+
+  bool PatchCode(void* execute_address, const void* data,
+                 size_t size) override {
+    auto* addr = reinterpret_cast<uint8_t*>(execute_address);
+    if (!generated_code_execute_base_ || !generated_code_write_base_ ||
+        addr < generated_code_execute_base_ || size > kGeneratedCodeSize ||
+        addr > generated_code_execute_base_ + (kGeneratedCodeSize - size)) {
+      return false;
+    }
+    uint8_t* write_address =
+        generated_code_write_base_ + (addr - generated_code_execute_base_);
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+    const bool jit_write_toggle =
+        generated_code_execute_base_ == generated_code_write_base_;
+    if (jit_write_toggle) {
+      pthread_jit_write_protect_np(0);
+    }
+#endif
+    std::copy_n(static_cast<const uint8_t*>(data), size, write_address);
+#if XE_PLATFORM_MAC && XE_ARCH_ARM64
+    if (jit_write_toggle) {
+      pthread_jit_write_protect_np(1);
+    }
+#endif
+    self().FlushCodeRange(write_address, size);
+    return true;
+  }
 
   bool has_indirection_table() { return indirection_table_base_ != nullptr; }
 

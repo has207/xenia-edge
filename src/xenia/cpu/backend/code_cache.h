@@ -35,6 +35,10 @@ class CodeCache {
 
   // Finds platform-specific function unwind info for the given host PC.
   virtual void* LookupUnwindInfo(uint64_t host_pc) = 0;
+
+  // Writes through the write view and invalidates the instruction cache.
+  virtual bool PatchCode(void* execute_address, const void* data,
+                         size_t size) = 0;
 };
 
 }  // namespace backend

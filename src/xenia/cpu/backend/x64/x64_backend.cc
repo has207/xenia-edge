@@ -548,12 +548,17 @@ uint64_t X64Backend::CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
   }
 }
 
+static constexpr uint8_t kUd2[2] = {0x0F, 0x0B};
+
 void X64Backend::InstallBreakpoint(Breakpoint* breakpoint) {
-  breakpoint->ForEachHostAddress([breakpoint](uint64_t host_address) {
+  breakpoint->ForEachHostAddress([this, breakpoint](uint64_t host_address) {
     auto ptr = reinterpret_cast<void*>(host_address);
     auto original_bytes = xe::load_and_swap<uint16_t>(ptr);
     assert_true(original_bytes != 0x0F0B);
-    xe::store_and_swap<uint16_t>(ptr, 0x0F0B);
+    if (!code_cache()->PatchCode(ptr, kUd2, sizeof(kUd2))) {
+      assert_always();
+      return;
+    }
     breakpoint->backend_data().emplace_back(host_address, original_bytes);
   });
 }
@@ -573,7 +578,10 @@ void X64Backend::InstallBreakpoint(Breakpoint* breakpoint, Function* fn) {
   auto ptr = reinterpret_cast<void*>(host_address);
   auto original_bytes = xe::load_and_swap<uint16_t>(ptr);
   assert_true(original_bytes != 0x0F0B);
-  xe::store_and_swap<uint16_t>(ptr, 0x0F0B);
+  if (!code_cache()->PatchCode(ptr, kUd2, sizeof(kUd2))) {
+    assert_always();
+    return;
+  }
   breakpoint->backend_data().emplace_back(host_address, original_bytes);
 }
 
@@ -582,7 +590,10 @@ void X64Backend::UninstallBreakpoint(Breakpoint* breakpoint) {
     auto ptr = reinterpret_cast<uint8_t*>(pair.first);
     auto instruction_bytes = xe::load_and_swap<uint16_t>(ptr);
     assert_true(instruction_bytes == 0x0F0B);
-    xe::store_and_swap<uint16_t>(ptr, static_cast<uint16_t>(pair.second));
+    // backend_data holds the byte-swapped load, so swap back to memory order.
+    const uint16_t original_bytes =
+        xe::byte_swap(static_cast<uint16_t>(pair.second));
+    code_cache()->PatchCode(ptr, &original_bytes, sizeof(original_bytes));
   }
   breakpoint->backend_data().clear();
 }

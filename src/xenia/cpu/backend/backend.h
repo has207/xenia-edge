@@ -201,6 +201,8 @@ struct GuestTrampolineGroup
   }
 };
 
+uint64_t TrapDebugPrint(void* raw_context);
+
 // Registered by the cooperative scheduler when it starts, null otherwise. A
 // JIT safepoint calls it with the PPCContext once the scheduler has raised the
 // context's preempt_requested flag.

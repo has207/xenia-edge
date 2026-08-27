@@ -27,7 +27,12 @@ bool IsDebuggerAttached() {
   return (info.kp_proc.p_flag & P_TRACED) != 0;
 }
 
-void Break() { __builtin_debugtrap(); }
+void Break() {
+  if (!IsDebuggerAttached()) {
+    return;
+  }
+  __builtin_debugtrap();
+}
 
 namespace internal {
 void DebugPrint(const char* s) { std::clog << s << std::endl; }

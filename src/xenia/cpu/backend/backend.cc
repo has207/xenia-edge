@@ -10,9 +10,17 @@
 #include "xenia/cpu/backend/backend.h"
 
 #include <cstring>
+#include <string>
 
 #include "xenia/base/byte_order.h"
+#include "xenia/base/cvar.h"
+#include "xenia/base/debugging.h"
+#include "xenia/base/logging.h"
 #include "xenia/cpu/ppc/ppc_context.h"
+#include "xenia/cpu/thread_state.h"
+
+DEFINE_bool(debugprint_trap_log, false,
+            "Log debugprint traps to the active debugger", "CPU");
 
 namespace xe {
 namespace cpu {
@@ -31,6 +39,20 @@ void* Backend::AllocThreadData() { return nullptr; }
 void Backend::FreeThreadData(void* thread_data) {}
 
 void (*preempt_yield_handler)(void* raw_context) = nullptr;
+
+uint64_t TrapDebugPrint(void* raw_context) {
+  auto thread_state =
+      reinterpret_cast<ppc::PPCContext_s*>(raw_context)->thread_state;
+  uint32_t str_ptr = uint32_t(thread_state->context()->r[3]);
+  uint32_t str_length = uint32_t(thread_state->context()->r[4]);
+  auto str = thread_state->memory()->TranslateVirtual<const char*>(str_ptr);
+  std::string message(str, str_length);
+  XELOGD("(DebugPrint) {}", message);
+  if (cvars::debugprint_trap_log) {
+    debugging::DebugPrint("(DebugPrint) {}", message);
+  }
+  return 0;
+}
 
 uint32_t Backend::ReservedLoad32(ppc::PPCContext* context, uint32_t address) {
   return xe::byte_swap(*context->TranslateVirtual<uint32_t*>(address));
