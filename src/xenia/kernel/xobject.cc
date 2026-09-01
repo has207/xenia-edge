@@ -555,21 +555,23 @@ X_STATUS XObject::SignalAndWait(XObject* signal_object, XObject* wait_object,
     auto* scheduler = wait_object->kernel_state()->guest_scheduler();
     auto* self = XThread::GetCurrentThread();
     X_KTHREAD* kthread = WaitEnter(wait_reason, processor_mode, alertable);
-    X_STATUS signal_status = SignalObjectCooperatively(signal_object);
-    if (XFAILED(signal_status)) {
-      WaitExit(kthread, signal_status);
-      return signal_status;
-    }
     uint64_t deadline_ms = opt_timeout ? Clock::QueryHostUptimeMillis() +
                                              Clock::ScaleGuestDurationMillis(
                                                  TimeoutTicksToMs(*opt_timeout))
                                        : 0;
+    // Queued before the signal so a wake cannot land before we are a waiter.
     const uint32_t entry_pulse_epoch = wait_object->cooperative_pulse_epoch();
     wait_object->EnterCooperativeWait(self);  // FIFO fairness for semaphores
     if (self) {
       const uint32_t wait_handle_id = wait_object->handle();
       self->set_cooperative_wait_shape(XThread::CooperativeWaitKind::kSingle,
                                        &wait_handle_id, 1);
+    }
+    X_STATUS signal_status = SignalObjectCooperatively(signal_object);
+    if (XFAILED(signal_status)) {
+      wait_object->LeaveCooperativeWait(self);
+      WaitExit(kthread, signal_status);
+      return signal_status;
     }
     X_STATUS status = CooperativeWait(
         scheduler, kthread, wait_object, alertable != 0, deadline_ms,
