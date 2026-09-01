@@ -81,24 +81,21 @@ spv::Id SpirvShaderTranslator::ReduceFloatPrecision(spv::Id value,
 
   // Check if rounding caused exponent overflow (finite -> infinity)
   // This can happen when rounding up near FLT_MAX
-  spv::Id original_exp = builder_->createBinOp(
-      spv::OpBitwiseAnd, type_uint_,
-      builder_->createBinOp(spv::OpShiftRightLogical, type_uint_, value_bits,
-                            builder_->makeUintConstant(23)),
-      builder_->makeUintConstant(0xFF));
-  spv::Id rounded_exp = builder_->createBinOp(
-      spv::OpBitwiseAnd, type_uint_,
-      builder_->createBinOp(spv::OpShiftRightLogical, type_uint_,
-                            rounded_up_bits, builder_->makeUintConstant(23)),
-      builder_->makeUintConstant(0xFF));
+  spv::Id original_exp =
+      builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, value_bits,
+                            builder_->makeUintConstant(0x7F800000u));
+  spv::Id rounded_exp =
+      builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, rounded_up_bits,
+                            builder_->makeUintConstant(0x7F800000u));
 
   // If original was finite (exp != 0xFF) but rounded became inf (exp == 0xFF),
   // saturate by not rounding up
   spv::Id original_finite =
       builder_->createBinOp(spv::OpINotEqual, type_bool_, original_exp,
-                            builder_->makeUintConstant(0xFF));
-  spv::Id rounded_inf = builder_->createBinOp(
-      spv::OpIEqual, type_bool_, rounded_exp, builder_->makeUintConstant(0xFF));
+                            builder_->makeUintConstant(0x7F800000u));
+  spv::Id rounded_inf =
+      builder_->createBinOp(spv::OpIEqual, type_bool_, rounded_exp,
+                            builder_->makeUintConstant(0x7F800000u));
   spv::Id would_overflow = builder_->createBinOp(spv::OpLogicalAnd, type_bool_,
                                                  original_finite, rounded_inf);
 
@@ -1226,6 +1223,7 @@ spv::Id SpirvShaderTranslator::ProcessScalarAluOperation(
           type_float_, ext_inst_glsl_std_450_, GLSLstd450Log2,
           GetOperandComponents(operand_storage[0], instr.scalar_operands[0],
                                0b0001));
+      result = ReduceFloatPrecision(result, 21);
       return builder_->createTriOp(
           spv::OpSelect, type_float_,
           builder_->createBinOp(spv::OpFOrdEqual, type_bool_, result,
