@@ -1581,8 +1581,9 @@ const std::filesystem::path Emulator::GetNewDiscPath(
       dialog->Then(&fence);
     });
 
-    // Wait for the dialog to close
-    fence.Wait();
+    // Wait for the dialog to close. Parks the fiber the way every other xam
+    // dialog does, so the guest CPU stays free while the prompt is up.
+    kernel::GuestScheduler::WaitOnFence(fence);
 
     // Process the result
     if (result == kernel::xam::ui::DiscSwapResult::kSelected) {
