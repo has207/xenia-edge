@@ -374,6 +374,12 @@ class Emulator {
     }
   }
 
+  // Disc in the drive, 1-based; follows XamSwapDisc. 0 when unknown.
+  uint8_t current_disc_number() const { return current_disc_number_; }
+  void set_current_disc_number(uint8_t disc_number) {
+    current_disc_number_ = disc_number;
+  }
+
   // The game can request another title to be loaded.
   const std::filesystem::path GetNewDiscPath(std::string window_message = "");
 
@@ -465,6 +471,7 @@ class Emulator {
   kernel::object_ref<kernel::XThread> main_thread_;
   kernel::object_ref<kernel::XHostThread> plugin_loader_thread_;
   std::optional<uint32_t> title_id_;  // Currently running title ID
+  uint8_t current_disc_number_ = 0;
   std::unique_ptr<kernel::util::GameInfoDatabase> game_info_database_;
 
   bool paused_;

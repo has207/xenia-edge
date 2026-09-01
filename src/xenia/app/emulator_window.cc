@@ -958,8 +958,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
       [this]() { return StopTitleAndReturnToList(); });
 
   // Register callback for disc swap to update title bar
-  emulator_->set_on_disc_swap([this](uint8_t new_disc_number) {
-    swapped_disc_number_ = new_disc_number;
+  emulator_->set_on_disc_swap([this](uint8_t) {
     app_context_.CallInUIThread([this]() { UpdateTitle(); });
   });
 }
@@ -3035,11 +3034,7 @@ void EmulatorWindow::UpdateTitle() {
     auto executable_module = emulator()->kernel_state()->GetExecutableModule();
     if (executable_module) {
       if (executable_module->is_multi_disc_title()) {
-        // Use swapped disc number if set, otherwise use XEX header value
-        uint8_t disc_number = swapped_disc_number_ != 0
-                                  ? swapped_disc_number_
-                                  : executable_module->disc_number();
-        sb.AppendFormat(" Disc {}", disc_number);
+        sb.AppendFormat(" Disc {}", emulator()->current_disc_number());
       }
 
       // Show XEX name if it's not default.xex

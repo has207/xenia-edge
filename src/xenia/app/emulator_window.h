@@ -260,8 +260,6 @@ class EmulatorWindow {
 
   std::string base_title_;
   bool initializing_shader_storage_ = false;
-  // Disc number after disc swap (0 = use XEX header value)
-  uint8_t swapped_disc_number_ = 0;
 
   ui::ImGuiPostProcessingDialog* postprocessing_dialog_ = nullptr;
   ui::ImGuiPerformanceDialog* performance_dialog_ = nullptr;

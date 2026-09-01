@@ -2059,8 +2059,10 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
 
   if (!info) {
     title_id_ = 0;
+    current_disc_number_ = 0;
   } else {
     title_id_ = info->title_id;
+    current_disc_number_ = info->disc_number;
     auto title_version = info->version();
     if (title_version.value != 0) {
       title_version_ = format_version(title_version);
