@@ -785,7 +785,18 @@ X_STATUS Emulator::LaunchStfsContainer(const std::filesystem::path& path) {
   if (result == X_STATUS_NOT_FOUND && !cvars::launch_module.empty()) {
     return LaunchDefaultModule(path);
   }
-  kernel_state_->deployment_type_ = XDeploymentType::kDownload;
+
+  auto* container = dynamic_cast<vfs::XContentContainerDevice*>(
+      file_system_->GetDevice("\\Device\\Package_0"));
+  const uint32_t content_type = container ? container->content_type() : 0;
+  // A disc rip installed to the HDD still runs as a disc title.
+  const bool is_disc_content =
+      content_type == static_cast<uint32_t>(XContentType::kInstalledGame);
+  kernel_state_->deployment_type_ = is_disc_content
+                                        ? XDeploymentType::kOpticalDisc
+                                        : XDeploymentType::kDownload;
+  XELOGI("LaunchStfsContainer: content type {:08X}, running as {}",
+         content_type, is_disc_content ? "optical disc" : "download");
   return result;
 }
 
