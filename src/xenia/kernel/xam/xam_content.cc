@@ -131,13 +131,20 @@ dword_result_t xeXamContentResolve(
       }
     }
 
-    const std::string relative_path = fmt::format(
-        "{:016X}\\{:08X}\\{:08X}\\{}", xuid, kernel_state()->title_id(),
-        static_cast<uint32_t>(content_data.content_type.get()),
-        content_data.file_name());
+    const std::string relative_dir =
+        fmt::format("{:016X}\\{:08X}\\{:08X}", xuid, kernel_state()->title_id(),
+                    static_cast<uint32_t>(content_data.content_type.get()));
+    const std::string content_dir = root_device_path + relative_dir;
 
-    string_util::copy_truncating(path_ptr, root_device_path + relative_path,
-                                 path_size);
+    // The caller creates the package file itself, so the directory must exist.
+    if (create_directory && !kernel_state()->file_system()->CreatePath(
+                                content_dir, vfs::kFileAttributeDirectory)) {
+      XELOGW("XamContentResolve: Cannot create content directory {}",
+             content_dir);
+    }
+
+    string_util::copy_truncating(
+        path_ptr, content_dir + "\\" + content_data.file_name(), path_size);
 
     // Check if it exists and try to mount that package
     // Result of buffer_ptr is sent to RtlInitAnsiString.
