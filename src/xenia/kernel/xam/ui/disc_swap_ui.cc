@@ -18,9 +18,12 @@ namespace xam {
 namespace ui {
 
 DiscSwapUI::DiscSwapUI(xe::ui::ImGuiDrawer* imgui_drawer,
+                       xe::hid::InputSystem* input_system,
                        const std::string& message,
                        const std::vector<DiscInfo>& discs, bool show_error)
-    : XamDialog(imgui_drawer), discs_(discs), show_error_(show_error) {
+    : XamGamepadDialog(imgui_drawer, input_system),
+      discs_(discs),
+      show_error_(show_error) {
   title_ = "Select Disc";
 
   // Parse error message if present
@@ -52,7 +55,9 @@ void DiscSwapUI::OnDraw(ImGuiIO& io) {
   // Center the window on screen
   ImVec2 center = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSizeConstraints(ImVec2(400, 0), ImVec2(600, 400));
+  // Size constraints leave an auto-resize popup a pixel short of its contents
+  const float font_size = ImGui::GetFontSize();
+  ImGui::SetNextWindowSize(ImVec2(font_size * 36.0f, 0.0f), ImGuiCond_Always);
 
   // Style like Xbox - white background, black text, Xbox green highlights
   const ImVec4 xbox_green(0.063f, 0.486f, 0.063f, 1.0f);
@@ -73,7 +78,9 @@ void DiscSwapUI::OnDraw(ImGuiIO& io) {
   ImGui::PushStyleColor(ImGuiCol_HeaderHovered, xbox_green);
   ImGui::PushStyleColor(ImGuiCol_HeaderActive, xbox_green);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 16));
+  const ImVec2 padding = ImGui::GetStyle().WindowPadding;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                      ImVec2(padding.x * 2.0f, padding.y * 2.0f));
 
   if (ImGui::BeginPopupModal(title_.c_str(), nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -156,13 +163,17 @@ void DiscSwapUI::OnDraw(ImGuiIO& io) {
       Close();
     }
 
-    ImGui::SameLine();
-
-    // Add spacing to push Cancel to the right
-    float button_width = ImGui::CalcTextSize("Cancel").x + 16;
-    float spacing = ImGui::GetContentRegionAvail().x - button_width;
-    if (spacing > 0) {
-      ImGui::Dummy(ImVec2(spacing, 0));
+    // Push Cancel to the right edge, unless Browse already reaches it
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float browse_end_x = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
+    float content_end_x =
+        ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+    float cancel_width =
+        ImGui::CalcTextSize("Cancel").x + style.FramePadding.x * 2.0f;
+    float cancel_x = content_end_x - cancel_width;
+    if (cancel_x > browse_end_x + style.ItemSpacing.x) {
+      ImGui::SameLine(cancel_x);
+    } else {
       ImGui::SameLine();
     }
 

@@ -312,6 +312,9 @@ class Window {
   void CaptureMouse();
   void ReleaseMouse();
 
+  // Pointer position in MouseEvent coordinates, false if it can't be reported
+  virtual bool GetMousePosition(int32_t& x, int32_t& y) const { return false; }
+
   // Desired state stored by the common Window, externally modifiable, read-only
   // in the implementation.
   CursorVisibility GetCursorVisibility() const { return cursor_visibility_; }

@@ -500,6 +500,22 @@ void WxWindow::CompleteMainMenuItemsUpdateImpl() {
   // wxWidgets refreshes the menu bar automatically; nothing to do.
 }
 
+bool WxWindow::GetMousePosition(int32_t& x, int32_t& y) const {
+  wxWindow* target = render_target();
+  if (!target) {
+    return false;
+  }
+  wxPoint position = target->ScreenToClient(::wxGetMousePosition());
+  wxSize size = target->GetClientSize();
+  if (position.x < 0 || position.y < 0 || position.x >= size.GetWidth() ||
+      position.y >= size.GetHeight()) {
+    return false;
+  }
+  x = position.x;
+  y = position.y;
+  return true;
+}
+
 void WxWindow::ApplyNewMouseCapture() {
   if (!render_target()->HasCapture()) {
     render_target()->CaptureMouse();

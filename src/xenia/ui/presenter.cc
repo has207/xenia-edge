@@ -276,9 +276,8 @@ void Presenter::PaintFromUIThread(bool force_paint) {
       // is consistent with painting from the UI thread.
       SetPaintModeFromUIThread(PaintMode::kUIThreadOnRequest);
 
-      // Record whether a new guest output frame arrived since the previous
-      // paint. UI drawers and the UI tick rate limit use it to avoid presenting
-      // faster than the guest produces frames.
+      // Whether a guest frame arrived since the previous paint, used by the
+      // UI tick rate limit to avoid outpacing the guest
       uint64_t guest_output_refresh_count =
           guest_output_refresh_count_.load(std::memory_order_relaxed);
       guest_output_drove_current_ui_paint_ =

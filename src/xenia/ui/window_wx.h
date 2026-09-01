@@ -60,6 +60,8 @@ class WxWindow : public Window {
 
   uint32_t GetMediumDpi() const override { return 96; }
 
+  bool GetMousePosition(int32_t& x, int32_t& y) const override;
+
  protected:
   bool OpenImpl() override;
   void RequestCloseImpl() override;

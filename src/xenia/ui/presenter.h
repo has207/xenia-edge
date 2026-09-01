@@ -337,14 +337,6 @@ class Presenter {
   // Requests (re)painting with the UI if there's UI to draw.
   void RequestUIPaintFromUIThread();
 
-  // Whether a new guest output frame arrived since the previous UI-thread
-  // paint, so the guest output is currently driving the paint cadence. UI
-  // drawers can check this to avoid requesting extra repaints that present
-  // faster than the guest produces frames. Valid only while UI drawers execute.
-  bool GuestOutputDroveCurrentUIPaint() const {
-    return guest_output_drove_current_ui_paint_;
-  }
-
  protected:
   enum class PaintResult {
     kPresented,

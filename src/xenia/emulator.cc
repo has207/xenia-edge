@@ -1572,7 +1572,8 @@ const std::filesystem::path Emulator::GetNewDiscPath(
     xe::threading::Fence fence;
     display_window_->app_context().CallInUIThreadSynchronous([&, this]() {
       auto* dialog = new kernel::xam::ui::DiscSwapUI(
-          imgui_drawer_, window_message, disc_infos, show_error);
+          imgui_drawer_, input_system_.get(), window_message, disc_infos,
+          show_error);
       dialog->set_close_callback([&result, &selected_path, dialog]() {
         result = dialog->result();
         selected_path = dialog->selected_path();

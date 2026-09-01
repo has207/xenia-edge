@@ -286,7 +286,9 @@ void KeyboardInputDialog::OnDraw(ImGuiIO& io) {
   // Center the window on screen
   ImVec2 center = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSizeConstraints(ImVec2(350, 0), ImVec2(500, 300));
+  // Size constraints leave an auto-resize popup a pixel short of its contents
+  ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 30.0f, 0.0f),
+                           ImGuiCond_Always);
 
   // Style like Xbox - white background, black text, Xbox green highlights
   const ImVec4 xbox_green(0.063f, 0.486f, 0.063f, 1.0f);
