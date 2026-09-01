@@ -209,12 +209,15 @@ class ContentPackage {
 
   const uint32_t GetPackageLicense() const { return license_; }
 
+  bool is_mounted() const { return mounted_; }
+
  private:
   KernelState* kernel_state_;
   std::string root_name_;
   std::string device_path_;
   XCONTENT_AGGREGATE_DATA content_data_;
   uint32_t license_;
+  bool mounted_ = false;
 };
 
 class ContentManager {

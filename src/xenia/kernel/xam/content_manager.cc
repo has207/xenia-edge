@@ -19,6 +19,7 @@
 #include "xenia/kernel/xfile.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/vfs/devices/host_path_device.h"
+#include "xenia/vfs/devices/xcontent_container_device.h"
 
 DECLARE_int32(license_mask);
 
@@ -42,10 +43,24 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
   content_data_ = data;
 
   auto fs = kernel_state_->file_system();
-  auto device =
-      std::make_unique<vfs::HostPathDevice>(device_path_, package_path, false);
-  device->Initialize();
-  fs->RegisterDevice(std::move(device));
+  if (std::filesystem::is_directory(package_path)) {
+    auto device = std::make_unique<vfs::HostPathDevice>(device_path_,
+                                                        package_path, false);
+    mounted_ = device->Initialize();
+    fs->RegisterDevice(std::move(device));
+  } else {
+    // A title can install content by copying the package file itself, so a
+    // package is either an extracted directory or a container.
+    auto device = vfs::XContentContainerDevice::CreateContentDevice(
+        device_path_, package_path);
+    if (device && device->Initialize()) {
+      license_ = device->license_mask();
+      mounted_ = true;
+      fs->RegisterDevice(std::move(device));
+    } else {
+      XELOGE("{}: Cannot mount content container {}", __func__, package_path);
+    }
+  }
   fs->RegisterSymbolicLink(root_name_ + ":", device_path_);
 }
 
@@ -235,25 +250,39 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(
     auto file_infos = xe::filesystem::ListFiles(package_root);
 
     for (const auto& file_info : file_infos) {
-      if (file_info.type != xe::filesystem::FileInfo::Type::kDirectory) {
-        // Directories only.
-        continue;
-      }
-
       XCONTENT_AGGREGATE_DATA content_data;
       if (XSUCCEEDED(ReadContentHeaderFile(xe::path_to_utf8(file_info.name),
                                            xuid, title_id, content_type,
                                            content_data))) {
         result.emplace_back(std::move(content_data));
-      } else {
-        content_data.device_id = device_id;
-        content_data.content_type = content_type;
-        content_data.set_display_name(xe::path_to_utf16(file_info.name));
-        content_data.set_file_name(xe::path_to_utf8(file_info.name));
-        content_data.title_id = title_id;
-        content_data.xuid = xuid;
-        result.emplace_back(std::move(content_data));
+        continue;
       }
+
+      std::u16string display_name = xe::path_to_utf16(file_info.name);
+      if (file_info.type != xe::filesystem::FileInfo::Type::kDirectory) {
+        // A title can install content by copying the package file itself, so
+        // take the name a container carries instead of the extracted layout's
+        // directory name.
+        auto header = vfs::XContentContainerDevice::ReadContainerHeader(
+            file_info.path / file_info.name);
+        if (!header || !header->content_header.is_magic_valid()) {
+          continue;
+        }
+        auto container_name =
+            vfs::XContentContainerDevice::ContentDataFromHeader(*header)
+                .display_name();
+        if (!container_name.empty()) {
+          display_name = container_name;
+        }
+      }
+
+      content_data.device_id = device_id;
+      content_data.content_type = content_type;
+      content_data.set_display_name(display_name);
+      content_data.set_file_name(xe::path_to_utf8(file_info.name));
+      content_data.title_id = title_id;
+      content_data.xuid = xuid;
+      result.emplace_back(std::move(content_data));
     }
   }
   return result;
@@ -307,6 +336,9 @@ std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
 
   auto package = std::make_unique<ContentPackage>(kernel_state_, root_name,
                                                   data, package_path);
+  if (!package->is_mounted()) {
+    return nullptr;
+  }
   return package;
 }
 
@@ -401,7 +433,9 @@ X_RESULT ContentManager::CreateContent(const std::string_view root_name,
   }
 
   auto package = ResolvePackage(root_name, xuid, data);
-  assert_not_null(package);
+  if (!package) {
+    return X_ERROR_ACCESS_DENIED;
+  }
 
   open_packages_.insert(
       {string_key_insensitive::create(root_name), package.release()});
@@ -429,7 +463,9 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
 
   // Open package.
   auto package = ResolvePackage(root_name, xuid, data, disc_number);
-  assert_not_null(package);
+  if (!package) {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
 
   package->LoadPackageLicenseMask(ResolvePackageHeaderPath(
       data.file_name(), xuid, kernel_state_->title_id(), data.content_type));

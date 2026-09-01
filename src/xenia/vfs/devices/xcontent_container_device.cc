@@ -154,22 +154,23 @@ void XContentContainerDevice::Dump(StringBuffer* string_buffer) {
   root_entry_->Dump(string_buffer, 0);
 }
 
-kernel::xam::XCONTENT_AGGREGATE_DATA XContentContainerDevice::content_header()
-    const {
+kernel::xam::XCONTENT_AGGREGATE_DATA
+XContentContainerDevice::ContentDataFromHeader(
+    const XContentContainerHeader& header) {
   kernel::xam::XCONTENT_AGGREGATE_DATA data;
 
   std::memset(&data, 0, sizeof(kernel::xam::XCONTENT_AGGREGATE_DATA));
 
   data.device_id = 1;
-  data.title_id = header_->content_metadata.execution_info.title_id;
-  data.content_type = header_->content_metadata.content_type;
+  data.title_id = header.content_metadata.execution_info.title_id;
+  data.content_type = header.content_metadata.content_type;
 
-  auto name = header_->content_metadata.display_name(XLanguage::kEnglish);
+  auto name = header.content_metadata.display_name(XLanguage::kEnglish);
   if (name.empty()) {
     // Find first filled language and use it. It might be incorrect, but meh
     // until stfs support is done.
-    for (uint8_t i = 0; i < header_->content_metadata.kNumLanguagesV2; i++) {
-      name = header_->content_metadata.display_name((XLanguage)i);
+    for (uint8_t i = 0; i < header.content_metadata.kNumLanguagesV2; i++) {
+      name = header.content_metadata.display_name((XLanguage)i);
       if (!name.empty()) {
         break;
       }
@@ -179,6 +180,11 @@ kernel::xam::XCONTENT_AGGREGATE_DATA XContentContainerDevice::content_header()
   data.set_display_name(name);
 
   return data;
+}
+
+kernel::xam::XCONTENT_AGGREGATE_DATA XContentContainerDevice::content_header()
+    const {
+  return ContentDataFromHeader(*header_);
 }
 
 XContentContainerDevice::Result XContentContainerDevice::ReadHeaderAndVerify(

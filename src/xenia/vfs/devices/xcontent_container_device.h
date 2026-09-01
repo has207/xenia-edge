@@ -67,6 +67,9 @@ class XContentContainerDevice : public Device {
     return static_cast<uint32_t>(header_->content_metadata.content_type.get());
   }
 
+  static kernel::xam::XCONTENT_AGGREGATE_DATA ContentDataFromHeader(
+      const XContentContainerHeader& header);
+
   kernel::xam::XCONTENT_AGGREGATE_DATA content_header() const;
   uint32_t license_mask() const {
     uint32_t final_license = 0;
