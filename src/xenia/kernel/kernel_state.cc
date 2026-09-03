@@ -776,10 +776,16 @@ const object_ref<UserModule> KernelState::LoadTitleUpdate(
   const std::string relative_path =
       module->path().substr(mount_path.size() + 1) + 'p';
 
+  // A multi-disc update mounts at discNNN inside the package, so the target
+  // no longer always ends in a separator.
+  const std::string patch_guest_path =
+      xe::utf8::join_guest_paths(resolved_path, relative_path);
+
   xe::vfs::Entry* patch_entry =
-      kernel_state()->file_system()->ResolvePath(resolved_path + relative_path);
+      kernel_state()->file_system()->ResolvePath(patch_guest_path);
 
   if (!patch_entry) {
+    XELOGI("Loading XEX patch failed. Path doesn't exist {}", patch_guest_path);
     return nullptr;
   }
 

@@ -35,7 +35,8 @@ static int content_device_id_ = 0;
 ContentPackage::ContentPackage(KernelState* kernel_state,
                                const std::string_view root_name,
                                const XCONTENT_AGGREGATE_DATA& data,
-                               const std::filesystem::path& package_path)
+                               const std::filesystem::path& package_path,
+                               const std::string_view root_path)
     : kernel_state_(kernel_state),
       root_name_(root_name),
       license_(cvars::license_mask) {
@@ -61,7 +62,8 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
       XELOGE("{}: Cannot mount content container {}", __func__, package_path);
     }
   }
-  fs->RegisterSymbolicLink(root_name_ + ":", device_path_);
+  fs->RegisterSymbolicLink(root_name_ + ":",
+                           xe::utf8::join_guest_paths(device_path_, root_path));
 }
 
 ContentPackage::~ContentPackage() {
@@ -124,11 +126,10 @@ static std::filesystem::path ResolveNameInsensitive(
 }
 
 std::filesystem::path ContentManager::ResolvePackagePath(
-    const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data,
-    const uint32_t disc_number) {
+    const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data) {
   // Content path:
   // content_root/title_id/content_type/data_file_name/
-  auto get_package_path = [&, data, disc_number](const uint32_t title_id) {
+  auto get_package_path = [&, data](const uint32_t title_id) {
     uint64_t used_xuid =
         (data.xuid != -1 && data.xuid != 0) ? data.xuid.get() : xuid;
 
@@ -150,9 +151,6 @@ std::filesystem::path ContentManager::ResolvePackagePath(
       }
     }
 
-    if (disc_number != -1) {
-      package_path /= fmt::format("disc{:03}", disc_number);
-    }
     return package_path;
   };
 
@@ -327,15 +325,20 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContentODD(
 std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
     const std::string_view root_name, const uint64_t xuid,
     const XCONTENT_AGGREGATE_DATA& data, const uint32_t disc_number) {
-  auto package_path = ResolvePackagePath(xuid, data, disc_number);
+  auto package_path = ResolvePackagePath(xuid, data);
   if (!std::filesystem::exists(package_path)) {
     return nullptr;
   }
 
   auto global_lock = global_critical_region_.Acquire();
 
-  auto package = std::make_unique<ContentPackage>(kernel_state_, root_name,
-                                                  data, package_path);
+  // A multi-disc title's update ships as one package holding a discNNN
+  // directory per disc; mount the one this disc needs.
+  const std::string root_path =
+      disc_number != -1 ? fmt::format("disc{:03}", disc_number) : "";
+
+  auto package = std::make_unique<ContentPackage>(
+      kernel_state_, root_name, data, package_path, root_path);
   if (!package->is_mounted()) {
     return nullptr;
   }
@@ -455,7 +458,7 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     return X_ERROR_ALREADY_EXISTS;
   }
 
-  auto package_path = ResolvePackagePath(xuid, data, disc_number);
+  auto package_path = ResolvePackagePath(xuid, data);
   if (!std::filesystem::exists(package_path)) {
     // Does not exist, must be created.
     return X_ERROR_FILE_NOT_FOUND;

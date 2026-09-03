@@ -196,9 +196,12 @@ static_assert_size(XCONTENT_DATA_INTERNAL, 0x200);
 
 class ContentPackage {
  public:
+  // root_path is a directory inside the package to mount at, empty for the
+  // package root.
   ContentPackage(KernelState* kernel_state, const std::string_view root_name,
                  const XCONTENT_AGGREGATE_DATA& data,
-                 const std::filesystem::path& package_path);
+                 const std::filesystem::path& package_path,
+                 const std::string_view root_path = "");
   ~ContentPackage();
 
   void LoadPackageLicenseMask(const std::filesystem::path header_path);
@@ -272,8 +275,7 @@ class ContentManager {
       const uint64_t xuid, const uint32_t title_id,
       const XContentType content_type) const;
   std::filesystem::path ResolvePackagePath(const uint64_t xuid,
-                                           const XCONTENT_AGGREGATE_DATA& data,
-                                           const uint32_t disc_number = -1);
+                                           const XCONTENT_AGGREGATE_DATA& data);
   std::filesystem::path ResolvePackageHeaderPath(
       const std::string_view file_name, uint64_t xuid, uint32_t title_id,
       const XContentType content_type) const;
