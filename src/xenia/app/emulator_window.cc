@@ -143,6 +143,7 @@
 #include "xenia/ui/window_wx.h"
 
 #include <wx/aboutdlg.h>
+#include <wx/arrstr.h>
 #include <wx/aui/auibar.h>
 #include <wx/aui/framemanager.h>
 #include <wx/config.h>
@@ -581,63 +582,32 @@ void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
 
 void EmulatorWindow::InitializeGameLibrary() {
   const auto library_root = emulator_->storage_root() / "library";
-  auto* profile_manager =
-      emulator_->kernel_state()->xam_state()->profile_manager();
-
-  std::error_code ec;
-  if (!std::filesystem::exists(library_root, ec) && profile_manager) {
-    // One-time GPD->library migration; staged, then renamed in atomically.
-    // TODO(has207): remove this migration in 2027, along with the GPD readers
-    // it relies on (ScanAllProfilesForTitles, ReadTitleIcon,
-    // GpdInfoProfile::GetTitlePath/GetTitleDiscs).
-    const auto staging_root = emulator_->storage_root() / "library.tmp";
-    std::filesystem::remove_all(staging_root, ec);
-    std::filesystem::create_directories(staging_root, ec);
-
-    GameLibrary staging(staging_root);
-    size_t migrated = 0;
-    for (const auto& title : profile_manager->ScanAllProfilesForTitles()) {
-      if (title.title_id == 0) {
-        continue;  // Not a real title id; an "unknown title" grab-bag.
-      }
-      LibraryEntry entry;
-      entry.title_id = title.title_id;
-      entry.name = title.title_name;
-      if (!title.all_discs.empty()) {
-        for (const auto& disc : title.all_discs) {
-          if (!disc.path.empty()) {
-            entry.paths.push_back({disc.path, disc.label, false});
-          }
-        }
-      } else if (!title.path_to_file.empty()) {
-        entry.paths.push_back({title.path_to_file, std::string(), false});
-      }
-      if (entry.paths.empty()) {
-        continue;  // nothing launchable
-      }
-      if (!staging.Upsert(entry)) {
-        continue;
-      }
-      auto icon = profile_manager->ReadTitleIcon(entry.title_id);
-      if (!icon.empty()) {
-        staging.SetIcon(entry.title_id, icon);
-      }
-      ++migrated;
-    }
-
-    std::filesystem::rename(staging_root, library_root, ec);
-    if (ec) {
-      XELOGE("InitializeGameLibrary: migration failed to commit: {}",
-             ec.message());
-      std::filesystem::remove_all(staging_root, ec);
-    } else {
-      XELOGI("InitializeGameLibrary: migrated {} title(s) from profile GPDs",
-             migrated);
-    }
-  }
 
   game_library_ = std::make_unique<GameLibrary>(library_root);
   game_library_->Load();
+
+  // Load() identifies releases the library recorded before media ids were
+  // kept, which separates any title that turned out to hold more than one.
+  // That changes what the user sees, so say so once.
+  const auto& split = game_library_->split_titles();
+  if (!split.empty()) {
+    wxArrayString names;
+    for (const auto& name : split) {
+      names.Add(wxString::FromUTF8(name));
+    }
+    const wxString message = wxString::Format(
+        _("These games were found in more than one version, and each "
+          "version now has its own entry in the list. Saves and updates "
+          "belong to a single version, so they are kept apart.\n\n%s"),
+        wxJoin(names, '\n'));
+    // Deferred: this runs partway through OnEmulatorInitialized, and a modal
+    // would hold the rest of startup behind it.
+    app_context_.CallInUIThreadDeferred([this, message]() {
+      auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+      wxMessageBox(message, _("Library updated"), wxOK | wxICON_INFORMATION,
+                   wx_window ? wx_window->frame() : nullptr);
+    });
+  }
 }
 
 void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
@@ -646,15 +616,24 @@ void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
     return;
   }
   const auto& launched = emulator_->last_launch_path();
-  game_library_->AddDisc(title_id, name, launched, std::string());
+  game_library_->AddDisc(title_id, name, launched);
+
+  // AddDisc placed it, so ask the library which release holds it rather than
+  // guessing. Nothing to point art or a default at if it declined the file,
+  // and a made-up key would have us write a folder no entry lives in.
+  const auto* entry = game_library_->FindByPath(title_id, launched);
+  if (!entry) {
+    return;
+  }
+  const LibraryKey key = entry->key();
   // The disc we just booted becomes the default for next launch.
-  game_library_->SetDefaultPath(title_id, launched);
+  game_library_->SetDefaultPath(key, launched);
 
   // Adopt the running title's icon if we have no art yet. The SPA writes it to
   // the per-title GPD on boot, so a signed-in profile has it by now.
   std::error_code ec;
   if (title_id == 0 ||
-      std::filesystem::exists(game_library_->IconPath(title_id), ec)) {
+      std::filesystem::exists(game_library_->IconPath(key), ec)) {
     return;
   }
   auto* xam_state = emulator_->kernel_state()
@@ -671,7 +650,7 @@ void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
     }
     auto icon = profile->GetTitleIcon(title_id);
     if (!icon.empty()) {
-      game_library_->SetIcon(title_id, icon);
+      game_library_->SetIcon(key, icon);
       break;
     }
   }
@@ -724,21 +703,30 @@ void EmulatorWindow::OnEmulatorInitialized() {
   emulator_->set_disc_provider([this](uint32_t title_id) {
     std::vector<Emulator::TitleDisc> discs;
     if (game_library_) {
-      if (auto* entry = game_library_->Find(title_id)) {
-        for (const auto& p : entry->paths) {
-          discs.push_back({p.label, p.path});
+      // Every copy of the title: a swap prompt should offer the disc the user
+      // has, not only the ones from the release that happens to be running.
+      for (const auto& entry : game_library_->entries()) {
+        if (entry.title_id != title_id) {
+          continue;
+        }
+        for (const auto& p : entry.paths) {
+          // The set's own numbering names each disc; nothing is stored.
+          std::string label;
+          if (p.disc_number) {
+            label = fmt::format("Disc {}", p.disc_number);
+          }
+          discs.push_back({std::move(label), p.path});
         }
       }
     }
     return discs;
   });
-  emulator_->set_disc_recorder([this](uint32_t title_id,
-                                      const std::string& label,
-                                      const std::filesystem::path& path) {
-    if (game_library_) {
-      game_library_->AddDisc(title_id, std::string(), path, label);
-    }
-  });
+  emulator_->set_disc_recorder(
+      [this](uint32_t title_id, const std::filesystem::path& path) {
+        if (game_library_) {
+          game_library_->AddDisc(title_id, std::string(), path);
+        }
+      });
   // Now that the kernel is up and profiles are mounted, populate the list.
   if (game_list_panel_ && !emulator_->is_title_open()) {
     game_list_panel_->Reload();
@@ -1892,7 +1880,7 @@ void EmulatorWindow::FileAddGames() {
     for (const auto& g : library->entries()) {
       auto& discs = already_installed[g.title_id];
       for (const auto& p : g.paths) {
-        discs.push_back({p.path, p.label});
+        discs.push_back({p.path});
       }
     }
   }
@@ -1917,17 +1905,32 @@ void EmulatorWindow::FileAddGames() {
       const std::string name = ResolveImportName(primary);
       bool changed = false;
       for (const auto& pi : group) {
-        changed |= library->AddDisc(primary.title_id, name, pi.game.path,
-                                    pi.disc_label);
+        changed |= library->AddDisc(primary.title_id, name, pi.game.path);
       }
       if (!changed) {
         continue;
       }
-      // A moved file reimports at its new path, so drop any now-missing ones.
-      library->PruneMissingPaths(primary.title_id);
-      // STFS provides an icon; XEX/ISO don't. Only overwrite when we have one.
-      if (!primary.icon_png.empty()) {
-        library->SetIcon(primary.title_id, primary.icon_png);
+      // A row can span releases, so each is pruned and given its own art
+      // rather than the row's first source standing in for all of them.
+      // AddDisc decided where each source landed, so ask for the key instead
+      // of rebuilding it: a disc of a set is filed under its first disc's.
+      std::set<uint32_t> pruned;
+      std::set<uint32_t> arted;
+      for (const auto& pi : group) {
+        const auto* entry = library->FindByPath(primary.title_id, pi.game.path);
+        if (!entry) {
+          continue;
+        }
+        const LibraryKey key = entry->key();
+        // A moved file reimports at its new path, so drop now-missing ones.
+        if (pruned.insert(key.version).second) {
+          library->PruneMissingPaths(key);
+        }
+        // STFS provides an icon; XEX/ISO don't. Only set when we have one,
+        // and only from the first source of the release that carries one.
+        if (!pi.game.icon_png.empty() && arted.insert(key.version).second) {
+          library->SetIcon(key, pi.game.icon_png);
+        }
       }
       ++imported;
     }
@@ -3397,9 +3400,18 @@ void EmulatorWindow::GamepadHotKeys() {
 
   auto input_sys = emulator_->input_system();
 
-  // Last-seen button mask per user, for rising-edge detection of game-list
-  // navigation buttons (so a held button doesn't auto-repeat at 13Hz).
+  // Last-seen button mask per user, for rising-edge detection of the activate
+  // button (which must never repeat).
   std::array<uint16_t, XUserMaxUserCount> previous_buttons{};
+
+  // A held direction repeats like a key: one move, a pause, then a steady
+  // stream, so crossing a long list doesn't mean tapping. Timed rather than
+  // counted in ticks so the rate holds if thread_delay changes.
+  constexpr std::chrono::milliseconds nav_repeat_delay(400);
+  constexpr std::chrono::milliseconds nav_repeat_interval(120);
+  std::array<uint16_t, XUserMaxUserCount> nav_held{};
+  std::array<std::chrono::steady_clock::time_point, XUserMaxUserCount>
+      nav_repeat_at{};
 
   if (input_sys) {
     while (hotkeys_listener_running_) {
@@ -3431,17 +3443,45 @@ void EmulatorWindow::GamepadHotKeys() {
           // against the previous tick so a held d-pad doesn't run away.
           if (!emulator_->is_title_open() && game_list_panel_) {
             uint16_t pressed = buttons & ~previous_buttons[user_index];
-            if (pressed & (X_INPUT_GAMEPAD_DPAD_UP | X_INPUT_GAMEPAD_DPAD_DOWN |
-                           X_INPUT_GAMEPAD_A)) {
-              app_context_.CallInUIThread([this, pressed]() {
+            // Cards are a grid, so all four directions carry meaning: sideways
+            // within a row, up and down by a whole row.
+            constexpr uint16_t kNavigationDirections =
+                X_INPUT_GAMEPAD_DPAD_UP | X_INPUT_GAMEPAD_DPAD_DOWN |
+                X_INPUT_GAMEPAD_DPAD_LEFT | X_INPUT_GAMEPAD_DPAD_RIGHT;
+
+            const uint16_t held = buttons & kNavigationDirections;
+            const auto now = std::chrono::steady_clock::now();
+            uint16_t navigate = 0;
+            if (!held) {
+              nav_held[user_index] = 0;
+            } else if (held != nav_held[user_index]) {
+              // A new direction moves at once, then waits out the delay.
+              nav_held[user_index] = held;
+              nav_repeat_at[user_index] = now + nav_repeat_delay;
+              navigate = held;
+            } else if (now >= nav_repeat_at[user_index]) {
+              nav_repeat_at[user_index] = now + nav_repeat_interval;
+              navigate = held;
+            }
+
+            // Launching is edge-triggered: repeating it would relaunch.
+            const bool activate = (pressed & X_INPUT_GAMEPAD_A) != 0;
+            if (navigate || activate) {
+              app_context_.CallInUIThread([this, navigate, activate]() {
                 if (!game_list_panel_) {
                   return;
                 }
-                if (pressed & X_INPUT_GAMEPAD_DPAD_UP) {
-                  game_list_panel_->MoveSelection(-1);
-                } else if (pressed & X_INPUT_GAMEPAD_DPAD_DOWN) {
-                  game_list_panel_->MoveSelection(1);
-                } else if (pressed & X_INPUT_GAMEPAD_A) {
+                using Direction = GameListPanel::Direction;
+                if (navigate & X_INPUT_GAMEPAD_DPAD_UP) {
+                  game_list_panel_->MoveSelection(Direction::kUp);
+                } else if (navigate & X_INPUT_GAMEPAD_DPAD_DOWN) {
+                  game_list_panel_->MoveSelection(Direction::kDown);
+                } else if (navigate & X_INPUT_GAMEPAD_DPAD_LEFT) {
+                  game_list_panel_->MoveSelection(Direction::kLeft);
+                } else if (navigate & X_INPUT_GAMEPAD_DPAD_RIGHT) {
+                  game_list_panel_->MoveSelection(Direction::kRight);
+                }
+                if (activate) {
                   game_list_panel_->ActivateSelected();
                 }
               });
@@ -3902,7 +3942,7 @@ std::filesystem::path EmulatorWindow::GetFilePickerInitialDirectory() const {
 
   // Recency from play data (newest first); the launch path from the library.
   for (const auto& title : profile_manager->ScanAllProfilesForTitles()) {
-    auto* entry = game_library_->Find(title.title_id);
+    auto* entry = game_library_->FindByTitle(title.title_id);
     if (!entry || entry->paths.empty()) {
       continue;
     }

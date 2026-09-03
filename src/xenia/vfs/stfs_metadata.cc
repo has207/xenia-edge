@@ -12,6 +12,7 @@
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/string.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
+#include "xenia/vfs/xex_metadata.h"
 
 namespace xe {
 namespace vfs {
@@ -35,6 +36,7 @@ toml::table StfsMetadata::ToToml() const {
   content_table.insert("media_id", fmt::format("{:08X}", media_id));
   content_table.insert("savegame_id", fmt::format("{:08X}", savegame_id));
   content_table.insert("content_type", fmt::format("{:08X}", content_type));
+  content_table.insert("version", XexVersion::FromValue(version).ToString());
   content_table.insert("content_size", static_cast<int64_t>(content_size));
   content_table.insert("disc_number", static_cast<int64_t>(disc_number));
   content_table.insert("disc_count", static_cast<int64_t>(disc_count));
@@ -78,6 +80,7 @@ std::optional<StfsMetadata> ExtractStfsMetadata(
   metadata.title_id = exec_info.title_id;
   metadata.media_id = exec_info.media_id;
   metadata.savegame_id = exec_info.savegame_id;
+  metadata.version = exec_info.version_value;
   metadata.disc_number = exec_info.disc_number;
   metadata.disc_count = exec_info.disc_count;
 

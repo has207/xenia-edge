@@ -26,8 +26,19 @@ namespace {
 constexpr uint32_t kXex1Signature = 0x58455831;  // 'XEX1'
 constexpr uint32_t kXex2Signature = 0x58455832;  // 'XEX2'
 
-XexVersion ParseVersion(uint32_t value) {
+}  // namespace
+
+std::string XexVersion::ToString() const {
+  return fmt::format("{}.{}.{}.{}", major, minor, build, qfe);
+}
+
+uint32_t XexVersion::value() const {
   // xex2_version bit layout: major:4, minor:4, build:16, qfe:8
+  return (uint32_t(major & 0xF) << 28) | (uint32_t(minor & 0xF) << 24) |
+         (uint32_t(build) << 8) | uint32_t(qfe);
+}
+
+XexVersion XexVersion::FromValue(uint32_t value) {
   XexVersion v;
   v.major = (value >> 28) & 0xF;
   v.minor = (value >> 24) & 0xF;
@@ -36,10 +47,37 @@ XexVersion ParseVersion(uint32_t value) {
   return v;
 }
 
-}  // namespace
-
-std::string XexVersion::ToString() const {
-  return fmt::format("{}.{}.{}.{}", major, minor, build, qfe);
+std::optional<XexVersion> XexVersion::FromString(std::string_view text) {
+  uint32_t parts[4] = {};
+  size_t at = 0;
+  for (size_t i = 0; i < 4; ++i) {
+    const size_t start = at;
+    while (at < text.size() && text[at] >= '0' && text[at] <= '9' &&
+           at - start < 5) {
+      parts[i] = parts[i] * 10 + uint32_t(text[at] - '0');
+      ++at;
+    }
+    // No digits, or a leading zero, which would spell one number two ways.
+    if (at == start || (text[start] == '0' && at - start > 1)) {
+      return std::nullopt;
+    }
+    if (i < 3) {
+      if (at >= text.size() || text[at] != '.') {
+        return std::nullopt;
+      }
+      ++at;
+    }
+  }
+  if (at != text.size() || parts[0] > 0xF || parts[1] > 0xF ||
+      parts[2] > 0xFFFF || parts[3] > 0xFF) {
+    return std::nullopt;
+  }
+  XexVersion v;
+  v.major = uint8_t(parts[0]);
+  v.minor = uint8_t(parts[1]);
+  v.build = uint16_t(parts[2]);
+  v.qfe = uint8_t(parts[3]);
+  return v;
 }
 
 toml::table XexMetadata::ToToml() const {
@@ -130,8 +168,9 @@ std::optional<XexMetadata> ExtractXexMetadata(const uint8_t* data,
     metadata.title_id = exec_info->title_id;
     metadata.media_id = exec_info->media_id;
     metadata.savegame_id = exec_info->savegame_id;
-    metadata.version = ParseVersion(exec_info->version_value);
-    metadata.base_version = ParseVersion(exec_info->base_version_value);
+    metadata.version = XexVersion::FromValue(exec_info->version_value);
+    metadata.base_version =
+        XexVersion::FromValue(exec_info->base_version_value);
     metadata.disc_number = exec_info->disc_number;
     metadata.disc_count = exec_info->disc_count;
   }

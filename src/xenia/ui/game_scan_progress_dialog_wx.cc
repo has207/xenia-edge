@@ -70,9 +70,8 @@ wxString FormatRowLine1(const app::DiscoveredGame& g) {
                           PickDisplayName(g));
 }
 
-// Matches the launch-path auto-label format ("Disc N") when possible, falls
-// back to media_id hex so multi-source rows without disc metadata still get
-// a distinguishing label.
+// Names a disc in a multi-source row, falling back to media_id hex so rows
+// without disc metadata still tell their sources apart.
 std::string DeriveDiscLabel(const app::DiscoveredGame& g) {
   if (g.disc_count > 1 && g.disc_number > 0) {
     return fmt::format("Disc {}", static_cast<unsigned>(g.disc_number));
@@ -471,13 +470,9 @@ void GameScanProgressDialog::OnImport() {
   std::vector<std::vector<PendingImport>> to_import;
   for (const auto& r : all_rows_) {
     std::vector<PendingImport> group;
-    const bool needs_label = r.sources.size() > 1;
     for (size_t i = 0; i < r.sources.size(); ++i) {
       PendingImport pi;
       pi.game = r.sources[i];
-      if (needs_label) {
-        pi.disc_label = DeriveDiscLabel(r.sources[i]);
-      }
       group.push_back(std::move(pi));
     }
     if (!group.empty()) {

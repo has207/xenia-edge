@@ -25,25 +25,9 @@ msgstr ""
 msgid "   %zu already installed"
 msgstr "   %zu zaten kurulu"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1240
-msgid " (%zu discs)"
-msgstr " (%zu disk)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:185
 msgid " - %s (%08X)"
 msgstr " - %s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:285
-msgid "%08X - Config Overrides"
-msgstr ""
-
-#: src/xenia/ui/patches_dialog_wx.cc:37
-msgid "%s (%08X)"
-msgstr "%s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:286
-msgid "%s (%08X) - Config Overrides"
-msgstr "%s (%08X) — Yapılandırma Geçersiz Kılmaları"
 
 #: src/xenia/app/emulator_window.cc:1995
 msgid "%s (Slot %d)"
@@ -186,14 +170,6 @@ msgstr "Arjantin"
 msgid "Armenia"
 msgstr "Ermenistan"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:252
-msgid "Audio"
-msgstr "Ses"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:258
-msgid "Audio Backend:"
-msgstr "Ses Arka Ucu:"
-
 #: src/xenia/app/emulator_window.cc:2402
 msgid "Auto (%s)"
 msgstr "Otomatik (%s)"
@@ -307,10 +283,6 @@ msgstr "Uyumluluk"
 msgid "Complete"
 msgstr "Tamamlandı"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1028
-msgid "Config Overrides..."
-msgstr "Yapılandırma Geçersiz Kılmaları…"
-
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:104
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:419
 msgid "Configuration Manager"
@@ -359,22 +331,9 @@ msgstr "Hırvatistan"
 msgid "Czech Republic"
 msgstr "Çek Cumhuriyeti"
 
-#: src/xenia/ui/game_list_panel_wx.cc:990
-msgid "DLC"
-msgstr "DLC"
-
 #: src/xenia/app/emulator_window.cc:335
 msgid "Dance Pad"
 msgstr "Dans Matı"
-
-#: src/xenia/ui/game_list_panel_wx.cc:690
-#: src/xenia/ui/game_list_panel_wx.cc:693
-msgid "Default"
-msgstr "Varsayılan"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:263
-msgid "Default Volume:"
-msgstr "Varsayılan Ses Düzeyi:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -415,14 +374,6 @@ msgstr "&Çıkış"
 msgid "Ecuador"
 msgstr "Ekvador"
 
-#: src/xenia/ui/game_list_panel_wx.cc:648
-msgid "Edit Discs"
-msgstr "Diskleri Düzenle"
-
-#: src/xenia/ui/game_list_panel_wx.cc:937
-msgid "Edit Discs..."
-msgstr "Diskleri Düzenle…"
-
 #: src/xenia/app/emulator_window.cc:2053
 msgid "Edit..."
 msgstr "Düzenle…"
@@ -451,43 +402,9 @@ msgstr "İngilizce"
 msgid "Enter gamertag for new profile:"
 msgstr "Yeni profil için oyuncu etiketi girin:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Enter new label:"
-msgstr "Yeni etiket girin:"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:435
-msgid "Error"
-msgstr "Hata"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:94
 msgid "Estonia"
 msgstr "Estonya"
-
-#: src/xenia/app/emulator_window.cc:2421
-msgid ""
-"Experimental fork of Xenia Canary.\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"Branch: %s\n"
-"Commit: %s\n"
-"Build Date: %s\n"
-"\n"
-"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font "
-"License 1.1).\n"
-"Icons by Icons8 (https://icons8.com)."
-msgstr ""
-"Xenia Canary'nin deneysel çatalı.\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"Dal: %s\n"
-"İşleme: %s\n"
-"Derleme Tarihi: %s\n"
-"\n"
-"Arayüz yazı tipi: Inter, Rasmus Andersson (https://rsms.me/inter/, SIL Open "
-"Font License 1.1).\n"
-"Simgeler: Icons8 (https://icons8.com)."
 
 #: src/xenia/app/emulator_window.cc:887
 msgid "FA&Q..."
@@ -496,14 +413,6 @@ msgstr "FA&Q…"
 #: src/xenia/ui/patches_dialog_wx.cc:225
 msgid "Failed to save changes."
 msgstr "Değişiklikler kaydedilemedi."
-
-#: src/xenia/ui/game_config_dialog_wx.cc:434
-msgid "Failed to save: %s"
-msgstr "Kaydedilemedi: %s"
-
-#: src/xenia/ui/patches_dialog_wx.cc:214
-msgid "Failed to update patch state."
-msgstr "Yama durumu güncellenemedi."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:181
 #: src/xenia/ui/profile_editor_dialog_wx.cc:185
@@ -670,10 +579,6 @@ msgstr "Macaristan"
 msgid "Iceland"
 msgstr "İzlanda"
 
-#: src/xenia/ui/game_list_panel_wx.cc:302
-msgid "Icon"
-msgstr "Simge"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:396
 msgid "Icon change is disabled while a title is running."
 msgstr "Bir oyun çalışırken simge değiştirme devre dışıdır."
@@ -709,10 +614,6 @@ msgstr "Yükleme Yolu: "
 #: src/xenia/ui/install_progress_dialog_wx.cc:45
 msgid "Installation Progress"
 msgstr "Yükleme İlerlemesi"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Invalid Label"
-msgstr "Geçersiz Etiket"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:594
 #: src/xenia/ui/profile_editor_dialog_wx.cc:602
@@ -794,15 +695,6 @@ msgstr "Kuveyt"
 #: src/xenia/ui/profile_editor_dialog_wx.cc:120
 msgid "Kyrgyzstan"
 msgstr "Kırgızistan"
-
-#: src/xenia/ui/game_list_panel_wx.cc:691
-#: src/xenia/ui/game_list_panel_wx.cc:695
-msgid "Label"
-msgstr "Etiket"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Label cannot contain '::'."
-msgstr "Etiket '::' içeremez."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:464
 #: src/xenia/ui/quick_settings_dialog_wx.cc:311
@@ -1017,10 +909,6 @@ msgstr "Aç"
 msgid "Open a title"
 msgstr "Bir oyun aç"
 
-#: src/xenia/ui/game_list_panel_wx.cc:949
-msgid "Open containing folder"
-msgstr "Bulunduğu klasörü aç"
-
 #: src/xenia/ui/quick_settings_dialog_wx.cc:285
 msgid "Open using Rosetta"
 msgstr "Rosetta ile aç"
@@ -1157,14 +1045,6 @@ msgstr "Listeden kaldır"
 #: src/xenia/ui/game_config_dialog_wx.cc:346
 msgid "Remove this override"
 msgstr "Bu geçersiz kılmayı kaldır"
-
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Rename Label"
-msgstr "Etiketi Yeniden Adlandır"
-
-#: src/xenia/ui/game_list_panel_wx.cc:728
-msgid "Rename Label..."
-msgstr "Etiketi Yeniden Adlandır…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:169
 msgid "Rendering:"
@@ -1375,10 +1255,6 @@ msgstr ""
 msgid "Title"
 msgstr "Başlık"
 
-#: src/xenia/ui/game_list_panel_wx.cc:985
-msgid "Title Updates"
-msgstr "Oyun Güncellemeleri"
-
 #: src/xenia/ui/game_list_panel_wx.cc:597
 msgid "Title not found"
 msgstr "Oyun bulunamadı"
@@ -1585,3 +1461,203 @@ msgstr "Direct3D 12 hata ayıklama katmanı yüklendi, ancak otomatik yeniden ba
 msgid "vulkan-1.dll not found, required for the Vulkan graphics backend. Download now (~20 MB)?"
 msgstr "vulkan-1.dll bulunamadı, Vulkan grafik arka ucu için gerekli. Şimdi indirilsin mi (~20 MB)?"
 
+
+#: src/xenia/ui/game_info_panel_wx.cc:681
+msgid "%s belongs to title %08X."
+msgstr "%s, %08X oyununa ait."
+
+#: src/xenia/ui/game_info_panel_wx.cc:720
+msgid "%s could not be copied: %s"
+msgstr "%s kopyalanamadı: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:694
+msgid "%s is a different kind of content."
+msgstr "%s farklı türde bir içerik."
+
+#: src/xenia/ui/game_info_panel_wx.cc:707
+msgid "%s is for a different release of this game."
+msgstr "%s bu oyunun başka bir sürümüne ait."
+
+#: src/xenia/ui/game_info_panel_wx.cc:675
+msgid "%s is not a content package."
+msgstr "%s bir içerik paketi değil."
+
+#: src/xenia/ui/game_list_panel_wx.cc:773
+msgid "(%zu discs)"
+msgstr "(%zu disk)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:656
+msgid "All Files (*.*)|*.*"
+msgstr "Tüm Dosyalar (*.*)|*.*"
+
+#: src/xenia/app/emulator_window.cc:439
+msgid "BSD 3-Clause License"
+msgstr "BSD 3 Maddeli Lisansı"
+
+#: src/xenia/app/emulator_window.cc:434
+msgid ""
+"Branch: %s\n"
+"Commit: %s\n"
+"Build Date: %s"
+msgstr ""
+"Dal: %s\n"
+"Commit: %s\n"
+"Derleme Tarihi: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:232
+msgid "Close the info pane"
+msgstr "Bilgi bölmesini kapat"
+
+#: src/xenia/ui/game_info_panel_wx.cc:215
+msgid "Configuration"
+msgstr "Yapılandırma"
+
+#: src/xenia/ui/game_info_panel_wx.cc:437
+msgid "Details"
+msgstr "Ayrıntılar"
+
+#: src/xenia/ui/game_info_panel_wx.cc:560
+msgid "Discs (%zu)"
+msgstr "Diskler (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Enter a name for this version:"
+msgstr "Bu sürüm için bir ad girin:"
+
+#: src/xenia/app/emulator_window.cc:3011
+msgid "Experimental fork of Xenia Canary."
+msgstr "Xenia Canary'nin deneysel bir çatallaması."
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Failed to save."
+msgstr "Kaydedilemedi."
+
+#: src/xenia/ui/game_info_panel_wx.cc:410
+msgid "Give this version its own name"
+msgstr "Bu sürüme kendi adını ver"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons by %s"
+msgstr "Simgeler: %s"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons8"
+msgstr "Icons8"
+
+#: src/xenia/ui/game_info_panel_wx.cc:211
+msgid "Info"
+msgstr "Bilgi"
+
+#: src/xenia/ui/game_info_panel_wx.cc:349
+msgid "Installed Content (%zu)"
+msgstr "Yüklü İçerik (%zu)"
+
+#: src/xenia/app/emulator_window.cc:443
+msgid "Inter by Rasmus Andersson"
+msgstr "Inter, Rasmus Andersson tarafından"
+
+#: src/xenia/app/emulator_window.cc:607
+msgid "Library updated"
+msgstr "Kitaplık güncellendi"
+
+#: src/xenia/ui/game_info_panel_wx.cc:153
+msgid "Never"
+msgstr "Hiçbir zaman"
+
+#: src/xenia/ui/game_info_panel_wx.cc:391
+msgid "No art"
+msgstr "Görsel yok"
+
+#: src/xenia/ui/game_info_panel_wx.cc:472
+msgid "No compatibility report is linked."
+msgstr "Bağlı bir uyumluluk raporu yok."
+
+#: src/xenia/ui/game_info_panel_wx.cc:625
+msgid "No patches are bundled for this title."
+msgstr "Bu oyunla birlikte gelen yama yok."
+
+#: src/xenia/ui/game_info_panel_wx.cc:361
+msgid "No profile is signed in."
+msgstr "Oturum açmış profil yok."
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:331
+msgid "Not supported on macOS"
+msgstr "macOS'ta desteklenmiyor"
+
+#: src/xenia/ui/game_info_panel_wx.cc:607
+msgid "Nothing installed."
+msgstr "Hiçbir şey yüklü değil."
+
+#: src/xenia/ui/game_info_panel_wx.cc:757
+msgid "Open folder"
+msgstr "Klasörü aç"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Rename Game"
+msgstr "Oyunu Yeniden Adlandır"
+
+#: src/xenia/ui/game_info_panel_wx.cc:408
+msgid "Rename..."
+msgstr "Yeniden Adlandır..."
+
+#: src/xenia/ui/game_list_panel_wx.cc:130
+msgid "Reverse the sort order"
+msgstr "Sıralama düzenini ters çevir"
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Saved."
+msgstr "Kaydedildi."
+
+#: src/xenia/ui/game_info_panel_wx.cc:359
+msgid "Saves (%zu)"
+msgstr "Kayıtlar (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:308
+msgid "Select a game for details."
+msgstr "Ayrıntılar için bir oyun seçin."
+
+#: src/xenia/ui/game_info_panel_wx.cc:655
+msgid "Select content packages"
+msgstr "İçerik paketlerini seç"
+
+#: src/xenia/ui/game_info_panel_wx.cc:728
+msgid "Some packages were not added"
+msgstr "Bazı paketler eklenmedi"
+
+#: src/xenia/app/emulator_window.cc:599
+msgid ""
+"These games were found in more than one version, and each version now has its own entry in the list. Saves and updates belong to a single version, so they are kept apart.\n"
+"\n"
+"%s"
+msgstr ""
+"Bu oyunlar birden fazla sürümde bulundu ve artık her sürümün listede kendi girdisi var. Kayıtlar ve güncellemeler tek bir sürüme ait olduğundan ayrı tutulur.\n"
+"\n"
+"%s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:464
+msgid "This title is not in the compatibility database."
+msgstr "Bu oyun uyumluluk veritabanında yok."
+
+#: src/xenia/ui/game_info_panel_wx.cc:344
+msgid "Title Updates (%zu)"
+msgstr "Oyun Güncellemeleri (%zu)"
+
+#: src/xenia/app/emulator_window.cc:442
+msgid "UI font: %s (SIL Open Font License 1.1)"
+msgstr "Arayüz yazı tipi: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:399
+msgid "Unknown title"
+msgstr "Bilinmeyen oyun"
+
+#: src/xenia/ui/game_info_panel_wx.cc:452
+msgid "Version"
+msgstr "Sürüm"
+
+#: src/xenia/app/emulator_window.cc:438
+msgid "Xenia is distributed under the %s"
+msgstr "Xenia %s altında dağıtılmaktadır"
+
+#: src/xenia/ui/game_info_panel_wx.cc:212
+msgid "Content"
+msgstr "İçerik"

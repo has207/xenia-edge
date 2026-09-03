@@ -25,25 +25,9 @@ msgstr ""
 msgid "   %zu already installed"
 msgstr "   ติดตั้งแล้ว %zu รายการ"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1240
-msgid " (%zu discs)"
-msgstr " (%zu แผ่น)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:185
 msgid " - %s (%08X)"
 msgstr " - %s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:285
-msgid "%08X - Config Overrides"
-msgstr ""
-
-#: src/xenia/ui/patches_dialog_wx.cc:37
-msgid "%s (%08X)"
-msgstr "%s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:286
-msgid "%s (%08X) - Config Overrides"
-msgstr "%s (%08X) — การแทนที่การตั้งค่า"
 
 #: src/xenia/app/emulator_window.cc:1995
 msgid "%s (Slot %d)"
@@ -186,14 +170,6 @@ msgstr "อาร์เจนตินา"
 msgid "Armenia"
 msgstr "อาร์เมเนีย"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:252
-msgid "Audio"
-msgstr "เสียง"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:258
-msgid "Audio Backend:"
-msgstr "แบ็กเอนด์เสียง:"
-
 #: src/xenia/app/emulator_window.cc:2402
 msgid "Auto (%s)"
 msgstr "อัตโนมัติ (%s)"
@@ -307,10 +283,6 @@ msgstr "ความเข้ากันได้"
 msgid "Complete"
 msgstr "เสร็จสมบูรณ์"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1028
-msgid "Config Overrides..."
-msgstr "การแทนที่การตั้งค่า…"
-
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:104
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:419
 msgid "Configuration Manager"
@@ -359,22 +331,9 @@ msgstr "โครเอเชีย"
 msgid "Czech Republic"
 msgstr "สาธารณรัฐเช็ก"
 
-#: src/xenia/ui/game_list_panel_wx.cc:990
-msgid "DLC"
-msgstr "DLC"
-
 #: src/xenia/app/emulator_window.cc:335
 msgid "Dance Pad"
 msgstr "แผ่นเต้น"
-
-#: src/xenia/ui/game_list_panel_wx.cc:690
-#: src/xenia/ui/game_list_panel_wx.cc:693
-msgid "Default"
-msgstr "ค่าเริ่มต้น"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:263
-msgid "Default Volume:"
-msgstr "ระดับเสียงเริ่มต้น:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -415,14 +374,6 @@ msgstr "ออก(&X)"
 msgid "Ecuador"
 msgstr "เอกวาดอร์"
 
-#: src/xenia/ui/game_list_panel_wx.cc:648
-msgid "Edit Discs"
-msgstr "แก้ไขแผ่น"
-
-#: src/xenia/ui/game_list_panel_wx.cc:937
-msgid "Edit Discs..."
-msgstr "แก้ไขแผ่น…"
-
 #: src/xenia/app/emulator_window.cc:2053
 msgid "Edit..."
 msgstr "แก้ไข…"
@@ -451,43 +402,9 @@ msgstr "อังกฤษ"
 msgid "Enter gamertag for new profile:"
 msgstr "ป้อน Gamertag สำหรับโปรไฟล์ใหม่:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Enter new label:"
-msgstr "ป้อนป้ายชื่อใหม่:"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:435
-msgid "Error"
-msgstr "ข้อผิดพลาด"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:94
 msgid "Estonia"
 msgstr "เอสโตเนีย"
-
-#: src/xenia/app/emulator_window.cc:2421
-msgid ""
-"Experimental fork of Xenia Canary.\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"Branch: %s\n"
-"Commit: %s\n"
-"Build Date: %s\n"
-"\n"
-"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font "
-"License 1.1).\n"
-"Icons by Icons8 (https://icons8.com)."
-msgstr ""
-"ฟอร์กเชิงทดลองของ Xenia Canary\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"สาขา: %s\n"
-"คอมมิต: %s\n"
-"วันที่สร้าง: %s\n"
-"\n"
-"ฟอนต์ UI: Inter โดย Rasmus Andersson (https://rsms.me/inter/, SIL Open Font "
-"License 1.1)\n"
-"ไอคอนโดย Icons8 (https://icons8.com)"
 
 #: src/xenia/app/emulator_window.cc:887
 msgid "FA&Q..."
@@ -496,14 +413,6 @@ msgstr "FAQ(&Q)…"
 #: src/xenia/ui/patches_dialog_wx.cc:225
 msgid "Failed to save changes."
 msgstr "ไม่สามารถบันทึกการเปลี่ยนแปลงได้"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:434
-msgid "Failed to save: %s"
-msgstr "บันทึกล้มเหลว: %s"
-
-#: src/xenia/ui/patches_dialog_wx.cc:214
-msgid "Failed to update patch state."
-msgstr "ไม่สามารถอัปเดตสถานะแพตช์ได้"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:181
 #: src/xenia/ui/profile_editor_dialog_wx.cc:185
@@ -670,10 +579,6 @@ msgstr "ฮังการี"
 msgid "Iceland"
 msgstr "ไอซ์แลนด์"
 
-#: src/xenia/ui/game_list_panel_wx.cc:302
-msgid "Icon"
-msgstr "ไอคอน"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:396
 msgid "Icon change is disabled while a title is running."
 msgstr "การเปลี่ยนไอคอนถูกปิดใช้งานในขณะที่เกมกำลังทำงาน"
@@ -709,10 +614,6 @@ msgstr "พาธการติดตั้ง: "
 #: src/xenia/ui/install_progress_dialog_wx.cc:45
 msgid "Installation Progress"
 msgstr "ความคืบหน้าการติดตั้ง"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Invalid Label"
-msgstr "ป้ายชื่อไม่ถูกต้อง"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:594
 #: src/xenia/ui/profile_editor_dialog_wx.cc:602
@@ -794,15 +695,6 @@ msgstr "คูเวต"
 #: src/xenia/ui/profile_editor_dialog_wx.cc:120
 msgid "Kyrgyzstan"
 msgstr "คีร์กีซสถาน"
-
-#: src/xenia/ui/game_list_panel_wx.cc:691
-#: src/xenia/ui/game_list_panel_wx.cc:695
-msgid "Label"
-msgstr "ป้ายชื่อ"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Label cannot contain '::'."
-msgstr "ป้ายชื่อต้องไม่มี '::'"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:464
 #: src/xenia/ui/quick_settings_dialog_wx.cc:311
@@ -1015,10 +907,6 @@ msgstr "เปิด"
 msgid "Open a title"
 msgstr "เปิดเกม"
 
-#: src/xenia/ui/game_list_panel_wx.cc:949
-msgid "Open containing folder"
-msgstr "เปิดโฟลเดอร์ที่มีไฟล์"
-
 #: src/xenia/ui/quick_settings_dialog_wx.cc:285
 msgid "Open using Rosetta"
 msgstr "เปิดด้วย Rosetta"
@@ -1155,14 +1043,6 @@ msgstr "ลบออกจากรายการ"
 #: src/xenia/ui/game_config_dialog_wx.cc:346
 msgid "Remove this override"
 msgstr "ลบการแทนที่นี้"
-
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Rename Label"
-msgstr "เปลี่ยนป้ายชื่อ"
-
-#: src/xenia/ui/game_list_panel_wx.cc:728
-msgid "Rename Label..."
-msgstr "เปลี่ยนป้ายชื่อ…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:169
 msgid "Rendering:"
@@ -1372,10 +1252,6 @@ msgstr ""
 msgid "Title"
 msgstr "ชื่อเกม"
 
-#: src/xenia/ui/game_list_panel_wx.cc:985
-msgid "Title Updates"
-msgstr "อัปเดตเกม"
-
 #: src/xenia/ui/game_list_panel_wx.cc:597
 msgid "Title not found"
 msgstr "ไม่พบเกม"
@@ -1578,3 +1454,203 @@ msgstr "ติดตั้งเลเยอร์ดีบัก Direct3D 12 �
 msgid "vulkan-1.dll not found, required for the Vulkan graphics backend. Download now (~20 MB)?"
 msgstr "ไม่พบ vulkan-1.dll ซึ่งจำเป็นสำหรับแบ็กเอนด์กราฟิก Vulkan ดาวน์โหลดเลยหรือไม่ (~20 MB)?"
 
+
+#: src/xenia/ui/game_info_panel_wx.cc:681
+msgid "%s belongs to title %08X."
+msgstr "%s เป็นของเกม %08X"
+
+#: src/xenia/ui/game_info_panel_wx.cc:720
+msgid "%s could not be copied: %s"
+msgstr "ไม่สามารถคัดลอก %s ได้: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:694
+msgid "%s is a different kind of content."
+msgstr "%s เป็นเนื้อหาคนละประเภท"
+
+#: src/xenia/ui/game_info_panel_wx.cc:707
+msgid "%s is for a different release of this game."
+msgstr "%s เป็นของเกมนี้เวอร์ชันอื่น"
+
+#: src/xenia/ui/game_info_panel_wx.cc:675
+msgid "%s is not a content package."
+msgstr "%s ไม่ใช่แพ็กเกจเนื้อหา"
+
+#: src/xenia/ui/game_list_panel_wx.cc:773
+msgid "(%zu discs)"
+msgstr "(%zu แผ่น)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:656
+msgid "All Files (*.*)|*.*"
+msgstr "ไฟล์ทั้งหมด (*.*)|*.*"
+
+#: src/xenia/app/emulator_window.cc:439
+msgid "BSD 3-Clause License"
+msgstr "สัญญาอนุญาต BSD 3-Clause"
+
+#: src/xenia/app/emulator_window.cc:434
+msgid ""
+"Branch: %s\n"
+"Commit: %s\n"
+"Build Date: %s"
+msgstr ""
+"สาขา: %s\n"
+"คอมมิต: %s\n"
+"วันที่บิลด์: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:232
+msgid "Close the info pane"
+msgstr "ปิดบานหน้าต่างข้อมูล"
+
+#: src/xenia/ui/game_info_panel_wx.cc:215
+msgid "Configuration"
+msgstr "การกำหนดค่า"
+
+#: src/xenia/ui/game_info_panel_wx.cc:437
+msgid "Details"
+msgstr "รายละเอียด"
+
+#: src/xenia/ui/game_info_panel_wx.cc:560
+msgid "Discs (%zu)"
+msgstr "แผ่น (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Enter a name for this version:"
+msgstr "ป้อนชื่อสำหรับเวอร์ชันนี้:"
+
+#: src/xenia/app/emulator_window.cc:3011
+msgid "Experimental fork of Xenia Canary."
+msgstr "ฟอร์กทดลองของ Xenia Canary"
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Failed to save."
+msgstr "บันทึกไม่สำเร็จ"
+
+#: src/xenia/ui/game_info_panel_wx.cc:410
+msgid "Give this version its own name"
+msgstr "ตั้งชื่อเฉพาะให้เวอร์ชันนี้"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons by %s"
+msgstr "ไอคอนโดย %s"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons8"
+msgstr "Icons8"
+
+#: src/xenia/ui/game_info_panel_wx.cc:211
+msgid "Info"
+msgstr "ข้อมูล"
+
+#: src/xenia/ui/game_info_panel_wx.cc:349
+msgid "Installed Content (%zu)"
+msgstr "เนื้อหาที่ติดตั้ง (%zu)"
+
+#: src/xenia/app/emulator_window.cc:443
+msgid "Inter by Rasmus Andersson"
+msgstr "Inter โดย Rasmus Andersson"
+
+#: src/xenia/app/emulator_window.cc:607
+msgid "Library updated"
+msgstr "อัปเดตคลังเกมแล้ว"
+
+#: src/xenia/ui/game_info_panel_wx.cc:153
+msgid "Never"
+msgstr "ไม่เคย"
+
+#: src/xenia/ui/game_info_panel_wx.cc:391
+msgid "No art"
+msgstr "ไม่มีภาพ"
+
+#: src/xenia/ui/game_info_panel_wx.cc:472
+msgid "No compatibility report is linked."
+msgstr "ไม่ได้เชื่อมโยงรายงานความเข้ากันได้"
+
+#: src/xenia/ui/game_info_panel_wx.cc:625
+msgid "No patches are bundled for this title."
+msgstr "ไม่มีแพตช์มาพร้อมกับเกมนี้"
+
+#: src/xenia/ui/game_info_panel_wx.cc:361
+msgid "No profile is signed in."
+msgstr "ไม่มีโปรไฟล์ที่ลงชื่อเข้าใช้"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:331
+msgid "Not supported on macOS"
+msgstr "ไม่รองรับบน macOS"
+
+#: src/xenia/ui/game_info_panel_wx.cc:607
+msgid "Nothing installed."
+msgstr "ไม่ได้ติดตั้งอะไรไว้"
+
+#: src/xenia/ui/game_info_panel_wx.cc:757
+msgid "Open folder"
+msgstr "เปิดโฟลเดอร์"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Rename Game"
+msgstr "เปลี่ยนชื่อเกม"
+
+#: src/xenia/ui/game_info_panel_wx.cc:408
+msgid "Rename..."
+msgstr "เปลี่ยนชื่อ..."
+
+#: src/xenia/ui/game_list_panel_wx.cc:130
+msgid "Reverse the sort order"
+msgstr "กลับลำดับการเรียง"
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Saved."
+msgstr "บันทึกแล้ว"
+
+#: src/xenia/ui/game_info_panel_wx.cc:359
+msgid "Saves (%zu)"
+msgstr "ข้อมูลบันทึก (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:308
+msgid "Select a game for details."
+msgstr "เลือกเกมเพื่อดูรายละเอียด"
+
+#: src/xenia/ui/game_info_panel_wx.cc:655
+msgid "Select content packages"
+msgstr "เลือกแพ็กเกจเนื้อหา"
+
+#: src/xenia/ui/game_info_panel_wx.cc:728
+msgid "Some packages were not added"
+msgstr "บางแพ็กเกจไม่ได้ถูกเพิ่ม"
+
+#: src/xenia/app/emulator_window.cc:599
+msgid ""
+"These games were found in more than one version, and each version now has its own entry in the list. Saves and updates belong to a single version, so they are kept apart.\n"
+"\n"
+"%s"
+msgstr ""
+"พบเกมเหล่านี้มากกว่าหนึ่งเวอร์ชัน และตอนนี้แต่ละเวอร์ชันมีรายการของตัวเองในรายการ ข้อมูลบันทึกและอัปเดตเป็นของเวอร์ชันเดียว จึงถูกแยกเก็บไว้\n"
+"\n"
+"%s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:464
+msgid "This title is not in the compatibility database."
+msgstr "เกมนี้ไม่มีอยู่ในฐานข้อมูลความเข้ากันได้"
+
+#: src/xenia/ui/game_info_panel_wx.cc:344
+msgid "Title Updates (%zu)"
+msgstr "อัปเดตเกม (%zu)"
+
+#: src/xenia/app/emulator_window.cc:442
+msgid "UI font: %s (SIL Open Font License 1.1)"
+msgstr "ฟอนต์อินเทอร์เฟซ: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:399
+msgid "Unknown title"
+msgstr "เกมที่ไม่รู้จัก"
+
+#: src/xenia/ui/game_info_panel_wx.cc:452
+msgid "Version"
+msgstr "เวอร์ชัน"
+
+#: src/xenia/app/emulator_window.cc:438
+msgid "Xenia is distributed under the %s"
+msgstr "Xenia เผยแพร่ภายใต้ %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:212
+msgid "Content"
+msgstr "เนื้อหา"

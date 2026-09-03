@@ -7,7 +7,7 @@
  ******************************************************************************
  */
 
-#include "xenia/ui/game_config_dialog_wx.h"
+#include "xenia/ui/game_config_panel_wx.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -31,7 +31,7 @@
 #include <wx/listbox.h>
 #include <wx/msgdlg.h>
 #include <wx/panel.h>
-#include <wx/scrolwin.h>
+#include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/spinctrl.h>
 #include <wx/srchctrl.h>
@@ -57,6 +57,18 @@ struct EditorBuild {
   wxWindow* editor;
   std::function<std::string()> get_value;
 };
+
+// A typed value settles before it is written, so keystrokes don't each cost a
+// file write. Discrete pickers don't wait.
+constexpr int kCommitDelayMs = 500;
+
+// How long the saved message stays up. It has to go away again or the next
+// save, writing the same word, would look like nothing happened.
+constexpr int kStatusClearMs = 1500;
+
+// Distinct ids so the two timers can be told apart at the handler.
+constexpr int kCommitTimerId = wxID_HIGHEST + 1;
+constexpr int kStatusTimerId = wxID_HIGHEST + 2;
 
 EditorBuild BuildEditor(wxWindow* parent, cvar::IConfigVar* var,
                         const std::string& current_value) {
@@ -179,6 +191,17 @@ std::string ToLowerAscii(std::string s) {
   return s;
 }
 
+// The cvar's full name, with what it does underneath when it has a
+// description. Used wherever a name is shown shortened or abbreviated.
+wxString CvarTooltip(const std::string& name) {
+  wxString tip = wxString::FromUTF8(name);
+  auto* var = cvar::ConfigVars ? (*cvar::ConfigVars)[name] : nullptr;
+  if (var && !var->description().empty()) {
+    tip += "\n\n" + wxString::FromUTF8(var->description());
+  }
+  return tip;
+}
+
 // Modal cvar picker with a live filter on top, similar to the game list
 // filter bar. Returns the selected name, or empty on cancel.
 std::string PickCvarWithFilter(wxWindow* parent,
@@ -229,7 +252,25 @@ std::string PickCvarWithFilter(wxWindow* parent,
     }
   };
 
+  // wxListBox has no per-item tooltips, so retarget the control's own as the
+  // pointer moves between rows.
+  int tooltip_item = wxNOT_FOUND;
+  list->Bind(wxEVT_MOTION, [&](wxMouseEvent& event) {
+    event.Skip();
+    const int item = list->HitTest(event.GetPosition());
+    if (item == tooltip_item) {
+      return;
+    }
+    tooltip_item = item;
+    if (item < 0 || item >= static_cast<int>(visible.size())) {
+      list->UnsetToolTip();
+      return;
+    }
+    list->SetToolTip(CvarTooltip(names[visible[item]]));
+  });
+
   search->Bind(wxEVT_TEXT, [&](wxCommandEvent&) {
+    tooltip_item = wxNOT_FOUND;
     refilter(search->GetValue().utf8_string());
   });
   search->Bind(wxEVT_SEARCH_CANCEL, [&](wxCommandEvent&) { search->Clear(); });
@@ -277,85 +318,115 @@ void InsertTypedValue(toml::table& dest, const std::string& key,
 
 }  // namespace
 
-GameConfigDialog::GameConfigDialog(wxWindow* parent,
-                                   EmulatorWindow* emulator_window,
-                                   uint32_t title_id, std::string game_title)
-    : wxDialog(parent, wxID_ANY,
-               game_title.empty()
-                   ? wxString::Format(_("%08X - Config Overrides"), title_id)
-                   : wxString::Format(_("%s (%08X) - Config Overrides"),
-                                      wxString::FromUTF8(game_title), title_id),
-               wxDefaultPosition, wxSize(720, 500),
-               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+GameConfigPanel::GameConfigPanel(wxWindow* parent,
+                                 EmulatorWindow* emulator_window,
+                                 uint32_t title_id)
+    : wxPanel(parent, wxID_ANY),
       emulator_window_(emulator_window),
       title_id_(title_id),
-      game_title_(std::move(game_title)) {
+      commit_timer_(this, kCommitTimerId),
+      status_timer_(this, kStatusTimerId) {
+  Bind(wxEVT_TIMER, [this](wxTimerEvent&) { Commit(); }, kCommitTimerId);
+  Bind(
+      wxEVT_TIMER, [this](wxTimerEvent&) { status_->SetLabel(wxString()); },
+      kStatusTimerId);
   Build();
   LoadOverrides();
 }
 
-void GameConfigDialog::Build() {
+GameConfigPanel::~GameConfigPanel() {
+  // The pane is rebuilt when the selection changes, which can land inside the
+  // pause after a keystroke. Children outlive this body, so the rows can still
+  // be read.
+  if (commit_timer_.IsRunning()) {
+    commit_timer_.Stop();
+    Commit();
+  }
+}
+
+void GameConfigPanel::Build() {
   auto* sizer = new wxBoxSizer(wxVERTICAL);
 
-  scroll_ = new wxScrolledWindow(this, wxID_ANY);
-  scroll_->SetScrollRate(0, 16);
   rows_sizer_ = new wxBoxSizer(wxVERTICAL);
-  scroll_->SetSizer(rows_sizer_);
-  sizer->Add(scroll_, wxSizerFlags(1).Expand().Border(wxALL, 8));
+  sizer->Add(rows_sizer_, wxSizerFlags().Expand());
 
   auto* button_row = new wxBoxSizer(wxHORIZONTAL);
   auto* add_btn = new wxButton(this, wxID_ANY, _("Add..."));
   add_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnAdd(); });
-  button_row->Add(add_btn);
-  button_row->AddStretchSpacer(1);
+  button_row->Add(add_btn, wxSizerFlags().Border(wxRIGHT, 4));
 
-  auto* save_btn = new wxButton(this, wxID_OK, _("Save"));
-  auto* cancel_btn = new wxButton(this, wxID_CANCEL, _("Cancel"));
-  save_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-    SaveOverrides();
-    EndModal(wxID_OK);
-  });
-  button_row->Add(save_btn, wxSizerFlags().Border(wxRIGHT, 4));
-  button_row->Add(cancel_btn);
-  sizer->Add(button_row,
-             wxSizerFlags().Expand().Border(wxLEFT | wxRIGHT | wxBOTTOM, 8));
+  sizer->Add(button_row, wxSizerFlags().Expand().Border(wxTOP, 8));
+
+  status_ = new wxStaticText(this, wxID_ANY, wxString());
+  status_->SetForegroundColour(
+      wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+  sizer->Add(status_, wxSizerFlags().Border(wxTOP, 4));
 
   SetSizer(sizer);
 }
 
-void GameConfigDialog::AddRow(const std::string& name,
-                              const std::string& value) {
+void GameConfigPanel::NotifyContentChanged() {
+  Layout();
+  if (content_changed_cb_) {
+    content_changed_cb_();
+  }
+}
+
+void GameConfigPanel::AddRow(const std::string& name,
+                             const std::string& value) {
   auto* row = new Row;
   row->name = name;
   row->sizer = new wxBoxSizer(wxHORIZONTAL);
-  auto* label = new wxStaticText(scroll_, wxID_ANY, wxString::FromUTF8(name),
-                                 wxDefaultPosition, wxSize(280, -1));
+  auto* label =
+      new wxStaticText(this, wxID_ANY, wxString::FromUTF8(name),
+                       wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
+  // The name is shortened to share the row, so the tooltip carries it whole.
+  label->SetMinSize(wxSize(FromDIP(60), -1));
+  label->SetToolTip(CvarTooltip(name));
   auto* var = cvar::ConfigVars ? (*cvar::ConfigVars)[name] : nullptr;
   // Integer cvars shown as string dropdowns display their option name.
   EditorBuild built =
-      BuildEditor(scroll_, var, xe::ui::IntCvarValueToDisplayName(name, value));
+      BuildEditor(this, var, xe::ui::IntCvarValueToDisplayName(name, value));
   row->editor = built.editor;
   row->get_value = std::move(built.get_value);
-  row->editor->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { dirty_ = true; });
-  row->editor->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { dirty_ = true; });
-  row->editor->Bind(wxEVT_SPINCTRL, [this](wxCommandEvent&) { dirty_ = true; });
+  // Editors size themselves to their content, which for a long enum option is
+  // wider than the pane; let the sizer shrink them.
+  row->editor->SetMinSize(wxSize(FromDIP(60), -1));
+  // wxEVT_TEXT is a command event, so it reaches here from the text control
+  // inside a path editor's container too.
+  row->editor->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) {
+    event.Skip();
+    if (!loading_) {
+      commit_timer_.StartOnce(kCommitDelayMs);
+    }
+  });
+  row->editor->Bind(wxEVT_CHOICE, [this](wxCommandEvent& event) {
+    event.Skip();
+    Commit();
+  });
+  row->editor->Bind(wxEVT_SPINCTRL, [this](wxCommandEvent& event) {
+    event.Skip();
+    Commit();
+  });
   static const wxBitmap kCancelBitmap = MakeCancelBitmap(16);
   auto* del_btn =
-      new wxBitmapButton(scroll_, wxID_ANY, kCancelBitmap, wxDefaultPosition,
+      new wxBitmapButton(this, wxID_ANY, kCancelBitmap, wxDefaultPosition,
                          wxDefaultSize, wxBORDER_NONE | wxBU_EXACTFIT);
   del_btn->SetToolTip(_("Remove this override"));
   del_btn->Bind(wxEVT_BUTTON, [this, row](wxCommandEvent&) { RemoveRow(row); });
-  row->sizer->Add(label, wxSizerFlags().CenterVertical().Border(wxALL, 4));
+
+  // Names are long and values are mostly short, so the row splits 80/20
+  // between them. Both can shrink; the button keeps its size.
+  row->sizer->Add(label, wxSizerFlags(4).CenterVertical().Border(wxALL, 4));
   row->sizer->Add(row->editor,
                   wxSizerFlags(1).CenterVertical().Border(wxALL, 4));
   row->sizer->Add(del_btn, wxSizerFlags().CenterVertical().Border(wxALL, 4));
   rows_sizer_->Add(row->sizer, wxSizerFlags().Expand());
   rows_.push_back(row);
-  scroll_->FitInside();
-  scroll_->Layout();
+  NotifyContentChanged();
 }
 
-void GameConfigDialog::RemoveRow(Row* row) {
+void GameConfigPanel::RemoveRow(Row* row) {
   auto it = std::find(rows_.begin(), rows_.end(), row);
   if (it == rows_.end()) {
     return;
@@ -365,12 +436,12 @@ void GameConfigDialog::RemoveRow(Row* row) {
   delete row->sizer;
   delete row;
   rows_.erase(it);
-  dirty_ = true;
-  scroll_->FitInside();
-  scroll_->Layout();
+  Commit();
+  NotifyContentChanged();
 }
 
-void GameConfigDialog::LoadOverrides() {
+void GameConfigPanel::LoadOverrides() {
+  loading_ = true;
   for (auto* row : rows_) {
     rows_sizer_->Detach(row->sizer);
     row->sizer->Clear(true);
@@ -383,10 +454,12 @@ void GameConfigDialog::LoadOverrides() {
   try {
     table = config::LoadGameConfig(title_id_);
   } catch (const std::exception& e) {
-    XELOGE("GameConfigDialog: failed to load config: {}", e.what());
+    XELOGE("GameConfigPanel: failed to load config: {}", e.what());
+    loading_ = false;
     return;
   }
   if (!cvar::ConfigVars) {
+    loading_ = false;
     return;
   }
   std::map<std::string, std::string> rows;
@@ -419,10 +492,43 @@ void GameConfigDialog::LoadOverrides() {
   for (const auto& [k, v] : rows) {
     AddRow(k, v);
   }
-  dirty_ = false;
+  loading_ = false;
+  // Filling the editors may have queued a write of what we just read.
+  commit_timer_.Stop();
+  committed_ = Snapshot();
 }
 
-void GameConfigDialog::SaveOverrides() {
+std::map<std::string, std::string> GameConfigPanel::Snapshot() const {
+  std::map<std::string, std::string> values;
+  for (const auto* row : rows_) {
+    if (!row->name.empty() && row->get_value) {
+      values.emplace(row->name, row->get_value());
+    }
+  }
+  return values;
+}
+
+void GameConfigPanel::Commit() {
+  if (loading_) {
+    return;
+  }
+  commit_timer_.Stop();
+  auto values = Snapshot();
+  if (values == committed_) {
+    return;
+  }
+  if (!SaveOverrides()) {
+    // A failure stays up: it is a state to notice, not an acknowledgement.
+    status_timer_.Stop();
+    status_->SetLabel(_("Failed to save."));
+    return;
+  }
+  committed_ = std::move(values);
+  status_->SetLabel(_("Saved."));
+  status_timer_.StartOnce(kStatusClearMs);
+}
+
+bool GameConfigPanel::SaveOverrides() {
   toml::table out;
   std::map<std::string, toml::table> by_category;
   for (auto* row : rows_) {
@@ -447,15 +553,15 @@ void GameConfigDialog::SaveOverrides() {
   try {
     config::SaveGameConfig(title_id_, out);
   } catch (const std::exception& e) {
-    wxMessageBox(
-        wxString::Format(_("Failed to save: %s"), wxString::FromUTF8(e.what())),
-        _("Error"), wxOK | wxICON_ERROR, this);
-    return;
+    // No dialog: this runs on every edit, so a modal per keystroke would be
+    // worse than the status line saying it didn't take.
+    XELOGE("GameConfigPanel: failed to save config: {}", e.what());
+    return false;
   }
-  dirty_ = false;
+  return true;
 }
 
-void GameConfigDialog::OnAdd() {
+void GameConfigPanel::OnAdd() {
   if (!cvar::ConfigVars) {
     return;
   }
@@ -493,7 +599,7 @@ void GameConfigDialog::OnAdd() {
   auto* var = (*cvar::ConfigVars)[name];
   std::string default_value = StripTomlQuotes(var->config_value());
   AddRow(name, default_value);
-  dirty_ = true;
+  Commit();
 }
 
 }  // namespace app

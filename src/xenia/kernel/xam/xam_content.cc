@@ -847,12 +847,7 @@ dword_result_t XamSwapDisc_entry(
         kernel_state()->emulator()->set_current_disc_number(
             exec_info.disc_number);
 
-        std::string disc_label;
-        if (exec_info.disc_count > 1 && exec_info.disc_number > 0) {
-          disc_label = fmt::format("Disc {}", uint8_t(exec_info.disc_number));
-        }
-        kernel_state()->emulator()->RecordDisc(info->title_id, disc_label,
-                                               new_disc_path);
+        kernel_state()->emulator()->RecordDisc(info->title_id, new_disc_path);
 
         // Update the host_path in loader_data so title restarts use the new
         // disc

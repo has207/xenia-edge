@@ -39,19 +39,16 @@ namespace ui {
 // not written to any GPD / profile state.
 class GameScanProgressDialog : public wxDialog {
  public:
-  // Disc entry already registered on a profile (path + possibly user-edited
-  // label).
+  // Disc entry already registered on a profile.
   struct InstalledDisc {
     std::filesystem::path path;
-    std::string label;
   };
   using InstalledTitleMap =
       std::unordered_map<uint32_t, std::vector<InstalledDisc>>;
 
-  // One disc to import, paired with the label the writer should apply.
+  // One disc to import.
   struct PendingImport {
     app::DiscoveredGame game;
-    std::string disc_label;
   };
 
   // Returns true to dismiss the dialog, false to keep it open for retry.

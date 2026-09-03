@@ -27,6 +27,8 @@ struct StfsMetadata {
   uint32_t media_id = 0;
   uint32_t savegame_id = 0;
   uint32_t content_type = 0;
+  // Packed XEX version, the form XexVersion::FromValue() takes.
+  uint32_t version = 0;
   uint64_t content_size = 0;
 
   std::string display_name;

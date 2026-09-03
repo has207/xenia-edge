@@ -148,6 +148,9 @@ struct BundledPatchFile {
 std::vector<BundledPatchFile> EnumerateBundledPatchesForTitle(
     uint32_t title_id);
 
+// Filename with the "<title id> - " prefix and ".patch.toml" suffix trimmed.
+std::string BundledPatchDisplayName(const BundledPatchFile& file);
+
 }  // namespace patcher
 }  // namespace xe
 

@@ -362,15 +362,13 @@ class Emulator {
   }
 
   using DiscRecorder =
-      std::function<void(uint32_t title_id, const std::string& label,
-                         const std::filesystem::path& path)>;
+      std::function<void(uint32_t title_id, const std::filesystem::path& path)>;
   void set_disc_recorder(DiscRecorder recorder) {
     disc_recorder_ = std::move(recorder);
   }
-  void RecordDisc(uint32_t title_id, const std::string& label,
-                  const std::filesystem::path& path) {
+  void RecordDisc(uint32_t title_id, const std::filesystem::path& path) {
     if (disc_recorder_) {
-      disc_recorder_(title_id, label, path);
+      disc_recorder_(title_id, path);
     }
   }
 

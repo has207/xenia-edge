@@ -25,15 +25,26 @@ enum class CompatState : uint8_t {
   kPlayable,
 };
 
+// Both trackers carry a report for some titles, so their links are kept
+// apart rather than merged: a search of the other tracker is not a substitute
+// for a report on it.
+struct CompatUrls {
+  std::string canary;
+  std::string master;
+
+  bool empty() const { return canary.empty() && master.empty(); }
+};
+
 struct CompatEntry {
   CompatState state = CompatState::kUnknown;
-  std::string url;
+  CompatUrls urls;
 };
 
 CompatState GetCompatState(uint32_t title_id);
 
-// Issue URL from the compatibility database for a title, or empty if absent.
-std::string GetCompatUrl(uint32_t title_id);
+// Issue URLs from the compatibility database for a title, each empty when
+// that tracker has no report for it.
+CompatUrls GetCompatUrls(uint32_t title_id);
 
 // GitHub issue-search query fragment for a title. Returns the title id, or all
 // sibling ids (x360db alternative ids) OR'd in parentheses when present.

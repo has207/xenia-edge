@@ -58,6 +58,7 @@ const std::unordered_map<uint32_t, CompatEntry>& GetCompatIndex() {
       if (name != "compatibility_data.json" && name != "master.json") {
         return;
       }
+      const bool is_master = name == "master.json";
       rapidjson::Document doc;
       doc.Parse(data.data(), data.size());
       if (doc.HasParseError() || !doc.IsArray()) {
@@ -87,11 +88,12 @@ const std::unordered_map<uint32_t, CompatEntry>& GetCompatIndex() {
         if (static_cast<uint8_t>(s) > static_cast<uint8_t>(slot.state)) {
           slot.state = s;
         }
-        if (slot.url.empty()) {
+        std::string& url = is_master ? slot.urls.master : slot.urls.canary;
+        if (url.empty()) {
           auto url_it = entry.FindMember("url");
           if (url_it != entry.MemberEnd() && url_it->value.IsString()) {
-            slot.url.assign(url_it->value.GetString(),
-                            url_it->value.GetStringLength());
+            url.assign(url_it->value.GetString(),
+                       url_it->value.GetStringLength());
           }
         }
       }
@@ -131,21 +133,22 @@ CompatState GetCompatState(uint32_t title_id) {
   return CompatState::kUnknown;
 }
 
-std::string GetCompatUrl(uint32_t title_id) {
+CompatUrls GetCompatUrls(uint32_t title_id) {
   if (title_id == 0) {
     return {};
   }
   const auto& idx = GetCompatIndex();
   auto it = idx.find(title_id);
-  if (it != idx.end() && !it->second.url.empty()) {
-    return it->second.url;
+  if (it != idx.end() && !it->second.urls.empty()) {
+    return it->second.urls;
   }
+  // No direct entry: the game may be tracked under a different release's id.
   const std::vector<uint32_t>* group = GetTitleIdGroup(title_id);
   if (group) {
     for (uint32_t alias : *group) {
       auto alias_it = idx.find(alias);
-      if (alias_it != idx.end() && !alias_it->second.url.empty()) {
-        return alias_it->second.url;
+      if (alias_it != idx.end() && !alias_it->second.urls.empty()) {
+        return alias_it->second.urls;
       }
     }
   }

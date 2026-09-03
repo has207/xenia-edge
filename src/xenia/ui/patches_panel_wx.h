@@ -7,23 +7,22 @@
  ******************************************************************************
  */
 
-#ifndef XENIA_UI_PATCHES_DIALOG_WX_H_
-#define XENIA_UI_PATCHES_DIALOG_WX_H_
+#ifndef XENIA_UI_PATCHES_PANEL_WX_H_
+#define XENIA_UI_PATCHES_PANEL_WX_H_
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include <wx/dialog.h>
+#include <wx/panel.h>
 #include <wx/string.h>
 
 #include "xenia/patcher/patch_db.h"
 #include "xenia/patcher/patch_file_editor.h"
 
-class wxCheckBox;
-class wxScrolledWindow;
 class wxSizeEvent;
 class wxStaticText;
 
@@ -32,27 +31,34 @@ namespace app {
 
 class EmulatorWindow;
 
-class PatchesDialog : public wxDialog {
+// Checkbox per patch in one bundled .patch.toml, writing each toggle straight
+// through to the file. Unscrolled: the host provides the scrolling.
+class PatchesPanel : public wxPanel {
  public:
-  PatchesDialog(wxWindow* parent, EmulatorWindow* emulator_window,
-                uint32_t title_id, patcher::BundledPatchFile bundled);
+  PatchesPanel(wxWindow* parent, EmulatorWindow* emulator_window,
+               patcher::BundledPatchFile bundled);
+
+  // Fired when re-wrapping changes the panel's height, so a scrolling host
+  // can re-measure.
+  void SetContentChangedCallback(std::function<void()> cb) {
+    content_changed_cb_ = std::move(cb);
+  }
 
  private:
   void Build();
   void OnToggle(size_t patch_index, bool new_value);
-  void OnScrollSize(wxSizeEvent& event);
+  void OnSize(wxSizeEvent& event);
   void RewrapDescriptions();
 
   EmulatorWindow* emulator_window_;
-  uint32_t title_id_;
   std::unique_ptr<patcher::PatchFileEditor> editor_;
   wxStaticText* info_label_ = nullptr;
-  wxScrolledWindow* scroll_ = nullptr;
   std::vector<std::pair<wxStaticText*, wxString>> desc_labels_;
+  std::function<void()> content_changed_cb_;
   int last_wrap_width_ = -1;
 };
 
 }  // namespace app
 }  // namespace xe
 
-#endif  // XENIA_UI_PATCHES_DIALOG_WX_H_
+#endif  // XENIA_UI_PATCHES_PANEL_WX_H_

@@ -26,25 +26,9 @@ msgstr ""
 msgid "   %zu already installed"
 msgstr "   већ инсталирано: %zu"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1240
-msgid " (%zu discs)"
-msgstr " (дискова: %zu)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:185
 msgid " - %s (%08X)"
 msgstr " — %s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:285
-msgid "%08X - Config Overrides"
-msgstr ""
-
-#: src/xenia/ui/patches_dialog_wx.cc:37
-msgid "%s (%08X)"
-msgstr "%s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:286
-msgid "%s (%08X) - Config Overrides"
-msgstr "%s (%08X) — измене конфигурације"
 
 #: src/xenia/app/emulator_window.cc:1995
 msgid "%s (Slot %d)"
@@ -188,14 +172,6 @@ msgstr "Аргентина"
 msgid "Armenia"
 msgstr "Јерменија"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:252
-msgid "Audio"
-msgstr "Звук"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:258
-msgid "Audio Backend:"
-msgstr "Звучни систем:"
-
 #: src/xenia/app/emulator_window.cc:2402
 msgid "Auto (%s)"
 msgstr "Аутоматски (%s)"
@@ -309,10 +285,6 @@ msgstr "Компатибилност"
 msgid "Complete"
 msgstr "Завршено"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1028
-msgid "Config Overrides..."
-msgstr "Измене конфигурације…"
-
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:104
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:419
 msgid "Configuration Manager"
@@ -361,22 +333,9 @@ msgstr "Хрватска"
 msgid "Czech Republic"
 msgstr "Чешка Република"
 
-#: src/xenia/ui/game_list_panel_wx.cc:990
-msgid "DLC"
-msgstr "DLC"
-
 #: src/xenia/app/emulator_window.cc:335
 msgid "Dance Pad"
 msgstr "Плесна простирка"
-
-#: src/xenia/ui/game_list_panel_wx.cc:690
-#: src/xenia/ui/game_list_panel_wx.cc:693
-msgid "Default"
-msgstr "Подразумевано"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:263
-msgid "Default Volume:"
-msgstr "Подразумевана јачина звука:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -417,14 +376,6 @@ msgstr "&Изађи"
 msgid "Ecuador"
 msgstr "Еквадор"
 
-#: src/xenia/ui/game_list_panel_wx.cc:648
-msgid "Edit Discs"
-msgstr "Уреди дискове"
-
-#: src/xenia/ui/game_list_panel_wx.cc:937
-msgid "Edit Discs..."
-msgstr "Уреди дискове…"
-
 #: src/xenia/app/emulator_window.cc:2053
 msgid "Edit..."
 msgstr "Уреди…"
@@ -453,43 +404,9 @@ msgstr "енглески"
 msgid "Enter gamertag for new profile:"
 msgstr "Унесите gamertag за нови профил:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Enter new label:"
-msgstr "Унесите нову ознаку:"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:435
-msgid "Error"
-msgstr "Грешка"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:94
 msgid "Estonia"
 msgstr "Естонија"
-
-#: src/xenia/app/emulator_window.cc:2421
-msgid ""
-"Experimental fork of Xenia Canary.\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"Branch: %s\n"
-"Commit: %s\n"
-"Build Date: %s\n"
-"\n"
-"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font "
-"License 1.1).\n"
-"Icons by Icons8 (https://icons8.com)."
-msgstr ""
-"Експериментални огранак Xenia Canary-ja.\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"Грана: %s\n"
-"Урезивање: %s\n"
-"Датум градње: %s\n"
-"\n"
-"Фонт корисничког интерфејса: Inter аутора Rasmus Andersson (https://rsms.me/"
-"inter/, SIL Open Font License 1.1).\n"
-"Иконе: Icons8 (https://icons8.com)."
 
 #: src/xenia/app/emulator_window.cc:887
 msgid "FA&Q..."
@@ -498,14 +415,6 @@ msgstr "&FAQ…"
 #: src/xenia/ui/patches_dialog_wx.cc:225
 msgid "Failed to save changes."
 msgstr "Чување измена није успело."
-
-#: src/xenia/ui/game_config_dialog_wx.cc:434
-msgid "Failed to save: %s"
-msgstr "Чување није успело: %s"
-
-#: src/xenia/ui/patches_dialog_wx.cc:214
-msgid "Failed to update patch state."
-msgstr "Ажурирање стања закрпе није успело."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:181
 #: src/xenia/ui/profile_editor_dialog_wx.cc:185
@@ -672,10 +581,6 @@ msgstr "Мађарска"
 msgid "Iceland"
 msgstr "Исланд"
 
-#: src/xenia/ui/game_list_panel_wx.cc:302
-msgid "Icon"
-msgstr "Икона"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:396
 msgid "Icon change is disabled while a title is running."
 msgstr "Промена иконе је онемогућена док се игра извршава."
@@ -711,10 +616,6 @@ msgstr "Путања инсталације: "
 #: src/xenia/ui/install_progress_dialog_wx.cc:45
 msgid "Installation Progress"
 msgstr "Напредак инсталације"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Invalid Label"
-msgstr "Неисправна ознака"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:594
 #: src/xenia/ui/profile_editor_dialog_wx.cc:602
@@ -796,15 +697,6 @@ msgstr "Кувајт"
 #: src/xenia/ui/profile_editor_dialog_wx.cc:120
 msgid "Kyrgyzstan"
 msgstr "Киргистан"
-
-#: src/xenia/ui/game_list_panel_wx.cc:691
-#: src/xenia/ui/game_list_panel_wx.cc:695
-msgid "Label"
-msgstr "Ознака"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Label cannot contain '::'."
-msgstr "Ознака не сме садржати „::“."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:464
 #: src/xenia/ui/quick_settings_dialog_wx.cc:311
@@ -1017,10 +909,6 @@ msgstr "Отвори"
 msgid "Open a title"
 msgstr "Отвори игру"
 
-#: src/xenia/ui/game_list_panel_wx.cc:949
-msgid "Open containing folder"
-msgstr "Отвори садржајну фасциклу"
-
 #: src/xenia/ui/quick_settings_dialog_wx.cc:285
 msgid "Open using Rosetta"
 msgstr "Отвори помоћу Rosetta"
@@ -1158,14 +1046,6 @@ msgstr "Уклони са листе"
 msgid "Remove this override"
 msgstr "Уклони ову измену"
 
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Rename Label"
-msgstr "Преименуј ознаку"
-
-#: src/xenia/ui/game_list_panel_wx.cc:728
-msgid "Rename Label..."
-msgstr "Преименуј ознаку…"
-
 #: src/xenia/ui/quick_settings_dialog_wx.cc:169
 msgid "Rendering:"
 msgstr "Исцртавање:"
@@ -1221,7 +1101,7 @@ msgstr "Сачувано. Примењује се при следећем пок
 
 #: src/xenia/ui/game_list_panel_wx.cc:981
 msgid "Saves"
-msgstr "Сачуване игре"
+msgstr "Снимци"
 
 #: src/xenia/ui/game_scan_progress_dialog_wx.cc:120
 msgid "Scan for Games"
@@ -1373,10 +1253,6 @@ msgstr ""
 #: src/xenia/ui/game_list_panel_wx.cc:303
 msgid "Title"
 msgstr "Игра"
-
-#: src/xenia/ui/game_list_panel_wx.cc:985
-msgid "Title Updates"
-msgstr "Ажурирања игре"
 
 #: src/xenia/ui/game_list_panel_wx.cc:597
 msgid "Title not found"
@@ -1583,3 +1459,203 @@ msgstr "Direct3D 12 слој за отклањање грешака инстал
 msgid "vulkan-1.dll not found, required for the Vulkan graphics backend. Download now (~20 MB)?"
 msgstr "vulkan-1.dll није пронађен, потребан за Vulkan графички бекенд. Преузети сада (~20 MB)?"
 
+
+#: src/xenia/ui/game_info_panel_wx.cc:681
+msgid "%s belongs to title %08X."
+msgstr "%s припада игри %08X."
+
+#: src/xenia/ui/game_info_panel_wx.cc:720
+msgid "%s could not be copied: %s"
+msgstr "Није могуће копирати %s: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:694
+msgid "%s is a different kind of content."
+msgstr "%s је друга врста садржаја."
+
+#: src/xenia/ui/game_info_panel_wx.cc:707
+msgid "%s is for a different release of this game."
+msgstr "%s припада другом издању ове игре."
+
+#: src/xenia/ui/game_info_panel_wx.cc:675
+msgid "%s is not a content package."
+msgstr "%s није пакет садржаја."
+
+#: src/xenia/ui/game_list_panel_wx.cc:773
+msgid "(%zu discs)"
+msgstr "(дискова: %zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:656
+msgid "All Files (*.*)|*.*"
+msgstr "Све датотеке (*.*)|*.*"
+
+#: src/xenia/app/emulator_window.cc:439
+msgid "BSD 3-Clause License"
+msgstr "лиценцом BSD 3-Clause"
+
+#: src/xenia/app/emulator_window.cc:434
+msgid ""
+"Branch: %s\n"
+"Commit: %s\n"
+"Build Date: %s"
+msgstr ""
+"Грана: %s\n"
+"Комит: %s\n"
+"Датум изградње: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:232
+msgid "Close the info pane"
+msgstr "Затвори таблу са подацима"
+
+#: src/xenia/ui/game_info_panel_wx.cc:215
+msgid "Configuration"
+msgstr "Конфигурација"
+
+#: src/xenia/ui/game_info_panel_wx.cc:437
+msgid "Details"
+msgstr "Детаљи"
+
+#: src/xenia/ui/game_info_panel_wx.cc:560
+msgid "Discs (%zu)"
+msgstr "Дискови (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Enter a name for this version:"
+msgstr "Унесите назив за ово издање:"
+
+#: src/xenia/app/emulator_window.cc:3011
+msgid "Experimental fork of Xenia Canary."
+msgstr "Експериментални форк Xenia Canary."
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Failed to save."
+msgstr "Чување није успело."
+
+#: src/xenia/ui/game_info_panel_wx.cc:410
+msgid "Give this version its own name"
+msgstr "Дај овом издању сопствени назив"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons by %s"
+msgstr "Иконе: %s"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons8"
+msgstr "Icons8"
+
+#: src/xenia/ui/game_info_panel_wx.cc:211
+msgid "Info"
+msgstr "Информације"
+
+#: src/xenia/ui/game_info_panel_wx.cc:349
+msgid "Installed Content (%zu)"
+msgstr "Инсталирани садржај (%zu)"
+
+#: src/xenia/app/emulator_window.cc:443
+msgid "Inter by Rasmus Andersson"
+msgstr "Inter, аутор Rasmus Andersson"
+
+#: src/xenia/app/emulator_window.cc:607
+msgid "Library updated"
+msgstr "Библиотека је ажурирана"
+
+#: src/xenia/ui/game_info_panel_wx.cc:153
+msgid "Never"
+msgstr "Никада"
+
+#: src/xenia/ui/game_info_panel_wx.cc:391
+msgid "No art"
+msgstr "Нема слике"
+
+#: src/xenia/ui/game_info_panel_wx.cc:472
+msgid "No compatibility report is linked."
+msgstr "Није повезан ниједан извештај о компатибилности."
+
+#: src/xenia/ui/game_info_panel_wx.cc:625
+msgid "No patches are bundled for this title."
+msgstr "За ову игру нису приложене закрпе."
+
+#: src/xenia/ui/game_info_panel_wx.cc:361
+msgid "No profile is signed in."
+msgstr "Ниједан профил није пријављен."
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:331
+msgid "Not supported on macOS"
+msgstr "Није подржано на macOS-у"
+
+#: src/xenia/ui/game_info_panel_wx.cc:607
+msgid "Nothing installed."
+msgstr "Ништа није инсталирано."
+
+#: src/xenia/ui/game_info_panel_wx.cc:757
+msgid "Open folder"
+msgstr "Отвори фасциклу"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Rename Game"
+msgstr "Преименуј игру"
+
+#: src/xenia/ui/game_info_panel_wx.cc:408
+msgid "Rename..."
+msgstr "Преименуј..."
+
+#: src/xenia/ui/game_list_panel_wx.cc:130
+msgid "Reverse the sort order"
+msgstr "Обрни редослед сортирања"
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Saved."
+msgstr "Сачувано."
+
+#: src/xenia/ui/game_info_panel_wx.cc:359
+msgid "Saves (%zu)"
+msgstr "Сачуване игре (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:308
+msgid "Select a game for details."
+msgstr "Изаберите игру да бисте видели детаље."
+
+#: src/xenia/ui/game_info_panel_wx.cc:655
+msgid "Select content packages"
+msgstr "Изаберите пакете садржаја"
+
+#: src/xenia/ui/game_info_panel_wx.cc:728
+msgid "Some packages were not added"
+msgstr "Неки пакети нису додати"
+
+#: src/xenia/app/emulator_window.cc:599
+msgid ""
+"These games were found in more than one version, and each version now has its own entry in the list. Saves and updates belong to a single version, so they are kept apart.\n"
+"\n"
+"%s"
+msgstr ""
+"Ове игре су пронађене у више од једног издања и свако издање сада има сопствени унос на листи. Сачуване игре и ажурирања припадају једном издању, па се чувају одвојено.\n"
+"\n"
+"%s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:464
+msgid "This title is not in the compatibility database."
+msgstr "Ова игра није у бази података о компатибилности."
+
+#: src/xenia/ui/game_info_panel_wx.cc:344
+msgid "Title Updates (%zu)"
+msgstr "Ажурирања игре (%zu)"
+
+#: src/xenia/app/emulator_window.cc:442
+msgid "UI font: %s (SIL Open Font License 1.1)"
+msgstr "Фонт интерфејса: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:399
+msgid "Unknown title"
+msgstr "Непозната игра"
+
+#: src/xenia/ui/game_info_panel_wx.cc:452
+msgid "Version"
+msgstr "Верзија"
+
+#: src/xenia/app/emulator_window.cc:438
+msgid "Xenia is distributed under the %s"
+msgstr "Xenia се дистрибуира под %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:212
+msgid "Content"
+msgstr "Садржај"

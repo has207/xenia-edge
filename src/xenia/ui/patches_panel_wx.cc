@@ -7,14 +7,12 @@
  ******************************************************************************
  */
 
-#include "xenia/ui/patches_dialog_wx.h"
+#include "xenia/ui/patches_panel_wx.h"
 
 #include <wx/checkbox.h>
-#include <wx/scrolwin.h>
+#include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
-
-#include "third_party/fmt/include/fmt/format.h"
 
 #include "xenia/app/emulator_window.h"
 #include "xenia/base/filesystem.h"
@@ -23,24 +21,20 @@
 namespace xe {
 namespace app {
 
-PatchesDialog::PatchesDialog(wxWindow* parent, EmulatorWindow* emulator_window,
-                             uint32_t title_id,
-                             patcher::BundledPatchFile bundled)
-    : wxDialog(
-          parent, wxID_ANY,
-          wxString::Format(_("%s (%08X)"),
-                           wxString::FromUTF8(bundled.entry.title_name.empty()
-                                                  ? bundled.filename
-                                                  : bundled.entry.title_name),
-                           title_id),
-          wxDefaultPosition, wxSize(640, 480),
-          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
-      emulator_window_(emulator_window),
-      title_id_(title_id) {
+namespace {
+
+// Description text is indented under its checkbox, in logical DIPs.
+constexpr int kDescriptionIndent = 16;
+
+}  // namespace
+
+PatchesPanel::PatchesPanel(wxWindow* parent, EmulatorWindow* emulator_window,
+                           patcher::BundledPatchFile bundled)
+    : wxPanel(parent, wxID_ANY), emulator_window_(emulator_window) {
   std::filesystem::path storage_path;
   if (emulator_window_ && emulator_window_->emulator()) {
     storage_path = emulator_window_->emulator()->storage_root() / "patches" /
-                   bundled.filename;
+                   xe::to_path(bundled.filename);
   }
 
   std::string source_text;
@@ -57,13 +51,8 @@ PatchesDialog::PatchesDialog(wxWindow* parent, EmulatorWindow* emulator_window,
   Build();
 }
 
-void PatchesDialog::Build() {
+void PatchesPanel::Build() {
   auto* sizer = new wxBoxSizer(wxVERTICAL);
-
-  auto* scroll = new wxScrolledWindow(this, wxID_ANY);
-  scroll->SetScrollRate(0, 16);
-  scroll_ = scroll;
-  auto* scroll_sizer = new wxBoxSizer(wxVERTICAL);
 
   const auto& patches = editor_->patches();
   for (size_t i = 0; i < patches.size(); ++i) {
@@ -75,13 +64,13 @@ void PatchesDialog::Build() {
       display_name = wxString::FromUTF8(info.name);
     }
 
-    auto* checkbox = new wxCheckBox(scroll, wxID_ANY, display_name);
+    auto* checkbox = new wxCheckBox(this, wxID_ANY, display_name);
     checkbox->SetValue(info.is_enabled);
     checkbox->Bind(wxEVT_CHECKBOX,
                    [this, idx = i, cb = checkbox](wxCommandEvent&) {
                      OnToggle(idx, cb->GetValue());
                    });
-    scroll_sizer->Add(checkbox, wxSizerFlags().Border(wxLEFT | wxTOP, 8));
+    sizer->Add(checkbox, wxSizerFlags().Border(wxTOP, 4));
 
     if (!info.description.empty() || !info.author.empty()) {
       wxString detail;
@@ -94,57 +83,45 @@ void PatchesDialog::Build() {
         }
         detail += wxString::Format(_("by %s"), wxString::FromUTF8(info.author));
       }
-      auto* lbl = new wxStaticText(scroll, wxID_ANY, detail);
-      lbl->SetForegroundColour(*wxLIGHT_GREY);
-      scroll_sizer->Add(lbl,
-                        wxSizerFlags().Border(wxLEFT | wxRIGHT, 32).Expand());
-      desc_labels_.emplace_back(lbl, detail);
+      auto* label = new wxStaticText(this, wxID_ANY, detail);
+      label->SetForegroundColour(
+          wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+      sizer->Add(
+          label,
+          wxSizerFlags().Border(wxLEFT, FromDIP(kDescriptionIndent)).Expand());
+      desc_labels_.emplace_back(label, detail);
     }
   }
-
-  scroll->SetSizer(scroll_sizer);
-  scroll->Bind(wxEVT_SIZE, &PatchesDialog::OnScrollSize, this);
-  sizer->Add(scroll, wxSizerFlags(1).Expand().Border(wxALL, 8));
 
   info_label_ = new wxStaticText(this, wxID_ANY,
                                  _("Toggles take effect on next launch."));
-  sizer->Add(info_label_, wxSizerFlags().Border(wxLEFT | wxRIGHT, 12));
-
-  auto* button_sizer = CreateButtonSizer(wxCLOSE);
-  if (button_sizer) {
-    sizer->Add(button_sizer, wxSizerFlags().Right().Border(wxALL, 8));
-  }
+  info_label_->SetForegroundColour(
+      wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+  sizer->Add(info_label_, wxSizerFlags().Border(wxTOP, 8));
 
   SetSizer(sizer);
+  Bind(wxEVT_SIZE, &PatchesPanel::OnSize, this);
 }
 
-void PatchesDialog::OnToggle(size_t patch_index, bool new_value) {
+void PatchesPanel::OnToggle(size_t patch_index, bool new_value) {
   if (!editor_->SetEnabled(patch_index, new_value)) {
-    if (info_label_) {
-      info_label_->SetLabel(_("Failed to save changes."));
-    }
+    info_label_->SetLabel(_("Failed to save changes."));
     return;
   }
-  if (info_label_) {
-    info_label_->SetLabel(_("Saved. Takes effect on next launch."));
-  }
+  info_label_->SetLabel(_("Saved. Takes effect on next launch."));
 }
 
-void PatchesDialog::OnScrollSize(wxSizeEvent& event) {
+void PatchesPanel::OnSize(wxSizeEvent& event) {
   event.Skip();
   RewrapDescriptions();
 }
 
-void PatchesDialog::RewrapDescriptions() {
-  if (!scroll_ || desc_labels_.empty()) {
+void PatchesPanel::RewrapDescriptions() {
+  if (desc_labels_.empty()) {
     return;
   }
-  // 32px left + 32px right border on each label inside the scroll viewport.
-  int width = scroll_->GetClientSize().GetWidth() - 64;
-  if (width <= 0) {
-    return;
-  }
-  if (width == last_wrap_width_) {
+  const int width = GetClientSize().GetWidth() - FromDIP(kDescriptionIndent);
+  if (width <= 0 || width == last_wrap_width_) {
     return;
   }
   last_wrap_width_ = width;
@@ -152,10 +129,15 @@ void PatchesDialog::RewrapDescriptions() {
     label->SetLabel(text);
     label->Wrap(width);
   }
-  if (auto* s = scroll_->GetSizer()) {
-    s->Layout();
+  if (auto* sizer = GetSizer()) {
+    sizer->Layout();
   }
-  scroll_->FitInside();
+  // Wrapping changes how tall the panel wants to be, and the host measured it
+  // before that happened.
+  InvalidateBestSize();
+  if (content_changed_cb_) {
+    content_changed_cb_();
+  }
 }
 
 }  // namespace app

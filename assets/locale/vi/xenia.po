@@ -25,25 +25,9 @@ msgstr ""
 msgid "   %zu already installed"
 msgstr "   %zu đã được cài đặt"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1240
-msgid " (%zu discs)"
-msgstr " (%zu đĩa)"
-
 #: src/xenia/ui/install_progress_dialog_wx.cc:185
 msgid " - %s (%08X)"
 msgstr " - %s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:285
-msgid "%08X - Config Overrides"
-msgstr ""
-
-#: src/xenia/ui/patches_dialog_wx.cc:37
-msgid "%s (%08X)"
-msgstr "%s (%08X)"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:286
-msgid "%s (%08X) - Config Overrides"
-msgstr "%s (%08X) — Ghi đè cấu hình"
 
 #: src/xenia/app/emulator_window.cc:1995
 msgid "%s (Slot %d)"
@@ -186,14 +170,6 @@ msgstr "Argentina"
 msgid "Armenia"
 msgstr "Armenia"
 
-#: src/xenia/ui/quick_settings_dialog_wx.cc:252
-msgid "Audio"
-msgstr "Âm thanh"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:258
-msgid "Audio Backend:"
-msgstr "Backend âm thanh:"
-
 #: src/xenia/app/emulator_window.cc:2402
 msgid "Auto (%s)"
 msgstr "Tự động (%s)"
@@ -307,10 +283,6 @@ msgstr "Tương thích"
 msgid "Complete"
 msgstr "Hoàn tất"
 
-#: src/xenia/ui/game_list_panel_wx.cc:1028
-msgid "Config Overrides..."
-msgstr "Ghi đè cấu hình…"
-
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:104
 #: src/xenia/ui/advanced_settings_dialog_wx.cc:419
 msgid "Configuration Manager"
@@ -359,22 +331,9 @@ msgstr "Croatia"
 msgid "Czech Republic"
 msgstr "Cộng hòa Séc"
 
-#: src/xenia/ui/game_list_panel_wx.cc:990
-msgid "DLC"
-msgstr "DLC"
-
 #: src/xenia/app/emulator_window.cc:335
 msgid "Dance Pad"
 msgstr "Thảm Nhảy"
-
-#: src/xenia/ui/game_list_panel_wx.cc:690
-#: src/xenia/ui/game_list_panel_wx.cc:693
-msgid "Default"
-msgstr "Mặc định"
-
-#: src/xenia/ui/quick_settings_dialog_wx.cc:263
-msgid "Default Volume:"
-msgstr "Âm lượng mặc định:"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:90
 msgid "Denmark"
@@ -415,14 +374,6 @@ msgstr "&Thoát"
 msgid "Ecuador"
 msgstr "Ecuador"
 
-#: src/xenia/ui/game_list_panel_wx.cc:648
-msgid "Edit Discs"
-msgstr "Chỉnh sửa đĩa"
-
-#: src/xenia/ui/game_list_panel_wx.cc:937
-msgid "Edit Discs..."
-msgstr "Chỉnh sửa đĩa…"
-
 #: src/xenia/app/emulator_window.cc:2053
 msgid "Edit..."
 msgstr "Chỉnh sửa…"
@@ -451,43 +402,9 @@ msgstr "Tiếng Anh"
 msgid "Enter gamertag for new profile:"
 msgstr "Nhập gamertag cho hồ sơ mới:"
 
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Enter new label:"
-msgstr "Nhập nhãn mới:"
-
-#: src/xenia/ui/game_config_dialog_wx.cc:435
-msgid "Error"
-msgstr "Lỗi"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:94
 msgid "Estonia"
 msgstr "Estonia"
-
-#: src/xenia/app/emulator_window.cc:2421
-msgid ""
-"Experimental fork of Xenia Canary.\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"Branch: %s\n"
-"Commit: %s\n"
-"Build Date: %s\n"
-"\n"
-"UI font: Inter by Rasmus Andersson (https://rsms.me/inter/, SIL Open Font "
-"License 1.1).\n"
-"Icons by Icons8 (https://icons8.com)."
-msgstr ""
-"Bản fork thử nghiệm của Xenia Canary.\n"
-"\n"
-"https://github.com/has207/xenia-edge\n"
-"\n"
-"Nhánh: %s\n"
-"Commit: %s\n"
-"Ngày build: %s\n"
-"\n"
-"Phông chữ giao diện: Inter của Rasmus Andersson (https://rsms.me/inter/, SIL "
-"Open Font License 1.1).\n"
-"Biểu tượng bởi Icons8 (https://icons8.com)."
 
 #: src/xenia/app/emulator_window.cc:887
 msgid "FA&Q..."
@@ -496,14 +413,6 @@ msgstr "FA&Q…"
 #: src/xenia/ui/patches_dialog_wx.cc:225
 msgid "Failed to save changes."
 msgstr "Không thể lưu thay đổi."
-
-#: src/xenia/ui/game_config_dialog_wx.cc:434
-msgid "Failed to save: %s"
-msgstr "Không thể lưu: %s"
-
-#: src/xenia/ui/patches_dialog_wx.cc:214
-msgid "Failed to update patch state."
-msgstr "Không thể cập nhật trạng thái bản vá."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:181
 #: src/xenia/ui/profile_editor_dialog_wx.cc:185
@@ -670,10 +579,6 @@ msgstr "Hungary"
 msgid "Iceland"
 msgstr "Iceland"
 
-#: src/xenia/ui/game_list_panel_wx.cc:302
-msgid "Icon"
-msgstr "Biểu tượng"
-
 #: src/xenia/ui/profile_editor_dialog_wx.cc:396
 msgid "Icon change is disabled while a title is running."
 msgstr "Không thể thay đổi biểu tượng khi tựa game đang chạy."
@@ -709,10 +614,6 @@ msgstr "Đường dẫn cài đặt: "
 #: src/xenia/ui/install_progress_dialog_wx.cc:45
 msgid "Installation Progress"
 msgstr "Tiến trình cài đặt"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Invalid Label"
-msgstr "Nhãn không hợp lệ"
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:594
 #: src/xenia/ui/profile_editor_dialog_wx.cc:602
@@ -794,15 +695,6 @@ msgstr "Kuwait"
 #: src/xenia/ui/profile_editor_dialog_wx.cc:120
 msgid "Kyrgyzstan"
 msgstr "Kyrgyzstan"
-
-#: src/xenia/ui/game_list_panel_wx.cc:691
-#: src/xenia/ui/game_list_panel_wx.cc:695
-msgid "Label"
-msgstr "Nhãn"
-
-#: src/xenia/ui/game_list_panel_wx.cc:761
-msgid "Label cannot contain '::'."
-msgstr "Nhãn không được chứa '::'."
 
 #: src/xenia/ui/profile_editor_dialog_wx.cc:464
 #: src/xenia/ui/quick_settings_dialog_wx.cc:311
@@ -1017,10 +909,6 @@ msgstr "Mở"
 msgid "Open a title"
 msgstr "Mở tựa game"
 
-#: src/xenia/ui/game_list_panel_wx.cc:949
-msgid "Open containing folder"
-msgstr "Mở thư mục chứa"
-
 #: src/xenia/ui/quick_settings_dialog_wx.cc:285
 msgid "Open using Rosetta"
 msgstr "Mở bằng Rosetta"
@@ -1157,14 +1045,6 @@ msgstr "Gỡ khỏi danh sách"
 #: src/xenia/ui/game_config_dialog_wx.cc:346
 msgid "Remove this override"
 msgstr "Gỡ ghi đè này"
-
-#: src/xenia/ui/game_list_panel_wx.cc:754
-msgid "Rename Label"
-msgstr "Đổi tên nhãn"
-
-#: src/xenia/ui/game_list_panel_wx.cc:728
-msgid "Rename Label..."
-msgstr "Đổi tên nhãn…"
 
 #: src/xenia/ui/quick_settings_dialog_wx.cc:169
 msgid "Rendering:"
@@ -1374,10 +1254,6 @@ msgstr ""
 msgid "Title"
 msgstr "Tựa game"
 
-#: src/xenia/ui/game_list_panel_wx.cc:985
-msgid "Title Updates"
-msgstr "Bản cập nhật tựa game"
-
 #: src/xenia/ui/game_list_panel_wx.cc:597
 msgid "Title not found"
 msgstr "Không tìm thấy tựa game"
@@ -1580,3 +1456,203 @@ msgstr "Đã cài đặt lớp gỡ lỗi Direct3D 12, nhưng không thể tự 
 msgid "vulkan-1.dll not found, required for the Vulkan graphics backend. Download now (~20 MB)?"
 msgstr "Không tìm thấy vulkan-1.dll, cần cho backend đồ họa Vulkan. Tải xuống ngay (~20 MB)?"
 
+
+#: src/xenia/ui/game_info_panel_wx.cc:681
+msgid "%s belongs to title %08X."
+msgstr "%s thuộc về tựa game %08X."
+
+#: src/xenia/ui/game_info_panel_wx.cc:720
+msgid "%s could not be copied: %s"
+msgstr "Không thể sao chép %s: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:694
+msgid "%s is a different kind of content."
+msgstr "%s là loại nội dung khác."
+
+#: src/xenia/ui/game_info_panel_wx.cc:707
+msgid "%s is for a different release of this game."
+msgstr "%s dành cho một phiên bản khác của trò chơi này."
+
+#: src/xenia/ui/game_info_panel_wx.cc:675
+msgid "%s is not a content package."
+msgstr "%s không phải là gói nội dung."
+
+#: src/xenia/ui/game_list_panel_wx.cc:773
+msgid "(%zu discs)"
+msgstr "(%zu đĩa)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:656
+msgid "All Files (*.*)|*.*"
+msgstr "Tất cả tệp (*.*)|*.*"
+
+#: src/xenia/app/emulator_window.cc:439
+msgid "BSD 3-Clause License"
+msgstr "giấy phép BSD 3-Clause"
+
+#: src/xenia/app/emulator_window.cc:434
+msgid ""
+"Branch: %s\n"
+"Commit: %s\n"
+"Build Date: %s"
+msgstr ""
+"Nhánh: %s\n"
+"Commit: %s\n"
+"Ngày dựng: %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:232
+msgid "Close the info pane"
+msgstr "Đóng khung thông tin"
+
+#: src/xenia/ui/game_info_panel_wx.cc:215
+msgid "Configuration"
+msgstr "Cấu hình"
+
+#: src/xenia/ui/game_info_panel_wx.cc:437
+msgid "Details"
+msgstr "Chi tiết"
+
+#: src/xenia/ui/game_info_panel_wx.cc:560
+msgid "Discs (%zu)"
+msgstr "Đĩa (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Enter a name for this version:"
+msgstr "Nhập tên cho phiên bản này:"
+
+#: src/xenia/app/emulator_window.cc:3011
+msgid "Experimental fork of Xenia Canary."
+msgstr "Bản fork thử nghiệm của Xenia Canary."
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Failed to save."
+msgstr "Lưu không thành công."
+
+#: src/xenia/ui/game_info_panel_wx.cc:410
+msgid "Give this version its own name"
+msgstr "Đặt tên riêng cho phiên bản này"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons by %s"
+msgstr "Biểu tượng bởi %s"
+
+#: src/xenia/app/emulator_window.cc:444
+msgid "Icons8"
+msgstr "Icons8"
+
+#: src/xenia/ui/game_info_panel_wx.cc:211
+msgid "Info"
+msgstr "Thông tin"
+
+#: src/xenia/ui/game_info_panel_wx.cc:349
+msgid "Installed Content (%zu)"
+msgstr "Nội dung đã cài đặt (%zu)"
+
+#: src/xenia/app/emulator_window.cc:443
+msgid "Inter by Rasmus Andersson"
+msgstr "Inter của Rasmus Andersson"
+
+#: src/xenia/app/emulator_window.cc:607
+msgid "Library updated"
+msgstr "Đã cập nhật thư viện"
+
+#: src/xenia/ui/game_info_panel_wx.cc:153
+msgid "Never"
+msgstr "Chưa bao giờ"
+
+#: src/xenia/ui/game_info_panel_wx.cc:391
+msgid "No art"
+msgstr "Không có ảnh"
+
+#: src/xenia/ui/game_info_panel_wx.cc:472
+msgid "No compatibility report is linked."
+msgstr "Chưa liên kết báo cáo tương thích nào."
+
+#: src/xenia/ui/game_info_panel_wx.cc:625
+msgid "No patches are bundled for this title."
+msgstr "Không có bản vá nào đi kèm tựa game này."
+
+#: src/xenia/ui/game_info_panel_wx.cc:361
+msgid "No profile is signed in."
+msgstr "Chưa có hồ sơ nào đăng nhập."
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:331
+msgid "Not supported on macOS"
+msgstr "Không được hỗ trợ trên macOS"
+
+#: src/xenia/ui/game_info_panel_wx.cc:607
+msgid "Nothing installed."
+msgstr "Chưa cài đặt gì."
+
+#: src/xenia/ui/game_info_panel_wx.cc:757
+msgid "Open folder"
+msgstr "Mở thư mục"
+
+#: src/xenia/ui/game_info_panel_wx.cc:830
+msgid "Rename Game"
+msgstr "Đổi tên trò chơi"
+
+#: src/xenia/ui/game_info_panel_wx.cc:408
+msgid "Rename..."
+msgstr "Đổi tên..."
+
+#: src/xenia/ui/game_list_panel_wx.cc:130
+msgid "Reverse the sort order"
+msgstr "Đảo thứ tự sắp xếp"
+
+#: src/xenia/ui/game_config_panel_wx.cc:334
+msgid "Saved."
+msgstr "Đã lưu."
+
+#: src/xenia/ui/game_info_panel_wx.cc:359
+msgid "Saves (%zu)"
+msgstr "Bản lưu (%zu)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:308
+msgid "Select a game for details."
+msgstr "Chọn một trò chơi để xem chi tiết."
+
+#: src/xenia/ui/game_info_panel_wx.cc:655
+msgid "Select content packages"
+msgstr "Chọn gói nội dung"
+
+#: src/xenia/ui/game_info_panel_wx.cc:728
+msgid "Some packages were not added"
+msgstr "Một số gói chưa được thêm"
+
+#: src/xenia/app/emulator_window.cc:599
+msgid ""
+"These games were found in more than one version, and each version now has its own entry in the list. Saves and updates belong to a single version, so they are kept apart.\n"
+"\n"
+"%s"
+msgstr ""
+"Các trò chơi này được tìm thấy ở nhiều phiên bản, và giờ mỗi phiên bản có mục riêng trong danh sách. Bản lưu và bản cập nhật thuộc về một phiên bản duy nhất, nên chúng được giữ riêng.\n"
+"\n"
+"%s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:464
+msgid "This title is not in the compatibility database."
+msgstr "Tựa game này không có trong cơ sở dữ liệu tương thích."
+
+#: src/xenia/ui/game_info_panel_wx.cc:344
+msgid "Title Updates (%zu)"
+msgstr "Bản cập nhật tựa game (%zu)"
+
+#: src/xenia/app/emulator_window.cc:442
+msgid "UI font: %s (SIL Open Font License 1.1)"
+msgstr "Phông chữ giao diện: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/game_info_panel_wx.cc:399
+msgid "Unknown title"
+msgstr "Tựa game không xác định"
+
+#: src/xenia/ui/game_info_panel_wx.cc:452
+msgid "Version"
+msgstr "Phiên bản"
+
+#: src/xenia/app/emulator_window.cc:438
+msgid "Xenia is distributed under the %s"
+msgstr "Xenia được phân phối theo %s"
+
+#: src/xenia/ui/game_info_panel_wx.cc:212
+msgid "Content"
+msgstr "Nội dung"

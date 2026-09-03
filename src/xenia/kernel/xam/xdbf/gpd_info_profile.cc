@@ -138,13 +138,12 @@ void GpdInfoProfile::UpdateTitleInfo(const uint32_t title_id,
   memcpy(current_info, title_data, sizeof(X_XDBF_GPD_TITLE_PLAYED));
 }
 
-// Xenia-specific: Use custom string IDs to store file paths and optional labels
+// Xenia-specific: Use custom string IDs to store file paths
 // String IDs 0xFFFE0000 - 0xFFFEFFFF are reserved for Xenia extensions
-// For multi-disc titles, we store paths (with optional labels) separated by
-// newline Format: "label1::path1\npath2\nlabel3::path3"
-// - If a line contains '::', split on first '::' as label::path
-// - If no '::', the entire line is the path and label defaults to "Disc N"
-// - Labels cannot contain '::' sequence
+// For multi-disc titles, we store paths separated by newline
+// Format: "label1::path1\npath2\nlabel3::path3"
+// Only legacy data carries the "label::" prefix; it is stripped and dropped,
+// the library names a disc from its own disc number.
 constexpr uint32_t kXeniaPathStringBase = 0xFFFE0000;
 constexpr char kPathDelimiter = '\n';
 constexpr std::string_view kLabelDelimiter = "::";
@@ -156,19 +155,6 @@ static std::string StripLabel(const std::string& path_with_label) {
     return path_with_label.substr(delim_pos + kLabelDelimiter.size());
   }
   return path_with_label;
-}
-
-// Helper to parse label and path from string (format: "label::path" or just
-// "path") Returns pair of (label, path). If no label present, label will be
-// empty string.
-static std::pair<std::string, std::string> ParseLabelAndPath(
-    const std::string& line) {
-  size_t delim_pos = line.find(kLabelDelimiter);
-  if (delim_pos != std::string::npos) {
-    return {line.substr(0, delim_pos),
-            line.substr(delim_pos + kLabelDelimiter.size())};
-  }
-  return {"", line};
 }
 
 std::optional<std::filesystem::path> GpdInfoProfile::GetTitlePath(
@@ -208,17 +194,13 @@ std::vector<GpdInfoProfile::DiscInfo> GpdInfoProfile::GetTitleDiscs(
   std::string data_utf8 = xe::to_utf8(data_u16);
   size_t start = 0;
   size_t end = 0;
-  size_t disc_num = 1;
 
   while ((end = data_utf8.find(kPathDelimiter, start)) != std::string::npos) {
     std::string line = data_utf8.substr(start, end - start);
     if (!line.empty()) {
       DiscInfo disc;
-      auto [label, path_str] = ParseLabelAndPath(line);
-      disc.path = xe::to_path(path_str);
-      disc.label = label;  // Keep empty if no label in storage
+      disc.path = xe::to_path(StripLabel(line));
       discs.push_back(disc);
-      disc_num++;
     }
     start = end + 1;
   }
@@ -228,9 +210,7 @@ std::vector<GpdInfoProfile::DiscInfo> GpdInfoProfile::GetTitleDiscs(
     std::string line = data_utf8.substr(start);
     if (!line.empty()) {
       DiscInfo disc;
-      auto [label, path_str] = ParseLabelAndPath(line);
-      disc.path = xe::to_path(path_str);
-      disc.label = label;  // Keep empty if no label in storage
+      disc.path = xe::to_path(StripLabel(line));
       discs.push_back(disc);
     }
   }

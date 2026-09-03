@@ -120,9 +120,6 @@ class ProfileManager {
 
   std::vector<ScannedTitleInfo> ScanAllProfilesForTitles() const;
 
-  // Reads a title's icon PNG from a per-title GPD on disk (migration only).
-  std::vector<uint8_t> ReadTitleIcon(uint32_t title_id) const;
-
   static bool IsGamertagValid(const std::string gamertag);
 
  private:

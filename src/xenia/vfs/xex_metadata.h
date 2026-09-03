@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "third_party/tomlplusplus/toml.hpp"
 
@@ -27,12 +28,21 @@ enum class XexFormat {
 };
 
 struct XexVersion {
-  uint8_t major;
-  uint8_t minor;
-  uint16_t build;
-  uint8_t qfe;
+  uint8_t major = 0;
+  uint8_t minor = 0;
+  uint16_t build = 0;
+  uint8_t qfe = 0;
 
+  // "major.minor.build.qfe".
   std::string ToString() const;
+  // Packed as it appears in the XEX execution info.
+  uint32_t value() const;
+  static XexVersion FromValue(uint32_t value);
+  // Parses what ToString() produces. Empty unless the text is exactly that,
+  // so a version can never be spelled two ways.
+  static std::optional<XexVersion> FromString(std::string_view text);
+
+  bool operator==(const XexVersion& other) const = default;
 };
 
 struct XexMetadata {

@@ -358,5 +358,16 @@ std::vector<BundledPatchFile> EnumerateBundledPatchesForTitle(
   return out;
 }
 
+std::string BundledPatchDisplayName(const BundledPatchFile& file) {
+  std::string display = file.filename;
+  if (auto dash = display.find(" - "); dash != std::string::npos) {
+    display = display.substr(dash + 3);
+  }
+  if (auto suffix = display.rfind(".patch.toml"); suffix != std::string::npos) {
+    display = display.substr(0, suffix);
+  }
+  return display;
+}
+
 }  // namespace patcher
 }  // namespace xe

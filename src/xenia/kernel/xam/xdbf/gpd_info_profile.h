@@ -51,7 +51,6 @@ class GpdInfoProfile : public GpdInfo {
 
   struct DiscInfo {
     std::filesystem::path path;
-    std::string label;
   };
   std::vector<DiscInfo> GetTitleDiscs(uint32_t title_id) const;
 };

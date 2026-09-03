@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <wx/bmpbndl.h>
+#include <wx/string.h>
 
 namespace xe {
 namespace ui {
@@ -29,6 +30,11 @@ wxBitmapBundle DecodePngIcon(const std::vector<uint8_t>& png, int size_px,
 // (allocated with malloc, freed with free per the wxWidgets contract).
 wxBitmapBundle WrapRgbaIcon(const std::vector<uint8_t>& rgba, int width,
                             int height, int size_px, double scale = 1.0);
+
+// Flat square swatch with centered text, for titles that have no art. `text`
+// may hold one newline to split it over two lines.
+wxBitmapBundle MakeTextPlaceholder(const wxString& text, int size_px,
+                                   double scale = 1.0);
 
 }  // namespace ui
 }  // namespace xe
