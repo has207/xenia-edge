@@ -55,15 +55,6 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
         XSystemClock::from_file_time(due_time));
   }
 
-  // Guests pass an absolute due time of 0 (the 1601 NT epoch) to mean "fire
-  // immediately". Casting that to the host's steady_clock overflows int64 and
-  // yields a far-future deadline the timer never reaches, so clamp a past-due
-  // time here, where the comparison cannot overflow.
-  auto now_wsc = WinSystemClock::now();
-  if (due_tp < now_wsc) {
-    due_tp = now_wsc;
-  }
-
   // Stash routine for callback.
   callback_thread_ = XThread::GetCurrentThread();
   callback_routine_ = routine;
