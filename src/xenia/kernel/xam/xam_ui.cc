@@ -667,10 +667,14 @@ dword_result_t XamShowDeviceSelectorUI_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowDeviceSelectorUI, kUI, kImplemented);
 
-void XamShowDirtyDiscErrorUI_entry(dword_t user_index) {
+void XamShowDirtyDiscErrorUI_entry(dword_t user_index,
+                                   const ppc_context_t& context) {
+  XELOGE("XamShowDirtyDiscErrorUI: title reported a disc read error, lr {:08X}",
+         uint32_t(context->lr));
+
   if (cvars::headless) {
     assert_always();
-    exit(1);
+    kernel_state()->TerminateTitle();
     return;
   }
 
@@ -685,9 +689,8 @@ void XamShowDirtyDiscErrorUI_entry(dword_t user_index) {
   xeXamDispatchDialog<MessageBoxDialog>(
       new MessageBoxDialog(imgui_drawer, input_system, title, desc, {"OK"}, 0),
       [](MessageBoxDialog*) -> X_RESULT { return X_ERROR_SUCCESS; }, 0);
-  // This is death, and should never return.
-  // TODO(benvanik): cleaner exit.
-  exit(1);
+  // Does not return.
+  kernel_state()->ExitToDashboard();
 }
 DECLARE_XAM_EXPORT1(XamShowDirtyDiscErrorUI, kUI, kImplemented);
 
