@@ -782,9 +782,13 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
       }
     }
   }
-  // A guest-driven paint says nothing about the next one, so always self-drive
   if (needs_continuous_repaint) {
-    presenter_->RequestUIPaintFromUIThread();
+    if (presenter_->IsGuestOutputDrivingPaints()) {
+      // Ride the guest's paints, but look again in case it stops presenting
+      window_->RequestPaintAfter(Presenter::kGuestOutputStallTimeoutMillis);
+    } else {
+      presenter_->RequestUIPaintFromUIThread();
+    }
   }
 }
 

@@ -359,6 +359,9 @@ bool WxWindow::OpenImpl() {
   resize_debounce_timer_.SetOwner(frame_);
   frame_->Bind(wxEVT_TIMER, &WxWindow::OnResizeDebounceTimer, this,
                resize_debounce_timer_.GetId());
+  paint_delay_timer_.SetOwner(frame_);
+  frame_->Bind(wxEVT_TIMER, &WxWindow::OnPaintDelayTimer, this,
+               paint_delay_timer_.GetId());
 
   frame_->SetDropTarget(new FileDropTargetImpl(this));
 
@@ -614,6 +617,12 @@ void WxWindow::RequestPaintImpl() {
 #endif
 }
 
+void WxWindow::RequestPaintAfterImpl(uint32_t milliseconds) {
+  paint_delay_timer_.StartOnce(int(milliseconds));
+}
+
+void WxWindow::OnPaintDelayTimer(wxTimerEvent& event) { RequestPaint(); }
+
 void WxWindow::OnFrameClose(wxCloseEvent& event) {
   if (frame_ && !frame_->IsFullScreen()) {
     SaveGeometryToConfig();
@@ -864,6 +873,8 @@ void WxWindow::UnbindFrameAndPanelEvents() {
                    cursor_auto_hide_timer_.GetId());
     frame_->Unbind(wxEVT_TIMER, &WxWindow::OnResizeDebounceTimer, this,
                    resize_debounce_timer_.GetId());
+    frame_->Unbind(wxEVT_TIMER, &WxWindow::OnPaintDelayTimer, this,
+                   paint_delay_timer_.GetId());
   }
   if (render_panel_) {
     render_panel_->Unbind(wxEVT_SIZE, &WxWindow::OnFrameSize, this);

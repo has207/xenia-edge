@@ -349,6 +349,13 @@ class Window {
       RequestPaintImpl();
     }
   }
+  // Request repainting after the delay, restarting the wait if one is already
+  // pending. UI thread only.
+  void RequestPaintAfter(uint32_t milliseconds) {
+    if (presenter_surface_) {
+      RequestPaintAfterImpl(milliseconds);
+    }
+  }
   void RequestPresenterUIPaintFromUIThread() {
     if (presenter_) {
       presenter_->RequestUIPaintFromUIThread();
@@ -547,6 +554,10 @@ class Window {
       Surface::TypeFlags allowed_types) = 0;
   // Called only if the Surface exists.
   virtual void RequestPaintImpl() = 0;
+  // Called only if the Surface exists. Backends with no timer paint right away.
+  virtual void RequestPaintAfterImpl(uint32_t milliseconds) {
+    RequestPaintImpl();
+  }
 
   // Will also disconnect the surface if needed.
   void OnBeforeClose(WindowDestructionReceiver& destruction_receiver);
