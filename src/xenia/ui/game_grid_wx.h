@@ -56,6 +56,9 @@ class GameGrid : public wxScrolledCanvas {
 
   // Selected index, or -1 when nothing is selected.
   int GetSelection() const { return selection_; }
+  // Notifies even when `index` is the one already selected, so a caller
+  // can tell the user picked a card again. Pass notify = false when
+  // restoring a selection the user did not make.
   void SetSelection(int index, bool notify = true);
   // Moves one card in a direction: sideways within the row, vertically by a
   // whole row.

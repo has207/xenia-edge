@@ -151,17 +151,18 @@ void GameGrid::SetSelection(int index, bool notify) {
   if (index >= static_cast<int>(items_.size())) {
     index = -1;
   }
-  if (index == selection_) {
-    return;
+  if (index != selection_) {
+    const int previous = selection_;
+    selection_ = index;
+    if (previous >= 0) {
+      RefreshRect(ScrolledCellRect(previous));
+    }
+    if (selection_ >= 0) {
+      RefreshRect(ScrolledCellRect(selection_));
+    }
   }
-  const int previous = selection_;
-  selection_ = index;
-  if (previous >= 0) {
-    RefreshRect(ScrolledCellRect(previous));
-  }
-  if (selection_ >= 0) {
-    RefreshRect(ScrolledCellRect(selection_));
-  }
+  // Reported even when the index did not move: picking the selected card
+  // again is still a pick, and the caller may act on one.
   if (notify && selection_changed_cb_) {
     selection_changed_cb_();
   }
