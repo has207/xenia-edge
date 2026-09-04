@@ -678,6 +678,10 @@ void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
 }
 
 void EmulatorWindow::OnEmulatorInitialized() {
+  // Ahead of the no-profile prompt, which is modal and offers to import games
+  // right there. The import needs the library.
+  InitializeGameLibrary();
+
   if (!emulator_->kernel_state()
            ->xam_state()
            ->profile_manager()
@@ -717,7 +721,6 @@ void EmulatorWindow::OnEmulatorInitialized() {
       }
     });
   }
-  InitializeGameLibrary();
   emulator_->set_disc_provider([this](uint32_t title_id) {
     std::vector<Emulator::TitleDisc> discs;
     if (game_library_) {
