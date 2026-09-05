@@ -1964,13 +1964,14 @@ static void EmitPartialVectorStore(A64Emitter& e,
   // Unqualified Label here is hir::Label.
   Xbyak_aarch64::Label from8, from4, from2, from1, done;
 
+  // Every label below is bound within this helper, so the near forms are safe.
   e.cmp(count, 8);
-  e.b(Xbyak_aarch64::HS, from8);
+  e.b_near(Xbyak_aarch64::HS, from8);
   e.cmp(count, 4);
-  e.b(Xbyak_aarch64::HS, from4);
+  e.b_near(Xbyak_aarch64::HS, from4);
   e.cmp(count, 2);
-  e.b(Xbyak_aarch64::HS, from2);
-  e.cbnz(count, from1);
+  e.b_near(Xbyak_aarch64::HS, from2);
+  e.cbnz_near(count, from1);
   e.b(done);
 
   e.L(from8);

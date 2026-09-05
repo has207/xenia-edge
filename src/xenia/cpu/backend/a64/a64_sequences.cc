@@ -879,6 +879,10 @@ struct ZERO_EXTEND_I64_I32
     : Sequence<ZERO_EXTEND_I64_I32, I<OPCODE_ZERO_EXTEND, I64Op, I32Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     // mov wD, wS implicitly zero-extends to 64 bits on ARM64.
+    if (!i.src1.is_constant && i.dest.reg().getIdx() == i.src1.reg().getIdx()) {
+      // I32 values only come from W forms, so the upper half is already zero.
+      return;
+    }
     auto w_dest = WReg(i.dest.reg().getIdx());
     e.mov(w_dest, i.src1);
   }
