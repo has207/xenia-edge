@@ -963,6 +963,11 @@ object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
       result->Release();
       result = nullptr;
     }
+    if (result) {
+      // The only place the guest hands us a raw dispatch header, so the only
+      // place a direct write to it can be picked up.
+      result->SyncFromGuest();
+    }
   } else {
     // First use, create new.
     // https://www.nirsoft.net/kernel_struct/vista/KOBJECTS.html

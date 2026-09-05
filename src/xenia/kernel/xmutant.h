@@ -46,6 +46,7 @@ class XMutant : public XObject {
     return free_signal_.get();
   }
   void WaitCallback() override;
+  void SyncFromGuest() override;
   bool IsReenteredByCurrentThread() override;
   X_STATUS AcquireStatus() override;
 

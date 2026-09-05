@@ -10,6 +10,8 @@
 #ifndef XENIA_KERNEL_XEVENT_H_
 #define XENIA_KERNEL_XEVENT_H_
 
+#include <mutex>
+
 #include "xenia/base/threading.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/xbox.h"
@@ -50,6 +52,7 @@ class XEvent : public XObject {
  protected:
   xe::threading::WaitHandle* GetWaitHandle() override { return event_.get(); }
   void WaitCallback() override;
+  void SyncFromGuest() override;
 
   void CooperativeWaitBegin(XThread* thread) override;
   void CooperativeWaitEnd(XThread* thread) override;
@@ -58,6 +61,12 @@ class XEvent : public XObject {
  private:
   bool manual_reset_ = false;
   std::unique_ptr<xe::threading::Event> event_;
+  // Guards the guest header, the mirror below and the host event together, so
+  // a reconcile never samples a kernel write half done.
+  std::mutex state_lock_;
+  // Last signal_state this kernel wrote, so SyncFromGuest can tell a guest
+  // write from one of ours. Guarded by state_lock_.
+  bool host_signaled_ = false;
   // Parked cooperative waiters, so Pulse knows one will consume a set.
   CooperativeWaiterFifo waiters_;
   std::atomic<uint32_t> pulse_epoch_{0};

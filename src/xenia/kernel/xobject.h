@@ -272,6 +272,12 @@ class XObject {
   // Status for a successful acquire, letting a mutant report abandonment.
   virtual X_STATUS AcquireStatus() { return X_STATUS_SUCCESS; }
 
+  // Reconciles the host primitive with the guest dispatch header. The XDK
+  // inlines KeInitializeEvent and KeResetEvent, so a title can change
+  // signal_state with a plain store no export ever reports, leaving the host
+  // primitive signaled and the next wait returning immediately.
+  virtual void SyncFromGuest() {}
+
   // Fair FIFO wakeup for cooperative fiber waiters on fungible-permit objects.
   // Begin/End register the waiter and MayAcquire gates the poll to the queue
   // front. Call the Enter/Leave wrappers below rather than these directly.

@@ -144,15 +144,18 @@ X_STATUS XMutant::ReleaseMutant(uint32_t priority_increment, bool abandon,
   }
 
   --recursion_count_;
+  bool freed = recursion_count_ == 0;
+  if (freed) {
+    // Clear ownership first: a waiter acquiring on another host thread must not
+    // be stranded, and SyncFromGuest must not read this release as a guest one.
+    owning_thread_ = nullptr;
+  }
   auto& signal_state = memory()
                            ->TranslateVirtual<X_KMUTANT*>(guest_object())
                            ->header.signal_state;
   signal_state = signal_state + 1;
 
-  if (recursion_count_ == 0) {
-    // Clear ownership before signaling, or a waiter that acquires on another
-    // host thread would be stranded with a null owning_thread_.
-    owning_thread_ = nullptr;
+  if (freed) {
     RemoveMutantOwned(memory(), this);
     free_signal_->Release(1, nullptr);
     WakeCooperativeWaiters();
@@ -259,17 +262,47 @@ void XMutant::WaitCallback() {
   if (!self) {
     return;
   }
-  XThread* prev = owning_thread_.exchange(self);
+  // Header before ownership: SyncFromGuest samples ownership first, so an
+  // acquire in flight never looks like a guest-side release. Only the acquirer
+  // runs here, so the load/store pair needs no exchange.
+  auto& signal_state = memory()
+                           ->TranslateVirtual<X_KMUTANT*>(guest_object())
+                           ->header.signal_state;
+  signal_state = signal_state - 1;
+  XThread* prev = owning_thread_.load();
+  owning_thread_.store(self);
   if (prev != self) {
     recursion_count_ = 1;
     InsertMutantOwned(memory(), self, this);
   } else {
     ++recursion_count_;
   }
-  auto& signal_state = memory()
-                           ->TranslateVirtual<X_KMUTANT*>(guest_object())
-                           ->header.signal_state;
-  signal_state = signal_state - 1;
+}
+
+void XMutant::SyncFromGuest() {
+  if (!guest_object()) {
+    return;
+  }
+  // Only the guest-says-free direction is actionable: an acquire has to name an
+  // owner thread and a header write names none. A title reaches here by
+  // re-initializing a KMUTANT in place.
+  XThread* owner = owning_thread_.load();
+  if (!owner) {
+    return;
+  }
+  auto* kmutant = memory()->TranslateVirtual<X_KMUTANT*>(guest_object());
+  if (static_cast<int32_t>(kmutant->header.signal_state) < 1) {
+    return;
+  }
+  // A release clears ownership before it bumps the header, so losing the swap
+  // means this free came from the kernel rather than the guest.
+  if (!owning_thread_.compare_exchange_strong(owner, nullptr)) {
+    return;
+  }
+  recursion_count_ = 0;
+  RemoveMutantOwned(memory(), this);
+  free_signal_->Release(1, nullptr);
+  WakeCooperativeWaiters();
 }
 
 void XMutant::CooperativeWaitBegin(XThread* thread) { waiters_.Add(thread); }
