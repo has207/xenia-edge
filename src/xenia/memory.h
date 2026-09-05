@@ -217,6 +217,9 @@ class BaseHeap {
   // address.
   bool QueryProtect(uint32_t address, uint32_t* out_protect);
 
+  // True when no allocation covers any page in the range.
+  bool IsRangeUnallocated(uint32_t address, uint32_t size);
+
   // Queries the currently strictest readability and writability for the entire
   // range.
   xe::memory::PageAccess QueryRangeAccess(uint32_t low_address,

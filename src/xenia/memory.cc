@@ -685,6 +685,35 @@ bool Memory::AccessViolationCallback(
   }
   uint32_t virtual_address = HostToGuestVirtual(host_address);
   BaseHeap* heap = LookupHeap(virtual_address);
+  if (!heap) {
+    return false;
+  }
+
+  // SEC_RESERVE on Windows: a page no heap allocated faults, POSIX reads zero.
+  if (heap->IsRangeUnallocated(virtual_address, 1)) {
+    // Widening over pages a heap holds would reset protection, losing watches.
+    uint32_t block = virtual_address & ~(system_allocation_granularity_ - 1);
+    uint32_t size = system_allocation_granularity_;
+    if (!heap->IsRangeUnallocated(block, size)) {
+      block = virtual_address & ~(system_page_size_ - 1);
+      size = system_page_size_;
+    }
+    if (xe::memory::AllocFixed(TranslateVirtual(block), size,
+                               xe::memory::AllocationType::kCommit,
+                               xe::memory::PageAccess::kReadWrite)) {
+      // Under the global lock, so a plain counter is fine.
+      static uint32_t backed_count = 0;
+      if (xe::is_pow2(++backed_count)) {
+        XELOGW(
+            "Backed unallocated guest memory at {:08X} after an access "
+            "violation ({} blocks so far) - the guest is reading outside "
+            "anything it allocated",
+            virtual_address, backed_count);
+      }
+      return true;
+    }
+  }
+
   if (heap->heap_type() != HeapType::kGuestPhysical) {
     return false;
   }
@@ -1803,6 +1832,22 @@ bool BaseHeap::QueryProtect(uint32_t address, uint32_t* out_protect) {
   auto global_lock = global_critical_region_.Acquire();
   auto page_entry = page_table_[page_number];
   *out_protect = page_entry.current_protect;
+  return true;
+}
+
+bool BaseHeap::IsRangeUnallocated(uint32_t address, uint32_t size) {
+  if (address < heap_base_ || (address - heap_base_) >= heap_size_ ||
+      size > heap_size_ - (address - heap_base_)) {
+    return false;
+  }
+  uint32_t first = (address - heap_base_) >> page_size_shift_;
+  uint32_t last = (address + (size - 1) - heap_base_) >> page_size_shift_;
+  auto global_lock = global_critical_region_.Acquire();
+  for (uint32_t i = first; i <= last; ++i) {
+    if (page_table_[i].state) {
+      return false;
+    }
+  }
   return true;
 }
 
