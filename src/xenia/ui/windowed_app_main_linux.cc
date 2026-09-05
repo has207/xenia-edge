@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <X11/Xlib.h>
 #include <wx/wx.h>
 
 #include "xenia/base/platform.h"
@@ -44,6 +45,8 @@ int main(int argc, char** argv) {
   if (!secure_getenv("GDK_BACKEND")) {
     setenv("GDK_BACKEND", "x11", 1);
   }
+
+  XInitThreads();
 
   xe::ui::g_argc = argc;
   xe::ui::g_argv = argv;
