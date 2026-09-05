@@ -29,6 +29,14 @@
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 
+DEFINE_int32(zero_delay_spin_limit, 16,
+             "Consecutive zero-timeout guest delays before the thread is "
+             "parked instead of yielding; 0 disables. Host-thread mode only.",
+             "Kernel");
+DEFINE_uint32(zero_delay_park_ns, 60000,
+              "Park length, in nanoseconds, once zero_delay_spin_limit trips.",
+              "Kernel");
+
 DEFINE_bool(ignore_thread_priorities, false,
             "Ignores game-specified thread priorities.", "Kernel");
 UPDATE_from_bool(ignore_thread_priorities, 2026, 4, 9, 12, true);
@@ -1269,7 +1277,24 @@ X_STATUS XThread::Delay(uint32_t processor_mode, uint32_t alertable,
     }
   } else {
     if (timeout_ms == 0) {
-      if (priority_ <= xe::threading::ThreadPriority::kBelowNormal) {
+      // Raw host ticks: QueryHostUptimeMillis() re-reads mach_timebase_info().
+      const int32_t spin_limit = cvars::zero_delay_spin_limit;
+      bool park = false;
+      if (spin_limit > 0) {
+        static const uint64_t kResetGapTicks =
+            Clock::host_tick_frequency_raw() / 1000;
+        const uint64_t now = Clock::host_tick_count_raw();
+        if (zero_delay_last_tick_ == 0 ||
+            now - zero_delay_last_tick_ > kResetGapTicks) {
+          zero_delay_spins_ = 0;
+        }
+        zero_delay_last_tick_ = now;
+        park = ++zero_delay_spins_ >= static_cast<uint32_t>(spin_limit);
+      }
+      if (park) {
+        zero_delay_spins_ = 0;
+        xe::threading::NanoSleep(int64_t(cvars::zero_delay_park_ns));
+      } else if (priority_ <= xe::threading::ThreadPriority::kBelowNormal) {
         xe::threading::NanoSleep(100);
       } else {
         xe::threading::MaybeYield();
