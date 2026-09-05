@@ -214,6 +214,20 @@ dword_result_t ObOpenObjectByPointer_entry(lpvoid_t object_ptr,
     return X_STATUS_UNSUCCESSFUL;
   }
 
+  // A host object's own handle is not in the title's numbering and must never
+  // reach the guest, so give it a guest one. AddHandle retains, so this needs
+  // no RetainHandle of its own.
+  if (object->is_host_object()) {
+    X_HANDLE guest_handle = X_INVALID_HANDLE_VALUE;
+    X_STATUS result = kernel_state()->object_table()->AddHandle(
+        object.get(), &guest_handle, true);
+    if (XFAILED(result)) {
+      return result;
+    }
+    *out_handle_ptr = guest_handle;
+    return X_STATUS_SUCCESS;
+  }
+
   // Retain the handle. Will be released in NtClose.
   object->RetainHandle();
   *out_handle_ptr = object->handle();

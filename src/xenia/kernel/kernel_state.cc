@@ -1209,7 +1209,13 @@ bool KernelState::Save(ByteStream* stream) {
   for (auto object : objects) {
     auto prev_offset = stream->offset();
 
-    if (object->is_host_object() || object->type() == XObject::Type::Thread) {
+    // A user module is a host object only to stay out of the title's handle
+    // numbering, so it still saves.
+    bool user_module = object->type() == XObject::Type::Module &&
+                       static_cast<XModule*>(object.get())->module_type() ==
+                           XModule::ModuleType::kUserModule;
+    if ((object->is_host_object() && !user_module) ||
+        object->type() == XObject::Type::Thread) {
       // Don't save host objects or save XThreads again
       num_objects--;
       continue;

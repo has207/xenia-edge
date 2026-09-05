@@ -21,8 +21,9 @@ DECLARE_bool(dump_xex);
 namespace xe {
 namespace kernel {
 
+// Host object: the loader owns module handles, not the title's namespace.
 UserModule::UserModule(KernelState* kernel_state)
-    : XModule(kernel_state, ModuleType::kUserModule) {}
+    : XModule(kernel_state, ModuleType::kUserModule, true) {}
 
 UserModule::~UserModule() { Unload(); }
 

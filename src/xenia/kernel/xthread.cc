@@ -60,7 +60,8 @@ XThread::XThread(KernelState* kernel_state, uint32_t stack_size,
                  uint32_t xapi_thread_startup, uint32_t start_address,
                  uint32_t start_context, uint32_t creation_flags,
                  bool guest_thread, bool main_thread, uint32_t guest_process)
-    : XObject(kernel_state, kObjectType, !guest_thread),
+    // The main thread is the loader's, so its handle is not the title's.
+    : XObject(kernel_state, kObjectType, !guest_thread || main_thread),
       thread_id_(++next_xthread_id_),
       guest_thread_(guest_thread),
       main_thread_(main_thread) {

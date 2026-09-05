@@ -29,7 +29,7 @@ class XEvent : public XObject {
  public:
   static const XObject::Type kObjectType = XObject::Type::Event;
 
-  explicit XEvent(KernelState* kernel_state);
+  explicit XEvent(KernelState* kernel_state, bool host_object = false);
   ~XEvent() override;
 
   void Initialize(bool manual_reset, bool initial_state);

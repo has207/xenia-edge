@@ -34,7 +34,10 @@ class ObjectTable {
 
   void Reset();
 
-  X_STATUS AddHandle(XObject* object, X_HANDLE* out_handle);
+  // force_guest_handle puts a host object's new handle in the guest table, for
+  // the paths that hand one to the guest.
+  X_STATUS AddHandle(XObject* object, X_HANDLE* out_handle,
+                     bool force_guest_handle = false);
   X_STATUS DuplicateHandle(X_HANDLE orig, X_HANDLE* out_handle);
   X_STATUS RetainHandle(X_HANDLE handle);
   X_STATUS ReleaseHandle(X_HANDLE handle);
