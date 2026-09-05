@@ -3661,6 +3661,10 @@ static void MaybeYieldForwarder(void* ctx) { xe::threading::MaybeYield(); }
 struct DELAY_EXECUTION
     : Sequence<DELAY_EXECUTION, I<OPCODE_DELAY_EXECUTION, VoidOp>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
+    if (i.instr->flags & hir::DELAY_EXECUTION_INJECTED) {
+      // SpinWaitInjectionPass tag; only the a64 backend counts these.
+      return;
+    }
     // todo: what if they dont have smt?
     if (cvars::delay_via_maybeyield) {
       e.CallNativeSafe((void*)MaybeYieldForwarder);

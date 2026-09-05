@@ -208,6 +208,10 @@ uint64_t TrapDebugPrint(void* raw_context);
 // context's preempt_requested flag.
 extern void (*preempt_yield_handler)(void* raw_context);
 
+// Registered by the cooperative scheduler, null otherwise; without it the
+// backend sleeps the host thread for |sleep_ns|.
+extern void (*spin_wait_release_handler)(void* raw_context, uint64_t sleep_ns);
+
 }  // namespace backend
 }  // namespace cpu
 }  // namespace xe
