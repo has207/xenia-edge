@@ -65,3 +65,17 @@ DEFINE_bool(break_condition_truncate, true, "truncate value to 32-bits", "CPU");
 
 DEFINE_bool(break_on_debugbreak, true, "int3 on JITed __debugbreak requests.",
             "CPU");
+
+DEFINE_uint32(db16cyc_yield_after, 2,
+              "Consecutive guest db16cyc delays before the thread sleeps "
+              "instead of spinning; 0 disables.",
+              "CPU");
+
+DEFINE_uint32(spin_wait_yield_after, 100000,
+              "Iterations of a spin-shaped guest loop before the thread "
+              "sleeps; 0 disables the pass.",
+              "CPU");
+
+DEFINE_uint32(spin_wait_max_iter_ns, 1000,
+              "Longest average iteration, in ns, that still counts as a wait.",
+              "CPU");

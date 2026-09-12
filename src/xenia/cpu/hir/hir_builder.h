@@ -217,7 +217,7 @@ class HIRBuilder {
                     CacheControlType type);
   void MemoryBarrier();
   void LoadBarrier();
-  void DelayExecution();
+  Instr* DelayExecution(uint16_t flags = 0);
   void SetRoundingMode(Value* value);
   Value* Max(Value* value1, Value* value2);
   Value* VectorMax(Value* value1, Value* value2, TypeName part_type,
