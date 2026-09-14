@@ -957,7 +957,9 @@ Value* UnpackSingleKeepNaN(HIRBuilder& f, Value* sbits) {
             51);
   Value* nan_bits =
       f.Or(f.And(dbits, f.LoadConstantUint64(~(1ull << 51))), qbit);
-  return f.Cast(f.Select(is_nan, nan_bits, dbits), FLOAT64_TYPE);
+  Value* out = f.Cast(f.Select(is_nan, nan_bits, dbits), FLOAT64_TYPE);
+  out->flags |= VALUE_NEVER_F64_DENORMAL;
+  return out;
 }
 
 int InstrEmit_lfs(PPCHIRBuilder& f, const InstrData& i) {

@@ -550,21 +550,16 @@ void PPCHIRBuilder::UpdateFPSCR(std::initializer_list<Value*> operands,
 // operand finite and at least one of them denormal.
 Value* PPCHIRBuilder::SingleDenormalOperand(
     std::initializer_list<Value*> operands) {
-  Value* any_denormal = nullptr;
-  Value* any_nonfinite = nullptr;
+  Value* ops[3] = {nullptr, nullptr, nullptr};
+  int count = 0;
   for (Value* operand : operands) {
-    Value* magnitude = FpMagnitude(*this, operand);
-    // Subtracting one wraps a zero operand up to the top, which is what keeps
-    // zero from reading as denormal.
-    Value* is_denormal = CompareULT(Sub(magnitude, LoadConstantUint64(1)),
-                                    LoadConstantUint64(0x000FFFFFFFFFFFFFull));
-    Value* is_nonfinite =
-        CompareUGE(magnitude, LoadConstantUint64(0x7FF0000000000000ull));
-    any_denormal = any_denormal ? Or(any_denormal, is_denormal) : is_denormal;
-    any_nonfinite =
-        any_nonfinite ? Or(any_nonfinite, is_nonfinite) : is_nonfinite;
+    ops[count++] = operand;
   }
-  return And(any_denormal, IsFalse(any_nonfinite));
+  assert_true(count >= 1 && count <= 3);
+  for (; count < 3; ++count) {
+    ops[count] = ops[count - 1];
+  }
+  return DenormalQuirk(ops[0], ops[1], ops[2]);
 }
 
 Value* PPCHIRBuilder::ApplySingleDenormalOperand(Value* quirk, Value* result) {

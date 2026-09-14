@@ -754,3 +754,9 @@ DEFINE_OPCODE(
     "check_preempt",
     OPCODE_SIG_X,
     OPCODE_FLAG_VOLATILE)
+
+DEFINE_OPCODE(
+    OPCODE_DENORMAL_QUIRK,
+    "denormal_quirk",
+    OPCODE_SIG_V_V_V_V,
+    0)
