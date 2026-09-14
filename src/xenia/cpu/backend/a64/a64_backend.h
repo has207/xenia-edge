@@ -122,6 +122,12 @@ struct A64BackendContext {
   unsigned int Ox1000;  // constant 0x1000
   // DEFAULT_VMX_FPCR regardless of NJM, for the ops that always flush
   unsigned int fpcr_vmx_daz;
+  unsigned int db16cyc_spins;
+  uint64_t db16cyc_last_tick;
+  unsigned int spin_wait_spins;
+  unsigned int spin_wait_site;
+  unsigned int spin_wait_armed;
+  uint64_t spin_wait_reset_tick;
 };
 
 // Default FPCR for FPU mode (round to nearest, no flush to zero).
