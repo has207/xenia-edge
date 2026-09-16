@@ -27,7 +27,17 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
-void DbgBreakPoint_entry() { xe::debugging::Break(); }
+void DbgBreakPoint_entry() {
+  // On real hardware this only traps when a kernel debugger is attached;
+  // otherwise it's a no-op. Breaking unconditionally here kills the host
+  // process with an unhandled exception whenever guest code hits this path
+  // without a debugger attached (e.g. a game's own allocation-failure
+  // diagnostic trap), which bypasses Xenia's own guest crash reporting
+  // entirely - see KeBugCheckEx_entry below for the same guard pattern.
+  if (xe::debugging::IsDebuggerAttached()) {
+    xe::debugging::Break();
+  }
+}
 DECLARE_XBOXKRNL_EXPORT2(DbgBreakPoint, kDebug, kStub, kImportant);
 
 // https://msdn.microsoft.com/en-us/library/xcb2z8hs.aspx
