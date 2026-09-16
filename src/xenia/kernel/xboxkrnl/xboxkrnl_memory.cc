@@ -8,11 +8,29 @@
  */
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
+#include <mutex>
+#include <unordered_set>
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/xbox.h"
+
+namespace {
+// Title 45410811 (UEFA Champions League 2006-2007) has an audio/event-
+// dispatch bug that allocates an unbounded, non-deterministic number of
+// 192KB (0x30000) physical buffers during match loading and never frees
+// them, exhausting the fixed 512MB physical heap and crashing on an
+// unrelated null-deref shortly after. Capping outstanding allocations of
+// this exact size lets the game's own graceful-degradation path handle the
+// failure (as it already does for other missing/failed resources) instead
+// of exhausting all physical memory.
+constexpr uint32_t kLeakyTitleId = 0x45410811;
+constexpr uint32_t kLeakySize = 0x00030000;
+constexpr size_t kLeakySizeCap = 24;
+std::mutex g_leaky_outstanding_mutex;
+std::unordered_set<uint32_t> g_leaky_outstanding_addrs;
+}  // namespace
 
 DEFINE_bool(
     ignore_offset_for_ranged_allocations, false,
@@ -536,6 +554,20 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
 dword_result_t MmAllocatePhysicalMemoryEx_entry(
     dword_t flags, dword_t region_size, dword_t protect_bits,
     dword_t min_addr_range, dword_t max_addr_range, dword_t alignment) {
+  if (uint32_t(region_size) == kLeakySize &&
+      kernel_state()->title_id() == kLeakyTitleId) {
+    std::lock_guard<std::mutex> lock(g_leaky_outstanding_mutex);
+    if (g_leaky_outstanding_addrs.size() >= kLeakySizeCap) {
+      return 0;
+    }
+    uint32_t result = xeMmAllocatePhysicalMemoryEx(
+        flags, region_size, protect_bits, min_addr_range, max_addr_range,
+        alignment);
+    if (result) {
+      g_leaky_outstanding_addrs.insert(result);
+    }
+    return result;
+  }
   return xeMmAllocatePhysicalMemoryEx(flags, region_size, protect_bits,
                                       min_addr_range, max_addr_range,
                                       alignment);
@@ -554,6 +586,11 @@ void MmFreePhysicalMemory_entry(dword_t type, dword_t base_address) {
   // base_address = result of MmAllocatePhysicalMemory.
 
   assert_true((base_address & 0x1F) == 0);
+
+  {
+    std::lock_guard<std::mutex> lock(g_leaky_outstanding_mutex);
+    g_leaky_outstanding_addrs.erase(uint32_t(base_address));
+  }
 
   auto heap = kernel_state()->memory()->LookupHeap(base_address);
   heap->Release(base_address);
