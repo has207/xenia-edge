@@ -295,8 +295,29 @@ std::string StripTomlQuotes(std::string value) {
   return value;
 }
 
+// Stores the row's text with the TOML type of the cvar it belongs to. Guessing
+// the type from the text turns a string cvar holding "1040" into an integer,
+// which the loader then rejects as a type mismatch and resets to the default.
 void InsertTypedValue(toml::table& dest, const std::string& key,
-                      const std::string& value_str) {
+                      const std::string& value_str, cvar::IConfigVar* var) {
+  if (dynamic_cast<cvar::ConfigVar<std::string>*>(var) ||
+      dynamic_cast<cvar::ConfigVar<std::filesystem::path>*>(var)) {
+    dest.insert_or_assign(key, value_str);
+    return;
+  }
+  if (dynamic_cast<cvar::ConfigVar<bool>*>(var)) {
+    dest.insert_or_assign(key, value_str == "true");
+    return;
+  }
+  if (dynamic_cast<cvar::ConfigVar<double>*>(var)) {
+    char* end = nullptr;
+    double dv = std::strtod(value_str.c_str(), &end);
+    if (end != value_str.c_str() && *end == '\0') {
+      dest.insert_or_assign(key, dv);
+      return;
+    }
+  }
+  // Integer cvars, and anything unexpected, keep the text-based inference.
   if (value_str == "true" || value_str == "false") {
     dest.insert_or_assign(key, value_str == "true");
     return;
@@ -541,7 +562,7 @@ bool GameConfigPanel::SaveOverrides() {
       continue;
     }
     InsertTypedValue(by_category[var->category()], row->name,
-                     xe::ui::DisplayNameToIntCvarValue(row->name, value));
+                     xe::ui::DisplayNameToIntCvarValue(row->name, value), var);
   }
   for (auto& [cat, tbl] : by_category) {
     if (auto* dest = config::ResolveSectionTable(out, cat)) {
