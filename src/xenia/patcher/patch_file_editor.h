@@ -47,6 +47,8 @@ class PatchFileEditor {
 
   std::filesystem::path storage_path_;
   std::vector<std::string> lines_;
+  // Whether the source text ended with a line break, so saving keeps it.
+  bool source_ends_with_newline_ = false;
   std::vector<PatchEntry> patches_;
 };
 

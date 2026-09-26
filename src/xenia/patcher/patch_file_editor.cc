@@ -39,6 +39,8 @@ PatchFileEditor::PatchFileEditor(std::string_view source_text,
     while (std::getline(ss, line)) {
       lines_.push_back(std::move(line));
     }
+    source_ends_with_newline_ =
+        !source_text.empty() && source_text.back() == '\n';
   }
 
   toml::table root;
@@ -131,6 +133,14 @@ bool PatchFileEditor::Save() const {
     if (i + 1 < lines_.size()) {
       out << "\n";
     }
+  }
+  // The lines keep the \r of a CRLF source, so the last line must get its \n
+  // back too - a file ending in a lone \r is rejected by the TOML parser, and
+  // the whole patch file then vanishes from the list on the next launch.
+  if (!lines_.empty() &&
+      (source_ends_with_newline_ ||
+       (!lines_.back().empty() && lines_.back().back() == '\r'))) {
+    out << "\n";
   }
   return true;
 }
