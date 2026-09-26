@@ -39,6 +39,8 @@ enum class PipelineGeometryShader : uint32_t {
   kPointList,
   kRectangleList,
   kQuadList,
+  // Lines expanded to 1 guest pixel wide for resolution-scaled draws.
+  kLineList,
 };
 
 // Guest shader logic shared by the D3D12 (spirv_to_dxil) and Vulkan backends:
@@ -121,7 +123,7 @@ class GuestSpirvShaderCache {
   union GeometryShaderKey {
     uint32_t key;
     struct {
-      PipelineGeometryShader type : 2;
+      PipelineGeometryShader type : 3;
       uint32_t interpolator_count : 5;
       // Raw enabled count (0-6). Vulkan keys on this too but always builds 6.
       uint32_t user_clip_plane_count : 3;
