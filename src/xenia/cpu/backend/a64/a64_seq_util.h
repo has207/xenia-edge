@@ -298,14 +298,28 @@ inline int SrcVReg(A64Emitter& e, const T& op, int scratch_idx) {
   return op.reg().getIdx();
 }
 
+inline bool NeedsPhysicalRemap() {
+  return xe::memory::allocation_granularity() > 0x1000;
+}
+
+inline void ApplyPhysicalRemapW0(A64Emitter& e) {
+  using namespace Xbyak_aarch64;
+  Xbyak_aarch64::Label skip;
+  e.lsr(e.w17, e.w0, 29);
+  e.cmp(e.w17, 7);
+  // skip is bound one instruction later, so b_near is in range.
+  e.b_near(NE, skip);
+  e.add(e.w0, e.w0, 1, 12);  // + 0x1000 via LSL #12
+  e.L(skip);
+}
+
 // Compute a guest memory address, returning the XReg for [x21, xN] addressing.
 // For constants, loads the address into x0 (scratch).
 inline XReg ComputeMemoryAddress(A64Emitter& e, const I64Op& guest) {
   using namespace Xbyak_aarch64;
   if (guest.is_constant) {
     uint32_t address = static_cast<uint32_t>(guest.constant());
-    if (address >= 0xE0000000 &&
-        xe::memory::allocation_granularity() > 0x1000) {
+    if (address >= 0xE0000000 && NeedsPhysicalRemap()) {
       address += 0x1000;
     }
     e.mov(e.x0, static_cast<uint64_t>(address));
@@ -315,24 +329,55 @@ inline XReg ComputeMemoryAddress(A64Emitter& e, const I64Op& guest) {
     // Guest addresses are always 32-bit. Clear any stale upper bits before
     // applying the host membase so guest pointers can't escape above 4 GB.
     e.mov(e.w0, WReg(src.getIdx()));
-    if (xe::memory::allocation_granularity() > 0x1000) {
-      // Branch-free: w17 = w0 + 0x1000, kept only when w0 >= 0xE0000000.
-      e.mov(e.w17, 0xE0000000u);
-      e.cmp(e.w0, e.w17);
-      e.add(e.w17, e.w0, 1, 12);  // w17 = w0 + 0x1000 via LSL #12
-      e.csel(e.w0, e.w0, e.w17, LO);
+    if (NeedsPhysicalRemap()) {
+      ApplyPhysicalRemapW0(e);
     }
     return e.x0;
   }
 }
 
+inline bool GuestMemDirectIndex(const I64Op& guest, int* out_w_idx) {
+  if (guest.is_constant || NeedsPhysicalRemap()) {
+    return false;
+  }
+  *out_w_idx = guest.reg().getIdx();
+  return true;
+}
+
+// The fallback address lives in x0; emit_access must not clobber it first.
+template <typename Fn>
+inline void EmitGuestMemAccess(A64Emitter& e, const I64Op& guest,
+                               Fn&& emit_access) {
+  int w_idx;
+  if (GuestMemDirectIndex(guest, &w_idx)) {
+    emit_access(ptr(e.GetMembaseReg(), WReg(w_idx), Xbyak_aarch64::UXTW));
+  } else {
+    emit_access(ptr(e.GetMembaseReg(), ComputeMemoryAddress(e, guest)));
+  }
+}
+
+// The remap is decided on the effective address, not the base, as on x64.
 template <typename OffsetOp>
-inline XReg AddGuestMemoryOffset(A64Emitter& e, const XReg& base,
-                                 const OffsetOp& offset) {
+inline XReg ComputeMemoryAddressOffset(A64Emitter& e, const I64Op& guest,
+                                       const OffsetOp& offset) {
+  using namespace Xbyak_aarch64;
+  if (guest.is_constant && offset.is_constant) {
+    uint32_t address = static_cast<uint32_t>(guest.constant()) +
+                       static_cast<uint32_t>(offset.constant());
+    if (address >= 0xE0000000 && NeedsPhysicalRemap()) {
+      address += 0x1000;
+    }
+    e.mov(e.x0, static_cast<uint64_t>(address));
+    return e.x0;
+  }
+  if (guest.is_constant) {
+    e.mov(e.w0, static_cast<uint64_t>(static_cast<uint32_t>(guest.constant())));
+  } else {
+    e.mov(e.w0, WReg(guest.reg().getIdx()));
+  }
   // Guest address arithmetic wraps at 32 bits before the host membase is
   // applied. Keep the add in W registers so stale high bits can't escape into
   // the final host pointer.
-  e.mov(e.w0, WReg(base.getIdx()));
   if (offset.is_constant) {
     const uint32_t imm = static_cast<uint32_t>(offset.constant());
     const uint32_t neg = 0u - imm;
@@ -354,7 +399,24 @@ inline XReg AddGuestMemoryOffset(A64Emitter& e, const XReg& base,
   } else {
     e.add(e.w0, e.w0, WReg(offset.reg().getIdx()));
   }
+  if (NeedsPhysicalRemap()) {
+    ApplyPhysicalRemapW0(e);
+  }
   return e.x0;
+}
+
+// Guest addresses wrap at 32 bits: a nonzero displacement is added in W first.
+template <typename OffsetOp, typename Fn>
+inline void EmitGuestMemAccessOffset(A64Emitter& e, const I64Op& guest,
+                                     const OffsetOp& offset, Fn&& emit_access) {
+  int w_idx;
+  if (offset.is_constant && offset.constant() == 0 &&
+      GuestMemDirectIndex(guest, &w_idx)) {
+    emit_access(ptr(e.GetMembaseReg(), WReg(w_idx), Xbyak_aarch64::UXTW));
+  } else {
+    emit_access(
+        ptr(e.GetMembaseReg(), ComputeMemoryAddressOffset(e, guest, offset)));
+  }
 }
 
 // Flush denormal float32 lanes to zero in a NEON register (in-place).
