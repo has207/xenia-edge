@@ -27,6 +27,11 @@ DEFINE_bool(accurate_vmx_denormal_flush, false,
 DEFINE_bool(disassemble_functions, false,
             "Disassemble functions during generation.", "CPU");
 
+DEFINE_bool(no_round_to_single, false,
+            "Not for users, breaks games. Skip rounding double values to "
+            "single precision and back",
+            "CPU");
+
 DEFINE_bool(trace_function_coverage, false,
             "Count how many times each guest instruction executes and report "
             "the totals in the guestcoverage section of the profiler dump.",
