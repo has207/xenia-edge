@@ -60,6 +60,13 @@ std::vector<unsigned int> BuildGuestPrimitiveGeometryShaderSpirv(
       output_primitive_execution_mode = spv::ExecutionModeOutputTriangleStrip;
       output_max_vertices = 4;
       break;
+    case BuiltinGeometryShaderType::kLineList:
+      // Line (of a list or a strip) to a strip of 2 triangles.
+      input_primitive_execution_mode = spv::ExecutionModeInputLines;
+      input_primitive_vertex_count = 2;
+      output_primitive_execution_mode = spv::ExecutionModeOutputTriangleStrip;
+      output_max_vertices = 4;
+      break;
     default:
       assert_unhandled_case(type);
   }
@@ -127,7 +134,8 @@ std::vector<unsigned int> BuildGuestPrimitiveGeometryShaderSpirv(
           : spv::NoType;
 
   // System constants.
-  // For points:
+  // For points (lines only need point_screen_diameter_to_ndc_radius, as the
+  // NDC size of a guest pixel):
   // - float2 point_constant_diameter
   // - float2 point_screen_diameter_to_ndc_radius
   enum PointConstant : uint32_t {
@@ -136,7 +144,8 @@ std::vector<unsigned int> BuildGuestPrimitiveGeometryShaderSpirv(
     kPointConstantCount,
   };
   spv::Id type_system_constants = spv::NoType;
-  if (type == BuiltinGeometryShaderType::kPointList) {
+  if (type == BuiltinGeometryShaderType::kPointList ||
+      type == BuiltinGeometryShaderType::kLineList) {
     id_vector_temp.clear();
     id_vector_temp.resize(kPointConstantCount);
     id_vector_temp[kPointConstantConstantDiameter] = type_float2;
@@ -999,6 +1008,206 @@ std::vector<unsigned int> BuildGuestPrimitiveGeometryShaderSpirv(
               const_member_out_gl_per_vertex_clip_distance);
           builder.createStore(
               vertex_clip_distances,
+              builder.createAccessChain(spv::StorageClassOutput,
+                                        out_gl_per_vertex, id_vector_temp));
+        }
+        // Emit the vertex.
+        builder.createNoResultOp(spv::OpEmitVertex);
+      }
+      builder.createNoResultOp(spv::OpEndPrimitive);
+    } break;
+
+    case BuiltinGeometryShaderType::kLineList: {
+      // Host lines are rasterized 1 host pixel wide, but a guest line covers 1
+      // guest pixel, which is draw_resolution_scale host pixels. Expand the
+      // segment into a quad 1 guest pixel wide centered on the line, each end
+      // keeping its own attributes.
+
+      spv::Id const_int_0 = builder.makeIntConstant(0);
+      spv::Id const_int_1 = builder.makeIntConstant(1);
+      spv::Id const_float_0 = builder.makeFloatConstant(0.0f);
+      spv::Id const_float_1 = builder.makeFloatConstant(1.0f);
+
+      // Half of a guest pixel in the NDC along each axis - the constant is the
+      // NDC radius of a 1 guest pixel diameter.
+      id_vector_temp.clear();
+      id_vector_temp.push_back(builder.makeIntConstant(
+          int32_t(kPointConstantScreenDiameterToNdcRadius)));
+      id_vector_temp.push_back(const_int_0);
+      spv::Id half_pixel_ndc_x = builder.createLoad(
+          builder.createAccessChain(spv::StorageClassUniform,
+                                    uniform_system_constants, id_vector_temp),
+          spv::NoPrecision);
+      id_vector_temp.back() = const_int_1;
+      spv::Id half_pixel_ndc_y = builder.createLoad(
+          builder.createAccessChain(spv::StorageClassUniform,
+                                    uniform_system_constants, id_vector_temp),
+          spv::NoPrecision);
+
+      // Load the positions, and get the vertices in half guest pixel units
+      // (NDC divided by the NDC size of half a guest pixel) so the direction
+      // is measured in screen space regardless of the viewport aspect.
+      std::array<spv::Id, 2> line_vertex_x, line_vertex_y, line_vertex_z,
+          line_vertex_w, line_vertex_pixels_x, line_vertex_pixels_y;
+      for (uint32_t i = 0; i < 2; ++i) {
+        id_vector_temp.clear();
+        id_vector_temp.push_back(builder.makeIntConstant(int32_t(i)));
+        id_vector_temp.push_back(const_member_in_gl_per_vertex_position);
+        spv::Id line_vertex_position = builder.createLoad(
+            builder.createAccessChain(spv::StorageClassInput, in_gl_per_vertex,
+                                      id_vector_temp),
+            spv::NoPrecision);
+        line_vertex_x[i] =
+            builder.createCompositeExtract(line_vertex_position, type_float, 0);
+        line_vertex_y[i] =
+            builder.createCompositeExtract(line_vertex_position, type_float, 1);
+        line_vertex_z[i] =
+            builder.createCompositeExtract(line_vertex_position, type_float, 2);
+        line_vertex_w[i] =
+            builder.createCompositeExtract(line_vertex_position, type_float, 3);
+        spv::Id line_vertex_inv_w = builder.createBinOp(
+            spv::OpFDiv, type_float, const_float_1, line_vertex_w[i]);
+        line_vertex_pixels_x[i] = builder.createBinOp(
+            spv::OpFDiv, type_float,
+            builder.createBinOp(spv::OpFMul, type_float, line_vertex_x[i],
+                                line_vertex_inv_w),
+            half_pixel_ndc_x);
+        line_vertex_pixels_y[i] = builder.createBinOp(
+            spv::OpFDiv, type_float,
+            builder.createBinOp(spv::OpFMul, type_float, line_vertex_y[i],
+                                line_vertex_inv_w),
+            half_pixel_ndc_y);
+      }
+
+      // Direction of the line in screen space.
+      spv::Id line_direction_x =
+          builder.createBinOp(spv::OpFSub, type_float, line_vertex_pixels_x[1],
+                              line_vertex_pixels_x[0]);
+      spv::Id line_direction_y =
+          builder.createBinOp(spv::OpFSub, type_float, line_vertex_pixels_y[1],
+                              line_vertex_pixels_y[0]);
+      spv::Id line_length = builder.createUnaryBuiltinCall(
+          type_float, ext_inst_glsl_std_450, GLSLstd450Sqrt,
+          builder.createBinOp(
+              spv::OpFAdd, type_float,
+              builder.createBinOp(spv::OpFMul, type_float, line_direction_x,
+                                  line_direction_x),
+              builder.createBinOp(spv::OpFMul, type_float, line_direction_y,
+                                  line_direction_y)));
+
+      // Drop zero-length lines (also NaN-safe), there's nothing to expand and
+      // the normal would be undefined.
+      spv::Id line_length_positive = builder.createBinOp(
+          spv::OpFOrdGreaterThan, type_bool, line_length, const_float_0);
+      spv::Block& line_degenerate_predecessor = *builder.getBuildPoint();
+      spv::Block& line_degenerate_then_block = builder.makeNewBlock();
+      spv::Block& line_degenerate_merge_block = builder.makeNewBlock();
+      builder.createSelectionMerge(&line_degenerate_merge_block,
+                                   spv::SelectionControlDontFlattenMask);
+      {
+        std::unique_ptr<spv::Instruction> branch_conditional_op(
+            std::make_unique<spv::Instruction>(spv::OpBranchConditional));
+        branch_conditional_op->addIdOperand(line_length_positive);
+        branch_conditional_op->addIdOperand(
+            line_degenerate_merge_block.getId());
+        branch_conditional_op->addIdOperand(line_degenerate_then_block.getId());
+        branch_conditional_op->addImmediateOperand(2);
+        branch_conditional_op->addImmediateOperand(1);
+        line_degenerate_predecessor.addInstruction(
+            std::move(branch_conditional_op));
+      }
+      line_degenerate_then_block.addPredecessor(&line_degenerate_predecessor);
+      line_degenerate_merge_block.addPredecessor(&line_degenerate_predecessor);
+      builder.setBuildPoint(&line_degenerate_then_block);
+      builder.createNoResultOp(spv::OpReturn);
+      builder.setBuildPoint(&line_degenerate_merge_block);
+
+      // Unit normal in screen space, then half a guest pixel along it in the
+      // NDC (back to the per-axis NDC size of half a guest pixel).
+      spv::Id line_inv_length = builder.createBinOp(spv::OpFDiv, type_float,
+                                                    const_float_1, line_length);
+      spv::Id line_offset_ndc_x = builder.createBinOp(
+          spv::OpFMul, type_float,
+          builder.createBinOp(spv::OpFMul, type_float,
+                              builder.createUnaryOp(spv::OpFNegate, type_float,
+                                                    line_direction_y),
+                              line_inv_length),
+          half_pixel_ndc_x);
+      spv::Id line_offset_ndc_y = builder.createBinOp(
+          spv::OpFMul, type_float,
+          builder.createBinOp(spv::OpFMul, type_float, line_direction_x,
+                              line_inv_length),
+          half_pixel_ndc_y);
+
+      // Initialize the point coordinates output for safety if this shader type
+      // is used with has_point_coordinates for some reason.
+      spv::Id const_point_coordinates_zero = spv::NoResult;
+      if (has_point_coordinates) {
+        id_vector_temp.clear();
+        id_vector_temp.push_back(const_float_0);
+        id_vector_temp.push_back(const_float_0);
+        const_point_coordinates_zero =
+            builder.makeCompositeConstant(type_float2, id_vector_temp);
+      }
+
+      // Emit the strip: both sides of the first vertex, then of the second.
+      for (uint32_t i = 0; i < 4; ++i) {
+        uint32_t line_vertex_index = i >> 1;
+        spv::Id const_line_vertex_index =
+            builder.makeIntConstant(int32_t(line_vertex_index));
+        spv::Op line_offset_add_op = (i & 1) ? spv::OpFAdd : spv::OpFSub;
+        // Interpolators.
+        id_vector_temp.clear();
+        id_vector_temp.push_back(const_line_vertex_index);
+        for (uint32_t j = 0; j < interpolator_count; ++j) {
+          builder.createStore(
+              builder.createLoad(builder.createAccessChain(
+                                     spv::StorageClassInput,
+                                     in_interpolators[j], id_vector_temp),
+                                 spv::NoPrecision),
+              out_interpolators[j]);
+        }
+        // Point coordinates.
+        if (has_point_coordinates) {
+          builder.createStore(const_point_coordinates_zero,
+                              out_point_coordinates);
+        }
+        // Position - the NDC offset is transformed to the clip space by
+        // multiplying by W.
+        spv::Id line_vertex_w_value = line_vertex_w[line_vertex_index];
+        id_vector_temp.clear();
+        id_vector_temp.push_back(builder.createNoContractionBinOp(
+            line_offset_add_op, type_float, line_vertex_x[line_vertex_index],
+            builder.createBinOp(spv::OpFMul, type_float, line_offset_ndc_x,
+                                line_vertex_w_value)));
+        id_vector_temp.push_back(builder.createNoContractionBinOp(
+            line_offset_add_op, type_float, line_vertex_y[line_vertex_index],
+            builder.createBinOp(spv::OpFMul, type_float, line_offset_ndc_y,
+                                line_vertex_w_value)));
+        id_vector_temp.push_back(line_vertex_z[line_vertex_index]);
+        id_vector_temp.push_back(line_vertex_w_value);
+        spv::Id line_quad_vertex_position =
+            builder.createCompositeConstruct(type_float4, id_vector_temp);
+        id_vector_temp.clear();
+        id_vector_temp.push_back(const_member_out_gl_per_vertex_position);
+        builder.createStore(
+            line_quad_vertex_position,
+            builder.createAccessChain(spv::StorageClassOutput,
+                                      out_gl_per_vertex, id_vector_temp));
+        // Clip distances.
+        if (clip_distance_count) {
+          id_vector_temp.clear();
+          id_vector_temp.push_back(const_line_vertex_index);
+          id_vector_temp.push_back(const_member_in_gl_per_vertex_clip_distance);
+          spv::Id line_vertex_clip_distances = builder.createLoad(
+              builder.createAccessChain(spv::StorageClassInput,
+                                        in_gl_per_vertex, id_vector_temp),
+              spv::NoPrecision);
+          id_vector_temp.clear();
+          id_vector_temp.push_back(
+              const_member_out_gl_per_vertex_clip_distance);
+          builder.createStore(
+              line_vertex_clip_distances,
               builder.createAccessChain(spv::StorageClassOutput,
                                         out_gl_per_vertex, id_vector_temp));
         }

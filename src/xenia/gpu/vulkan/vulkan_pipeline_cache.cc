@@ -1288,10 +1288,19 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
         primitive_topology = PipelinePrimitiveTopology::kPointList;
         break;
       case xenos::PrimitiveType::kLineList:
-        primitive_topology = PipelinePrimitiveTopology::kLineList;
-        break;
       case xenos::PrimitiveType::kLineStrip:
-        primitive_topology = PipelinePrimitiveTopology::kLineStrip;
+        // Host lines are 1 host pixel wide, expand them to 1 guest pixel when
+        // the draw is resolution-scaled. Without geometry shaders, lines stay
+        // thin rather than being dropped.
+        if (device_properties.geometryShader &&
+            (render_target_cache_.GetDrawScaleX() > 1 ||
+             render_target_cache_.GetDrawScaleY() > 1)) {
+          geometry_shader = PipelineGeometryShader::kLineList;
+        }
+        primitive_topology = primitive_processing_result.host_primitive_type ==
+                                     xenos::PrimitiveType::kLineList
+                                 ? PipelinePrimitiveTopology::kLineList
+                                 : PipelinePrimitiveTopology::kLineStrip;
         break;
       case xenos::PrimitiveType::kTriangleList:
         primitive_topology = PipelinePrimitiveTopology::kTriangleList;

@@ -1645,6 +1645,16 @@ bool PipelineCache::GetCurrentStateDescription(
       case xenos::PrimitiveType::kQuadList:
         description_out.geometry_shader = PipelineGeometryShader::kQuadList;
         break;
+      case xenos::PrimitiveType::kLineList:
+      case xenos::PrimitiveType::kLineStrip:
+        // Host lines are 1 host pixel wide, expand them to 1 guest pixel when
+        // the draw is resolution-scaled.
+        description_out.geometry_shader =
+            (render_target_cache_.GetDrawScaleX() > 1 ||
+             render_target_cache_.GetDrawScaleY() > 1)
+                ? PipelineGeometryShader::kLineList
+                : PipelineGeometryShader::kNone;
+        break;
       default:
         description_out.geometry_shader = PipelineGeometryShader::kNone;
         break;

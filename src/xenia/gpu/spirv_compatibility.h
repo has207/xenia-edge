@@ -417,6 +417,7 @@ namespace spv {
 #define ExecutionModeSampleInterlockOrderedEXT \
   ExecutionMode::SampleInterlockOrderedEXT
 #define ExecutionModeInputPoints ExecutionMode::InputPoints
+#define ExecutionModeInputLines ExecutionMode::InputLines
 #define ExecutionModeTriangles ExecutionMode::Triangles
 #define ExecutionModeQuads ExecutionMode::Quads
 #define ExecutionModeIsolines ExecutionMode::Isolines

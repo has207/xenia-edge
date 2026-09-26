@@ -24,6 +24,9 @@ enum class BuiltinGeometryShaderType : uint32_t {
   kPointList,
   kRectangleList,
   kQuadList,
+  // Line list or strip expanded to quads 1 guest pixel wide, for
+  // resolution-scaled draws (host lines are always 1 host pixel wide).
+  kLineList,
 };
 
 // Builds the SPIR-V for a built-in primitive-expansion geometry shader, shared

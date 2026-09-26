@@ -274,12 +274,12 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
     VulkanRenderTargetCache::RenderPassKey render_pass_key;
 
     // Shader stages.
-    PipelineGeometryShader geometry_shader : 2;            // 2
-    PipelineTessellationMode tessellation_mode : 2;        // 4
-    PipelineTessellationPatchType tessellation_patch : 2;  // 6
+    PipelineGeometryShader geometry_shader : 3;            // 3
+    PipelineTessellationMode tessellation_mode : 2;        // 5
+    PipelineTessellationPatchType tessellation_patch : 2;  // 7
     // Input assembly.
-    PipelinePrimitiveTopology primitive_topology : 3;  // 9
-    uint32_t primitive_restart : 1;                    // 10
+    PipelinePrimitiveTopology primitive_topology : 3;  // 10
+    uint32_t primitive_restart : 1;                    // 11
     // Rasterization.
     uint32_t depth_clamp_enable : 1;       // 7
     PipelinePolygonMode polygon_mode : 2;  // 9
@@ -327,7 +327,8 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
       }
     };
 
-    static constexpr uint32_t kVersion = 0x20260903;
+    // Bumped for the line geometry shader widening geometry_shader.
+    static constexpr uint32_t kVersion = 0x20260926;
   });
 
   // Pipeline storage constants.
