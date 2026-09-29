@@ -3339,6 +3339,104 @@ struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
 };
 EMITTER_OPCODE_TABLE(OPCODE_MAX, MAX_F32, MAX_F64, MAX_V128);
 
+// ============================================================================
+// OPCODE_DENORMAL_QUIRK
+// ============================================================================
+// quirk = (any operand denormal) && (all operands finite), as i8 0/1.
+struct DENORMAL_QUIRK
+    : Sequence<DENORMAL_QUIRK,
+               I<OPCODE_DENORMAL_QUIRK, I8Op, F64Op, F64Op, F64Op>> {
+  template <typename SRC>
+  static int CollectOperands(A64Emitter& e, const SRC& s1, const SRC& s2,
+                             const SRC& s3, DReg* out) {
+    const SRC* srcs[3] = {&s1, &s2, &s3};
+    uint64_t const_bits[3];
+    int reg_idx[3];
+    int n = 0;
+    int next_scratch = 0;
+    for (int k = 0; k < 3; ++k) {
+      uint64_t bits = 0;
+      int idx = -1;
+      if (srcs[k]->is_constant) {
+        double d = srcs[k]->constant();
+        std::memcpy(&bits, &d, sizeof(bits));
+      } else {
+        idx = srcs[k]->reg().getIdx();
+      }
+      bool dup = false;
+      for (int m = 0; m < n; ++m) {
+        if (idx >= 0 ? reg_idx[m] == idx
+                     : (reg_idx[m] < 0 && const_bits[m] == bits)) {
+          dup = true;
+          break;
+        }
+      }
+      if (dup) {
+        continue;
+      }
+      reg_idx[n] = idx;
+      const_bits[n] = bits;
+      if (idx >= 0) {
+        out[n] = DReg(idx);
+      } else {
+        const DReg scratch = DReg(next_scratch++);
+        e.mov(e.x0, bits);
+        e.fmov(scratch, e.x0);
+        out[n] = scratch;
+      }
+      ++n;
+    }
+    return n;
+  }
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    DReg ops[3] = {DReg(0), DReg(0), DReg(0)};
+    const int n = CollectOperands(e, i.src1, i.src2, i.src3, ops);
+
+    auto& done = e.NewCachedLabel();
+    const WReg dest = i.dest;
+    // Captured by value: the tail runs after this frame is gone.
+    auto emit_finite_check = [ops, n, dest, &done](A64Emitter& e) {
+      for (int k = 0; k < n; ++k) {
+        e.fmov(e.x0, ops[k]);
+        if (k == 0) {
+          e.and_(e.x2, e.x0, 0x7FFFFFFFFFFFFFFFull);
+        } else {
+          e.and_(e.x0, e.x0, 0x7FFFFFFFFFFFFFFFull);
+          e.cmp(e.x2, e.x0);
+          e.csel(e.x2, e.x2, e.x0, HI);
+        }
+      }
+      e.mov(e.x0, 0x7FF0000000000000ull);
+      e.cmp(e.x2, e.x0);
+      e.cset(dest, LO);
+      e.b(done);
+    };
+    auto& slow_path =
+        e.AddToTail([emit_finite_check](A64Emitter& e, Xbyak_aarch64::Label&) {
+          emit_finite_check(e);
+        });
+
+    // Once LO, ccmp writes NZCV = 0 (still LO), so the verdict sticks.
+    e.mov(e.x1, 0x000FFFFFFFFFFFFFull);
+    for (int k = 0; k < n; ++k) {
+      e.fmov(e.x0, ops[k]);
+      e.and_(e.x0, e.x0, 0x7FFFFFFFFFFFFFFFull);
+      e.sub(e.x0, e.x0, 1);
+      if (k == 0) {
+        e.cmp(e.x0, e.x1);
+      } else {
+        e.ccmp(e.x0, e.x1, 0, HS);
+      }
+    }
+    // The tail can sit beyond b.cond's reach; b() emits the range-safe form.
+    e.b(LO, slow_path);
+    // movz form: mov(dest, WReg(31)) would assemble as the SP-alias ADD.
+    e.mov(i.dest, uint64_t(0));
+    e.L(done);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_DENORMAL_QUIRK, DENORMAL_QUIRK);
+
 // MIN has signed semantics (HIR builder constant-folds using CompareSLT).
 // I8/I16 need sign-extension; all need signed condition code (LT not LO).
 struct MIN_I8 : Sequence<MIN_I8, I<OPCODE_MIN, I8Op, I8Op, I8Op>> {

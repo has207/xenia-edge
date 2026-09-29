@@ -12,6 +12,7 @@
 #include "xenia/base/byte_order.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/profiling.h"
+#include "xenia/cpu/cpu_flags.h"
 namespace xe {
 namespace cpu {
 namespace compiler {
@@ -72,7 +73,24 @@ static bool SameValueOrEqualConstant(hir::Value* x, hir::Value* y) {
   }
 
   if (x->IsConstant() && y->IsConstant()) {
-    return x->AsUint64() == y->AsUint64();
+    if (x->type != y->type) {
+      return false;
+    }
+    // AsUint64 asserts on float constants; compare raw bits.
+    switch (x->type) {
+      case hir::INT8_TYPE:
+        return x->constant.u8 == y->constant.u8;
+      case hir::INT16_TYPE:
+        return x->constant.u16 == y->constant.u16;
+      case hir::INT32_TYPE:
+      case hir::FLOAT32_TYPE:
+        return x->constant.u32 == y->constant.u32;
+      case hir::INT64_TYPE:
+      case hir::FLOAT64_TYPE:
+        return x->constant.u64 == y->constant.u64;
+      default:
+        return false;
+    }
   }
 
   return false;
@@ -1349,6 +1367,42 @@ bool SimplificationPass::SimplifySHLArith(hir::Instr* i,
 
   return true;
 }
+
+// A single's smallest denormal (2^-149) is far above double's normal floor.
+static bool IsNeverF64Denormal(hir::Value* v, int depth) {
+  if (!v || v->type != FLOAT64_TYPE) {
+    return false;
+  }
+  if (v->IsConstant()) {
+    uint64_t bits;
+    std::memcpy(&bits, &v->constant.f64, sizeof(bits));
+    return (bits & 0x7FF0000000000000ull) != 0 ||
+           (bits & 0x000FFFFFFFFFFFFFull) == 0;
+  }
+  if (v->flags & VALUE_NEVER_F64_DENORMAL) {
+    return true;
+  }
+  hir::Instr* def = v->GetDefSkipAssigns();
+  if (!def || depth <= 0) {
+    return false;
+  }
+  switch (def->GetOpcodeNum()) {
+    case OPCODE_TO_SINGLE:
+      // Under --no_round_to_single the x64 TO_SINGLE is an identity.
+      return !cvars::no_round_to_single;
+    case OPCODE_CONVERT:
+      return def->src1.value && def->src1.value->type == FLOAT32_TYPE;
+    case OPCODE_SELECT:
+      return IsNeverF64Denormal(def->src2.value, depth - 1) &&
+             IsNeverF64Denormal(def->src3.value, depth - 1);
+    case OPCODE_NEG:
+    case OPCODE_ABS:
+      return IsNeverF64Denormal(def->src1.value, depth - 1);
+    default:
+      return false;
+  }
+}
+
 bool SimplificationPass::SimplifyBasicArith(hir::Instr* i,
                                             hir::HIRBuilder* builder) {
   if (!i->dest) {
@@ -1369,6 +1423,16 @@ bool SimplificationPass::SimplifyBasicArith(hir::Instr* i,
     }
     case OPCODE_SHL: {
       return SimplifySHLArith(i, builder);
+    }
+    case OPCODE_DENORMAL_QUIRK: {
+      if (IsNeverF64Denormal(i->src1.value, 4) &&
+          IsNeverF64Denormal(i->src2.value, 4) &&
+          IsNeverF64Denormal(i->src3.value, 4)) {
+        i->Replace(&OPCODE_ASSIGN_info, 0);
+        i->set_src1(builder->LoadZeroInt8());
+        return true;
+      }
+      return false;
     }
   }
   return false;
