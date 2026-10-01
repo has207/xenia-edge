@@ -68,6 +68,9 @@ bool ContextPromotionPass::Initialize(Compiler* compiler) {
   context_value_size_.resize(sizeof(ppc::PPCContext));
   context_value_base_.resize(sizeof(ppc::PPCContext));
   context_validity_.resize(static_cast<uint32_t>(sizeof(ppc::PPCContext)));
+  context_kill_.resize(static_cast<uint32_t>(sizeof(ppc::PPCContext)));
+  context_kill_scratch_.resize(static_cast<uint32_t>(sizeof(ppc::PPCContext)));
+  context_kill_read_.resize(static_cast<uint32_t>(sizeof(ppc::PPCContext)));
 
   return true;
 }
@@ -215,11 +218,63 @@ void ContextPromotionPass::PromoteBlock(Block* block) {
   }
 }
 
+void ContextPromotionPass::ComputeKillSet(Block* block, llvm::BitVector& kill) {
+  kill.reset();
+  auto& read = context_kill_read_;
+  read.reset();
+  Instr* i = block->instr_head;
+  while (i) {
+    if (i->opcode->flags & OPCODE_FLAG_VOLATILE) {
+      return;
+    }
+    if (i->opcode == &OPCODE_LOAD_CONTEXT_info) {
+      const uint32_t offset = static_cast<uint32_t>(i->src1.offset);
+      const uint32_t size = static_cast<uint32_t>(GetTypeSize(i->dest->type));
+      for (uint32_t b = offset; b < offset + size; ++b) {
+        if (!kill.test(b)) {
+          read.set(b);
+        }
+      }
+    } else if (i->opcode == &OPCODE_STORE_CONTEXT_info) {
+      const uint32_t offset = static_cast<uint32_t>(i->src1.offset);
+      const uint32_t size =
+          static_cast<uint32_t>(GetTypeSize(i->src2.value->type));
+      for (uint32_t b = offset; b < offset + size; ++b) {
+        if (!read.test(b)) {
+          kill.set(b);
+        }
+      }
+    }
+    i = i->next;
+  }
+}
+
+void ContextPromotionPass::ComputeOutgoingKillSet(Block* block,
+                                                  llvm::BitVector& out) {
+  out.reset();
+  auto edge = block->outgoing_edge_head;
+  if (!edge) {
+    return;
+  }
+  bool first = true;
+  while (edge) {
+    ComputeKillSet(edge->dest, context_kill_scratch_);
+    if (first) {
+      out = context_kill_scratch_;
+      first = false;
+    } else {
+      out &= context_kill_scratch_;
+    }
+    edge = edge->outgoing_next;
+  }
+}
+
 void ContextPromotionPass::RemoveDeadStoresBlock(Block* block) {
   // In this walk a validity bit means "this byte is fully overwritten by a
   // later store in this block, with no barrier or load in between".
   auto& validity = context_validity_;
-  validity.reset();
+  ComputeOutgoingKillSet(block, context_kill_);
+  validity = context_kill_;
   const bool promote_vec128 =
       cvars::context_promote_vec128 && !cvars::disable_context_promotion;
 
@@ -228,9 +283,12 @@ void ContextPromotionPass::RemoveDeadStoresBlock(Block* block) {
   Instr* i = block->instr_tail;
   while (i) {
     Instr* prev = i->prev;
-    if (i->opcode->flags & (OPCODE_FLAG_VOLATILE | OPCODE_FLAG_BRANCH)) {
+    if (i->opcode->flags & OPCODE_FLAG_VOLATILE) {
       // Volatile instruction - requires all context values be flushed.
       validity.reset();
+    } else if (i->opcode->flags & OPCODE_FLAG_BRANCH) {
+      // Tested after VOLATILE so a call or a return still flushes.
+      validity = context_kill_;
     } else if (i->opcode == &OPCODE_LOAD_CONTEXT_info) {
       // A load that survived PromoteBlock is a live use of these bytes:
       // earlier stores overlapping it must be kept. (PromoteBlock folds
