@@ -219,7 +219,7 @@ class HIRBuilder {
                     CacheControlType type);
   void MemoryBarrier();
   void LoadBarrier();
-  void DelayExecution();
+  Instr* DelayExecution(uint16_t flags = 0);
   void SetRoundingMode(Value* value);
   Value* Max(Value* value1, Value* value2);
   Value* DenormalQuirk(Value* value1, Value* value2, Value* value3);
