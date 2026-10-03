@@ -362,6 +362,11 @@ class KernelState {
 
   std::vector<xam::XCONTENT_AGGREGATE_DATA> FindTitleUpdate(
       const uint32_t title_id) const;
+  // Picks the most compatible and newest of several title updates. Returns a
+  // pointer into title_updates.
+  const xam::XCONTENT_AGGREGATE_DATA* SelectTitleUpdate(
+      const std::vector<xam::XCONTENT_AGGREGATE_DATA>& title_updates,
+      const object_ref<UserModule> title_module);
   const object_ref<UserModule> LoadTitleUpdate(
       const xam::XCONTENT_AGGREGATE_DATA* title_update,
       const object_ref<UserModule> module);

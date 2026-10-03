@@ -697,7 +697,12 @@ X_RESULT KernelState::ApplyTitleUpdate(
     return X_STATUS_SUCCESS;
   }
 
-  auto patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
+  const xam::XCONTENT_AGGREGATE_DATA* selected_update = &title_updates.front();
+  if (title_updates.size() > 1) {
+    selected_update = SelectTitleUpdate(title_updates, title_module);
+  }
+
+  auto patch_module = LoadTitleUpdate(selected_update, title_module);
   if (!patch_module) {
     return X_STATUS_SUCCESS;
   }
@@ -751,6 +756,77 @@ std::vector<xam::XCONTENT_AGGREGATE_DATA> KernelState::FindTitleUpdate(
 
   return xam_state_->content_manager()->ListContent(
       1, 0, title_id, xe::XContentType::kInstaller);
+}
+
+const xam::XCONTENT_AGGREGATE_DATA* KernelState::SelectTitleUpdate(
+    const std::vector<xam::XCONTENT_AGGREGATE_DATA>& title_updates,
+    const object_ref<UserModule> title_module) {
+  // Same policy as xenia-canary PR 1201 ("Always select most compatible and
+  // newest TU"): keep the updates built for the running executable and take
+  // the highest version. Canary matches the media id from the package
+  // container header; here the patch XEX's delta patch descriptor is used,
+  // which every title update carries whether it is a container or an
+  // extracted package. Its source digest is the hash of the base XEX signature
+  // (the same check IsPatchSignatureProper applies afterwards) and its target
+  // version is the update's version. Each candidate is mounted and loaded in
+  // turn, and the UPDATE content released again so the caller can mount the
+  // winner.
+  uint8_t title_digest[0x14];
+  {
+    sha1::SHA1 s;
+    s.processBytes(
+        title_module->xex_module()->xex_security_info()->rsa_signature, 0x100);
+    s.finalize(title_digest);
+  }
+
+  const xam::XCONTENT_AGGREGATE_DATA* best_update = nullptr;
+  bool best_compatible = false;
+  uint32_t best_version = 0;
+  for (const auto& entry : title_updates) {
+    auto candidate = LoadTitleUpdate(&entry, title_module);
+    content_manager()->CloseContent("UPDATE");
+    if (!candidate || !candidate->xex_module()->is_patch()) {
+      XELOGW("Title update '{}' could not be loaded, skipping it",
+             entry.file_name());
+      continue;
+    }
+    xex2_opt_delta_patch_descriptor* descriptor = nullptr;
+    candidate->xex_module()->GetOptHeader(XEX_HEADER_DELTA_PATCH_DESCRIPTOR,
+                                          &descriptor);
+    if (!descriptor) {
+      XELOGW("Title update '{}' has no delta patch descriptor, skipping it",
+             entry.file_name());
+      continue;
+    }
+    const bool compatible =
+        memcmp(descriptor->digest_source, title_digest, 0x14) == 0;
+    const xex2_version version = descriptor->target_version();
+    XELOGI("Title update '{}': version {}.{}.{}.{}, {} for this executable",
+           entry.file_name(), +version.major, +version.minor, +version.build,
+           +version.qfe, compatible ? "built" : "not built");
+    if (!compatible && !cvars::allow_incompatible_title_update) {
+      continue;
+    }
+    // A compatible update beats an incompatible one; otherwise the newer wins.
+    const bool better = !best_update || (compatible && !best_compatible) ||
+                        (compatible == best_compatible &&
+                         descriptor->target_version_value > best_version);
+    if (better) {
+      best_update = &entry;
+      best_compatible = compatible;
+      best_version = descriptor->target_version_value;
+    }
+  }
+
+  if (!best_update) {
+    XELOGW(
+        "None of the {} title updates was built for this executable, trying "
+        "the first one",
+        title_updates.size());
+    return &title_updates.front();
+  }
+  XELOGI("Selected title update '{}'", best_update->file_name());
+  return best_update;
 }
 
 const object_ref<UserModule> KernelState::LoadTitleUpdate(
