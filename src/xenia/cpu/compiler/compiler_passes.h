@@ -24,6 +24,7 @@
 #include "xenia/cpu/compiler/passes/preempt_check_injection_pass.h"
 #include "xenia/cpu/compiler/passes/register_allocation_pass.h"
 #include "xenia/cpu/compiler/passes/simplification_pass.h"
+#include "xenia/cpu/compiler/passes/spin_wait_injection_pass.h"
 #include "xenia/cpu/compiler/passes/validation_pass.h"
 #include "xenia/cpu/compiler/passes/value_reduction_pass.h"
 
