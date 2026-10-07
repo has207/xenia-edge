@@ -3608,9 +3608,10 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
         "xe_var_fragment_depth", const_float_0_);
   }
 
-  if (DSV_IsApplyingPolygonOffset()) {
-    // The decal path needs the original triangle depth slope, not the slope of
-    // whichever lanes survive guest control flow or kill.
+  if (DSV_IsApplyingPolygonOffset() ||
+      (edram_fragment_shader_interlock_ && !current_shader().writes_depth())) {
+    // The decal and FSI paths need the original triangle depth slope, not the
+    // slope of whichever lanes survive guest control flow or kill.
     assert_true(input_fragment_coordinates_ != spv::NoResult);
     id_vector_temp_.clear();
     id_vector_temp_.push_back(builder_->makeIntConstant(2));

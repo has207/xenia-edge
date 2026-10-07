@@ -1711,6 +1711,24 @@ void SpirvShaderTranslator::FSI_LoadSampleMask() {
           builder_->createAccessChain(spv::StorageClassInput,
                                       input_sample_mask_, id_vector_temp_),
           spv::NoPrecision));
+  if (main_fbo_depth_derivatives_[0] != spv::NoResult) {
+    // The host compiler may sink the depth derivatives to where the lanes that
+    // aren't covered (helpers) are no longer active, making them read zeros
+    // from those lanes. Making the coverage depend on the derivatives keeps
+    // them evaluated before such lanes can exit. Zero coverage for NaN slopes
+    // only drops fragments whose depth is invalid anyway.
+    spv::Id slope_valid = builder_->createBinOp(
+        spv::OpLogicalAnd, type_bool_,
+        builder_->createBinOp(spv::OpFOrdEqual, type_bool_,
+                              main_fbo_depth_derivatives_[0],
+                              main_fbo_depth_derivatives_[0]),
+        builder_->createBinOp(spv::OpFOrdEqual, type_bool_,
+                              main_fbo_depth_derivatives_[1],
+                              main_fbo_depth_derivatives_[1]));
+    input_sample_mask_value =
+        builder_->createTriOp(spv::OpSelect, type_uint_, slope_valid,
+                              input_sample_mask_value, const_uint_0_);
+  }
 
   if (FSI_GetMsaaSamples() != xenos::MsaaSamples::k2X) {
     // 1x has the one sample, and at 4x the numbering matches - pass the
@@ -2139,21 +2157,12 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
     depth_dxy[0] = const_float_0_;
     depth_dxy[1] = const_float_0_;
   } else {
-    // Load the depth in the center of the pixel and calculate the derivatives
-    // of the depth outside non-uniform control flow.
-    assert_true(input_fragment_coordinates_ != spv::NoResult);
-    id_vector_temp_.clear();
-    id_vector_temp_.push_back(builder_->makeIntConstant(2));
-    center_depth32_unbiased =
-        builder_->createLoad(builder_->createAccessChain(
-                                 spv::StorageClassInput,
-                                 input_fragment_coordinates_, id_vector_temp_),
-                             spv::NoPrecision);
-    builder_->addCapability(spv::CapabilityDerivativeControl);
-    depth_dxy[0] = builder_->createUnaryOp(spv::OpDPdxCoarse, type_float_,
-                                           center_depth32_unbiased);
-    depth_dxy[1] = builder_->createUnaryOp(spv::OpDPdyCoarse, type_float_,
-                                           center_depth32_unbiased);
+    // The depth and its derivatives were taken at the start of the shader,
+    // before guest kills turn lanes into helpers whose values would corrupt the
+    // slope of the primitive's depth plane.
+    assert_true(main_fbo_depth_unbiased_ != spv::NoResult);
+    center_depth32_unbiased = main_fbo_depth_unbiased_;
+    depth_dxy = main_fbo_depth_derivatives_;
   }
 
   // Skip everything if potentially discarded all the samples previously in the
