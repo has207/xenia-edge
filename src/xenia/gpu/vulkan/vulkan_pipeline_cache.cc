@@ -2317,10 +2317,24 @@ bool VulkanPipelineCache::EnsurePipelineCreated(
   pipeline_create_info.pDepthStencilState = &depth_stencil_state;
   pipeline_create_info.pColorBlendState = &color_blend_state;
   pipeline_create_info.pDynamicState = &dynamic_state;
-  pipeline_create_info.layout =
-      creation_arguments.pipeline->second.pipeline_layout
-          .load(std::memory_order_acquire)
-          ->GetPipelineLayout();
+  // A placeholder's layout covers only what its shaders access, so placeholders
+  // of one vertex shader don't differ by the real pixel shader's bindings or by
+  // whether it was translated yet. The draw binds the sets they use with the
+  // entry's layout, which defines them the same.
+  const PipelineLayoutProvider* pipeline_layout;
+  if (!creating_placeholder) {
+    pipeline_layout = creation_arguments.pipeline->second.pipeline_layout.load(
+        std::memory_order_acquire);
+  } else if (vertex_shader_override != VK_NULL_HANDLE) {
+    pipeline_layout = command_processor_.GetPipelineLayout(0, 0, 0, 0);
+  } else {
+    pipeline_layout = GetGuestGraphicsPipelineLayout(
+        creation_arguments.vertex_shader, nullptr);
+  }
+  if (!pipeline_layout) {
+    return false;
+  }
+  pipeline_create_info.layout = pipeline_layout->GetPipelineLayout();
   pipeline_create_info.renderPass =
       use_dynamic_rendering ? VK_NULL_HANDLE : creation_arguments.render_pass;
   pipeline_create_info.subpass = 0;
