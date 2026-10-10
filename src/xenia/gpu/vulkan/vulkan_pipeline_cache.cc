@@ -880,18 +880,11 @@ void VulkanPipelineCache::EndSubmission() {
     pipeline_storage_file_flush_needed_ = false;
   }
 
-  if (creation_queue_.has_threads()) {
-    if (IsStorageWarmUpRunning()) {
-      // Non-blocking: let background threads work asynchronously.
-      creation_queue_.Notify();
-    } else {
-      // Blocking: wait for all queued pipelines.
-      creation_queue_.AwaitCompletion();
-    }
-  }
-
-  // Process deferred destructions when the GPU is idle.
+  // Release placeholder pipelines the GPU is now done with.
   ProcessDeferredDestructions();
+  // Pipeline creation isn't awaited. Draws use a placeholder or skip until it's
+  // done.
+  creation_queue_.Notify();
 }
 
 void VulkanPipelineCache::ExpeditePipeline(Pipeline* pipeline) {

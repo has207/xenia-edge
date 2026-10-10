@@ -5594,8 +5594,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
     submission_in_progress_.frame_index = frame_current_;
 
     // Start a new deferred command buffer - will submit it to the real one in
-    // the end of the submission (when async pipeline object creation requests
-    // are fulfilled).
+    // the end of the submission.
     deferred_command_buffer_.Reset();
 
     // Reset cached state of the command buffer.
@@ -5832,6 +5831,8 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
     primitive_processor_->EndSubmission();
 
     shared_memory_->EndSubmission();
+
+    pipeline_cache_->EndSubmission();
 
     uniform_buffer_pool_->FlushWrites();
 
