@@ -72,15 +72,10 @@ class PipelineCache : public GuestSpirvShaderCache::Host {
   void ShutdownShaderStorage();
 
   void EndSubmission();
-  bool IsCreatingPipelines();
   // Whether the non-blocking storage warm-up is still creating pipelines.
   bool IsStorageWarmUpRunning() const {
     return creation_queue_.IsAwaitingCompletion();
   }
-  // Waits for any pipeline creation needed by the current draw path to finish
-  // before state is consumed. This was added so strict ZPD query paths stop
-  // racing pipeline compilation and then blocking work on incomplete state.
-  void AwaitPipelineCompletion();
 
   SpirvShader* LoadShader(xenos::ShaderType shader_type,
                           const uint32_t* host_address, uint32_t dword_count);
@@ -211,7 +206,6 @@ class PipelineCache : public GuestSpirvShaderCache::Host {
         pipeline->uses_interpreter.load(std::memory_order_acquire);
     return state;
   }
-  ID3D12PipelineState* AwaitD3D12PipelineByHandle(void* handle);
   // The host depth bias of the current draw for dynamic depth bias, the slope
   // scaled for the draw's resolution scale.
   void GetHostDepthBias(bool primitive_polygonal, float& depth_bias_out,

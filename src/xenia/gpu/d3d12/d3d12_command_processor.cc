@@ -2360,8 +2360,7 @@ void D3D12CommandProcessor::OnPrimaryBufferEnd() {
   PumpQueryResolves();
   PumpPendingRetire();
 
-  if (cvars::submit_on_primary_buffer_end && submission_open_ &&
-      CanEndSubmissionImmediately()) {
+  if (cvars::submit_on_primary_buffer_end && submission_open_) {
     EndSubmission(false);
   }
 }
@@ -2882,37 +2881,37 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
         return false;
       }
     }
-    const char* wait_reason = stand_in_wait_reason;
-    if (!wait_reason && !skip_allowed &&
-        pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
-      wait_reason = "occlusion query";
-    }
-    if (wait_reason &&
-        pipeline_cache_->IsPipelineCreationPending(pipeline_handle)) {
-      uint64_t await_start = xe::Clock::QueryHostTickCount();
-      pipeline_cache_->ExpeditePipeline(pipeline_handle);
-      XELOGI(
-          "Awaited real pipeline for a draw into {} ({}): VS {:016X}, PS "
-          "{:016X}, {:.2f} ms",
-          render_target_cache_->GetLastUpdateDrawTargetName(), wait_reason,
-          vertex_shader->ucode_data_hash(),
-          pixel_shader ? pixel_shader->ucode_data_hash() : 0,
-          double(xe::Clock::QueryHostTickCount() - await_start) * 1000.0 /
-              double(xe::Clock::QueryHostTickFrequency()));
-    }
-    if (pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
-      // No pipeline and no placeholder available (async_shader_skip_draws with
-      // no interpreter stand-in, bindful async, or a failed placeholder) - skip
-      // the draw until the real pipeline is ready.
-      XELOGI(
-          "Skipping draw - pipeline not ready: VS {:016X} mod {:016X}, PS "
-          "{:016X} mod {:016X}",
-          vertex_shader->ucode_data_hash(), vertex_shader_modification.value,
-          pixel_shader ? pixel_shader->ucode_data_hash() : 0,
-          pixel_shader_modification.value);
-      OnVIZSurveyDraw(false);
-      return true;
-    }
+  }
+  const char* wait_reason = stand_in_wait_reason;
+  if (!wait_reason && !skip_allowed &&
+      pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
+    wait_reason = "occlusion query";
+  }
+  if (wait_reason &&
+      pipeline_cache_->IsPipelineCreationPending(pipeline_handle)) {
+    uint64_t await_start = xe::Clock::QueryHostTickCount();
+    pipeline_cache_->ExpeditePipeline(pipeline_handle);
+    XELOGI(
+        "Awaited real pipeline for a draw into {} ({}): VS {:016X}, PS "
+        "{:016X}, {:.2f} ms",
+        render_target_cache_->GetLastUpdateDrawTargetName(), wait_reason,
+        vertex_shader->ucode_data_hash(),
+        pixel_shader ? pixel_shader->ucode_data_hash() : 0,
+        double(xe::Clock::QueryHostTickCount() - await_start) * 1000.0 /
+            double(xe::Clock::QueryHostTickFrequency()));
+  }
+  if (pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
+    // No pipeline and no placeholder available (async_shader_skip_draws with
+    // no interpreter stand-in, bindful async, or a failed placeholder). Skip
+    // the draw until the real pipeline is ready.
+    XELOGI(
+        "Skipping draw - pipeline not ready: VS {:016X} mod {:016X}, PS "
+        "{:016X} mod {:016X}",
+        vertex_shader->ucode_data_hash(), vertex_shader_modification.value,
+        pixel_shader ? pixel_shader->ucode_data_hash() : 0,
+        pixel_shader_modification.value);
+    OnVIZSurveyDraw(false);
+    return true;
   }
   // The interpreter reads the guest ucode from shared memory by its program
   // address. A cached interpreter placeholder reused for an inline
@@ -4168,10 +4167,6 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
   return true;
 }
 
-bool D3D12CommandProcessor::CanEndSubmissionImmediately() const {
-  return !submission_open_ || !pipeline_cache_->IsCreatingPipelines();
-}
-
 void D3D12CommandProcessor::ClearCommandAllocatorCache() {
   while (command_allocator_submitted_first_) {
     auto next = command_allocator_submitted_first_->next;
@@ -5296,19 +5291,9 @@ bool D3D12CommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
                                               uint64_t wait_for_submission) {
   assert_not_zero(wait_for_submission);
 
-  // Resolve is still pending. Wait for async pipeline creation to finish.
+  // The resolve is still in the open submission.
   if (wait_for_submission >= GetCurrentSubmission()) {
-    if (!submission_open_) {
-      return false;
-    }
-    if (!CanEndSubmissionImmediately()) {
-      if (cvars::occlusion_query_log) {
-        XELOGI(
-            "ZPD: Awaiting pending D3D12 pipeline for active query retirement");
-      }
-      pipeline_cache_->AwaitPipelineCompletion();
-    }
-    if (!CanEndSubmissionImmediately() || !EndSubmission(false)) {
+    if (!submission_open_ || !EndSubmission(false)) {
       return false;
     }
   }

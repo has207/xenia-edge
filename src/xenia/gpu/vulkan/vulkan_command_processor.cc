@@ -2586,7 +2586,7 @@ void VulkanCommandProcessor::OnPrimaryBufferEnd() {
   PumpPendingRetire();
 
   if (cvars::submit_on_primary_buffer_end && submission_open_ &&
-      !scratch_buffer_used_ && CanEndSubmissionImmediately()) {
+      !scratch_buffer_used_) {
     EndSubmission(false);
   }
 }
@@ -3891,9 +3891,6 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
   // Update the graphics pipeline, and if the new graphics pipeline has a
   // different layout, invalidate incompatible descriptor sets before updating
   // current_guest_graphics_pipeline_layout_.
-  // The pipeline may be not ready yet if created asynchronously.
-  // EndSubmission must be called before submitting the command buffer to
-  // await its creation.
   if (current_guest_graphics_pipeline_ != current_pipeline) {
     deferred_command_buffer_.CmdVkBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,
                                                current_pipeline);
@@ -4986,8 +4983,7 @@ CommandProcessor::QueryOpenResult VulkanCommandProcessor::OpenQuery(
     }
 
     if (submission_open_ && wait_for == GetCurrentSubmission()) {
-      if (retried_after_submission_flip || !can_close_submission ||
-          !CanEndSubmissionImmediately()) {
+      if (retried_after_submission_flip || !can_close_submission) {
         return QueryOpenResult::kDeferred;
       }
 
@@ -5199,19 +5195,10 @@ bool VulkanCommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
                                                uint64_t wait_for_submission) {
   assert_not_zero(wait_for_submission);
 
-  // The resolve is still in the open submission. Pipelines being created
-  // asynchronously have to finish before it can be executed.
+  // The resolve is still in the open submission.
   if (wait_for_submission >= GetCurrentSubmission()) {
     if (!submission_open_) {
       return false;
-    }
-    if (!CanEndSubmissionImmediately()) {
-      if (cvars::occlusion_query_log) {
-        XELOGI(
-            "ZPD/Async: Draining Vulkan async pipeline creation for strict "
-            "retirement");
-      }
-      pipeline_cache_->AwaitPipelineCompletion();
     }
     EndRenderPass();
     if (!EndSubmission(false)) {
@@ -5724,11 +5711,6 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
   }
 
   return true;
-}
-
-bool VulkanCommandProcessor::CanEndSubmissionImmediately() const {
-  return !submission_open_ || !pipeline_cache_ ||
-         !pipeline_cache_->IsCreatingPipelines();
 }
 
 void VulkanCommandProcessor::CreateGpuTimeQueryPool() {

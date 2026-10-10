@@ -141,15 +141,10 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
   void ShutdownShaderStorage();
 
   void EndSubmission();
-  bool IsCreatingPipelines();
   // Whether the non-blocking storage warm-up is still creating pipelines.
   bool IsStorageWarmUpRunning() const {
     return creation_queue_.IsAwaitingCompletion();
   }
-  // Waits for any pipeline creation needed by the current draw path to finish
-  // before state is consumed. This was added so strict ZPD query paths stop
-  // racing pipeline compilation and then blocking work on incomplete state.
-  void AwaitPipelineCompletion();
   // Stores a pipeline still being created without waiting for anything else
   // queued, for a draw that can't use a stand-in.
   void ExpeditePipeline(Pipeline* pipeline);

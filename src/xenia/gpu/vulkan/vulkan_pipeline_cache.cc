@@ -894,14 +894,6 @@ void VulkanPipelineCache::EndSubmission() {
   ProcessDeferredDestructions();
 }
 
-bool VulkanPipelineCache::IsCreatingPipelines() {
-  return creation_queue_.IsBusy();
-}
-
-void VulkanPipelineCache::AwaitPipelineCompletion() {
-  creation_queue_.AwaitCompletion();
-}
-
 void VulkanPipelineCache::ExpeditePipeline(Pipeline* pipeline) {
   creation_queue_.Expedite(
       [pipeline](const PipelineCreationArguments& request) {

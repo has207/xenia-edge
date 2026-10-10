@@ -507,11 +507,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
   // clearing and stopping capturing. Returns whether the submission was done
   // successfully, if it has failed, leaves it open.
   bool EndSubmission(bool is_swap);
-  // Checks if ending a submission right now would not cause potentially more
-  // delay than it would reduce by making the GPU start working earlier - such
-  // as when there are unfinished graphics pipeline creation requests that would
-  // need to be fulfilled before actually submitting the command list.
-  bool CanEndSubmissionImmediately() const;
   bool AwaitAllQueueOperationsCompletion() {
     CheckSubmissionCompletion(GetCurrentSubmission());
     return GetCompletedSubmission() + 1u >= GetCurrentSubmission();

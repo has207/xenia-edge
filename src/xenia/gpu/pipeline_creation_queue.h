@@ -56,8 +56,8 @@ class PipelineCreationQueue {
   using BusyChanged = std::function<void(bool)>;
 
   // Reports pipeline work done outside the queue, such as a pipeline created on
-  // the draw thread, through BusyChanged while it lasts. IsBusy and
-  // AwaitCompletion ignore it.
+  // the draw thread, through BusyChanged while it lasts. AwaitCompletion
+  // ignores it.
   class BusyScope {
    public:
     explicit BusyScope(PipelineCreationQueue& owner) : owner_(owner) {
@@ -154,15 +154,6 @@ class PipelineCreationQueue {
   // it is built.
   void PushUnordered(TRequest request) {
     PushRequest(std::move(request), false);
-  }
-
-  // Whether anything is queued or being created.
-  bool IsBusy() {
-    if (threads_.empty()) {
-      return false;
-    }
-    std::lock_guard<std::mutex> lock(lock_);
-    return IsBusyLocked();
   }
 
   // Wakes a creation thread without waiting for it.

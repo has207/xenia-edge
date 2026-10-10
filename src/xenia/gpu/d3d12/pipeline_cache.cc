@@ -562,21 +562,6 @@ void PipelineCache::ProcessDeferredDestructions() {
   }
 }
 
-bool PipelineCache::IsCreatingPipelines() { return creation_queue_.IsBusy(); }
-
-void PipelineCache::AwaitPipelineCompletion() {
-  creation_queue_.AwaitCompletion();
-}
-
-ID3D12PipelineState* PipelineCache::AwaitD3D12PipelineByHandle(void* handle) {
-  ID3D12PipelineState* pipeline = GetD3D12PipelineByHandle(handle);
-  if (pipeline != nullptr) {
-    return pipeline;
-  }
-  AwaitPipelineCompletion();
-  return GetD3D12PipelineByHandle(handle);
-}
-
 void PipelineCache::ExpeditePipeline(void* handle) {
   Pipeline* pipeline = static_cast<Pipeline*>(handle);
   creation_queue_.Expedite(
