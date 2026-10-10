@@ -441,8 +441,13 @@ class MetalCommandProcessor : public CommandProcessor {
           stage->library->release();
         }
       }
+      if (stage_in_library) {
+        stage_in_library->release();
+      }
     }
 
+    // The synthesized stage-in function linked into the vertex stage.
+    MTL::Library* stage_in_library = nullptr;
     DxilTessellationStage vertex;
     DxilTessellationStage hull;
     DxilTessellationStage domain;
