@@ -1630,6 +1630,26 @@ void* X64HelperEmitter::EmitTryAcquireReservationHelper() {
 // r9 = host addr
 // r8 = value
 // if ZF is set, we succeeded
+//
+// stwcx steps:
+//   1. Fail if this thread has no reservation.
+//   2. Check the granule's counter is still what lwarx saw, then bump it.
+//      (one atomic step).
+//   3. Swap in the new value if memory still holds what lwarx read.
+//
+// By claiming the counter first, the gap is one load. A real gap (from a
+// thread that does lwarx after our thread claim) but low odds:
+//
+//   step | this thread (B)             | other threads (A, C)
+//   -----+-----------------------------+---------------------------------
+//    1   | lwarx: counter g, value v   |
+//    2   | claim counter g -> g+1      |
+//    3   | (paused by the host here)   | A: lwarx sees g+1, v
+//        |                             |    stwcx. v -> x, counter g+2
+//    4   |                             | C: lwarx sees g+2, x
+//        |                             |    stwcx. x -> v, counter g+3
+//    5   | swap expects v, finds v     |
+//        | -> lands on stale data      |
 void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
@@ -1651,14 +1671,22 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   // get exclusive access to the counter we're about to bump
   prefetchw(ptr[rcx]);
 
-  // a store to this granule since our lwarx kills the reservation
-  mov(edx, dword[rcx]);
-  cmp(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)), edx);
+  // Only rax/rcx/rdx/r8/r9 are free here. Other registers hold the game's live
+  // values.
+  // Step 2
+  // eax = what our lwarx saw, edx = that plus one.
+  // If the counter moved, someone stored here since our lwarx, so fail.
+  mov(eax, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)));
+  lea(edx, ptr[rax + 1]);
+  lock();
+  cmpxchg(dword[rcx], edx);
   jnz(fail);
 
+  // Step 3
+  // If a plain store changed the value, this fails. The counter is already
+  // bumped, so other threads retry anyway.
   mov(rax,
       GetBackendCtxPtr(offsetof(X64BackendContext, cached_reserve_value_)));
-
   lock();
   if (bit64) {
     cmpxchg(ptr[r9], r8);
@@ -1666,10 +1694,6 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
     cmpxchg(ptr[r9], r8d);
   }
   jnz(fail);
-
-  // the store landed, so kill other reservations on this granule
-  lock();
-  inc(dword[rcx]);
 
   xor_(eax, eax);  // ZF = 1
   ret();
@@ -1724,20 +1748,18 @@ bool ReservedStoreImpl(X64BackendContext* bctx, ppc::PPCContext* context,
   }
 
   auto& granule = ReserveGranule(bctx->reserve_helper_, address);
-  // a store to this granule since our load kills the reservation
-  if (granule.load(std::memory_order_acquire) != bctx->reserve_generation) {
+  // Same steps as EmitReservedStoreHelper above (see table above).
+  // Step 2
+  uint32_t generation = bctx->reserve_generation;
+  if (!granule.compare_exchange_strong(generation, generation + 1,
+                                       std::memory_order_acq_rel)) {
     return false;
   }
 
-  if (!xe::atomic_cas(static_cast<T>(bctx->cached_reserve_value_),
-                      xe::byte_swap(value),
-                      context->TranslateVirtual<T*>(address))) {
-    return false;
-  }
-
-  // the store landed, so kill other reservations on this granule
-  granule.fetch_add(1, std::memory_order_release);
-  return true;
+  // Step 3
+  return xe::atomic_cas(static_cast<T>(bctx->cached_reserve_value_),
+                        xe::byte_swap(value),
+                        context->TranslateVirtual<T*>(address));
 }
 
 }  // namespace
