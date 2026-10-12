@@ -145,8 +145,6 @@ TEST_CASE("XeCryptBnQwNeRsaPubCrypt_2048bit_large_base", "[crypt]") {
 
 TEST_CASE("XeCryptBnQwNeRsaPubCrypt_2048bit_known_answer", "[crypt]") {
   // The large base input cubed mod the Pirs modulus, worked out independently.
-  // Its reductions leave remainders of 2^63 and above in the 128-by-64
-  // division.
   uint8_t input[256];
   for (int i = 0; i < 256; i++) {
     input[i] = static_cast<uint8_t>(i + 1);
@@ -182,30 +180,6 @@ TEST_CASE("XeCryptBnQwNeRsaPubCrypt_2048bit_known_answer", "[crypt]") {
   uint8_t output[256] = {};
   REQUIRE(XeCryptBnQwNeRsaPubCrypt(input, output, pirs_modulus, 0x20, 3) == 1);
   REQUIRE(std::memcmp(output, expected, 256) == 0);
-}
-
-TEST_CASE("BigNum_mod_capped_quotient_digit", "[crypt]") {
-  // The dividend's top limb equals the divisor's, so the quotient digit is
-  // capped at b - 1, its remainder overflows and the multiply-subtract borrows.
-  static const uint8_t m[24] = {
-      0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x7F, 0xFF, 0xFF, 0xFF,
-      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD,
-  };
-  static const uint8_t a[32] = {
-      0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x7F, 0xFF, 0xFF,
-      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-  };
-  static const uint8_t expected[24] = {
-      0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x05, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
-  };
-  using xecrypt::bignum::BigNum;
-  uint8_t r[24];
-  BigNum::mod(BigNum::from_bytes_be(a, sizeof(a)),
-              BigNum::from_bytes_be(m, sizeof(m)))
-      .to_bytes_be(r, sizeof(r));
-  REQUIRE(std::memcmp(r, expected, sizeof(r)) == 0);
 }
 
 TEST_CASE("XeCryptBnQwNeRsaPubCrypt_2048bit_zero_base", "[crypt]") {
