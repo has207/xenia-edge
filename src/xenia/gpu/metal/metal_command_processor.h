@@ -544,6 +544,9 @@ class MetalCommandProcessor : public CommandProcessor {
   std::unordered_map<uint64_t, std::unique_ptr<DxilTessellationShaders>>
       dxil_tessellation_cache_;
   MTL::Buffer* tessellator_tables_buffer_ = nullptr;
+  // Fragment stage for tessellated DXIL draws without a pixel shader.
+  MTL::Library* dxil_tessellation_depth_only_library_ = nullptr;
+  std::string dxil_tessellation_depth_only_function_name_;
   bool mesh_shader_supported_ = false;
   // Includes user clip planes and tessellation constants.
   SpirvShaderTranslator::SystemConstants spirv_system_constants_ = {};

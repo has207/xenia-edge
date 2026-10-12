@@ -1209,10 +1209,22 @@ MetalCommandProcessor::CreateDxilTessellationPipelineState(
   // MSC synthesizes the passthrough. The guest has no geometry shader.
   ir_desc.geometryLibrary = nullptr;
   ir_desc.geometryFunctionName = geometry_function;
-  ir_desc.fragmentLibrary = request.fragment_library;
-  ir_desc.fragmentFunctionName = request.fragment_function_name.empty()
-                                     ? nullptr
-                                     : request.fragment_function_name.c_str();
+  // The pipeline always links a fragment stage, even for depth-only draws.
+  if (request.fragment_library) {
+    ir_desc.fragmentLibrary = request.fragment_library;
+    ir_desc.fragmentFunctionName = request.fragment_function_name.c_str();
+  } else {
+    ir_desc.fragmentLibrary = dxil_tessellation_depth_only_library_;
+    ir_desc.fragmentFunctionName =
+        dxil_tessellation_depth_only_function_name_.c_str();
+  }
+  if (!ir_desc.fragmentLibrary) {
+    desc->release();
+    if (error_out) {
+      *error_out = "no fragment shader for a depth-only draw";
+    }
+    return nullptr;
+  }
   ir_desc.basePipelineDescriptor = desc;
   ir_desc.pipelineConfig =
       BuildTessellationPipelineConfig(shaders->vertex.reflection, hull, domain);
@@ -1888,6 +1900,29 @@ bool MetalCommandProcessor::SetupContext() {
     return false;
   }
 
+  // Tessellated draws without a pixel shader link this as their fragment stage.
+  if (UseDxilPath() && mesh_shader_supported_) {
+    std::vector<uint32_t> spirv = GetMetalTessellationDepthOnlyFragmentSpirv();
+    MetalShaderConversionResult conversion = metal_shader_converter_.Convert(
+        MetalShaderStage::kFragment,
+        SpirvToDxilCompiler::Translate(spirv.data(), spirv.size(),
+                                       SpirvToDxilCompiler::Stage::kPixel,
+                                       /*lower_to_bindless=*/true));
+    MTL::Function* function = nullptr;
+    if (conversion.success &&
+        CreateMetalFunction(device_, conversion,
+                            dxil_tessellation_depth_only_library_, function)) {
+      function->release();
+      dxil_tessellation_depth_only_function_name_ =
+          std::move(conversion.entry_point_name);
+    } else {
+      XELOGW(
+          "DXIL: no depth-only fragment shader, tessellated draws without a "
+          "pixel shader will be skipped: {}",
+          conversion.error_message);
+    }
+  }
+
   // After the converter, which the DXIL path's workers compile against.
   InitializeAsyncCompilation();
 
@@ -2108,6 +2143,11 @@ void MetalCommandProcessor::ShutdownContext() {
     tessellator_tables_buffer_->release();
     tessellator_tables_buffer_ = nullptr;
   }
+  if (dxil_tessellation_depth_only_library_) {
+    dxil_tessellation_depth_only_library_->release();
+    dxil_tessellation_depth_only_library_ = nullptr;
+  }
+  dxil_tessellation_depth_only_function_name_.clear();
   guest_shader_cache_.clear();
   spirv_shader_translator_.reset();
 

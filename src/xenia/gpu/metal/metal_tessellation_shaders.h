@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/xenos.h"
@@ -36,6 +37,10 @@ bool GetMetalTessellationHostShaders(
     xenos::TessellationMode tessellation_mode,
     Shader::HostVertexShaderType host_vertex_shader_type,
     MetalTessellationHostShaders& shaders_out);
+
+// SPIR-V of a fragment shader that writes nothing, for tessellated draws
+// without a pixel shader: the emulation pipeline always links a fragment stage.
+std::vector<uint32_t> GetMetalTessellationDepthOnlyFragmentSpirv();
 
 }  // namespace metal
 }  // namespace gpu
