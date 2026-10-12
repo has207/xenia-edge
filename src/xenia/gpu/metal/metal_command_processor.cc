@@ -5138,6 +5138,21 @@ bool MetalCommandProcessor::IssueDrawDxil(
   OpenQuerySegment(false);
 
   if (is_tessellated) {
+    // Residency alone doesn't hand the lookup tables to the tessellator. Bind
+    // them on both emulation stages for every draw, as the encoder may have
+    // been restarted since the last one.
+    current_render_encoder_->setObjectBuffer(
+        tessellator_tables_buffer_, 0,
+        NS::UInteger(kIRRuntimeTessellatorTablesBindPoint));
+    current_render_encoder_->setMeshBuffer(
+        tessellator_tables_buffer_, 0,
+        NS::UInteger(kIRRuntimeTessellatorTablesBindPoint));
+    // The host vertex shader takes no attributes, but its synthesized stage-in
+    // function still reads a vertex buffer table.
+    const IRRuntimeVertexBuffers vertex_buffers = {};
+    current_render_encoder_->setObjectBytes(
+        vertex_buffers, sizeof(vertex_buffers),
+        NS::UInteger(kIRVertexBufferBindPoint));
     UseRenderEncoderResource(tessellator_tables_buffer_,
                              MTL::ResourceUsageRead);
     IRRuntimeTessellationPipelineConfig config =
