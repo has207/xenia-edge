@@ -75,10 +75,14 @@ class SpirvToDxilCompiler {
   // Translates several SPIR-V stages of one pipeline together with cross-stage
   // linking, so the inter-stage signatures match exactly as D3D12 requires (the
   // way tessellation hull and domain shaders reconcile control point counts and
-  // patch constants). Stages must be in pipeline order (vertex first). Returns
-  // one signed DXIL blob per input stage, or an empty vector on failure.
+  // patch constants). Stages must be in pipeline order (vertex first).
+  // tess_input_control_point_count, when nonzero, is the size of the patch the
+  // pipeline feeds the hull shader. SPIR-V leaves it to the pipeline, so
+  // without it the hull declares 32 input control points. Returns one signed
+  // DXIL blob per input stage, or an empty vector on failure.
   static std::vector<std::vector<uint8_t>> TranslateLinked(
-      const std::vector<LinkedStage>& stages, bool lower_to_bindless = false);
+      const std::vector<LinkedStage>& stages, bool lower_to_bindless = false,
+      uint32_t tess_input_control_point_count = 0);
 };
 
 }  // namespace gpu

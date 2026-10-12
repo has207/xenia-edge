@@ -93,10 +93,13 @@ namespace {
 // from the same SpirvShaderTranslator output.
 bool UseDxilPath() { return cvars::metal_use_dxil; }
 
+// function_name_suffix is appended to the entry point name of the converted
+// shader, for functions MSC emits under a derived name.
 bool CreateMetalFunction(MTL::Device* device,
                          const MetalShaderConversionResult& conversion,
                          MTL::Library*& library_out,
-                         MTL::Function*& function_out) {
+                         MTL::Function*& function_out,
+                         const char* function_name_suffix = "") {
   NS::Error* error = nullptr;
   dispatch_data_t metallib_data = dispatch_data_create(
       conversion.metallib.data(), conversion.metallib.size(), nullptr,
@@ -106,8 +109,10 @@ bool CreateMetalFunction(MTL::Device* device,
   if (!library) {
     return false;
   }
-  NS::String* name = NS::String::string(conversion.entry_point_name.c_str(),
-                                        NS::UTF8StringEncoding);
+  std::string function_name =
+      conversion.entry_point_name + function_name_suffix;
+  NS::String* name =
+      NS::String::string(function_name.c_str(), NS::UTF8StringEncoding);
   MTL::Function* function = library->newFunction(name);
   if (!function) {
     library->release();
@@ -1192,9 +1197,9 @@ MetalCommandProcessor::CreateDxilTessellationPipelineState(
                                   0);
 
   IRGeometryTessellationEmulationPipelineDescriptor ir_desc = {};
-  // No stage-in: the guest fetches vertices from shared memory, so the host
-  // vertex shader takes no attributes.
-  ir_desc.stageInLibrary = nullptr;
+  // The guest fetches vertices from shared memory, so the host vertex shader
+  // takes no attributes, but the pipeline still links a stage-in function.
+  ir_desc.stageInLibrary = shaders->stage_in_library;
   ir_desc.vertexLibrary = shaders->vertex.library;
   ir_desc.vertexFunctionName = shaders->vertex.function_name.c_str();
   ir_desc.hullLibrary = shaders->hull.library;
@@ -1204,10 +1209,22 @@ MetalCommandProcessor::CreateDxilTessellationPipelineState(
   // MSC synthesizes the passthrough. The guest has no geometry shader.
   ir_desc.geometryLibrary = nullptr;
   ir_desc.geometryFunctionName = geometry_function;
-  ir_desc.fragmentLibrary = request.fragment_library;
-  ir_desc.fragmentFunctionName = request.fragment_function_name.empty()
-                                     ? nullptr
-                                     : request.fragment_function_name.c_str();
+  // The pipeline always links a fragment stage, even for depth-only draws.
+  if (request.fragment_library) {
+    ir_desc.fragmentLibrary = request.fragment_library;
+    ir_desc.fragmentFunctionName = request.fragment_function_name.c_str();
+  } else {
+    ir_desc.fragmentLibrary = dxil_tessellation_depth_only_library_;
+    ir_desc.fragmentFunctionName =
+        dxil_tessellation_depth_only_function_name_.c_str();
+  }
+  if (!ir_desc.fragmentLibrary) {
+    desc->release();
+    if (error_out) {
+      *error_out = "no fragment shader for a depth-only draw";
+    }
+    return nullptr;
+  }
   ir_desc.basePipelineDescriptor = desc;
   ir_desc.pipelineConfig =
       BuildTessellationPipelineConfig(shaders->vertex.reflection, hull, domain);
@@ -1883,6 +1900,29 @@ bool MetalCommandProcessor::SetupContext() {
     return false;
   }
 
+  // Tessellated draws without a pixel shader link this as their fragment stage.
+  if (UseDxilPath() && mesh_shader_supported_) {
+    std::vector<uint32_t> spirv = GetMetalTessellationDepthOnlyFragmentSpirv();
+    MetalShaderConversionResult conversion = metal_shader_converter_.Convert(
+        MetalShaderStage::kFragment,
+        SpirvToDxilCompiler::Translate(spirv.data(), spirv.size(),
+                                       SpirvToDxilCompiler::Stage::kPixel,
+                                       /*lower_to_bindless=*/true));
+    MTL::Function* function = nullptr;
+    if (conversion.success &&
+        CreateMetalFunction(device_, conversion,
+                            dxil_tessellation_depth_only_library_, function)) {
+      function->release();
+      dxil_tessellation_depth_only_function_name_ =
+          std::move(conversion.entry_point_name);
+    } else {
+      XELOGW(
+          "DXIL: no depth-only fragment shader, tessellated draws without a "
+          "pixel shader will be skipped: {}",
+          conversion.error_message);
+    }
+  }
+
   // After the converter, which the DXIL path's workers compile against.
   InitializeAsyncCompilation();
 
@@ -2103,6 +2143,11 @@ void MetalCommandProcessor::ShutdownContext() {
     tessellator_tables_buffer_->release();
     tessellator_tables_buffer_ = nullptr;
   }
+  if (dxil_tessellation_depth_only_library_) {
+    dxil_tessellation_depth_only_library_->release();
+    dxil_tessellation_depth_only_library_ = nullptr;
+  }
+  dxil_tessellation_depth_only_function_name_.clear();
   guest_shader_cache_.clear();
   spirv_shader_translator_.reset();
 
@@ -4626,8 +4671,9 @@ bool MetalCommandProcessor::BuildDxilTessellationShaders(
        domain_spirv.size() / sizeof(uint32_t),
        SpirvToDxilCompiler::Stage::kTessellationEvaluation},
   };
-  std::vector<std::vector<uint8_t>> dxil =
-      SpirvToDxilCompiler::TranslateLinked(stages, /*lower_to_bindless=*/true);
+  std::vector<std::vector<uint8_t>> dxil = SpirvToDxilCompiler::TranslateLinked(
+      stages, /*lower_to_bindless=*/true,
+      host_shaders.input_control_point_count);
   if (dxil.size() != 3 || dxil[0].empty() || dxil[1].empty() ||
       dxil[2].empty()) {
     XELOGE("DXIL: linked tessellation translation failed (domain {:016X})",
@@ -4651,6 +4697,10 @@ bool MetalCommandProcessor::BuildDxilTessellationShaders(
         stage->library = nullptr;
       }
     }
+    if (shaders_out.stage_in_library) {
+      shaders_out.stage_in_library->release();
+      shaders_out.stage_in_library = nullptr;
+    }
   };
   for (size_t i = 0; i < 3; ++i) {
     const char* stage_name = StageNameOf(kStages[i]);
@@ -4662,15 +4712,49 @@ bool MetalCommandProcessor::BuildDxilTessellationShaders(
       release_stages();
       return false;
     }
+    // With tessellation emulation, the vertex stage becomes an object function
+    // under a derived name, which IRRuntimeNewGeometryTessellationEmulation-
+    // Pipeline also derives from the entry point name.
     if (!CreateMetalFunction(device_, conversion, stage_out[i]->library,
-                             stage_out[i]->function)) {
+                             stage_out[i]->function,
+                             kStages[i] == MetalShaderStage::kVertex
+                                 ? ".dxil_irconverter_object_shader"
+                                 : "")) {
       XELOGE("DXIL: could not create the {} function of domain {:016X}",
              stage_name, domain_ucode_hash);
       release_stages();
       return false;
     }
+    if (kStages[i] == MetalShaderStage::kVertex) {
+      NS::Error* error = nullptr;
+      dispatch_data_t stage_in_data =
+          dispatch_data_create(conversion.stage_in_metallib.data(),
+                               conversion.stage_in_metallib.size(), nullptr,
+                               DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+      shaders_out.stage_in_library = device_->newLibrary(stage_in_data, &error);
+      dispatch_release(stage_in_data);
+      if (!shaders_out.stage_in_library) {
+        XELOGE("DXIL: could not create the stage-in library of domain {:016X}",
+               domain_ucode_hash);
+        release_stages();
+        return false;
+      }
+    }
     stage_out[i]->function_name = std::move(conversion.entry_point_name);
     stage_out[i]->reflection = conversion.reflection;
+  }
+
+  // The draw splits its vertices into patches of this size.
+  if (shaders_out.hull.reflection.hs_input_control_point_count !=
+      host_shaders.input_control_point_count) {
+    XELOGE(
+        "DXIL: the hull stage of domain {:016X} takes {} control points "
+        "instead of {}",
+        domain_ucode_hash,
+        shaders_out.hull.reflection.hs_input_control_point_count,
+        host_shaders.input_control_point_count);
+    release_stages();
+    return false;
   }
 
   XELOGI(
@@ -5054,6 +5138,21 @@ bool MetalCommandProcessor::IssueDrawDxil(
   OpenQuerySegment(false);
 
   if (is_tessellated) {
+    // Residency alone doesn't hand the lookup tables to the tessellator. Bind
+    // them on both emulation stages for every draw, as the encoder may have
+    // been restarted since the last one.
+    current_render_encoder_->setObjectBuffer(
+        tessellator_tables_buffer_, 0,
+        NS::UInteger(kIRRuntimeTessellatorTablesBindPoint));
+    current_render_encoder_->setMeshBuffer(
+        tessellator_tables_buffer_, 0,
+        NS::UInteger(kIRRuntimeTessellatorTablesBindPoint));
+    // The host vertex shader takes no attributes, but its synthesized stage-in
+    // function still reads a vertex buffer table.
+    const IRRuntimeVertexBuffers vertex_buffers = {};
+    current_render_encoder_->setObjectBytes(
+        vertex_buffers, sizeof(vertex_buffers),
+        NS::UInteger(kIRVertexBufferBindPoint));
     UseRenderEncoderResource(tessellator_tables_buffer_,
                              MTL::ResourceUsageRead);
     IRRuntimeTessellationPipelineConfig config =

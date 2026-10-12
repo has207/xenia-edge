@@ -108,6 +108,10 @@ struct MetalShaderConversionResult {
   // Entry point to look up in the metallib, from MSC's reflection.
   std::string entry_point_name;
   MetalShaderReflection reflection;
+  // For the vertex stage with tessellation emulation, the synthesized stage-in
+  // function that the object function links (no vertex attributes, the guest
+  // fetches its vertices itself).
+  std::vector<uint8_t> stage_in_metallib;
   std::string error_message;
 };
 

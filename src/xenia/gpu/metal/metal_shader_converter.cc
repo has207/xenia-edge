@@ -621,8 +621,16 @@ MetalShaderConversionResult MetalShaderConverter::ConvertWithRootSignature(
   // Mesa embeds no root signature, but the flag also keeps MSC from inferring
   // one and disagreeing with ours.
   IRCompilerIgnoreRootSignature(compiler, true);
+  bool synthesize_stage_in =
+      tessellation_emulation && stage == MetalShaderStage::kVertex;
   if (tessellation_emulation) {
     IRCompilerEnableGeometryAndTessellationEmulation(compiler, true);
+  }
+  if (synthesize_stage_in) {
+    // The tessellation emulation pipeline links a separate stage-in function
+    // into the object function.
+    IRCompilerSetStageInGenerationMode(
+        compiler, IRStageInCodeGenerationModeUseSeparateStageInFunction);
   }
 
   IRError* error = nullptr;
@@ -666,6 +674,24 @@ MetalShaderConversionResult MetalShaderConverter::ConvertWithRootSignature(
         result.entry_point_name = entry_point_name;
       }
       CopyStageReflection(reflection, ir_stage, result.reflection);
+      if (synthesize_stage_in) {
+        IRVersionedInputLayoutDescriptor input_layout = {};
+        input_layout.version = IRInputLayoutDescriptorVersion_1;
+        input_layout.desc_1_0.numElements = 0;
+        IRMetalLibBinary* stage_in_metallib = IRMetalLibBinaryCreate();
+        if (stage_in_metallib) {
+          if (IRMetalLibSynthesizeStageInFunction(
+                  compiler, reflection, &input_layout, stage_in_metallib)) {
+            size_t size = IRMetalLibGetBytecodeSize(stage_in_metallib);
+            if (size) {
+              result.stage_in_metallib.resize(size);
+              IRMetalLibGetBytecode(stage_in_metallib,
+                                    result.stage_in_metallib.data());
+            }
+          }
+          IRMetalLibBinaryDestroy(stage_in_metallib);
+        }
+      }
     }
     IRShaderReflectionDestroy(reflection);
   }
@@ -682,6 +708,10 @@ MetalShaderConversionResult MetalShaderConverter::ConvertWithRootSignature(
   if (result.entry_point_name.empty()) {
     result.error_message = std::string("MSC reported no ") + StageName(stage) +
                            " entry point name";
+    return result;
+  }
+  if (synthesize_stage_in && result.stage_in_metallib.empty()) {
+    result.error_message = "MSC could not synthesize the stage-in function";
     return result;
   }
 

@@ -9,6 +9,9 @@
 
 #include "xenia/gpu/metal/metal_tessellation_shaders.h"
 
+#include "xenia/gpu/spirv_builder.h"
+#include "xenia/gpu/spirv_compatibility.h"
+
 // Same array names as the other bytecode trees, different type (uint32_t
 // SPIR-V words), so they live in their own namespace.
 namespace shaders_spirv {
@@ -103,7 +106,33 @@ bool GetMetalTessellationHostShaders(
     default:
       return false;
   }
+
+  // Adaptive patches take one edge factor per edge, the other patch-indexed
+  // modes one patch index, and control-point-indexed modes one index per
+  // corner.
+  bool triangle = host_vertex_shader_type == HVS::kTriangleDomainCPIndexed ||
+                  host_vertex_shader_type == HVS::kTriangleDomainPatchIndexed;
+  bool per_corner = tessellation_mode == xenos::TessellationMode::kAdaptive ||
+                    host_vertex_shader_type == HVS::kTriangleDomainCPIndexed ||
+                    host_vertex_shader_type == HVS::kQuadDomainCPIndexed;
+  shaders_out.input_control_point_count = per_corner ? (triangle ? 3 : 4) : 1;
   return true;
+}
+
+std::vector<uint32_t> GetMetalTessellationDepthOnlyFragmentSpirv() {
+  SpirvBuilder builder(spv::Spv_1_0, 0, nullptr);
+  builder.addCapability(spv::CapabilityShader);
+  builder.setMemoryModel(spv::AddressingModelLogical, spv::MemoryModelGLSL450);
+  spv::Block* main_entry;
+  spv::Function* main_function = builder.makeFunctionEntry(
+      spv::NoPrecision, builder.makeVoidType(), "main", {}, {}, &main_entry);
+  builder.makeReturn(false);
+  builder.leaveFunction();
+  builder.addExecutionMode(main_function, spv::ExecutionModeOriginUpperLeft);
+  builder.addEntryPoint(spv::ExecutionModelFragment, main_function, "main");
+  std::vector<unsigned int> shader_code;
+  builder.dump(shader_code);
+  return shader_code;
 }
 
 }  // namespace metal

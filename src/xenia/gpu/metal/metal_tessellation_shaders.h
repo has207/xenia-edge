@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "xenia/gpu/shader.h"
 #include "xenia/gpu/xenos.h"
@@ -27,6 +28,8 @@ struct MetalTessellationHostShaders {
   size_t vertex_word_count = 0;
   const uint32_t* hull_spirv = nullptr;
   size_t hull_word_count = 0;
+  // Control points per patch the hull shader takes from the vertex stage.
+  uint32_t input_control_point_count = 0;
 };
 
 // Returns false for a mode/domain combination with no host hull shader.
@@ -34,6 +37,10 @@ bool GetMetalTessellationHostShaders(
     xenos::TessellationMode tessellation_mode,
     Shader::HostVertexShaderType host_vertex_shader_type,
     MetalTessellationHostShaders& shaders_out);
+
+// SPIR-V of a fragment shader that writes nothing, for tessellated draws
+// without a pixel shader: the emulation pipeline always links a fragment stage.
+std::vector<uint32_t> GetMetalTessellationDepthOnlyFragmentSpirv();
 
 }  // namespace metal
 }  // namespace gpu
