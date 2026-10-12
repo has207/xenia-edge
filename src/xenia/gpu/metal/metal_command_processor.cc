@@ -4631,8 +4631,9 @@ bool MetalCommandProcessor::BuildDxilTessellationShaders(
        domain_spirv.size() / sizeof(uint32_t),
        SpirvToDxilCompiler::Stage::kTessellationEvaluation},
   };
-  std::vector<std::vector<uint8_t>> dxil =
-      SpirvToDxilCompiler::TranslateLinked(stages, /*lower_to_bindless=*/true);
+  std::vector<std::vector<uint8_t>> dxil = SpirvToDxilCompiler::TranslateLinked(
+      stages, /*lower_to_bindless=*/true,
+      host_shaders.input_control_point_count);
   if (dxil.size() != 3 || dxil[0].empty() || dxil[1].empty() ||
       dxil[2].empty()) {
     XELOGE("DXIL: linked tessellation translation failed (domain {:016X})",
@@ -4701,6 +4702,19 @@ bool MetalCommandProcessor::BuildDxilTessellationShaders(
     }
     stage_out[i]->function_name = std::move(conversion.entry_point_name);
     stage_out[i]->reflection = conversion.reflection;
+  }
+
+  // The draw splits its vertices into patches of this size.
+  if (shaders_out.hull.reflection.hs_input_control_point_count !=
+      host_shaders.input_control_point_count) {
+    XELOGE(
+        "DXIL: the hull stage of domain {:016X} takes {} control points "
+        "instead of {}",
+        domain_ucode_hash,
+        shaders_out.hull.reflection.hs_input_control_point_count,
+        host_shaders.input_control_point_count);
+    release_stages();
+    return false;
   }
 
   XELOGI(

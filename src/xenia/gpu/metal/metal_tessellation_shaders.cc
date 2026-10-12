@@ -103,6 +103,16 @@ bool GetMetalTessellationHostShaders(
     default:
       return false;
   }
+
+  // Adaptive patches take one edge factor per edge, the other patch-indexed
+  // modes one patch index, and control-point-indexed modes one index per
+  // corner.
+  bool triangle = host_vertex_shader_type == HVS::kTriangleDomainCPIndexed ||
+                  host_vertex_shader_type == HVS::kTriangleDomainPatchIndexed;
+  bool per_corner = tessellation_mode == xenos::TessellationMode::kAdaptive ||
+                    host_vertex_shader_type == HVS::kTriangleDomainCPIndexed ||
+                    host_vertex_shader_type == HVS::kQuadDomainCPIndexed;
+  shaders_out.input_control_point_count = per_corner ? (triangle ? 3 : 4) : 1;
   return true;
 }
 

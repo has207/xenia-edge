@@ -27,6 +27,8 @@ struct MetalTessellationHostShaders {
   size_t vertex_word_count = 0;
   const uint32_t* hull_spirv = nullptr;
   size_t hull_word_count = 0;
+  // Control points per patch the hull shader takes from the vertex stage.
+  uint32_t input_control_point_count = 0;
 };
 
 // Returns false for a mode/domain combination with no host hull shader.
