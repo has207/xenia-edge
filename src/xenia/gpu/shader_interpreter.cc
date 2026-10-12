@@ -1109,7 +1109,7 @@ void ShaderInterpreter::ExecuteVertexFetchInstruction(
     }
 
     uint32_t packed_components = 0b0000;
-    uint32_t packed_widths[4], packed_offsets[4];
+    uint32_t packed_widths[4] = {}, packed_offsets[4] = {};
     uint32_t packed_dwords[] = {data[0], data[0]};
     switch (instr.data_format()) {
       case xenos::VertexFormat::k_8_8_8_8: {
@@ -1256,8 +1256,8 @@ void ShaderInterpreter::ExecuteVertexFetchInstruction(
             continue;
           }
           uint32_t packed_width = packed_widths[i];
-          result[i] = float(packed_dwords[i >> 1] &
-                            ((UINT32_C(1) << packed_widths[i]) - 1));
+          result[i] = float((packed_dwords[i >> 1] >> packed_offsets[i]) &
+                            ((UINT32_C(1) << packed_width) - 1));
         }
         if (instr.is_normalized()) {
           for (uint32_t i = 0; i < 4; ++i) {
