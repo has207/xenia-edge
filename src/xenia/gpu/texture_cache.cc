@@ -681,11 +681,17 @@ TextureCache::Texture::Texture(TextureCache& texture_cache,
 }
 
 TextureCache::Texture::~Texture() {
-  if (mips_watch_handle_) {
-    texture_cache().shared_memory().UnwatchMemoryRange(mips_watch_handle_);
-  }
-  if (base_watch_handle_) {
-    texture_cache().shared_memory().UnwatchMemoryRange(base_watch_handle_);
+  {
+    // A watch fired by a guest thread unlinks its range and clears the handle
+    // under the global lock, so check the handles under it too, or a stale
+    // range would be unlinked twice, corrupting the watch free lists.
+    auto global_lock = xe::global_critical_region::Acquire();
+    if (mips_watch_handle_) {
+      texture_cache().shared_memory().UnwatchMemoryRange(mips_watch_handle_);
+    }
+    if (base_watch_handle_) {
+      texture_cache().shared_memory().UnwatchMemoryRange(base_watch_handle_);
+    }
   }
 
   // Only remove from usage list if we were added to it (track_usage=true).
