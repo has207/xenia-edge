@@ -502,9 +502,22 @@ dword_result_t NetDll_WSASendTo_entry(
     combined_buffer_offset += buffers[i].len;
   }
 
-  N_XSOCKADDR_IN native_to(to_ptr);
-  socket->SendTo(combined_buffer_mem.data(), combined_buffer_size, flags,
-                 &native_to, to_len);
+  // A NULL destination sends to the connected peer.
+  N_XSOCKADDR_IN native_to;
+  N_XSOCKADDR_IN* to = nullptr;
+  if (to_ptr) {
+    native_to = *to_ptr;
+    to = &native_to;
+  }
+  int ret = socket->SendTo(combined_buffer_mem.data(), combined_buffer_size,
+                           flags, to, to_len);
+  if (ret == -1) {
+    XThread::SetLastError(socket->GetLastWSAError());
+    return -1;
+  }
+  if (num_bytes_sent) {
+    *num_bytes_sent = static_cast<uint32_t>(ret);
+  }
 
   // TODO: Instantly complete overlapped
 
@@ -1600,8 +1613,14 @@ dword_result_t NetDll_sendto_entry(dword_t caller, dword_t socket_handle,
     return -1;
   }
 
-  N_XSOCKADDR_IN native_to(to_ptr);
-  int ret = socket->SendTo(buf_ptr, buf_len, flags, &native_to, to_len);
+  // A NULL destination sends to the connected peer.
+  N_XSOCKADDR_IN native_to;
+  N_XSOCKADDR_IN* to = nullptr;
+  if (to_ptr) {
+    native_to = *to_ptr;
+    to = &native_to;
+  }
+  int ret = socket->SendTo(buf_ptr, buf_len, flags, to, to_len);
   if (ret == -1) {
     XThread::SetLastError(socket->GetLastWSAError());
   }
