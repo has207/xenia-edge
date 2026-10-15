@@ -499,6 +499,19 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     return X_STATUS_SUCCESS;
   }
 
+  // SO_SNDTIMEO / SO_RCVTIMEO. The guest passes a big-endian DWORD, which
+  // POSIX setsockopt rejects (it wants a timeval) and Windows would read
+  // byte-swapped. Host sockets are non-blocking and the cooperative retry
+  // loop enforces the timeout, so it is only kept.
+  if (level == 0xFFFF && (optname == 0x1005 || optname == 0x1006)) {
+    if (optlen < sizeof(uint32_t)) {
+      last_error_ = uint32_t(X_WSAError::X_WSAEFAULT);
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    KeepTimeout(level, optname, optval_ptr, optlen);
+    return X_STATUS_SUCCESS;
+  }
+
   // Map Xbox socket levels to native
   int native_level = level;
   if (supported_levels.contains(level)) {
