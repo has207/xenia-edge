@@ -102,8 +102,12 @@ RingBuffer XmaContextNew::PrepareOutputRingBuffer(XMA_CONTEXT_DATA* data) {
   // Output buffer is a ring buffer. We need to write from the write offset
   // to the read offset.
   RingBuffer output_rb(output_buffer, output_capacity);
-  output_rb.set_read_offset(output_read_offset);
-  output_rb.set_write_offset(output_write_offset);
+  // The offsets wrap modulo the capacity, so skip them for an empty buffer,
+  // which titles can set and which is rejected before any decoding.
+  if (output_capacity) {
+    output_rb.set_read_offset(output_read_offset);
+    output_rb.set_write_offset(output_write_offset);
+  }
   remaining_subframe_blocks_in_output_buffer_ =
       (int32_t)output_rb.write_count() / kOutputBytesPerBlock;
 
