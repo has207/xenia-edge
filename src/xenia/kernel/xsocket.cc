@@ -653,7 +653,7 @@ X_STATUS XSocket::IOControl(uint32_t cmd, uint8_t* arg_ptr) {
       return X_STATUS_UNSUCCESSFUL;
     }
 
-    *reinterpret_cast<uint32_t*>(arg_ptr) = static_cast<uint32_t>(available);
+    xe::store_and_swap<uint32_t>(arg_ptr, static_cast<uint32_t>(available));
     return X_STATUS_SUCCESS;
   }
 
