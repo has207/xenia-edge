@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include <algorithm>
 #include <cwctype>
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
@@ -296,9 +297,16 @@ void RtlCopyUnicodeString_entry(pointer_t<X_UNICODE_STRING> destination,
   if (length > 0) {
     auto dst_buf = kernel_memory()->TranslateVirtual(destination->pointer);
     auto src_buf = kernel_memory()->TranslateVirtual(source->pointer);
-    std::memcpy(dst_buf, src_buf, length * 2);
+    // Lengths are in bytes, not characters.
+    std::memcpy(dst_buf, src_buf, length);
   }
   destination->length = length;
+  // Like NT, terminate the copy when the destination has room for it.
+  if (destination->pointer && length + 2 <= destination->maximum_length) {
+    auto dst_buf =
+        kernel_memory()->TranslateVirtual<uint16_t*>(destination->pointer);
+    dst_buf[length / 2] = 0;
+  }
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlCopyUnicodeString, kNone, kImplemented);
 
@@ -331,16 +339,20 @@ dword_result_t RtlUnicodeStringToAnsiString_entry(
     destination_ptr->pointer = static_cast<uint32_t>(buffer_ptr);
   } else {
     uint32_t buffer_capacity = destination_ptr->maximum_length;
+    if (!buffer_capacity) {
+      return X_STATUS_BUFFER_OVERFLOW;
+    }
     auto buffer_ptr =
         kernel_memory()->TranslateVirtual(destination_ptr->pointer);
+    size_t copy_length = ansi_str.size();
     if (buffer_capacity < ansi_str.size() + 1) {
       // Too large - we just write what we can.
       result = X_STATUS_BUFFER_OVERFLOW;
-      memcpy(buffer_ptr, ansi_str.data(), buffer_capacity - 1);
-    } else {
-      memcpy(buffer_ptr, ansi_str.data(), ansi_str.size() + 1);
+      copy_length = buffer_capacity - 1;
     }
-    buffer_ptr[buffer_capacity - 1] = 0;  // \0
+    std::copy_n(ansi_str.data(), copy_length, buffer_ptr);
+    buffer_ptr[copy_length] = 0;  // \0
+    destination_ptr->length = static_cast<uint16_t>(copy_length);
   }
   return result;
 }
