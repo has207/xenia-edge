@@ -35,15 +35,15 @@ XContentContainerDevice::CreateContentDevice(
 
   const uint64_t package_size = std::filesystem::file_size(host_path);
   if (package_size < sizeof(XContentContainerHeader)) {
+    fclose(host_file);
     return nullptr;
   }
 
   const auto header = XContentContainerDevice::ReadContainerHeader(host_file);
+  fclose(host_file);
   if (header == nullptr) {
     return nullptr;
   }
-
-  fclose(host_file);
 
   if (!header->content_header.is_magic_valid()) {
     return nullptr;
@@ -91,10 +91,10 @@ bool XContentContainerDevice::Initialize() {
   }
 
   auto header_loading_result = ReadHeaderAndVerify(header_file);
+  fclose(header_file);
   if (header_loading_result != Result::kSuccess) {
     XELOGE("Error reading XContent header: {}",
            static_cast<int32_t>(header_loading_result));
-    fclose(header_file);
     return false;
   }
 
