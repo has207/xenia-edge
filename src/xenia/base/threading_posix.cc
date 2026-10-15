@@ -589,6 +589,22 @@ class PosixConditionBase {
       return std::make_pair(result, 0);
     }
 
+    // A handle passed twice would be locked twice below, and the second
+    // try_lock on a mutex this thread already holds never succeeds. Windows
+    // rejects duplicates in a wait-all; a wait-any locks each object once.
+    std::vector<bool> duplicate(handles.size(), false);
+    for (size_t i = 1; i < handles.size(); ++i) {
+      for (size_t j = 0; j < i; ++j) {
+        if (handles[i] == handles[j]) {
+          duplicate[i] = true;
+          break;
+        }
+      }
+      if (duplicate[i] && wait_all) {
+        return std::make_pair<WaitResult, size_t>(WaitResult::kFailed, 0);
+      }
+    }
+
     MultiWaitRegistration registration(handles);
 
     // For multiple handles, we need to poll since we can't wait on multiple
@@ -618,6 +634,9 @@ class PosixConditionBase {
       bool all_locked = true;
 
       for (size_t i = 0; i < handles.size(); ++i) {
+        if (duplicate[i]) {
+          continue;
+        }
 #if XE_PLATFORM_MAC
         // macOS: no robust mutex support.
         std::unique_lock<std::mutex> lk(handles[i]->mutex_, std::try_to_lock);
