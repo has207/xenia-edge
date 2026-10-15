@@ -601,9 +601,16 @@ DECLARE_XBOXKRNL_EXPORT1(XeKeysGetKeyProperties, kNone, kImplemented);
 
 dword_result_t XeKeysGetKey_entry(word_t key, lpvoid_t key_buffer,
                                   lpdword_t key_length) {
+  if (!key_length) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
   if (key_vault.contains(key)) {
+    // Never copy more than the key itself, the guest length can be larger.
     std::span<const uint8_t> key_needed = key_vault.at(key);
-    std::memcpy(key_buffer, key_needed.data(), *key_length);
+    const uint32_t key_size = static_cast<uint32_t>(key_needed.size());
+    std::copy_n(key_needed.data(), std::min<uint32_t>(*key_length, key_size),
+                reinterpret_cast<uint8_t*>(key_buffer.host_address()));
+    *key_length = key_size;
   } else {
     XELOGW("Key 0x{:04X} not implemented", static_cast<uint16_t>(key));
   }
