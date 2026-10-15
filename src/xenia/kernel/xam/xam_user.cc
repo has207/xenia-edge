@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include <algorithm>
 #include <ranges>
 
 #include "xenia/base/logging.h"
@@ -763,11 +764,13 @@ dword_result_t XamReadTile_entry(dword_t tile_type, dword_t title_id,
       result = X_ERROR_FILE_NOT_FOUND;
     }
 
+    // The size is in/out: the buffer capacity in, the tile size out.
+    const uint32_t buffer_capacity = *buffer_size_ptr;
     *buffer_size_ptr = static_cast<uint32_t>(tile.size());
 
-    if (output_ptr) {
+    if (output_ptr && buffer_capacity >= tile.size()) {
       memcpy(output_ptr, tile.data(), tile.size());
-    } else {
+    } else if (result == X_ERROR_SUCCESS) {
       result = X_ERROR_INSUFFICIENT_BUFFER;
     }
 
@@ -890,12 +893,12 @@ dword_result_t XamReadTileToTexture_entry(dword_t tile_type, dword_t title_id,
   unsigned char* imageData =
       stbi_load_from_memory(tile.data(), static_cast<int>(tile.size()), &width,
                             &height, &channels, STBI_rgb_alpha);
+  if (!imageData) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
 
-  size_t icon_dimmension_size = width * height;
-  std::fill_n(reinterpret_cast<uint8_t*>(buffer_ptr.host_address()),
-              icon_dimmension_size * sizeof(uint32_t), 0);
-
-  for (int i = 0; i < icon_dimmension_size; i++) {
+  size_t icon_dimmension_size = size_t(width) * size_t(height);
+  for (size_t i = 0; i < icon_dimmension_size; i++) {
     unsigned char* pixel = &imageData[i * sizeof(uint32_t)];
 
     // RGBA to ARGB. TODO: Find faster method!
@@ -907,9 +910,16 @@ dword_result_t XamReadTileToTexture_entry(dword_t tile_type, dword_t title_id,
     std::swap(pixel[2], pixel[3]);
   }
 
-  memcpy(buffer_ptr, imageData,
-         std::min(buffer_size, static_cast<size_t>(icon_dimmension_size *
-                                                   sizeof(uint32_t))));
+  // Copy row by row, as the texture pitch can differ from the icon width, and
+  // never write past the stride * height bytes the caller provided.
+  auto dest = reinterpret_cast<uint8_t*>(buffer_ptr.host_address());
+  std::memset(dest, 0, buffer_size);
+  const size_t src_pitch = size_t(width) * sizeof(uint32_t);
+  const size_t row_size = std::min(size_t(stride), src_pitch);
+  const size_t row_count = std::min(size_t(height), size_t(tile_height));
+  for (size_t y = 0; y < row_count; y++) {
+    std::copy_n(imageData + y * src_pitch, row_size, dest + y * stride);
+  }
 
   stbi_image_free(imageData);
 
