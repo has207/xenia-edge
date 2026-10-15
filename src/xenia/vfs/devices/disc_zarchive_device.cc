@@ -63,25 +63,14 @@ Entry* DiscZarchiveDevice::ResolvePath(const std::string_view path) {
   // be in the form:
   // some\PATH.foo
   XELOGFS("DiscZarchiveDevice::ResolvePath({})", path);
-  XELOGI("DiscZarchiveDevice::ResolvePath: path='{}'", path);
 
   if (!reader_) {
-    XELOGI("DiscZarchiveDevice::ResolvePath: reader_ is null");
     return nullptr;
   }
 
-  const ZArchiveNodeHandle handle = reader_->LookUp(path);
-  XELOGI(
-      "DiscZarchiveDevice::ResolvePath: LookUp('{}') -> handle={} (invalid={})",
-      path, static_cast<uint32_t>(handle), handle == ZARCHIVE_INVALID_NODE);
-  if (handle == ZARCHIVE_INVALID_NODE) {
-    return nullptr;
-  }
-
-  Entry* result = root_entry_->ResolvePath(path);
-  XELOGI("DiscZarchiveDevice::ResolvePath: entry tree walk -> {}",
-         result ? result->absolute_path() : "(null)");
-  return result;
+  // The entry tree mirrors the archive, so a separate archive LookUp first
+  // would only repeat the walk.
+  return root_entry_->ResolvePath(path);
 }
 
 bool DiscZarchiveDevice::ReadAllEntries(const std::string& path,
@@ -114,12 +103,6 @@ bool DiscZarchiveDevice::ReadAllEntries(const std::string& path,
 
       const std::string full_path = path + std::string(dirEntry.name);
       const ZArchiveNodeHandle fileHandle = reader_->LookUp(full_path);
-      XELOGI(
-          "DiscZarchiveDevice::ReadAllEntries: entry='{}' type={} "
-          "handle={} size={}",
-          full_path,
-          dirEntry.isDirectory ? "dir" : (dirEntry.isFile ? "file" : "unknown"),
-          static_cast<uint32_t>(fileHandle), dirEntry.size);
       if (fileHandle == ZARCHIVE_INVALID_NODE) {
         XELOGE("DiscZarchiveDevice::ReadAllEntries: LookUp failed for '{}'",
                full_path);
