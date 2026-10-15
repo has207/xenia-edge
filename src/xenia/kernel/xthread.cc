@@ -371,7 +371,9 @@ X_STATUS XThread::Create() {
   uint32_t tls_slots = kDefaultTlsSlotCount;
   uint32_t tls_extended_size = 0;
   if (tls_header && tls_header->slot_count) {
-    tls_slots = tls_header->slot_count;
+    // Pad like KernelState::SetProcessTLSVars does for the slot bitmap, so
+    // every slot KeTlsAlloc can hand out has storage.
+    tls_slots = (tls_header->slot_count + 3) & ~3u;
     tls_extended_size = tls_header->data_size;
   }
 
@@ -1139,8 +1141,14 @@ void XThread::SetActiveCpu(uint8_t cpu_index) {
   }
 }
 
+uint32_t XThread::tls_slot_count() const {
+  // The block is the extended (static) data followed by the slots.
+  uint32_t extended_size = tls_dynamic_address_ - tls_static_address_;
+  return (tls_total_size_ - extended_size) / 4;
+}
+
 bool XThread::GetTLSValue(uint32_t slot, uint32_t* value_out) {
-  if (slot * 4 > tls_total_size_) {
+  if (slot >= tls_slot_count()) {
     return false;
   }
 
@@ -1150,7 +1158,7 @@ bool XThread::GetTLSValue(uint32_t slot, uint32_t* value_out) {
 }
 
 bool XThread::SetTLSValue(uint32_t slot, uint32_t value) {
-  if (slot * 4 >= tls_total_size_) {
+  if (slot >= tls_slot_count()) {
     return false;
   }
 
