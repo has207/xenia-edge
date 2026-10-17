@@ -528,6 +528,19 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     return X_STATUS_SUCCESS;
   }
 
+  // SO_SNDTIMEO / SO_RCVTIMEO. The guest passes a big-endian DWORD, which
+  // POSIX setsockopt rejects (it wants a timeval) and Windows would read
+  // byte-swapped. Host sockets are non-blocking and the cooperative retry
+  // loop enforces the timeout, so it is only kept.
+  if (level == 0xFFFF && (optname == 0x1005 || optname == 0x1006)) {
+    if (optlen < sizeof(uint32_t)) {
+      last_error_ = uint32_t(X_WSAError::X_WSAEFAULT);
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    KeepTimeout(level, optname, optval_ptr, optlen);
+    return X_STATUS_SUCCESS;
+  }
+
   // Map Xbox socket levels to native
   int native_level = level;
   if (supported_levels.contains(level)) {
@@ -682,7 +695,7 @@ X_STATUS XSocket::IOControl(uint32_t cmd, uint8_t* arg_ptr) {
       return X_STATUS_UNSUCCESSFUL;
     }
 
-    *reinterpret_cast<uint32_t*>(arg_ptr) = static_cast<uint32_t>(available);
+    xe::store_and_swap<uint32_t>(arg_ptr, static_cast<uint32_t>(available));
     return X_STATUS_SUCCESS;
   }
 
@@ -1546,6 +1559,16 @@ int XSocket::SystemLinkReceive(uint8_t* buf, uint32_t buf_len, uint32_t flags,
   if (ec) {
     last_error_ = SystemLinkError(ec, error);
     return -1;
+  }
+  // Like Winsock, post FD_READ again while datagrams remain. The port only
+  // signals when its queue stops being empty, so a title that resets the
+  // event and reads one datagram would otherwise never hear of the rest.
+  if (!peek && !system_link_stream_) {
+    std::lock_guard<std::mutex> lock(select_mutex_);
+    if (selected_event_ && (selected_event_flags_ & kFD_READ) &&
+        system_link_port_->Readable()) {
+      selected_event_->Set(0, false);
+    }
   }
   if (from && source) {
     from->sin_family = AF_INET;

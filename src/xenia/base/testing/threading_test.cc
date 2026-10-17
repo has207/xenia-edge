@@ -479,6 +479,27 @@ TEST_CASE("Wait on Multiple Events", "[event]") {
   REQUIRE(order[3] == '3');
 }
 
+TEST_CASE("Wait on a repeated handle", "[event]") {
+  auto event = Event::CreateManualResetEvent(false);
+  auto other = Event::CreateManualResetEvent(false);
+  REQUIRE(event.get() != nullptr);
+  REQUIRE(other.get() != nullptr);
+
+  // A wait-any with the same handle twice must still time out and succeed.
+  auto any_result =
+      WaitAny({event.get(), other.get(), event.get()}, false, 0ms);
+  REQUIRE(any_result.first == WaitResult::kTimeout);
+  event->Set();
+  any_result = WaitAny({event.get(), other.get(), event.get()}, false, 0ms);
+  REQUIRE(any_result.first == WaitResult::kSuccess);
+  REQUIRE(any_result.second == 0);
+
+  // As on Windows, a wait-all rejects duplicates.
+  auto all_result =
+      WaitAll({event.get(), other.get(), event.get()}, false, 0ms);
+  REQUIRE(all_result == WaitResult::kFailed);
+}
+
 TEST_CASE("Wait on Semaphore", "[semaphore]") {
   WaitResult result;
   std::unique_ptr<Semaphore> sem;

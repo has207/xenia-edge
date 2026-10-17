@@ -504,9 +504,22 @@ dword_result_t NetDll_WSASendTo_entry(
     combined_buffer_offset += buffers[i].len;
   }
 
-  N_XSOCKADDR_IN native_to(to_ptr);
-  socket->SendTo(combined_buffer_mem.data(), combined_buffer_size, flags,
-                 &native_to, to_len);
+  // A NULL destination sends to the connected peer.
+  N_XSOCKADDR_IN native_to;
+  N_XSOCKADDR_IN* to = nullptr;
+  if (to_ptr) {
+    native_to = *to_ptr;
+    to = &native_to;
+  }
+  int ret = socket->SendTo(combined_buffer_mem.data(), combined_buffer_size,
+                           flags, to, to_len);
+  if (ret == -1) {
+    XThread::SetLastError(socket->GetLastWSAError());
+    return -1;
+  }
+  if (num_bytes_sent) {
+    *num_bytes_sent = static_cast<uint32_t>(ret);
+  }
 
   // TODO: Instantly complete overlapped
 
@@ -1317,9 +1330,10 @@ struct host_set {
   uint32_t count = 0;
   object_ref<XSocket> sockets[64];
 
-  void Load(const x_fd_set* guest_set) {
-    assert_true(guest_set->fd_count < 64);
-    this->count = guest_set->fd_count;
+  // Returns false, like Winsock with WSAENOTSOCK, on a handle that is not a
+  // socket. A set holds at most 64 handles.
+  bool Load(const x_fd_set* guest_set) {
+    this->count = std::min<uint32_t>(guest_set->fd_count, 64);
     for (uint32_t i = 0; i < this->count; ++i) {
       auto socket_handle = static_cast<X_HANDLE>(guest_set->fd_array[i]);
       if (socket_handle == -1) {
@@ -1329,9 +1343,13 @@ struct host_set {
       // Convert from Xenia -> native
       auto socket =
           kernel_state()->object_table()->LookupObject<XSocket>(socket_handle);
-      assert_not_null(socket);
+      if (!socket) {
+        this->count = i;
+        return false;
+      }
       this->sockets[i] = socket;
     }
+    return true;
   }
 
   void Store(x_fd_set* guest_set) {
@@ -1345,6 +1363,7 @@ struct host_set {
   // Returns how many host handles it set.
   uint32_t Store(fd_set* native_set) {
     FD_ZERO(native_set);
+    max_fd = -1;
     uint32_t stored = 0;
     for (uint32_t i = 0; i < this->count; ++i) {
       if (this->sockets[i]->system_link()) {
@@ -1352,13 +1371,25 @@ struct host_set {
       }
       // Another guest thread can close a socket while select waits.
       const auto handle = this->sockets[i]->native_handle();
-      if (handle != static_cast<uint64_t>(-1)) {
-        FD_SET(handle, native_set);
-        ++stored;
+      if (handle == static_cast<uint64_t>(-1)) {
+        continue;
       }
+#ifndef XE_PLATFORM_WIN32
+      // A POSIX fd_set is a bitmap of FD_SETSIZE descriptors.
+      if (handle >= static_cast<uint64_t>(FD_SETSIZE)) {
+        XELOGE("NetDll_select: host socket {} is past FD_SETSIZE", handle);
+        continue;
+      }
+#endif
+      FD_SET(handle, native_set);
+      max_fd = std::max(max_fd, static_cast<int64_t>(handle));
+      ++stored;
     }
     return stored;
   }
+
+  // The highest host handle the last Store set, or -1.
+  int64_t max_fd = -1;
 
   bool HasSystemLink() const {
     return std::any_of(
@@ -1420,25 +1451,29 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
 
   host_set host_readfds(SelectSet::kRead);
   fd_set native_readfds = {0};
-  if (readfds) {
-    host_readfds.Load(readfds);
-  }
   host_set host_writefds(SelectSet::kWrite);
   fd_set native_writefds = {0};
-  if (writefds) {
-    host_writefds.Load(writefds);
-  }
   host_set host_exceptfds(SelectSet::kExcept);
   fd_set native_exceptfds = {0};
-  if (exceptfds) {
-    host_exceptfds.Load(exceptfds);
+  if ((readfds && !host_readfds.Load(readfds)) ||
+      (writefds && !host_writefds.Load(writefds)) ||
+      (exceptfds && !host_exceptfds.Load(exceptfds))) {
+    XThread::SetLastError(uint32_t(X_WSAError::X_WSAENOTSOCK));
+    return -1;
   }
   uint32_t native_count = 0;
+  // Winsock ignores nfds, so titles pass anything. POSIX select only looks
+  // at descriptors below it, so give it the highest host one plus one.
+  int native_nfds = 0;
   // A select with nothing ready empties the sets, so this refills them too.
   auto store_native = [&]() {
     native_count = host_readfds.Store(&native_readfds) +
                    host_writefds.Store(&native_writefds) +
                    host_exceptfds.Store(&native_exceptfds);
+    native_nfds =
+        static_cast<int>(std::max({host_readfds.max_fd, host_writefds.max_fd,
+                                   host_exceptfds.max_fd}) +
+                         1);
   };
   store_native();
   timeval* timeout_in = nullptr;
@@ -1457,7 +1492,7 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
                            host_exceptfds.HasSystemLink();
   int ret;
   if (!offload && !system_link) {
-    ret = select(nfds, readfds ? &native_readfds : nullptr,
+    ret = select(native_nfds, readfds ? &native_readfds : nullptr,
                  writefds ? &native_writefds : nullptr,
                  exceptfds ? &native_exceptfds : nullptr, timeout_in);
   } else {
@@ -1477,7 +1512,7 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
       // Windows fails a select with no handles at all.
       if (native_count || !system_link) {
         timeval poll_timeout = {0, 0};
-        ret = select(nfds, readfds ? &native_readfds : nullptr,
+        ret = select(native_nfds, readfds ? &native_readfds : nullptr,
                      writefds ? &native_writefds : nullptr,
                      exceptfds ? &native_exceptfds : nullptr, &poll_timeout);
       }
@@ -1609,8 +1644,14 @@ dword_result_t NetDll_sendto_entry(dword_t caller, dword_t socket_handle,
     return -1;
   }
 
-  N_XSOCKADDR_IN native_to(to_ptr);
-  int ret = socket->SendTo(buf_ptr, buf_len, flags, &native_to, to_len);
+  // A NULL destination sends to the connected peer.
+  N_XSOCKADDR_IN native_to;
+  N_XSOCKADDR_IN* to = nullptr;
+  if (to_ptr) {
+    native_to = *to_ptr;
+    to = &native_to;
+  }
+  int ret = socket->SendTo(buf_ptr, buf_len, flags, to, to_len);
   if (ret == -1) {
     XThread::SetLastError(socket->GetLastWSAError());
   }

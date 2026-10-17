@@ -258,12 +258,11 @@ X_RESULT XSession::Modify(uint32_t flags, uint32_t max_public_slots,
   if (changed) {
     return 0x80155204;  // X_ONLINE_E_SESSION_INVALID_FLAGS
   }
-  flags_ = flags;
-
   const auto [used_public, used_private] = UsedSlots();
   if (max_public_slots < used_public || max_private_slots < used_private) {
     return 0x80155202;  // X_ONLINE_E_SESSION_FULL
   }
+  flags_ = flags;
   max_public_slots_ = max_public_slots;
   max_private_slots_ = max_private_slots;
   return X_ERROR_SUCCESS;
