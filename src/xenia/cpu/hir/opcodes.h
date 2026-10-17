@@ -26,6 +26,11 @@ enum BranchFlags {
   BRANCH_UNLIKELY = (1 << 2),
 };
 
+enum DelayExecutionFlags {
+  // SpinWaitInjectionPass; the loop header's guest address is in src1.offset.
+  DELAY_EXECUTION_INJECTED = (1 << 0),
+};
+
 enum RoundMode {
   // to zero/nearest/etc
   ROUND_TO_ZERO = 0,
