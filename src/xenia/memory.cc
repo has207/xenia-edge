@@ -431,8 +431,24 @@ int Memory::MapViewsMac() {
       map_info[xe::countof(map_info) - 1].virtual_address_end -
       map_info[0].virtual_address_start + 1;
 
-  void* reserved_base =
-      mmap(nullptr, total_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  // Keep the reservation above 4GB, like the other platforms: x86_64 shrinks
+  // __PAGEZERO, and an OS-chosen low address would take the sub-2GB/sub-4GB
+  // ranges the x64 JIT needs for its constant table and trampolines.
+  void* reserved_base = MAP_FAILED;
+  for (size_t n = 32; n < 47 && reserved_base == MAP_FAILED; n++) {
+    void* hint = reinterpret_cast<void*>(1ull << n);
+    void* result =
+        mmap(hint, total_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (result == hint) {
+      reserved_base = result;
+    } else if (result != MAP_FAILED) {
+      munmap(result, total_size);
+    }
+  }
+  if (reserved_base == MAP_FAILED) {
+    reserved_base = mmap(nullptr, total_size, PROT_NONE,
+                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  }
   if (reserved_base == MAP_FAILED) {
     XELOGE("MapViewsMac: reserve failed: {}", std::strerror(errno));
     return 1;
