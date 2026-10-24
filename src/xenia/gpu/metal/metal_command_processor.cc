@@ -75,6 +75,11 @@ DEFINE_bool(
     "Shader Converter instead of SPIRV-Cross.",
     "Metal");
 UPDATE_from_bool(metal_use_dxil, 2026, 8, 21, 12, false);
+DEFINE_bool(metal_zpd_exact_shaders_strict_only, true,
+            "Make draws inside occlusion queries wait for their exact shaders "
+            "only in strict occlusion_query mode, rather than stalling on "
+            "compilation in the fast modes, which correct their guesses later.",
+            "Metal");
 DEFINE_int32(
     metal_pipeline_creation_threads, -1,
     "Number of threads used for SPIRV-Cross shader and render pipeline "
@@ -3599,9 +3604,14 @@ bool MetalCommandProcessor::IssueDrawMsl(
 
   // A counted draw needs the guest's own shaders. The placeholder has no pixel
   // kills or alpha test and overcounts, and a skipped draw counts nothing.
+  // The fast modes guess and correct later anyway, and waiting drains every
+  // queued compile, stalling for whole bursts of new shaders, so only strict
+  // waits unless configured otherwise.
   const bool exact_shaders_required =
       GetZPDMode() != ZPDMode::kFake && !zpd_force_fake_fallback_ &&
-      zpd_current_report_.handle != kInvalidReportHandle;
+      zpd_current_report_.handle != kInvalidReportHandle &&
+      (GetZPDMode() == ZPDMode::kStrict ||
+       !cvars::metal_zpd_exact_shaders_strict_only);
 
   // Get or create shader translations. Both are asked for before either is
   // waited on, so their compiles overlap instead of taking a frame each.
@@ -4836,9 +4846,14 @@ bool MetalCommandProcessor::IssueDrawDxil(
 
   // A counted draw needs the guest's own shaders. The placeholder has no pixel
   // kills or alpha test and overcounts, and a skipped draw counts nothing.
+  // The fast modes guess and correct later anyway, and waiting drains every
+  // queued compile, stalling for whole bursts of new shaders, so only strict
+  // waits unless configured otherwise.
   const bool exact_shaders_required =
       GetZPDMode() != ZPDMode::kFake && !zpd_force_fake_fallback_ &&
-      zpd_current_report_.handle != kInvalidReportHandle;
+      zpd_current_report_.handle != kInvalidReportHandle &&
+      (GetZPDMode() == ZPDMode::kStrict ||
+       !cvars::metal_zpd_exact_shaders_strict_only);
 
   ShaderCompileStatus compile_status = ShaderCompileStatus::kReady;
   ShaderCompileStatus pixel_status = ShaderCompileStatus::kReady;
