@@ -3322,6 +3322,9 @@ bool MetalTextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
   if (!TryGpuLoadTexture(texture, load_base, load_mips)) {
     return false;
   }
+  if (command_processor_) {
+    command_processor_->NoteDeferredGuestMemoryRead();
+  }
 
   // The 3D-as-2D wrapper holds a copy of the base texture's data, so a reload
   // leaves it stale. Only a base texture ever owns one.
