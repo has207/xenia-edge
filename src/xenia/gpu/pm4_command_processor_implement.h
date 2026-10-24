@@ -771,7 +771,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_INTERRUPT(
 
   // The handler runs as if everything before this point in the command stream
   // is done, export output reaching guest RAM included.
-  COMMAND_PROCESSOR::SubmitResolvesForGuestSync();
+  COMMAND_PROCESSOR::SubmitResolvesForGuestInterrupt();
   COMMAND_PROCESSOR::DispatchGuestInterrupt(cpu_mask);
   return true;
 }

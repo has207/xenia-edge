@@ -83,6 +83,18 @@ DEFINE_int32(
     "explicitly (up to the number of logical CPU cores), 0 to disable "
     "multithreaded compilation.",
     "Metal");
+DEFINE_bool(metal_memexport_encoder_barrier, true,
+            "Start a new render encoder before a draw that follows a memory "
+            "export or exports over memory an earlier draw in the encoder "
+            "fetched, as Metal doesn't order buffer accesses between draws "
+            "within one.",
+            "Metal");
+DEFINE_bool(metal_await_gpu_for_guest_signals, true,
+            "Before a fence or memory write that tells the guest the GPU is "
+            "past earlier commands, finish the GPU work if it includes texture "
+            "loads or memory exports, which read guest memory only when the "
+            "GPU executes them.",
+            "Metal");
 
 namespace xe {
 namespace gpu {
@@ -1570,6 +1582,7 @@ void MetalCommandProcessor::NoteMemexportRangesWritten() {
   if (!shared_memory_ || memexport_ranges_.empty()) {
     return;
   }
+  NoteDeferredGuestMemoryRead();
   for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
     uint32_t base_bytes = memexport_range.base_address_dwords << 2;
     shared_memory_->RangeWrittenByGpu(base_bytes, memexport_range.size_bytes);
@@ -2699,6 +2712,23 @@ void MetalCommandProcessor::AwaitAllQueueOperationsCompletion() {
   AwaitSubmissionCompletion(submission_current_);
 }
 
+void MetalCommandProcessor::SubmitResolvesForGuestSync() {
+  if (!cvars::metal_await_gpu_for_guest_signals) {
+    return;
+  }
+  // Only texture loads and export copies read guest memory the guest may
+  // reuse once signaled, so without one recorded there's nothing to wait for.
+  if (!deferred_guest_memory_read_) {
+    return;
+  }
+  deferred_guest_memory_read_ = false;
+  if (!current_command_buffer_ &&
+      GetCompletedSubmission() >= submission_current_) {
+    return;
+  }
+  AwaitAllQueueOperationsCompletion();
+}
+
 // ============================================================================
 // ZPD (occlusion query) backend overrides.
 // ============================================================================
@@ -3069,8 +3099,15 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
     }
   }
 
+  if (cvars::metal_memexport_encoder_barrier) {
+    OrderMemexportHazardsInRenderEncoder(*vertex_shader, regs);
+  }
+
   // Begin command buffer if needed (will use cache-provided render targets).
   BeginCommandBuffer();
+  if (cvars::metal_memexport_encoder_barrier) {
+    NoteRenderEncoderMemoryAccesses();
+  }
   if (!current_command_buffer_ || !current_render_encoder_) {
     static bool spirv_no_command_buffer_logged = false;
     if (!spirv_no_command_buffer_logged) {
@@ -3097,6 +3134,85 @@ bool MetalCommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   return IssueDrawMsl(vertex_shader, pixel_shader, primitive_processing_result,
                       primitive_polygonal, is_rasterization_done,
                       memexport_used, normalized_color_mask, regs);
+}
+
+void MetalCommandProcessor::OrderMemexportHazardsInRenderEncoder(
+    const Shader& vertex_shader, const RegisterFile& regs) {
+  // Metal doesn't order buffer writes of one draw's vertex stage before
+  // accesses by later draws in the same render encoder, and titles chain
+  // exports (one draw's output is the next draw's vertex fetch or texture,
+  // such as GPU copies within a texture pool). Starting a new encoder makes
+  // hazard tracking order them. Texture reads of the output can't be told
+  // apart before the textures are requested, so any draw after an export
+  // starts a new encoder, as does an export over what an earlier draw in the
+  // encoder fetched.
+  draw_vertex_fetch_ranges_.clear();
+  const Shader::ConstantRegisterMap& constant_map_vertex =
+      vertex_shader.constant_register_map();
+  for (uint32_t i = 0; i < xe::countof(constant_map_vertex.vertex_fetch_bitmap);
+       ++i) {
+    uint32_t vfetch_bits_remaining = constant_map_vertex.vertex_fetch_bitmap[i];
+    uint32_t j;
+    while (xe::bit_scan_forward(vfetch_bits_remaining, &j)) {
+      vfetch_bits_remaining &= ~(uint32_t(1) << j);
+      xenos::xe_gpu_vertex_fetch_t vfetch = regs.GetVertexFetch(i * 32 + j);
+      uint32_t start = xenos::CpuToGpu(vfetch.address << 2);
+      draw_vertex_fetch_ranges_.emplace_back(start, start + (vfetch.size << 2));
+    }
+  }
+
+  if (!current_render_encoder_ ||
+      current_render_encoder_ != hazard_ranges_encoder_) {
+    return;
+  }
+  bool hazard = encoder_has_memexport_;
+  for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
+    if (hazard) {
+      break;
+    }
+    if (encoder_vertex_fetch_overflow_) {
+      hazard = true;
+      break;
+    }
+    uint32_t start = memexport_range.base_address_dwords << 2;
+    uint32_t end = start + memexport_range.size_bytes;
+    for (const auto& range : encoder_vertex_fetches_) {
+      if (start < range.second && range.first < end) {
+        hazard = true;
+        break;
+      }
+    }
+  }
+  if (hazard) {
+    EndRenderEncoder();
+  }
+}
+
+void MetalCommandProcessor::NoteRenderEncoderMemoryAccesses() {
+  // The encoder pointer only tells encoders apart, so one reallocated at the
+  // same address keeps the state, which only costs an extra encoder break.
+  if (current_render_encoder_ != hazard_ranges_encoder_) {
+    hazard_ranges_encoder_ = current_render_encoder_;
+    encoder_has_memexport_ = false;
+    encoder_vertex_fetches_.clear();
+    encoder_vertex_fetch_overflow_ = false;
+  }
+  if (!current_render_encoder_) {
+    return;
+  }
+  // Bounded so the export check stays cheap in long passes - past the bound,
+  // any export starts a new encoder.
+  constexpr size_t kMaxTrackedVertexFetches = 512;
+  for (const auto& range : draw_vertex_fetch_ranges_) {
+    if (encoder_vertex_fetches_.size() >= kMaxTrackedVertexFetches) {
+      encoder_vertex_fetch_overflow_ = true;
+      break;
+    }
+    encoder_vertex_fetches_.push_back(range);
+  }
+  if (!memexport_ranges_.empty()) {
+    encoder_has_memexport_ = true;
+  }
 }
 
 bool MetalCommandProcessor::RequestDrawSharedMemoryRanges(

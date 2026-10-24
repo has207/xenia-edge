@@ -92,6 +92,10 @@ class MetalCommandProcessor : public CommandProcessor {
   bool HasActiveRenderEncoder() const {
     return current_render_encoder_ != nullptr;
   }
+  // GPU work reading guest memory when it executes rather than when recorded
+  // (a texture load, or an export copying from it) was recorded, so the next
+  // guest signal waits for it.
+  void NoteDeferredGuestMemoryRead() { deferred_guest_memory_read_ = true; }
   uint32_t current_draw_index() const { return current_draw_index_; }
   uint64_t GetCurrentSubmission() const;
   uint64_t GetCompletedSubmission() const override;
@@ -239,6 +243,14 @@ class MetalCommandProcessor : public CommandProcessor {
   void AwaitSubmissionCompletion(uint64_t submission);
   // Commits the open submission, then blocks until every submission completes.
   void AwaitAllQueueOperationsCompletion();
+  // Before a fence or memory write the guest takes as the GPU being past the
+  // commands before it. Texture loads and export copies read guest memory
+  // through the shared buffer when the command buffer executes, not when they
+  // are recorded, so the guest reusing that memory once signaled would feed
+  // them its new contents.
+  void SubmitResolvesForGuestSync() override;
+  // Interrupts pace frames rather than hand memory back, so they don't wait.
+  void SubmitResolvesForGuestInterrupt() override {}
   void AddGpuTimeHandler(MTL::CommandBuffer* command_buffer);
   void WaitForPendingCompletionHandlers();
   void ProcessCompletedSubmissions();
@@ -942,6 +954,21 @@ class MetalCommandProcessor : public CommandProcessor {
   std::vector<draw_util::MemExportRange> memexport_ranges_;
   // Whether coherency requests await memexport_ranges_' output.
   bool memexport_ranges_awaited_ = false;
+  // Ends the render encoder before a draw that follows an export in it, or
+  // exports over what an earlier draw in it fetched.
+  void OrderMemexportHazardsInRenderEncoder(const Shader& vertex_shader,
+                                            const RegisterFile& regs);
+  void NoteRenderEncoderMemoryAccesses();
+  // Guest physical [start, end) ranges of the current draw's vertex fetches,
+  // and of the vertex fetches in hazard_ranges_encoder_ so far.
+  std::vector<std::pair<uint32_t, uint32_t>> draw_vertex_fetch_ranges_;
+  std::vector<std::pair<uint32_t, uint32_t>> encoder_vertex_fetches_;
+  bool encoder_has_memexport_ = false;
+  bool encoder_vertex_fetch_overflow_ = false;
+  MTL::RenderCommandEncoder* hazard_ranges_encoder_ = nullptr;
+  // Whether GPU work reading guest memory when it executes was recorded since
+  // the last guest signal that awaited the GPU.
+  bool deferred_guest_memory_read_ = false;
   // Export output lands in guest RAM through the shared buffer, so nothing is
   // ever staged for readback.
   void FlushMemexportStagingReadback() {}

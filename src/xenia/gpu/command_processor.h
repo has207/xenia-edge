@@ -220,6 +220,10 @@ class CommandProcessor {
   // register write-back - by backends that must have submitted what the guest
   // may then touch (see command_processor_resolve_readwatch.inc).
   virtual void SubmitResolvesForGuestSync() {}
+  // The same, before raising a CP interrupt.
+  virtual void SubmitResolvesForGuestInterrupt() {
+    SubmitResolvesForGuestSync();
+  }
 
   void RestoreRegisters(uint32_t first_register,
                         const uint32_t* register_values,
