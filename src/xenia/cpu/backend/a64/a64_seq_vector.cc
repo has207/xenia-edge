@@ -2166,20 +2166,30 @@ struct STVL_V128 : Sequence<STVL_V128, I<OPCODE_STVL, VoidOp, I64Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
     // Store bytes offset..15 of the block holding the address, taking them from
     // the head of the byte-swapped source. That is 16 - offset bytes ending at
-    // the block boundary, so it is one contiguous copy.
+    // the block boundary, so it is one contiguous copy, and at offset 0 the
+    // whole block, which bulk copies to aligned buffers store this way.
     int s = SrcVReg(e, i.src2, 0);
-
-    // Stash rev32(src) so its bytes can be addressed individually.
     e.rev32(VReg(0).b16, VReg(s).b16);
-    e.str(QReg(0),
-          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
 
+    // The host address has the guest address's alignment within the block.
     ComputeGuestHostAddress(e, e.x0, i.src1, 1, true);
-    e.and_(e.w2, e.w0, 0xF);
-    e.mov(e.w1, 16);
-    e.sub(e.w2, e.w1, e.w2);
-    e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
-    EmitPartialVectorStore(e, e.x0, e.x1, e.w2);
+    auto& done = e.NewCachedLabel();
+    auto& partial = e.AddToTail([&done](A64Emitter& e, Xbyak_aarch64::Label&) {
+      // Stash rev32(src) so its bytes can be addressed individually.
+      e.str(QReg(0),
+            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+      e.and_(e.w2, e.w0, 0xF);
+      e.mov(e.w1, 16);
+      e.sub(e.w2, e.w1, e.w2);
+      e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
+      EmitPartialVectorStore(e, e.x0, e.x1, e.w2);
+      e.b(done);
+    });
+    e.tst(e.x0, 0xF);
+    e.b(Xbyak_aarch64::NE, partial);
+    e.str(QReg(0), ptr(e.x0));
+    // The partial store works in scratch registers.
+    e.LKeepingRemapBound(done);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_STVL, STVL_V128);
@@ -2194,16 +2204,23 @@ struct STVR_V128 : Sequence<STVR_V128, I<OPCODE_STVR, VoidOp, I64Op, V128Op>> {
     // memcpy tails use stvrx on an address that can sit one past a valid page.
     int s = SrcVReg(e, i.src2, 0);
 
-    e.rev32(VReg(0).b16, VReg(s).b16);
-    e.str(QReg(0),
-          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
-
     ComputeGuestHostAddress(e, e.x0, i.src1, 1, true);
-    e.and_(e.w2, e.w0, 0xF);
-    e.and_(e.x0, e.x0, ~0xFull);
-    e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH) + 16);
-    e.sub(e.x1, e.x1, e.x2);
-    EmitPartialVectorStore(e, e.x0, e.x1, e.w2);
+    auto& done = e.NewCachedLabel();
+    auto& partial = e.AddToTail([s, &done](A64Emitter& e,
+                                           Xbyak_aarch64::Label&) {
+      e.rev32(VReg(0).b16, VReg(s).b16);
+      e.str(QReg(0),
+            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+      e.and_(e.w2, e.w0, 0xF);
+      e.and_(e.x0, e.x0, ~0xFull);
+      e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH) + 16);
+      e.sub(e.x1, e.x1, e.x2);
+      EmitPartialVectorStore(e, e.x0, e.x1, e.w2);
+      e.b(done);
+    });
+    e.tst(e.x0, 0xF);
+    e.b(Xbyak_aarch64::NE, partial);
+    e.LKeepingRemapBound(done);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_STVR, STVR_V128);
