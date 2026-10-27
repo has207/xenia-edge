@@ -444,6 +444,13 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   // tbz/tbnz reach (+/-32 KiB).
   bool near_tail_branches_safe_ = false;
   bool near_tbz_branches_safe_ = false;
+  // Whether the near-branch flags come from a typical code size rather than
+  // the largest one, so a branch out of range calls for another try.
+  bool estimate_typical_code_size_ = false;
+  bool IsRetryableBranchRangeError(const Xbyak_aarch64::Error& e) const {
+    return estimate_typical_code_size_ &&
+           static_cast<int>(e) == Xbyak_aarch64::ERR_LABEL_IS_TOO_FAR;
+  }
 
   static const uint32_t gpr_reg_map_[GPR_COUNT];
   static const uint32_t vec_reg_map_[VEC_COUNT];

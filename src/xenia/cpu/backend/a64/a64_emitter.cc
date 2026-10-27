@@ -100,33 +100,47 @@ bool A64Emitter::Emit(GuestFunction* function, hir::HIRBuilder* builder,
       function->has_end_address()
           ? (function->end_address() - function->address()) / 4 + 1
           : 0;
-  coverage_current_index_ = UINT32_MAX;
-  coverage_out_of_range_ = false;
-  sequence_samples_.clear();
 
   current_guest_function_ = function->address();
   guest_tlb_ = processor_->memory()->guest_tlbs_active();
 
-  // Reset state.
-  stack_size_ = StackLayout::GUEST_STACK_SIZE;
-  source_map_arena_.Reset();
-  tail_code_.clear();
-  label_bind_offsets_.clear();
-  fpcr_mode_ = FPCRMode::Fpu;
-  remap_kept_label_ids_.clear();
-  remap_kept_branch_after_call_ = false;
-  emitting_tail_ = false;
-
-  // The prolog, epilog and helpers emit outside the per-opcode guard below, so
-  // an unencodable operand needs catching here too.
   EmitFunctionInfo func_info = {};
   bool emitted = false;
-  try {
-    emitted = Emit(builder, func_info);
-  } catch (const Xbyak_aarch64::Error& e) {
-    XELOGE("A64: assembler error while emitting guest function {:08X}: {}",
-           current_guest_function_, e.what());
-    emitted = false;
+  // The short branch forms nearly always reach, so a function is emitted with
+  // them on the estimate of a typical code size first, and again with the
+  // bound on the largest one if a branch turns out to be too far. Emitting
+  // leaves the HIR as it was, but for the locals' stack offsets, which it sets
+  // the same way each time.
+  for (bool estimate_typical_size : {true, false}) {
+    // Reset state.
+    coverage_current_index_ = UINT32_MAX;
+    coverage_out_of_range_ = false;
+    sequence_samples_.clear();
+    stack_size_ = StackLayout::GUEST_STACK_SIZE;
+    source_map_arena_.Reset();
+    tail_code_.clear();
+    label_bind_offsets_.clear();
+    fpcr_mode_ = FPCRMode::Fpu;
+    remap_kept_label_ids_.clear();
+    remap_kept_branch_after_call_ = false;
+    emitting_tail_ = false;
+    estimate_typical_code_size_ = estimate_typical_size;
+
+    // The prolog, epilog and helpers emit outside the per-opcode guard below,
+    // so an unencodable operand needs catching here too.
+    func_info = {};
+    try {
+      emitted = Emit(builder, func_info);
+    } catch (const Xbyak_aarch64::Error& e) {
+      if (IsRetryableBranchRangeError(e)) {
+        ResetPerFunctionState();
+        continue;
+      }
+      XELOGE("A64: assembler error while emitting guest function {:08X}: {}",
+             current_guest_function_, e.what());
+      emitted = false;
+    }
+    break;
   }
   if (!emitted) {
     // Emplace only runs on success, so a failed compile has to reset too.
@@ -192,12 +206,18 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // The function entry is an edge too, and every function is entered in Fpu.
   ++expected_preds_[builder->first_block()];
   RecordIncomingState(builder->first_block(), FPCRMode::Fpu, false);
-  // 256 bytes per HIR instruction bounds the body, the tail and the literal
-  // pool islands. Should that bound ever be wrong, xbyak_aarch64 rejects the
-  // out-of-range branch when the label is bound (ERR_LABEL_IS_TOO_FAR), and
-  // the throw fails this function's compile.
-  near_tail_branches_safe_ = hir_instr_count * 256 < (768 * 1024);
-  near_tbz_branches_safe_ = hir_instr_count * 256 < (24 * 1024);
+  // kMaxBytesPerInstr bounds the body, the tail and the literal pool islands,
+  // and kTypicalBytesPerInstr is several times what a function typically
+  // takes. xbyak_aarch64 rejects an out-of-range branch when the label is bound
+  // (ERR_LABEL_IS_TOO_FAR): on the estimate the function is emitted again with
+  // the bound, and should the bound ever be wrong, the throw fails this
+  // function's compile.
+  constexpr size_t kMaxBytesPerInstr = 256;
+  constexpr size_t kTypicalBytesPerInstr = 32;
+  const size_t bytes_per_instr =
+      estimate_typical_code_size_ ? kTypicalBytesPerInstr : kMaxBytesPerInstr;
+  near_tail_branches_safe_ = hir_instr_count * bytes_per_instr < (768 * 1024);
+  near_tbz_branches_safe_ = hir_instr_count * bytes_per_instr < (24 * 1024);
 
   // Calculate local variable stack offsets.
   auto locals = builder->locals();
@@ -328,6 +348,9 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
           RecordIncomingState(label->block);
         }
       } catch (const Xbyak_aarch64::Error& e) {
+        if (IsRetryableBranchRangeError(e)) {
+          throw;
+        }
         // Uncaught this aborts the process with no context, so name the opcode
         // and the guest function and fail just this compile.
         XELOGE(
@@ -419,6 +442,9 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
     try {
       tail_item.func(*this, tail_item.label);
     } catch (const Xbyak_aarch64::Error& e) {
+      if (IsRetryableBranchRangeError(e)) {
+        throw;
+      }
       XELOGE("A64: assembler rejected tail code in guest function {:08X}: {}",
              current_guest_function_, e.what());
       return false;
