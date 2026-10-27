@@ -62,8 +62,10 @@ bool GuestFPRSlot(uint32_t offset, TypeName type, size_t* out_index) {
   return true;
 }
 
-// Anything that can write guest context without a visible store. Not
-// OPCODE_FLAG_VOLATILE, which conditional branches carry too.
+// Anything that can write a guest FPR without a visible store. Not
+// OPCODE_FLAG_VOLATILE, which conditional branches carry too. Not a preemption
+// check either: its yield runs other threads on their own contexts and nothing
+// writes the FPRs of a thread that is not running.
 bool ClobbersGuestContext(const Instr* i) {
   switch (i->GetOpcodeNum()) {
     case OPCODE_CALL:
@@ -71,7 +73,6 @@ bool ClobbersGuestContext(const Instr* i) {
     case OPCODE_CALL_INDIRECT:
     case OPCODE_CALL_INDIRECT_TRUE:
     case OPCODE_CALL_EXTERN:
-    case OPCODE_CHECK_PREEMPT:
     case OPCODE_TRAP:
     case OPCODE_TRAP_TRUE:
     case OPCODE_DEBUG_BREAK:
