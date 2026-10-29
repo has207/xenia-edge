@@ -965,59 +965,71 @@ dword_result_t XamReadTileToTexture_entry(dword_t tile_type, dword_t title_id,
                                           lpvoid_t buffer_ptr, dword_t stride,
                                           dword_t tile_height,
                                           dword_t overlapped_ptr) {
-  if (!buffer_ptr) {
-    return X_ERROR_INVALID_PARAMETER;
-  }
-
-  size_t buffer_size = size_t(stride) * size_t(tile_height);
-
+  // Every failure is ERROR_FUNCTION_FAILED and leaves the texture untouched.
+  // The extended error says where the read stopped. Tiles read by key pass
+  // XUSER_INDEX_NONE, which isn't looked up here.
+  X_HRESULT extended_error = X_E_SUCCESS;
+  std::span<const uint8_t> tile;
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
   if (!user) {
-    return X_ERROR_INVALID_PARAMETER;
+    extended_error = user_index < XUserMaxUserCount
+                         ? X_E_NO_SUCH_USER
+                         : X_HRESULT_FROM_WIN32(X_ERROR_FILE_NOT_FOUND);
+  } else {
+    tile = kernel_state()->xam_state()->user_tracker()->GetIcon(
+        user->xuid(), title_id, static_cast<XTileType>(tile_type.value()),
+        tile_id);
+    if (tile.empty()) {
+      extended_error = X_HRESULT_FROM_WIN32(X_ERROR_FILE_NOT_FOUND);
+    } else if (!buffer_ptr) {
+      extended_error = X_E_INVALIDARG;
+    }
   }
 
-  std::span<const uint8_t> tile =
-      kernel_state()->xam_state()->user_tracker()->GetIcon(
-          user->xuid(), title_id, static_cast<XTileType>(tile_type.value()),
-          tile_id);
-
-  if (tile.empty()) {
-    return X_ERROR_SUCCESS;
-  }
-
-  int width, height, channels;
+  int width = 0, height = 0, channels = 0;
   unsigned char* imageData =
-      stbi_load_from_memory(tile.data(), static_cast<int>(tile.size()), &width,
-                            &height, &channels, STBI_rgb_alpha);
-
-  size_t icon_dimmension_size = width * height;
-  std::fill_n(reinterpret_cast<uint8_t*>(buffer_ptr.host_address()),
-              icon_dimmension_size * sizeof(uint32_t), 0);
-
-  for (int i = 0; i < icon_dimmension_size; i++) {
-    unsigned char* pixel = &imageData[i * sizeof(uint32_t)];
-
-    // RGBA to ARGB. TODO: Find faster method!
-    // RGBA->AGBR
-    std::swap(pixel[0], pixel[3]);
-    // AGBR->ARBG
-    std::swap(pixel[1], pixel[3]);
-    // ARBG->ARGB
-    std::swap(pixel[2], pixel[3]);
+      extended_error
+          ? nullptr
+          : stbi_load_from_memory(tile.data(), static_cast<int>(tile.size()),
+                                  &width, &height, &channels, STBI_rgb_alpha);
+  if (!extended_error && !imageData) {
+    extended_error = X_E_FAIL;
   }
 
-  memcpy(buffer_ptr, imageData,
-         std::min(buffer_size, static_cast<size_t>(icon_dimmension_size *
-                                                   sizeof(uint32_t))));
+  if (imageData) {
+    const size_t icon_dimmension_size = size_t(width) * size_t(height);
+    for (size_t i = 0; i < icon_dimmension_size; i++) {
+      unsigned char* pixel = &imageData[i * sizeof(uint32_t)];
 
-  stbi_image_free(imageData);
+      // RGBA to ARGB. TODO: Find faster method!
+      // RGBA->AGBR
+      std::swap(pixel[0], pixel[3]);
+      // AGBR->ARBG
+      std::swap(pixel[1], pixel[3]);
+      // ARBG->ARGB
+      std::swap(pixel[2], pixel[3]);
+    }
 
+    const uint32_t row_size = std::min<uint32_t>(
+        stride, uint32_t(width) * uint32_t(sizeof(uint32_t)));
+    const uint32_t rows = std::min<uint32_t>(tile_height, uint32_t(height));
+    auto dest = reinterpret_cast<uint8_t*>(buffer_ptr.host_address());
+    for (uint32_t y = 0; y < rows; y++) {
+      std::memcpy(dest + size_t(y) * stride,
+                  imageData + size_t(y) * width * sizeof(uint32_t), row_size);
+    }
+
+    stbi_image_free(imageData);
+  }
+
+  const X_RESULT result =
+      extended_error ? X_ERROR_FUNCTION_FAILED : X_ERROR_SUCCESS;
   if (overlapped_ptr) {
-    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
-                                                X_ERROR_SUCCESS);
+    kernel_state()->CompleteOverlappedImmediateEx(overlapped_ptr, result,
+                                                  extended_error, 0);
     return X_ERROR_IO_PENDING;
   }
-  return X_ERROR_SUCCESS;
+  return result;
 }
 DECLARE_XAM_EXPORT1(XamReadTileToTexture, kUserProfiles, kStub);
 
