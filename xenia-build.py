@@ -167,12 +167,18 @@ def import_vs_environment():
     install_path = None
     env_tool_args = None
 
+    # Absolute: with NoDefaultCurrentDirectoryInExePath set, Windows doesn't
+    # look in the working directory for a relative path without a backslash.
     vswhere = subprocess.check_output(
-        "tools/vswhere/vswhere.exe -version \"[17,)\" -latest -prerelease -format json -utf8 -products"
-        " Microsoft.VisualStudio.Product.Enterprise"
-        " Microsoft.VisualStudio.Product.Professional"
-        " Microsoft.VisualStudio.Product.Community"
-        " Microsoft.VisualStudio.Product.BuildTools",
+        [
+            os.path.join(self_path, "tools", "vswhere", "vswhere.exe"),
+            "-version", "[17,)", "-latest", "-prerelease",
+            "-format", "json", "-utf8", "-products",
+            "Microsoft.VisualStudio.Product.Enterprise",
+            "Microsoft.VisualStudio.Product.Professional",
+            "Microsoft.VisualStudio.Product.Community",
+            "Microsoft.VisualStudio.Product.BuildTools",
+        ],
         encoding="utf-8",
     )
     if vswhere:
