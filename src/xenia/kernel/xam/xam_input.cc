@@ -379,6 +379,14 @@ X_HRESULT_result_t XamInputNonControllerSetRaw_entry(dword_t buffer_length,
 }
 DECLARE_XAM_EXPORT1(XamInputNonControllerSetRaw, kInput, kSketchy);
 
+// Input from a remote control client (LRC), of which none is ever connected.
+// xam reports an empty queue as ERROR_EMPTY and writes neither output.
+dword_result_t XamLrcGetInputWithSeek_entry(
+    pointer_t<X_INPUT_KEYSTROKE> keystroke, lpqword_t seek_ptr) {
+  return X_ERROR_EMPTY;
+}
+DECLARE_XAM_EXPORT1(XamLrcGetInputWithSeek, kInput, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe
