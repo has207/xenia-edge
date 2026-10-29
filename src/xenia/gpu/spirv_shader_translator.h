@@ -998,8 +998,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // present at all, must be a bool (if it's NoResult, 32bpp will be assumed).
   spv::Id FSI_AddSampleOffset(spv::Id sample_0_address, uint32_t sample_index,
                               spv::Id is_64bpp = spv::NoResult);
-  // Updates main_fsi_sample_mask_. Must be called outside non-uniform control
-  // flow because of taking derivatives of the fragment depth.
+  // Updates main_fsi_sample_mask_. Unless the shader writes oDepth, tests the
+  // depth and derivatives taken at the start of the shader.
   void FSI_DepthStencilTest(bool sample_mask_potentially_narrowed_previouly);
   // Adds the selected depth/stencil outcomes to the active ZPD counter slot.
   void FSI_AddMSAASamplesToZPD(bool count_passed, bool count_failed);
@@ -1312,7 +1312,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // FBO only: actual gl_FragDepth Output.
   // Written at the end of the pixel shader from output_or_var_fragment_depth_.
   spv::Id output_fragment_depth_;
-  // Raster depth and derivatives captured early for the host RT decal path.
+  // Raster depth and derivatives taken at the start of the shader for the host
+  // RT decal path and the FSI depth / stencil test.
   spv::Id main_fbo_depth_unbiased_;
   std::array<spv::Id, 2> main_fbo_depth_derivatives_;
 

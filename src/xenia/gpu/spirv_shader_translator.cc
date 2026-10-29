@@ -3608,9 +3608,12 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
         "xe_var_fragment_depth", const_float_0_);
   }
 
-  if (DSV_IsApplyingPolygonOffset()) {
+  if (DSV_IsApplyingPolygonOffset() ||
+      (edram_fragment_shader_interlock_ && !current_shader().writes_depth())) {
     // The decal path needs the original triangle depth slope, not the slope of
-    // whichever lanes survive guest control flow or kill.
+    // whichever lanes survive guest control flow or kill. The late FSI depth /
+    // stencil test may run in the branch on main_fsi_sample_mask_ != 0, where
+    // the lanes outside the coverage are inactive, so take it here for FSI too.
     assert_true(input_fragment_coordinates_ != spv::NoResult);
     id_vector_temp_.clear();
     id_vector_temp_.push_back(builder_->makeIntConstant(2));
