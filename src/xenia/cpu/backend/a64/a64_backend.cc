@@ -988,8 +988,12 @@ uint64_t ReservedStoreImpl(void* raw_context, uint64_t guest_address,
 
   auto& granule =
       ReserveGranule(bctx->reserve_helper_, uint32_t(guest_address));
-  // a store to this granule since our lwarx kills the reservation
-  if (granule.load(std::memory_order_acquire) != bctx->reserve_generation) {
+  // claim the generation, see EmitReservedStore
+  uint32_t generation = bctx->reserve_generation;
+  if ((generation & 1) ||
+      !granule.compare_exchange_strong(generation, generation + 1,
+                                       std::memory_order_acq_rel,
+                                       std::memory_order_relaxed)) {
     return 0;
   }
 
@@ -1003,11 +1007,8 @@ uint64_t ReservedStoreImpl(void* raw_context, uint64_t guest_address,
         uint32_t(bctx->cached_reserve_value_), uint32_t(value),
         reinterpret_cast<volatile uint32_t*>(uintptr_t(host_address)));
   }
+  granule.store(generation + 2, std::memory_order_release);
 
-  if (exchange_ok) {
-    // the store landed, so kill other reservations on this granule
-    granule.fetch_add(1, std::memory_order_release);
-  }
   return exchange_ok ? 1 : 0;
 }
 

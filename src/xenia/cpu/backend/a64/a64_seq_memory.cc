@@ -1052,12 +1052,28 @@ static void EmitReservedStore(A64Emitter& e, const I8Op& dest,
       BackendCtxOffset(offsetof(A64BackendContext, flags));
   const uint32_t dest_idx = dest.reg().getIdx();
 
+  // cached labels, a label AddToTail returns moves when another tail is added
   auto& done = e.NewCachedLabel();
-  auto& fail =
-      e.AddToTail([dest_idx, &done](A64Emitter& e, Xbyak_aarch64::Label&) {
-        e.mov(WReg(dest_idx), 0);
-        e.b(done);
-      });
+  auto& fail = e.NewCachedLabel();
+  auto& release_fail = e.NewCachedLabel();
+  auto& claim_mismatch = e.NewCachedLabel();
+  auto& value_mismatch = e.NewCachedLabel();
+  e.AddToTail([dest_idx, &done, &fail, &release_fail, &claim_mismatch,
+               &value_mismatch](A64Emitter& e, Xbyak_aarch64::Label&) {
+    // ldaxr compare failed, drop the exclusive monitor
+    e.L(claim_mismatch);
+    e.clrex(15);
+    e.b(fail);
+    e.L(value_mismatch);
+    e.clrex(15);
+    // claimed, so publish even on failure
+    e.L(release_fail);
+    e.add(e.w17, e.w17, 1);
+    e.stlr(e.w17, ptr(e.x11));
+    e.L(fail);
+    e.mov(WReg(dest_idx), 0);
+    e.b(done);
+  });
 
   // stwcx. always clears the reservation, stored or not
   e.ldr(e.w8, ptr(bctx, flags_offset));
@@ -1073,17 +1089,21 @@ static void EmitReservedStore(A64Emitter& e, const I8Op& dest,
   e.b(NE, fail);
 
   EmitGranuleAddress(e, guest_address, e.x11, e.w13);
-  // a store to this granule since our lwarx kills the reservation
-  e.ldar(e.w14, ptr(e.x11));
+  // claim the generation (even to odd) so no other store can land until we
+  // publish the next even value, odd snapshots always fail
   e.ldr(e.w15, ptr(bctx, BackendCtxOffset(
                              offsetof(A64BackendContext, reserve_generation))));
-  e.cmp(e.w14, e.w15);
-  e.b(NE, fail);
-
-  e.ldr(e.x16, ptr(bctx, BackendCtxOffset(offsetof(A64BackendContext,
-                                                   cached_reserve_value_))));
+  e.tbnz(e.w15, 0, fail);
+  e.add(e.w17, e.w15, 1);
 
   if (e.IsFeatureEnabled(kA64EmitLSE)) {
+    e.mov(e.w14, e.w15);
+    e.casal(e.w14, e.w17, ptr(e.x11));
+    e.cmp(e.w14, e.w15);
+    e.b(NE, fail);
+
+    e.ldr(e.x16, ptr(bctx, BackendCtxOffset(offsetof(A64BackendContext,
+                                                     cached_reserve_value_))));
     // casal returns the old value in the compare register, so keep a copy
     e.mov(e.x3, e.x16);
     if (bit64) {
@@ -1093,44 +1113,37 @@ static void EmitReservedStore(A64Emitter& e, const I8Op& dest,
       e.casal(e.w16, e.w2, ptr(e.x1));
       e.cmp(e.w16, e.w3);
     }
-    e.b(NE, fail);
-    // the store landed, so kill other reservations on this granule
-    e.mov(e.w17, 1);
-    e.staddl(e.w17, ptr(e.x11));
+    e.b(NE, release_fail);
   } else {
-    // The exclusive monitor is still held when the compare fails, so that
-    // path has to clear it before joining the common failure tail.
-    auto& cas_mismatch =
-        e.AddToTail([dest_idx, &done](A64Emitter& e, Xbyak_aarch64::Label&) {
-          e.clrex(15);
-          e.mov(WReg(dest_idx), 0);
-          e.b(done);
-        });
+    auto& claim_retry = e.NewCachedLabel();
     auto& cas_retry = e.NewCachedLabel();
-    auto& bump_retry = e.NewCachedLabel();
 
+    e.L(claim_retry);
+    e.ldaxr(e.w14, ptr(e.x11));
+    e.cmp(e.w14, e.w15);
+    e.b(NE, claim_mismatch);
+    e.stlxr(e.w13, e.w17, ptr(e.x11));
+    e.cbnz(e.w13, claim_retry);
+
+    e.ldr(e.x16, ptr(bctx, BackendCtxOffset(offsetof(A64BackendContext,
+                                                     cached_reserve_value_))));
     e.L(cas_retry);
     if (bit64) {
       e.ldaxr(e.x14, ptr(e.x1));
       e.cmp(e.x14, e.x16);
-      e.b(NE, cas_mismatch);
+      e.b(NE, value_mismatch);
       e.stlxr(e.w15, e.x2, ptr(e.x1));
     } else {
       e.ldaxr(e.w14, ptr(e.x1));
       e.cmp(e.w14, e.w16);
-      e.b(NE, cas_mismatch);
+      e.b(NE, value_mismatch);
       e.stlxr(e.w15, e.w2, ptr(e.x1));
     }
     e.cbnz(e.w15, cas_retry);
-
-    // the store landed, so kill other reservations on this granule
-    e.L(bump_retry);
-    e.ldxr(e.w14, ptr(e.x11));
-    e.add(e.w14, e.w14, 1);
-    e.stlxr(e.w15, e.w14, ptr(e.x11));
-    e.cbnz(e.w15, bump_retry);
   }
 
+  e.add(e.w17, e.w17, 1);
+  e.stlr(e.w17, ptr(e.x11));
   e.mov(dest, 1);
   e.L(done);
 }
