@@ -422,10 +422,12 @@ static const struct {
         0x0000000080000000ull,
     },
     //  (256mb) - xex 4k pages
+    // Own backing: aliasing the 64k xex range lets a module in one heap
+    // overwrite a module in the other.
     {
         0x90000000,
         0x9FFFFFFF,
-        0x0000000080000000ull,
+        0x0000000090000000ull,
     },
     //  (512mb) - physical 64k pages
     {
