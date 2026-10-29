@@ -116,6 +116,18 @@ dword_result_t XamContentGetDeviceState_entry(dword_t device_id,
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceState, kContent, kStub);
 
+// xam reports the first mounted device. The dummy HDD always is, and comes
+// first.
+dword_result_t XamContentGetDefaultDevice_entry(lpdword_t device_id_ptr) {
+  // xam doesn't check and faults on a null pointer.
+  if (!device_id_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  *device_id_ptr = static_cast<uint32_t>(DummyDeviceId::HDD);
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetDefaultDevice, kContent, kImplemented);
+
 typedef struct {
   xe::be<uint32_t> device_id;
   xe::be<uint32_t> device_type;
