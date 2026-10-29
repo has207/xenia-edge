@@ -239,14 +239,7 @@ class XexModule : public xe::cpu::Module {
     return (xex_header()->module_flags & XEX_MODULE_TITLE) != 0;
   }
 
-  bool is_valid_executable() const {
-    assert_not_zero(base_address_);
-    if (!base_address_) {
-      return false;
-    }
-    uint8_t* buffer = memory()->TranslateVirtual(base_address_);
-    return *(uint32_t*)buffer == 0x905A4D;
-  }
+  bool is_valid_executable() const;
 
   bool is_patch() const {
     assert_not_null(xex_header());

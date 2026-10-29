@@ -491,6 +491,30 @@ int XexModule::ApplyPatch(XexModule* module) {
   return result_code;
 }
 
+// Also tells ReadImage whether its key was the right one. CLR native images
+// (.ni.dll) don't have the usual DOS stub after MZ. The PE header that e_lfanew
+// points at is checked instead.
+bool XexModule::is_valid_executable() const {
+  assert_not_zero(base_address_);
+  if (!base_address_) {
+    return false;
+  }
+  const uint8_t* image = memory()->TranslateVirtual(base_address_);
+  auto dos_header = reinterpret_cast<const XIMAGE_DOS_HEADER*>(image);
+  if (dos_header->e_magic != XIMAGE_DOS_SIGNATURE) {
+    return false;
+  }
+  const uint32_t nt_offset = uint32_t(dos_header->e_lfanew);
+  const uint32_t size = image_size();
+  if (size < sizeof(XIMAGE_NT_HEADERS32) ||
+      nt_offset > size - sizeof(XIMAGE_NT_HEADERS32)) {
+    return false;
+  }
+  auto nt_headers =
+      reinterpret_cast<const XIMAGE_NT_HEADERS32*>(image + nt_offset);
+  return nt_headers->Signature == XIMAGE_NT_SIGNATURE;
+}
+
 int XexModule::ReadImage(const void* xex_addr, size_t xex_length,
                          const uint8_t* key) {
   if (!opt_file_format_info()) {
