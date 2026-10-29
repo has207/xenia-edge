@@ -65,6 +65,39 @@ dword_result_t XamMediaVerificationInject_entry(dword_t r3, dword_t r4) {
 }
 DECLARE_XAM_EXPORT1(XamMediaVerificationInject, kNone, kStub);
 
+// Ordinals 0x7DC/0x7DD and 0x7E3/0x7E4 load and unload two system modules of
+// extra AV codecs through one loader, which hands back the module's export 1
+// and counts references. The modules ship with the console's system software
+// and aren't here. npctrl takes a null result as there being no extra codecs
+// and crashes cleaning up after a failed load, so loading succeeds without one.
+// The console's first load returns 0x10000000 from its module loader and later
+// ones 0. Callers only test the sign, so this always returns 0.
+constexpr X_HRESULT kErrorPointer = 0x80004003;
+
+static dword_result_t LoadExtraAVCodecs(lpdword_t module_handle_ptr) {
+  if (!module_handle_ptr) {
+    return kErrorPointer;
+  }
+  *module_handle_ptr = 0;
+  return X_E_SUCCESS;
+}
+
+dword_result_t XamLoadExtraAVCodecs_entry(lpdword_t module_handle_ptr) {
+  return LoadExtraAVCodecs(module_handle_ptr);
+}
+DECLARE_XAM_EXPORT1(XamLoadExtraAVCodecs, kNone, kStub);
+
+void XamUnloadExtraAVCodecs_entry() {}
+DECLARE_XAM_EXPORT1(XamUnloadExtraAVCodecs, kNone, kStub);
+
+dword_result_t XamLoadExtraAVCodecs2_entry(lpdword_t module_handle_ptr) {
+  return LoadExtraAVCodecs(module_handle_ptr);
+}
+DECLARE_XAM_EXPORT1(XamLoadExtraAVCodecs2, kNone, kStub);
+
+void XamUnloadExtraAVCodecs2_entry() {}
+DECLARE_XAM_EXPORT1(XamUnloadExtraAVCodecs2, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

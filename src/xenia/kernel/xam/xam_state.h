@@ -71,8 +71,6 @@ class XamState {
   uint32_t GetIptvNameAddress() const { return iptv_name_address_; }
 
   X_DASH_APP_INFO dash_app_info_ = {};
-  uint32_t dash_backstack_nodes_count_ = 0;
-  X_DASH_BACKSTACK_DATA dash_backstack_data_[2] = {};
   uint32_t content_register_callback = 0;
 
   std::atomic<bool> is_xam_dialog_present_ = false;
