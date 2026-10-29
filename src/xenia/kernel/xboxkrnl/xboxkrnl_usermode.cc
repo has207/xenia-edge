@@ -22,6 +22,7 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
@@ -36,20 +37,6 @@ using namespace xe::literals;
 using cpu::ppc::PPCContext;
 
 namespace {
-
-// CONTEXT fields.
-constexpr uint32_t kContextFlags = 0x0;
-constexpr uint32_t kContextMsr = 0x4;
-constexpr uint32_t kContextIar = 0x8;
-constexpr uint32_t kContextLr = 0xC;
-constexpr uint32_t kContextCtr = 0x10;
-constexpr uint32_t kContextGpr = 0x18;
-constexpr uint32_t kContextCr = 0x118;
-constexpr uint32_t kContextXer = 0x11C;
-// After the FPSCR and the 32 FPRs: whether the context is user mode's.
-constexpr uint32_t kContextUserModeControl = 0x228;
-constexpr uint32_t kContextControl = 0x1;
-constexpr uint32_t kContextInteger = 0x4;
 
 // Points the JIT's guest addressing at the user mode or kernel address space.
 void SetUserAddressing(PPCContext* context, bool user) {

@@ -513,6 +513,22 @@ object_ref<XModule> KernelState::GetModule(const std::string_view name,
   return nullptr;
 }
 
+object_ref<UserModule> KernelState::GetUserModuleForAddress(uint32_t address) {
+  auto global_lock = global_critical_region_.Acquire();
+  for (auto& user_module : user_modules_) {
+    if (user_module->module_format() != UserModule::kModuleFormatXex) {
+      continue;
+    }
+    auto xex_module = user_module->xex_module();
+    uint32_t base_address = xex_module->base_address();
+    if (address >= base_address &&
+        address - base_address < xex_module->xex_security_info()->image_size) {
+      return retain_object(user_module.get());
+    }
+  }
+  return nullptr;
+}
+
 object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
   if (!module->is_executable()) {
     return nullptr;

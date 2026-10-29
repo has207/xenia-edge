@@ -253,6 +253,8 @@ class KernelState {
   bool IsModuleLoaded(const std::string_view name);
   object_ref<XModule> GetModule(const std::string_view name,
                                 bool user_only = false);
+  // Returns the loaded XEX module whose image contains the guest address.
+  object_ref<UserModule> GetUserModuleForAddress(uint32_t address);
 
   object_ref<XThread> LaunchModule(object_ref<UserModule> module);
   object_ref<UserModule> GetExecutableModule();
