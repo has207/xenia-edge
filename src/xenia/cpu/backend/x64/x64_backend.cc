@@ -1636,6 +1636,7 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   _code_offsets code_offsets = {};
   code_offsets.prolog = getSize();
   Xbyak::Label fail;
+  Xbyak::Label release_fail;
 
   // stwcx. always clears the reservation, stored or not
   btr(GetBackendFlagsPtr(), kX64BackendHasReserveBit);
@@ -1650,12 +1651,17 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   shr(edx, RESERVE_GRANULE_SHIFT);
   and_(edx, RESERVE_ENTRY_MASK);
   lea(rcx, ptr[rax + rdx * 4]);
-  // get exclusive access to the counter we're about to bump
+  // get exclusive access to the counter we're about to claim
   prefetchw(ptr[rcx]);
 
-  // a store to this granule since our lwarx kills the reservation
-  mov(edx, dword[rcx]);
-  cmp(GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)), edx);
+  // claim the generation (even to odd) so no other store can land until we
+  // publish the next even value, odd snapshots always fail
+  mov(eax, GetBackendCtxPtr(offsetof(X64BackendContext, reserve_generation)));
+  test(al, 1);
+  jnz(fail);
+  lea(edx, ptr[rax + 1]);
+  lock();
+  cmpxchg(dword[rcx], edx);
   jnz(fail);
 
   mov(rax,
@@ -1667,14 +1673,19 @@ void* X64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   } else {
     cmpxchg(ptr[r9], r8d);
   }
-  jnz(fail);
+  jnz(release_fail);
 
-  // the store landed, so kill other reservations on this granule
-  lock();
-  inc(dword[rcx]);
+  // publish, a plain store releases under TSO
+  inc(edx);
+  mov(dword[rcx], edx);
 
   xor_(eax, eax);  // ZF = 1
   ret();
+
+  // claimed, so publish even on failure
+  L(release_fail);
+  inc(edx);
+  mov(dword[rcx], edx);
 
   L(fail);
   or_(eax, 1);  // ZF = 0
@@ -1726,20 +1737,20 @@ bool ReservedStoreImpl(X64BackendContext* bctx, ppc::PPCContext* context,
   }
 
   auto& granule = ReserveGranule(bctx->reserve_helper_, address);
-  // a store to this granule since our load kills the reservation
-  if (granule.load(std::memory_order_acquire) != bctx->reserve_generation) {
+  // claim the generation, see EmitReservedStoreHelper
+  uint32_t generation = bctx->reserve_generation;
+  if ((generation & 1) ||
+      !granule.compare_exchange_strong(generation, generation + 1,
+                                       std::memory_order_acq_rel,
+                                       std::memory_order_relaxed)) {
     return false;
   }
 
-  if (!xe::atomic_cas(static_cast<T>(bctx->cached_reserve_value_),
-                      xe::byte_swap(value),
-                      context->TranslateVirtual<T*>(address))) {
-    return false;
-  }
-
-  // the store landed, so kill other reservations on this granule
-  granule.fetch_add(1, std::memory_order_release);
-  return true;
+  const bool exchange_ok = xe::atomic_cas(
+      static_cast<T>(bctx->cached_reserve_value_), xe::byte_swap(value),
+      context->TranslateVirtual<T*>(address));
+  granule.store(generation + 2, std::memory_order_release);
+  return exchange_ok;
 }
 
 }  // namespace
