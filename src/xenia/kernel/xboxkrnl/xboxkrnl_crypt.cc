@@ -8,6 +8,9 @@
 */
 
 #include <algorithm>
+#include <cstring>
+#include <random>
+#include <span>
 #include <tuple>
 
 #include "xenia/base/logging.h"
@@ -435,6 +438,16 @@ void XeCryptSha256Final_entry(pointer_t<XECRYPT_SHA256_STATE> sha_state,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha256Final, kNone, kImplemented);
 
+void XeCryptSha256_entry(lpvoid_t input_1, dword_t input_1_size,
+                         lpvoid_t input_2, dword_t input_2_size,
+                         lpvoid_t input_3, dword_t input_3_size,
+                         lpvoid_t output, dword_t output_size) {
+  XeCryptSha256(input_1.as<uint8_t*>(), input_1_size, input_2.as<uint8_t*>(),
+                input_2_size, input_3.as<uint8_t*>(), input_3_size,
+                output.as<uint8_t*>(), output ? uint32_t(output_size) : 0);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptSha256, kNone, kImplemented);
+
 void XeCryptSha512Init_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state) {
   XeCryptSha512Init(sha_state);
 }
@@ -451,6 +464,23 @@ void XeCryptSha512Final_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
   XeCryptSha512Final(sha_state, out, out_size);
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptSha512Final, kNone, kImplemented);
+
+void XeCryptSha384Init_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state) {
+  XeCryptSha384Init(sha_state);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptSha384Init, kNone, kImplemented);
+
+void XeCryptSha384Update_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
+                               lpvoid_t input, dword_t input_size) {
+  XeCryptSha384Update(sha_state, input.as<uint8_t*>(), input_size);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptSha384Update, kNone, kImplemented);
+
+void XeCryptSha384Final_entry(pointer_t<XECRYPT_SHA512_STATE> sha_state,
+                              pointer_t<uint8_t> out, dword_t out_size) {
+  XeCryptSha384Final(sha_state, out, out ? uint32_t(out_size) : 0);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptSha384Final, kNone, kImplemented);
 
 void XeCryptMd5Init_entry(pointer_t<XECRYPT_MD5_STATE> md5_state) {
   XeCryptMd5Init(md5_state);
@@ -621,15 +651,36 @@ dword_result_t XeKeysGetKey_entry(word_t key, lpvoid_t key_buffer,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysGetKey, kNone, kSketchy);
 
+// Stands in for the per-console key 0x17, which only a real key vault holds.
+// Data obfuscated under it only ever has to come back out on this emulator, so
+// any fixed value will do.
+static constexpr uint8_t xe_console_obfuscation_key[16] = {
+    0x58, 0x65, 0x6E, 0x69, 0x61, 0x43, 0x6F, 0x6E,
+    0x73, 0x6F, 0x6C, 0x65, 0x4F, 0x62, 0x66, 0x4B};
+
+// The 16 byte keys the hypervisor runs the key numbered crypto calls with.
+// Empty for a key we don't have.
+static std::span<const uint8_t> GetSymmetricKey(uint32_t key_num) {
+  switch (key_num) {
+    case CONSOLE_OBFUSCATION_KEY:
+      return xe_console_obfuscation_key;
+    case ROAMABLE_OBFUSCATION_KEY:
+      return key19;
+    default:
+      return {};
+  }
+}
+
 bool XeKeysHmacSha(uint32_t key_num, const uint8_t* inp_1, uint32_t inp_1_size,
                    const uint8_t* inp_2, uint32_t inp_2_size,
                    const uint8_t* inp_3, uint32_t inp_3_size, uint8_t* out,
                    uint32_t out_size) {
-  if (key_num != 0x19) {
+  auto key = GetSymmetricKey(key_num);
+  if (key.empty()) {
     return false;
   }
-  XeCryptHmacSha(key19, sizeof(key19), inp_1, inp_1_size, inp_2, inp_2_size,
-                 inp_3, inp_3_size, out, out_size);
+  XeCryptHmacSha(key.data(), uint32_t(key.size()), inp_1, inp_1_size, inp_2,
+                 inp_2_size, inp_3, inp_3_size, out, out_size);
   return true;
 }
 
@@ -733,6 +784,29 @@ dword_result_t XeKeysGetConsoleID_entry(pointer_t<XE_CONSOLE_ID> raw_bytes,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysGetConsoleID, kNone, kImplemented);
 
+// The certificate this emulated console presents. Unsigned, there is no master
+// key to sign it with.
+static void FillConsoleCertificate(XE_CONSOLE_CERTIFICATE* cert) {
+  std::memset(cert, 0, sizeof(*cert));
+  cert->cert_size = uint16_t(sizeof(XE_CONSOLE_CERTIFICATE));
+  cert->console_id.RefurbBits = 0b0011;
+  cert->console_id.ManufactureMonth = 0b1001;
+  cert->console_id.ManufactureYear = 0b0001;
+  cert->console_id.MacIndex3 = 0b01000000;
+  cert->console_id.MacIndex4 = 0b01100110;
+  cert->console_id.MacIndex5 = 0b01111110;
+  cert->console_id.Crc = 0b0000;
+  cert->console_type = Retail;
+  cert->manufacture_date[0] = 2;
+  cert->manufacture_date[1] = 0;
+  cert->manufacture_date[2] = 0;
+  cert->manufacture_date[3] = 5;
+  cert->manufacture_date[4] = 1;
+  cert->manufacture_date[5] = 1;
+  cert->manufacture_date[6] = 2;
+  cert->manufacture_date[7] = 2;
+}
+
 dword_result_t XeKeysConsolePrivateKeySign_entry(
     lpvoid_t hash, pointer_t<XE_CONSOLE_CERTIFICATE> output) {
   if (!hash) {
@@ -743,26 +817,256 @@ dword_result_t XeKeysConsolePrivateKeySign_entry(
     return false;
   }
 
-  output.Zero();
-  output->console_id.RefurbBits = 0b0011;
-  output->console_id.ManufactureMonth = 0b1001;
-  output->console_id.ManufactureYear = 0b0001;
-  output->console_id.MacIndex3 = 0b01000000;
-  output->console_id.MacIndex4 = 0b01100110;
-  output->console_id.MacIndex5 = 0b01111110;
-  output->console_id.Crc = 0b0000;
-  output->console_type = Retail;
-  output->manufacture_date[0] = 2;
-  output->manufacture_date[1] = 0;
-  output->manufacture_date[2] = 0;
-  output->manufacture_date[3] = 5;
-  output->manufacture_date[4] = 1;
-  output->manufacture_date[5] = 1;
-  output->manufacture_date[6] = 2;
-  output->manufacture_date[7] = 2;
+  FillConsoleCertificate(output);
   return true;
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysConsolePrivateKeySign, kNone, kSketchy);
+
+// Hands back key 0x36. The kernel turns down a certificate whose size field
+// is wrong, which can't happen with ours.
+dword_result_t XeKeysGetConsoleCertificate_entry(
+    pointer_t<XE_CONSOLE_CERTIFICATE> cert) {
+  if (!cert) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  FillConsoleCertificate(cert);
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysGetConsoleCertificate, kNone, kImplemented);
+
+// The kernel checks the signer's certificate against the master key and the
+// signature against the certificate, then reports whether the signer is this
+// console. Without the keys only that last part is real, and the signature is
+// taken as good like the other verify calls here do.
+dword_result_t XeKeysConsoleSignatureVerification_entry(
+    lpvoid_t hash, pointer_t<XE_CONSOLE_SIGNATURE> signature,
+    lpdword_t compare_result) {
+  if (!hash || !signature) {
+    return false;
+  }
+  XE_CONSOLE_CERTIFICATE own_cert;
+  FillConsoleCertificate(&own_cert);
+  const bool same_console =
+      !std::memcmp(&signature->console_certificate, &own_cert,
+                   sizeof(XE_CONSOLE_CERTIFICATE));
+  if (compare_result) {
+    *compare_result = same_console ? 1 : 0;
+  }
+  return true;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysConsoleSignatureVerification, kNone, kStub);
+
+// AES-CBC with a key vault key, chaining through feed when there is one.
+dword_result_t XeKeysAesCbc_entry(dword_t key_num, lpvoid_t inp_ptr,
+                                  dword_t inp_size, lpvoid_t out_ptr,
+                                  lpvoid_t feed_ptr, dword_t encrypt) {
+  auto key = GetSymmetricKey(key_num);
+  if (key.empty()) {
+    XELOGW("XeKeysAesCbc: key 0x{:X} not implemented", uint32_t(key_num));
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  if (inp_size && (!inp_ptr || !out_ptr)) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  uint8_t zero_feed[16] = {};
+  uint8_t* feed = feed_ptr ? feed_ptr.as<uint8_t*>() : zero_feed;
+  XECRYPT_AES_STATE aes;
+  XeCryptAesKey(&aes, key.data());
+  XeCryptAesCbc(&aes, inp_ptr.as<uint8_t*>(), inp_size, out_ptr.as<uint8_t*>(),
+                feed, encrypt != 0);
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysAesCbc, kNone, kImplemented);
+
+static void FillRandomBytes(uint8_t* out, uint32_t size) {
+  std::random_device random;
+  for (uint32_t i = 0; i < size; ++i) {
+    out[i] = static_cast<uint8_t>(random());
+  }
+}
+
+constexpr uint32_t kObfuscateHeaderSize = 0x18;
+constexpr uint32_t kObfuscateChecksumSize = 0x10;
+constexpr uint32_t kObfuscateConfounderSize = 8;
+
+static uint32_t ObfuscationKeyNum(uint32_t roaming) {
+  return roaming ? ROAMABLE_OBFUSCATION_KEY : CONSOLE_OBFUSCATION_KEY;
+}
+
+// Output is a 16 byte HMAC of the rest, an 8 byte random confounder, then the
+// data. All but the HMAC is RC4 under a key that is the HMAC of the HMAC.
+dword_result_t XeKeysObfuscate_entry(dword_t roaming, lpvoid_t inp_ptr,
+                                     dword_t inp_size, lpvoid_t out_ptr,
+                                     lpdword_t out_size_ptr) {
+  if ((inp_size && !inp_ptr) || !out_ptr || !out_size_ptr) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint32_t key_num = ObfuscationKeyNum(roaming);
+  uint8_t* out = out_ptr.as<uint8_t*>();
+  if (inp_size) {
+    std::memmove(out + kObfuscateHeaderSize, inp_ptr.as<uint8_t*>(), inp_size);
+  }
+  *out_size_ptr = inp_size + kObfuscateHeaderSize;
+
+  uint8_t* body = out + kObfuscateChecksumSize;
+  const uint32_t body_size = inp_size + kObfuscateConfounderSize;
+  FillRandomBytes(body, kObfuscateConfounderSize);
+  XeKeysHmacSha(key_num, body, body_size, nullptr, 0, nullptr, 0, out,
+                kObfuscateChecksumSize);
+  uint8_t rc4_key[0x10];
+  XeKeysHmacSha(key_num, out, kObfuscateChecksumSize, nullptr, 0, nullptr, 0,
+                rc4_key, sizeof(rc4_key));
+  XeCryptRc4_entry(rc4_key, uint32_t(sizeof(rc4_key)), body, body_size);
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysObfuscate, kNone, kImplemented);
+
+// Undoes XeKeysObfuscate. False when the input is too short or its HMAC
+// doesn't match.
+dword_result_t XeKeysUnObfuscate_entry(dword_t roaming, lpvoid_t inp_ptr,
+                                       dword_t inp_size, lpvoid_t out_ptr,
+                                       lpdword_t out_size_ptr) {
+  if (inp_size < kObfuscateHeaderSize || !inp_ptr || !out_ptr ||
+      !out_size_ptr) {
+    return false;
+  }
+  const uint32_t key_num = ObfuscationKeyNum(roaming);
+  uint8_t header[kObfuscateHeaderSize];
+  std::memcpy(header, inp_ptr.as<uint8_t*>(), sizeof(header));
+  const uint32_t data_size = inp_size - kObfuscateHeaderSize;
+  uint8_t* out = out_ptr.as<uint8_t*>();
+  if (data_size) {
+    std::memmove(out, inp_ptr.as<uint8_t*>() + kObfuscateHeaderSize, data_size);
+  }
+  *out_size_ptr = data_size;
+
+  uint8_t rc4_key[0x10];
+  XeKeysHmacSha(key_num, header, kObfuscateChecksumSize, nullptr, 0, nullptr, 0,
+                rc4_key, sizeof(rc4_key));
+  // One keystream runs over the confounder and on into the data.
+  XECRYPT_RC4_STATE rc4;
+  XeCryptRc4Key_entry(&rc4, rc4_key, uint32_t(sizeof(rc4_key)));
+  uint8_t* confounder = header + kObfuscateChecksumSize;
+  XeCryptRc4Ecb_entry(&rc4, confounder, kObfuscateConfounderSize);
+  XeCryptRc4Ecb_entry(&rc4, out, data_size);
+
+  uint8_t checksum[kObfuscateChecksumSize];
+  XeKeysHmacSha(key_num, confounder, kObfuscateConfounderSize, out, data_size,
+                nullptr, 0, checksum, sizeof(checksum));
+  return !std::memcmp(checksum, header, sizeof(checksum));
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysUnObfuscate, kNone, kImplemented);
+
+constexpr X_STATUS kStatusFileCorruptError = 0xC0000102;
+constexpr uint32_t kObfuscateExHeaderSize = 0x20;
+
+// The digest the Ex variants authenticate, an HMAC of SHA-1 over the size as
+// a big endian dword followed by the plaintext.
+static void ObfuscateExChecksum(uint32_t key_num, const uint8_t* data,
+                                uint32_t size, uint8_t* out) {
+  const xe::be<uint32_t> size_be = size;
+  uint8_t digest[0x14];
+  XeCryptSha(reinterpret_cast<const uint8_t*>(&size_be), sizeof(size_be), data,
+             size, nullptr, 0, digest, sizeof(digest));
+  XeKeysHmacSha(key_num, digest, sizeof(digest), nullptr, 0, nullptr, 0, out,
+                0x10);
+}
+
+// AES-CBC with a zero IV under a fresh random key. The 0x20 byte header holds
+// that key wrapped by the obfuscation key, then the checksum. The hypervisor
+// does the wrapping on the console; here it is one AES-ECB block, which only
+// has to agree with XeKeysUnObfuscateEx.
+dword_result_t XeKeysObfuscateEx_entry(dword_t roaming, lpvoid_t inp_ptr,
+                                       dword_t inp_size, lpvoid_t out_ptr,
+                                       lpvoid_t header_ptr) {
+  if ((inp_size & 0xF) || (inp_size && (!inp_ptr || !out_ptr)) || !header_ptr) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint32_t key_num = ObfuscationKeyNum(roaming);
+  uint8_t header[kObfuscateExHeaderSize];
+  ObfuscateExChecksum(key_num, inp_ptr.as<uint8_t*>(), inp_size, header + 0x10);
+
+  uint8_t content_key[0x10];
+  FillRandomBytes(content_key, sizeof(content_key));
+  XECRYPT_AES_STATE aes;
+  XeCryptAesKey(&aes, GetSymmetricKey(key_num).data());
+  XeCryptAesEcb(&aes, content_key, header, true);
+
+  uint8_t feed[0x10] = {};
+  XeCryptAesKey(&aes, content_key);
+  XeCryptAesCbc(&aes, inp_ptr.as<uint8_t*>(), inp_size, out_ptr.as<uint8_t*>(),
+                feed, true);
+  std::memcpy(header_ptr.as<uint8_t*>(), header, sizeof(header));
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysObfuscateEx, kNone, kSketchy);
+
+// Undoes XeKeysObfuscateEx, failing as corrupt when the checksum doesn't hold.
+dword_result_t XeKeysUnObfuscateEx_entry(dword_t roaming, lpvoid_t inp_ptr,
+                                         dword_t inp_size, lpvoid_t out_ptr,
+                                         lpvoid_t header_ptr) {
+  if ((inp_size & 0xF) || (inp_size && (!inp_ptr || !out_ptr)) || !header_ptr) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint32_t key_num = ObfuscationKeyNum(roaming);
+  uint8_t header[kObfuscateExHeaderSize];
+  std::memcpy(header, header_ptr.as<uint8_t*>(), sizeof(header));
+
+  uint8_t content_key[0x10];
+  XECRYPT_AES_STATE aes;
+  XeCryptAesKey(&aes, GetSymmetricKey(key_num).data());
+  XeCryptAesEcb(&aes, header, content_key, false);
+
+  uint8_t feed[0x10] = {};
+  XeCryptAesKey(&aes, content_key);
+  XeCryptAesCbc(&aes, inp_ptr.as<uint8_t*>(), inp_size, out_ptr.as<uint8_t*>(),
+                feed, false);
+
+  uint8_t checksum[0x10];
+  ObfuscateExChecksum(key_num, out_ptr.as<uint8_t*>(), inp_size, checksum);
+  if (std::memcmp(checksum, header + 0x10, sizeof(checksum))) {
+    return kStatusFileCorruptError;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysUnObfuscateEx, kNone, kSketchy);
+
+// RSA with one of the console's private keys, which aren't here. The size
+// check matches the kernel's, it takes only a 1024 or 2048 bit key.
+dword_result_t XeKeysQwNeRsaPrvCrypt_entry(dword_t key_num, lpvoid_t inp_ptr,
+                                           lpvoid_t out_ptr) {
+  const uint32_t key_size = XeKeysGetKeyProperties_entry(key_num);
+  if (key_size != 0x1D0 && key_size != 0x390) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  XELOGW("XeKeysQwNeRsaPrvCrypt: no private key 0x{:X}", uint32_t(key_num));
+  return X_STATUS_UNSUCCESSFUL;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysQwNeRsaPrvCrypt, kNone, kStub);
+
+// The extended key vault reads like the main one.
+dword_result_t XeKeysExGetKey_entry(dword_t key_num, lpvoid_t key_buffer,
+                                    lpdword_t key_length) {
+  if (!key_buffer || !key_length) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  return XeKeysGetKey_entry(static_cast<uint16_t>(key_num), key_buffer,
+                            key_length);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysExGetKey, kNone, kSketchy);
+
+// Nothing keeps a key vault here, so a set key is dropped.
+dword_result_t XeKeysExSetKey_entry(dword_t key_num, lpvoid_t key_buffer,
+                                    dword_t key_length) {
+  XELOGW("XeKeysExSetKey: ignoring key 0x{:X} ({} bytes)", uint32_t(key_num),
+         uint32_t(key_length));
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysExSetKey, kNone, kStub);
+
+// Writes the key vault back to flash on a console. Nothing to write here.
+dword_result_t XeKeysExSaveKeyVault_entry() { return X_STATUS_SUCCESS; }
+DECLARE_XBOXKRNL_EXPORT1(XeKeysExSaveKeyVault, kNone, kStub);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

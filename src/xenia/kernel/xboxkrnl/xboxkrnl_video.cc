@@ -523,6 +523,52 @@ void VdSwap_entry(
 DECLARE_XBOXKRNL_EXPORT3(VdSwap, kVideo, kImplemented, kHighFrequency,
                          kImportant);
 
+// Content protection (HDCP, Macrovision, CGMS-A, SCMS) and line 21 closed
+// captions only affect the analog/HDMI encoder on a real console. The host
+// presents frames itself, so these only need to report success. Media players
+// (npctrl) retry VdEnableHDCP and hold back protected playback while it fails.
+
+dword_result_t VdEnableHDCP_entry(dword_t enable) {
+  // NTSTATUS; zero means the link is (or no longer is) protected.
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(VdEnableHDCP, kVideo, kStub);
+
+void VdRegisterHDCPNotification_entry(lpvoid_t notification_ptr,
+                                      dword_t register_notification) {
+  // The block is linked into a kernel list and its routine is called when the
+  // HDCP link state changes. Ours never changes, so nothing is ever called and
+  // there is nothing to track.
+}
+DECLARE_XBOXKRNL_EXPORT1(VdRegisterHDCPNotification, kVideo, kStub);
+
+void VdSetMacrovisionOption_entry(dword_t option, dword_t unk) {}
+DECLARE_XBOXKRNL_EXPORT1(VdSetMacrovisionOption, kVideo, kStub);
+
+void VdSetCGMSState_entry(dword_t state) {}
+DECLARE_XBOXKRNL_EXPORT1(VdSetCGMSState, kVideo, kStub);
+
+void VdSetSCMSState_entry(dword_t state) {}
+DECLARE_XBOXKRNL_EXPORT1(VdSetSCMSState, kVideo, kStub);
+
+void VdSetCGMSOption_entry(dword_t option) {}
+DECLARE_XBOXKRNL_EXPORT1(VdSetCGMSOption, kVideo, kStub);
+
+dword_result_t VdGetClosedCaptionReadyStatus_entry(dword_t field0,
+                                                   dword_t field1) {
+  // BOOL: the encoder can take the next caption bytes for the requested
+  // field(s). Callers poll this with a sleep between tries, so say ready.
+  return 1;
+}
+DECLARE_XBOXKRNL_EXPORT1(VdGetClosedCaptionReadyStatus, kVideo, kStub);
+
+void VdSendClosedCaptionData_entry(dword_t field, dword_t byte0,
+                                   dword_t byte1) {
+  // There is no line 21 output to put the caption pair on; drop it.
+}
+DECLARE_XBOXKRNL_EXPORT2(VdSendClosedCaptionData, kVideo, kStub,
+                         kHighFrequency);
+
 dword_result_t PsCamDeviceRequest_entry(dword_t request_type,
                                         lpvoid_t param_ptr) {
   // Quietly return X_E_FAIL to keep from log spamming due to

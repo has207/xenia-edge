@@ -208,6 +208,80 @@ X_RESULT xeXamDispatchDialogAsync(T* dialog,
   return X_ERROR_SUCCESS;
 }
 
+// Brackets a guide UI that Xenia has nothing to draw for with the XN_SYS_UI
+// notifications, as if the guide had opened and been closed right away, and
+// completes the request with the given result.
+static X_RESULT xeXamDispatchHeadless(X_RESULT result, uint32_t extended_error,
+                                      uint32_t overlapped) {
+  auto pre = []() {
+    kernel_state()->BroadcastNotification(kXNotificationSystemUI, true);
+  };
+  auto post = []() {
+    std::jthread t([]() {
+      xe::threading::Sleep(kUIDelayMillis);
+      kernel_state()->BroadcastNotification(kXNotificationSystemUI, false);
+    });
+    t.detach();
+  };
+  if (!overlapped) {
+    pre();
+    post();
+    return result;
+  }
+  kernel_state()->CompleteOverlappedDeferredEx(
+      [result, extended_error](uint32_t& out_extended_error,
+                               uint32_t& length) -> X_RESULT {
+        out_extended_error = extended_error;
+        length = 0;
+        return result;
+      },
+      overlapped, pre, post);
+  return X_ERROR_IO_PENDING;
+}
+
+// XUserIndexAny asks whether any signed in user is on LIVE.
+static bool xeXamIsUserSignedInToLive(uint32_t user_index) {
+  if (user_index == XUserIndexAny) {
+    for (uint32_t i = 0; i < XUserMaxUserCount; i++) {
+      if (xeXamIsUserSignedInToLive(i)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  const UserProfile* profile =
+      kernel_state()->xam_state()->GetUserProfile(user_index);
+  return profile && profile->signin_state() ==
+                        static_cast<uint32_t>(SignInState::SignedInToLive);
+}
+
+// The social guide UIs (friends, messages, players, ...) only open for a user
+// signed in to LIVE and fail with access denied otherwise. For a LIVE user the
+// guide comes up, finds no LIVE service to talk to and is dismissed, which the
+// title only observes through XN_SYS_UI.
+static X_RESULT xeXamShowLiveGuideUI(const char* name, uint32_t user_index,
+                                     uint32_t overlapped = 0) {
+  if (!xeXamIsUserSignedInToLive(user_index)) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+  XELOGI("{}: no Xbox LIVE service, dismissing the guide UI", name);
+  return xeXamDispatchHeadless(X_ERROR_SUCCESS, X_ERROR_SUCCESS, overlapped);
+}
+
+// The Kinect (Nui) social UIs check for an online XUID themselves and tell
+// apart a user signed in locally from no user at all.
+static X_RESULT xeXamNuiCheckLiveUser(uint32_t user_index) {
+  if (xeXamIsUserSignedInToLive(user_index)) {
+    return X_ERROR_SUCCESS;
+  }
+  return kernel_state()->xam_state()->GetUserProfile(user_index)
+             ? X_ERROR_NOT_LOGGED_ON
+             : X_ERROR_NO_SUCH_USER;
+}
+
 void MessageBoxDialog::OnDraw(ImGuiIO& io) {
   if (!has_opened_) {
     ImGui::OpenPopup(title_.c_str());
@@ -477,6 +551,17 @@ dword_result_t XamShowNuiMessageBoxUI_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowNuiMessageBoxUI, kUI, kSketchy);
 
+// Asks for the console's parental control pass code: xam converts the code
+// stored in the console settings into result_ptr and then shows a message box
+// in verify mode. Xenia keeps no console pass code, and with none set the
+// conversion fails and the call is rejected before anything is shown.
+dword_result_t XamShowPasscodeVerifyUI_entry(
+    dword_t user_index, pointer_t<MESSAGEBOX_RESULT> result_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  return X_ERROR_INVALID_PARAMETER;
+}
+DECLARE_XAM_EXPORT1(XamShowPasscodeVerifyUI, kUI, kSketchy);
+
 dword_result_t XNotifyQueueUI_entry(dword_t exnq, dword_t dwUserIndex,
                                     qword_t qwAreas,
                                     lpu16string_t displayText_ptr,
@@ -700,6 +785,29 @@ dword_result_t XamShowCommunitySessionsUI_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamShowCommunitySessionsUI, kUI, kStub);
 
+// Shown while joining the session of a LIVE player (by online XUID). There are
+// no parties in Xenia, so this is always the "joining player" guide page.
+dword_result_t XamShowPartyJoinInProgressUI_entry(dword_t user_index,
+                                                  qword_t xuid) {
+  if (!IsOnlineXUID(xuid)) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return xeXamShowLiveGuideUI("XamShowPartyJoinInProgressUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowPartyJoinInProgressUI, kUI, kSketchy);
+
+// Lets a party member switch between party and game voice chat. It needs a
+// user signed in to LIVE, and then an active party, which Xenia never has.
+dword_result_t XamShowGameVoiceChannelUI_entry(dword_t unknown) {
+  // Win32 ERROR_INVALID_OPERATION.
+  constexpr X_RESULT kErrorInvalidOperation = X_RESULT_FROM_WIN32(0x10DD);
+  if (!xeXamIsUserSignedInToLive(XUserIndexAny)) {
+    return X_ERROR_NO_SUCH_USER;
+  }
+  return kErrorInvalidOperation;
+}
+DECLARE_XAM_EXPORT1(XamShowGameVoiceChannelUI, kUI, kSketchy);
+
 // https://gitlab.com/GlitchyScripts/xlivelessness/-/blob/master/xlivelessness/xlive/xdefs.hpp?ref_type=heads#L1235
 dword_result_t XamShowMarketplaceUIEx_entry(dword_t user_index, dword_t ui_type,
                                             qword_t offer_id,
@@ -916,6 +1024,113 @@ dword_result_t XamShowMarketplaceDownloadItemsUI_entry(
 }
 DECLARE_XAM_EXPORT1(XamShowMarketplaceDownloadItemsUI, kUI, kSketchy);
 
+// XamShowNuiMarketplaceUI accepts only a subset of the entry points.
+dword_result_t XamShowNuiMarketplaceUI_entry(
+    dword_t tracking_id, dword_t user_index, dword_t ui_type, qword_t offer_id,
+    dword_t offer_type, dword_t content_category, dword_t title_id) {
+  if (user_index >= XUserMaxUserCount ||
+      (ui_type != X_MARKETPLACE_ENTRYPOINT::ContentList &&
+       ui_type != X_MARKETPLACE_ENTRYPOINT::ContentItem &&
+       ui_type != X_MARKETPLACE_ENTRYPOINT::ContentList_Background &&
+       ui_type != X_MARKETPLACE_ENTRYPOINT::ContentItem_Background)) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  return XamShowMarketplaceUIEx_entry(user_index, ui_type, offer_id, offer_type,
+                                      content_category, 0, 0, title_id);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiMarketplaceUI, kUI, kSketchy);
+
+// Largest order the purchase UI accepts, and the receipt buffer size it asks
+// for when queried.
+constexpr uint32_t kMarketplaceOrderMaxSize = 0x13880;
+// Smallest receipt buffer the order UIs accept.
+constexpr uint32_t kMarketplaceReceiptMinSize = 0x3C00;
+
+// Shared tail of the purchase order UIs, which return an HRESULT. Buying needs
+// a signed in user and then Xbox LIVE, which Xenia doesn't have: the guide
+// reports the marketplace as unavailable and the order ends up cancelled
+// without anything written to the receipt.
+static X_HRESULT xeXamShowMarketplacePurchaseOrderUI(const char* name,
+                                                     uint32_t user_index,
+                                                     uint32_t overlapped) {
+  if (!kernel_state()->xam_state()->GetUserProfile(user_index)) {
+    return X_E_NO_SUCH_USER;
+  }
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    return X_E_ACCESS_DENIED;
+  }
+  XELOGI("{}: no Xbox LIVE Marketplace, cancelling the order", name);
+  const X_RESULT result = xeXamDispatchHeadless(
+      X_ERROR_CANCELLED, X_HRESULT_FROM_WIN32(X_ERROR_CANCELLED), overlapped);
+  return X_HRESULT_FROM_WIN32(result);
+}
+
+dword_result_t XamShowMarketplacePurchaseOrderUI_entry(
+    dword_t user_index, dword_t unknown, dword_t order_size, lpvoid_t order,
+    dword_t receipt_size, lpvoid_t receipt, dword_t unknown2,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (user_index >= XUserMaxUserCount || !order || !receipt ||
+      order_size > kMarketplaceOrderMaxSize ||
+      receipt_size < kMarketplaceReceiptMinSize) {
+    return X_E_INVALIDARG;
+  }
+  return xeXamShowMarketplacePurchaseOrderUI(
+      "XamShowMarketplacePurchaseOrderUI", user_index,
+      overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamShowMarketplacePurchaseOrderUI, kUI, kSketchy);
+
+// Like XamShowMarketplacePurchaseOrderUI with the receipt size passed by
+// pointer. Without a receipt buffer it only reports the size it needs.
+dword_result_t XamShowMarketplacePurchaseOrderUIEx_entry(
+    dword_t user_index, dword_t unknown, dword_t order_size, lpvoid_t order,
+    lpdword_t receipt_size_ptr, lpvoid_t receipt, dword_t unknown2,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (!receipt && receipt_size_ptr) {
+    *receipt_size_ptr = kMarketplaceOrderMaxSize;
+    return X_E_SUCCESS;
+  }
+  if (user_index >= XUserMaxUserCount || !order || !receipt ||
+      !receipt_size_ptr || order_size > kMarketplaceOrderMaxSize ||
+      receipt_size_ptr.value() < kMarketplaceOrderMaxSize) {
+    return X_E_INVALIDARG;
+  }
+  return xeXamShowMarketplacePurchaseOrderUI(
+      "XamShowMarketplacePurchaseOrderUIEx", user_index,
+      overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamShowMarketplacePurchaseOrderUIEx, kUI, kSketchy);
+
+// Not a dialog: asks the guide to download the user's order receipts, which
+// needs the user's online XUID and then the LIVE Marketplace service. Returns
+// an HRESULT.
+dword_result_t XamShowMarketplaceGetOrderReceipts_entry(
+    dword_t user_index, dword_t receipt_type, dword_t buffer_size,
+    lpvoid_t buffer, lpvoid_t unknown, pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (user_index >= XUserMaxUserCount || receipt_type != 1 || !buffer ||
+      buffer_size < kMarketplaceReceiptMinSize) {
+    return X_E_INVALIDARG;
+  }
+
+  X_RESULT result = xeXamNuiCheckLiveUser(user_index);
+  if (result == X_ERROR_SUCCESS) {
+    XELOGI("XamShowMarketplaceGetOrderReceipts: no Xbox LIVE Marketplace");
+    result = X_ERROR_FUNCTION_FAILED;
+  }
+
+  if (overlapped) {
+    kernel_state()->CompleteOverlappedImmediateEx(
+        overlapped, result, X_HRESULT_FROM_WIN32(result), 0);
+    return X_HRESULT_FROM_WIN32(X_ERROR_IO_PENDING);
+  }
+  return X_HRESULT_FROM_WIN32(result);
+}
+DECLARE_XAM_EXPORT1(XamShowMarketplaceGetOrderReceipts, kUI, kSketchy);
+
 dword_result_t XamShowGoldUpgradeUI_entry(dword_t user_index, dword_t unk,
                                           dword_t title_id) {
   return X_ERROR_FUNCTION_FAILED;
@@ -1103,16 +1318,15 @@ dword_result_t XamShowCreateProfileUI_entry(dword_t user_index, dword_t flag) {
 }
 DECLARE_XAM_EXPORT1(XamShowCreateProfileUI, kUserProfiles, kImplemented);
 
-dword_result_t XamShowAchievementsUI_entry(dword_t user_index,
-                                           dword_t title_id) {
+static X_RESULT xeXamShowAchievementsUI(uint32_t user_index,
+                                        uint32_t title_id) {
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
   if (!user) {
     return X_ERROR_NO_SUCH_USER;
   }
 
   uint32_t proper_title_id =
-      title_id ? title_id.value()
-               : kernel_state()->xam_state()->spa_info()->title_id();
+      title_id ? title_id : kernel_state()->xam_state()->spa_info()->title_id();
 
   const auto info =
       kernel_state()->xam_state()->user_tracker()->GetUserTitleInfo(
@@ -1133,22 +1347,46 @@ dword_result_t XamShowAchievementsUI_entry(dword_t user_index,
                                  user),
       close);
 }
+
+dword_result_t XamShowAchievementsUI_entry(dword_t user_index,
+                                           dword_t title_id) {
+  return xeXamShowAchievementsUI(user_index, title_id);
+}
 DECLARE_XAM_EXPORT1(XamShowAchievementsUI, kUserProfiles, kImplemented);
 
-dword_result_t XamShowGamerCardUI_entry(dword_t user_index) {
-  auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
+// XamShowAchievementsUI with the tracking ID of a Kinect skeleton first.
+dword_result_t XamShowNuiAchievementsUI_entry(dword_t tracking_id,
+                                              dword_t user_index,
+                                              dword_t title_id) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  if (!kernel_state()->xam_state()->GetUserProfile(user_index)) {
     return X_ERROR_ACCESS_DENIED;
   }
+  return xeXamShowAchievementsUI(user_index, title_id);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiAchievementsUI, kUserProfiles, kSketchy);
 
+// Shows the gamer card of a profile signed in on this console.
+static X_RESULT xeXamShowLocalGamerCardUI(uint64_t xuid) {
   xe::ui::ImGuiDrawer* imgui_drawer =
       kernel_state()->emulator()->imgui_drawer();
 
   auto close = [](ui::GamercardUI* dialog) -> void {};
   return xeXamDispatchDialogAsync<ui::GamercardUI>(
       new ui::GamercardUI(kernel_state()->emulator()->display_window(),
-                          imgui_drawer, kernel_state(), user->xuid()),
+                          imgui_drawer, kernel_state(), xuid),
       close);
+}
+
+dword_result_t XamShowGamerCardUI_entry(dword_t user_index) {
+  auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
+  if (!user) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+  return xeXamShowLocalGamerCardUI(user->xuid());
 }
 DECLARE_XAM_EXPORT1(XamShowGamerCardUI, kUserProfiles, kImplemented);
 
@@ -1168,6 +1406,186 @@ dword_result_t XamShowEditProfileUI_entry(dword_t user_index) {
       close);
 }
 DECLARE_XAM_EXPORT1(XamShowEditProfileUI, kUserProfiles, kImplemented);
+
+// The guide pages below are all served by Xbox LIVE (see
+// xeXamShowLiveGuideUI). The Nui variants take the tracking ID of a Kinect
+// skeleton first and fail early on a console without Kinect.
+
+dword_result_t XamShowFriendsUI_entry(dword_t user_index) {
+  return xeXamShowLiveGuideUI("XamShowFriendsUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowFriendsUI, kUserProfiles, kSketchy);
+
+dword_result_t XamShowNuiFriendsUI_entry(dword_t tracking_id,
+                                         dword_t user_index) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  result = xeXamNuiCheckLiveUser(user_index);
+  if (result) {
+    return result;
+  }
+  return xeXamShowLiveGuideUI("XamShowNuiFriendsUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiFriendsUI, kUserProfiles, kSketchy);
+
+// Recently met players.
+dword_result_t XamShowPlayersUI_entry(dword_t user_index) {
+  return xeXamShowLiveGuideUI("XamShowPlayersUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowPlayersUI, kUserProfiles, kSketchy);
+
+dword_result_t XamShowMessagesUI_entry(dword_t user_index) {
+  return xeXamShowLiveGuideUI("XamShowMessagesUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowMessagesUI, kUserProfiles, kSketchy);
+
+dword_result_t XamShowFriendRequestUI_entry(dword_t user_index, qword_t xuid) {
+  return xeXamShowLiveGuideUI("XamShowFriendRequestUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowFriendRequestUI, kUserProfiles, kSketchy);
+
+dword_result_t XamShowNuiFriendRequestUI_entry(dword_t tracking_id,
+                                               dword_t user_index,
+                                               qword_t xuid) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  result = xeXamNuiCheckLiveUser(user_index);
+  if (result) {
+    return result;
+  }
+  return xeXamShowLiveGuideUI("XamShowNuiFriendRequestUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiFriendRequestUI, kUserProfiles, kSketchy);
+
+dword_result_t XamShowPlayerReviewUI_entry(dword_t user_index, qword_t xuid) {
+  if (user_index >= XUserMaxUserCount && user_index != XUserIndexLatest) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return xeXamShowLiveGuideUI("XamShowPlayerReviewUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowPlayerReviewUI, kUserProfiles, kSketchy);
+
+// recipients is an optional array of XUIDs that prefills the message, text an
+// optional message body.
+dword_result_t XamShowMessageComposeUI_entry(dword_t user_index,
+                                             lpqword_t recipients,
+                                             dword_t recipient_count,
+                                             lpu16string_t text) {
+  return xeXamShowLiveGuideUI("XamShowMessageComposeUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowMessageComposeUI, kUserProfiles, kSketchy);
+
+// Same parameters as XamShowMessageComposeUI.
+dword_result_t XamShowGameInviteUI_entry(dword_t user_index,
+                                         lpqword_t recipients,
+                                         dword_t recipient_count,
+                                         lpu16string_t text) {
+  return xeXamShowLiveGuideUI("XamShowGameInviteUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowGameInviteUI, kUserProfiles, kSketchy);
+
+// The Kinect variant can't prefill recipients.
+dword_result_t XamShowNuiGameInviteUI_entry(dword_t tracking_id,
+                                            dword_t user_index,
+                                            lpqword_t recipients,
+                                            dword_t recipient_count,
+                                            lpu16string_t text) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  if (recipient_count) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  result = xeXamNuiCheckLiveUser(user_index);
+  if (result) {
+    return result;
+  }
+  return xeXamShowLiveGuideUI("XamShowNuiGameInviteUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiGameInviteUI, kUserProfiles, kSketchy);
+
+dword_result_t XamShowNuiCommunitySessionsUI_entry(dword_t tracking_id,
+                                                   dword_t user_index) {
+  auto result = xeXamNuiCheckLiveUser(user_index);
+  if (result) {
+    return result;
+  }
+  result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  return xeXamShowLiveGuideUI("XamShowNuiCommunitySessionsUI", user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiCommunitySessionsUI, kUserProfiles, kSketchy);
+
+// Only opens for a LIVE user who is in a party, and Xenia has no parties.
+dword_result_t XamShowNuiPartyUI_entry(dword_t tracking_id,
+                                       dword_t user_index) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  return X_ERROR_ACCESS_DENIED;
+}
+DECLARE_XAM_EXPORT1(XamShowNuiPartyUI, kUserProfiles, kSketchy);
+
+static bool xeXamIsOwnXUID(uint32_t user_index, uint64_t xuid) {
+  const UserProfile* user =
+      kernel_state()->xam_state()->GetUserProfile(user_index);
+  return user && (xuid == user->xuid() || xuid == user->GetOnlineXUID());
+}
+
+// Gamer card of another player, who has to be identified by online XUID. A
+// player signed in on this console is shown from the local profile, anyone
+// else would have to come from LIVE.
+static X_RESULT xeXamShowRemoteGamerCardUI(const char* name,
+                                           uint32_t user_index, uint64_t xuid) {
+  if (!IsOnlineXUID(xuid)) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (!xeXamIsUserSignedInToLive(user_index)) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+  const UserProfile* player =
+      kernel_state()->xam_state()->GetUserProfileLive(xuid);
+  if (player) {
+    return xeXamShowLocalGamerCardUI(player->xuid());
+  }
+  return xeXamShowLiveGuideUI(name, user_index);
+}
+
+// A zero XUID or the user's own XUID shows the user's own gamer card.
+dword_result_t XamShowGamerCardUIForXUID_entry(dword_t user_index, qword_t xuid,
+                                               dword_t unknown) {
+  if (!xuid || xeXamIsOwnXUID(user_index, xuid)) {
+    return XamShowGamerCardUI_entry(user_index);
+  }
+  return xeXamShowRemoteGamerCardUI("XamShowGamerCardUIForXUID", user_index,
+                                    xuid);
+}
+DECLARE_XAM_EXPORT1(XamShowGamerCardUIForXUID, kUserProfiles, kSketchy);
+
+// Unlike XamShowGamerCardUIForXUID the Kinect variant refuses the user's own
+// XUID.
+dword_result_t XamShowNuiGamerCardUIForXUID_entry(dword_t tracking_id,
+                                                  dword_t user_index,
+                                                  qword_t xuid) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  if (!xuid || xeXamIsOwnXUID(user_index, xuid)) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+  return xeXamShowRemoteGamerCardUI("XamShowNuiGamerCardUIForXUID", user_index,
+                                    xuid);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiGamerCardUIForXUID, kUserProfiles, kSketchy);
 
 bool xeXamChooseIndieGame(std::string* file_name, uint32_t* device_id,
                           std::string* display_name) {
@@ -1292,6 +1710,70 @@ dword_result_t XamShowNuiGuideUI_entry(unknown_t tracking_id, unknown_t unk2) {
   return X_ERROR_ACCESS_DENIED;
 }
 DECLARE_XAM_EXPORT1(XamShowNuiGuideUI, kNone, kStub);
+
+// Tells a Kinect user to pick up a controller.
+dword_result_t XamShowNuiControllerRequiredUI_entry(dword_t tracking_id) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+  kernel_state()->xam_state()->is_xam_dialog_present_.store(true);
+
+  const Emulator* emulator = kernel_state()->emulator();
+  auto close = [](MessageBoxDialog* dialog) -> void {};
+  return xeXamDispatchDialogAsync<MessageBoxDialog>(
+      new MessageBoxDialog(emulator->imgui_drawer(), emulator->input_system(),
+                           "Controller Required",
+                           "Pick up a controller to continue.", {"OK"}, 0),
+      close);
+}
+DECLARE_XAM_EXPORT1(XamShowNuiControllerRequiredUI, kUI, kSketchy);
+
+// Asks the user to download an optional update for the media player from
+// LIVE Marketplace. user_index may be XUserIndexAny. With no LIVE the offer
+// can't be fetched and the guide closes again, which the console reports as
+// success.
+dword_result_t XamShowOptionalMediaUpdateRequiredUI_entry(
+    dword_t user_index, pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (user_index >= XUserMaxUserCount && user_index != XUserIndexAny) {
+    return X_E_INVALIDARG;
+  }
+  XELOGI("XamShowOptionalMediaUpdateRequiredUI: no Xbox LIVE Marketplace");
+  return xeXamDispatchHeadless(X_ERROR_SUCCESS, X_ERROR_SUCCESS,
+                               overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamShowOptionalMediaUpdateRequiredUI, kUI, kSketchy);
+
+// Shares what the user is watching on LIVE. The meaning of the three values
+// passed through to the guide isn't known. Without LIVE nothing gets shared and
+// the request ends up cancelled.
+static X_RESULT xeXamShowVideoRichPresenceUI(uint32_t overlapped) {
+  XELOGI("XamShowVideoRichPresenceUI: no Xbox LIVE service");
+  return xeXamDispatchHeadless(X_ERROR_CANCELLED, X_ERROR_CANCELLED,
+                               overlapped);
+}
+
+dword_result_t XamShowVideoRichPresenceUI_entry(
+    dword_t user_index, dword_t unknown1, dword_t unknown2, dword_t unknown3,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  return xeXamShowVideoRichPresenceUI(overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamShowVideoRichPresenceUI, kUI, kSketchy);
+
+// Unlike the other Nui UIs the tracking ID comes second here.
+dword_result_t XamShowNuiVideoRichPresenceUI_entry(
+    dword_t user_index, dword_t tracking_id, dword_t unknown1, dword_t unknown2,
+    dword_t unknown3, pointer_t<XAM_OVERLAPPED> overlapped) {
+  auto result = kernel_state()->nui()->NuiHudCheck(tracking_id);
+  if (result) {
+    return result;
+  }
+  return xeXamShowVideoRichPresenceUI(overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamShowNuiVideoRichPresenceUI, kUI, kSketchy);
 
 XLanguage xeGetLanguage(bool extended_languages_support);
 

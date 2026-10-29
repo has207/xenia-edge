@@ -20,6 +20,7 @@
 #include "xenia/base/profiling.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/kernel/guest_scheduler.h"
+#include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/kernel/xsemaphore.h"
@@ -552,6 +553,38 @@ void KeQuerySystemTime_entry(lpqword_t time_ptr, const ppc_context_t& ctx) {
   }
 }
 DECLARE_XBOXKRNL_EXPORT1(KeQuerySystemTime, kThreading, kImplemented);
+
+// Moves the guest clock, handing back the time it replaced. A title needs the
+// executable privilege at bit 0 of its system flags, as on the console.
+dword_result_t NtSetSystemTime_entry(lpqword_t new_time_ptr,
+                                     lpqword_t previous_time_ptr,
+                                     const ppc_context_t& ctx) {
+  if (xeKeGetCurrentProcessType(ctx) != X_PROCTYPE_SYSTEM) {
+    uint32_t system_flags = 0;
+    auto module = kernel_state()->GetExecutableModule();
+    if (module) {
+      module->GetOptHeader<uint32_t>(XEX_HEADER_SYSTEM_FLAGS, &system_flags);
+    }
+    if (!(system_flags & 1)) {
+      return X_STATUS_ACCESS_DENIED;
+    }
+  }
+  if (!new_time_ptr) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint64_t new_time = new_time_ptr.value();
+  // The kernel turns down anything past the high dword 0x20000000.
+  if (new_time >= (uint64_t(0x20000001) << 32)) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint64_t previous_time = Clock::QueryGuestSystemTime();
+  Clock::SetGuestSystemTime(new_time);
+  if (previous_time_ptr) {
+    *previous_time_ptr = previous_time;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(NtSetSystemTime, kThreading, kImplemented);
 
 // https://msdn.microsoft.com/en-us/library/ms686801
 dword_result_t KeTlsAlloc_entry(const ppc_context_t& context) {
@@ -2212,6 +2245,34 @@ dword_result_t KeCancelTimer_entry(pointer_t<X_KTIMER> timer) {
   return was_set;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeCancelTimer, kThreading, kImplemented);
+
+dword_result_t KeSetTimer_entry(pointer_t<X_KTIMER> timer, qword_t due_time,
+                                pointer_t<XDPC> dpc) {
+  return KeSetTimerEx_entry(timer, due_time, 0, dpc);
+}
+DECLARE_XBOXKRNL_EXPORT1(KeSetTimer, kThreading, kImplemented);
+
+void KeInitializeMutant_entry(pointer_t<X_KMUTANT> mutant,
+                              dword_t initial_owner) {
+  mutant.Zero();
+  mutant->header.type = X_OBJECT_TYPES::MutantObject;
+  mutant->header.signal_state = initial_owner ? 0 : 1;
+  // Created now so an initial owner is the calling thread.
+  XObject::GetNativeObject<XMutant>(kernel_state(), mutant);
+}
+DECLARE_XBOXKRNL_EXPORT1(KeInitializeMutant, kThreading, kImplemented);
+
+// Returns the previous signal state.
+dword_result_t KeReleaseMutant_entry(pointer_t<X_KMUTANT> mutant,
+                                     dword_t priority_increment,
+                                     dword_t abandon, dword_t wait) {
+  const int32_t previous = int32_t(uint32_t(mutant->header.signal_state));
+  if (auto native = XObject::GetNativeObject<XMutant>(kernel_state(), mutant)) {
+    native->ReleaseMutant(priority_increment, !!abandon, !!wait);
+  }
+  return previous;
+}
+DECLARE_XBOXKRNL_EXPORT1(KeReleaseMutant, kThreading, kImplemented);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

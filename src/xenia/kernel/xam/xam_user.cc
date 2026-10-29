@@ -8,10 +8,17 @@
  */
 
 #include <cstdlib>
+#include <cstring>
 #include <iterator>
+#include <mutex>
+#include <random>
+#include <string>
+#include <string_view>
 #include <utility>
 
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/utf8.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -27,6 +34,12 @@
 #include "xenia/kernel/xconfig.h"
 
 enum X_USER_AGE_GROUP : uint32_t { CHILD, TEEN, ADULT };
+
+DEFINE_bool(fake_xauth_tokens, false,
+            "Hands titles a made-up LIVE security token for the services they "
+            "ask for, where the console gets a real one from LIVE. The token "
+            "is sent to the title's own servers, which may reject it.",
+            "Live");
 
 namespace xe {
 namespace kernel {
@@ -969,48 +982,51 @@ dword_result_t XamReadTileToTexture_entry(dword_t tile_type, dword_t title_id,
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  size_t buffer_size = size_t(stride) * size_t(tile_height);
-
+  // Tiles looked up by key, such as a gamer picture, pass XUSER_INDEX_NONE
+  // (0xFE) rather than a signed in user, so a missing user isn't an error.
+  // A tile that can't be found leaves the texture untouched, but the call
+  // still completes so a caller waiting on the overlapped isn't stuck.
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
-    return X_ERROR_INVALID_PARAMETER;
+
+  std::span<const uint8_t> tile;
+  if (user) {
+    tile = kernel_state()->xam_state()->user_tracker()->GetIcon(
+        user->xuid(), title_id, static_cast<XTileType>(tile_type.value()),
+        tile_id);
   }
 
-  std::span<const uint8_t> tile =
-      kernel_state()->xam_state()->user_tracker()->GetIcon(
-          user->xuid(), title_id, static_cast<XTileType>(tile_type.value()),
-          tile_id);
-
-  if (tile.empty()) {
-    return X_ERROR_SUCCESS;
-  }
-
-  int width, height, channels;
+  int width = 0, height = 0, channels = 0;
   unsigned char* imageData =
-      stbi_load_from_memory(tile.data(), static_cast<int>(tile.size()), &width,
-                            &height, &channels, STBI_rgb_alpha);
+      tile.empty()
+          ? nullptr
+          : stbi_load_from_memory(tile.data(), static_cast<int>(tile.size()),
+                                  &width, &height, &channels, STBI_rgb_alpha);
 
-  size_t icon_dimmension_size = width * height;
-  std::fill_n(reinterpret_cast<uint8_t*>(buffer_ptr.host_address()),
-              icon_dimmension_size * sizeof(uint32_t), 0);
+  if (imageData) {
+    const size_t icon_dimmension_size = size_t(width) * size_t(height);
+    for (size_t i = 0; i < icon_dimmension_size; i++) {
+      unsigned char* pixel = &imageData[i * sizeof(uint32_t)];
 
-  for (int i = 0; i < icon_dimmension_size; i++) {
-    unsigned char* pixel = &imageData[i * sizeof(uint32_t)];
+      // RGBA to ARGB. TODO: Find faster method!
+      // RGBA->AGBR
+      std::swap(pixel[0], pixel[3]);
+      // AGBR->ARBG
+      std::swap(pixel[1], pixel[3]);
+      // ARBG->ARGB
+      std::swap(pixel[2], pixel[3]);
+    }
 
-    // RGBA to ARGB. TODO: Find faster method!
-    // RGBA->AGBR
-    std::swap(pixel[0], pixel[3]);
-    // AGBR->ARBG
-    std::swap(pixel[1], pixel[3]);
-    // ARBG->ARGB
-    std::swap(pixel[2], pixel[3]);
+    const uint32_t row_size = std::min<uint32_t>(
+        stride, uint32_t(width) * uint32_t(sizeof(uint32_t)));
+    const uint32_t rows = std::min<uint32_t>(tile_height, uint32_t(height));
+    auto dest = reinterpret_cast<uint8_t*>(buffer_ptr.host_address());
+    for (uint32_t y = 0; y < rows; y++) {
+      std::memcpy(dest + size_t(y) * stride,
+                  imageData + size_t(y) * width * sizeof(uint32_t), row_size);
+    }
+
+    stbi_image_free(imageData);
   }
-
-  memcpy(buffer_ptr, imageData,
-         std::min(buffer_size, static_cast<size_t>(icon_dimmension_size *
-                                                   sizeof(uint32_t))));
-
-  stbi_image_free(imageData);
 
   if (overlapped_ptr) {
     kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
@@ -1443,6 +1459,197 @@ dword_result_t XamUserLogonEx_entry(pointer_t<X_PROFILEENUMRESULT> profile_ptr,
   }
 }
 DECLARE_XAM_EXPORT1(XamUserLogonEx, kUserProfiles, kSketchy);
+
+dword_result_t XamUserFlushLogonQueue_entry(
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // Sign-ins are applied immediately, so no logon is ever waiting. xam returns
+  // success even when it finishes through the overlapped.
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
+                                                X_ERROR_SUCCESS);
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamUserFlushLogonQueue, kUserProfiles, kImplemented);
+
+dword_result_t XamUserIsPartial_entry(dword_t user_index) {
+  // A partial profile is one whose download from LIVE hasn't finished. Local
+  // profiles are always complete.
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamUserIsPartial, kUserProfiles, kImplemented);
+
+// The last active user data is 8 bytes handed from one title to the next; a
+// get consumes it.
+static std::mutex last_active_user_data_mutex_;
+static bool last_active_user_data_valid_ = false;
+static uint64_t last_active_user_data_ = 0;
+
+dword_result_t XamSetLastActiveUserData_entry(lpqword_t data_ptr) {
+  std::lock_guard<std::mutex> lock(last_active_user_data_mutex_);
+  if (data_ptr) {
+    last_active_user_data_valid_ = true;
+    last_active_user_data_ = *data_ptr;
+  } else {
+    last_active_user_data_valid_ = false;
+  }
+  return 1;
+}
+DECLARE_XAM_EXPORT1(XamSetLastActiveUserData, kUserProfiles, kImplemented);
+
+dword_result_t XamGetLastActiveUserData_entry(lpqword_t data_ptr) {
+  std::lock_guard<std::mutex> lock(last_active_user_data_mutex_);
+  if (!data_ptr || !last_active_user_data_valid_) {
+    return 0;
+  }
+  *data_ptr = last_active_user_data_;
+  last_active_user_data_valid_ = false;
+  return 1;
+}
+DECLARE_XAM_EXPORT1(XamGetLastActiveUserData, kUserProfiles, kImplemented);
+
+// Tokens are guest blocks of a type at 0x0, a data length at 0x4 and a pointer
+// at 0x8 to the data, which follows the header.
+struct X_XAM_TOKEN {
+  xe::be<uint32_t> type;
+  xe::be<uint32_t> data_length;
+  xe::be<uint32_t> data_ptr;
+};
+static_assert_size(X_XAM_TOKEN, 0xC);
+
+constexpr uint32_t kXamTokenTypeSecurity = 1;
+constexpr uint32_t kXamTokenTypeAppliesTo = 2;
+constexpr uint32_t kXamTokenMaxDataLength = 0x800;
+constexpr uint32_t kXamTokenMaxAppliesToLength = 0x400;
+constexpr X_RESULT kErrorBufferOverflow = 0x6F;
+
+static uint32_t AllocateXamToken(uint32_t type, std::string_view data) {
+  auto memory = kernel_state()->memory();
+  uint32_t data_length = static_cast<uint32_t>(data.size());
+  uint32_t token_ptr =
+      memory->SystemHeapAlloc(sizeof(X_XAM_TOKEN) + data_length + 1);
+  if (!token_ptr) {
+    return 0;
+  }
+  auto token = memory->TranslateVirtual<X_XAM_TOKEN*>(token_ptr);
+  token->type = type;
+  token->data_length = data_length;
+  token->data_ptr = token_ptr + sizeof(X_XAM_TOKEN);
+  auto token_data = memory->TranslateVirtual<char*>(token->data_ptr);
+  std::memcpy(token_data, data.data(), data_length);
+  token_data[data_length] = 0;
+  return token_ptr;
+}
+
+dword_result_t XamGetAppliesTo_entry(lpvoid_t url_ptr, dword_t url_length,
+                                     lpdword_t token_ptr) {
+  if (!url_ptr || !token_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  *token_ptr = 0;
+  if (url_length > kXamTokenMaxAppliesToLength) {
+    return kErrorBufferOverflow;
+  }
+  // The audience a token is asked for is the URL's scheme and host, which are
+  // case insensitive. The exact form xam builds is a guess.
+  std::string_view url(url_ptr.as<const char*>(), url_length);
+  url = url.substr(0, url.find('\0'));
+  size_t scheme_end = url.find("://");
+  if (scheme_end == std::string_view::npos || !scheme_end) {
+    return kErrorBufferOverflow;
+  }
+  size_t host_start = scheme_end + 3;
+  size_t host_end = url.find_first_of("/?#", host_start);
+  if (host_end == std::string_view::npos) {
+    host_end = url.size();
+  }
+  if (host_end == host_start) {
+    return kErrorBufferOverflow;
+  }
+  std::string applies_to = xe::utf8::lower_ascii(url.substr(0, host_end));
+  applies_to += '/';
+  if (applies_to.size() > kXamTokenMaxDataLength) {
+    return kErrorBufferOverflow;
+  }
+  uint32_t token = AllocateXamToken(kXamTokenTypeAppliesTo, applies_to);
+  if (!token) {
+    return X_ERROR_NOT_ENOUGH_MEMORY;
+  }
+  *token_ptr = token;
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamGetAppliesTo, kUserProfiles, kSketchy);
+
+dword_result_t XamGetToken_entry(dword_t user_index, lpvoid_t applies_to_ptr,
+                                 dword_t applies_to_length, lpdword_t token_ptr,
+                                 pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if ((user_index >= XUserMaxUserCount && user_index != XUserIndexAny) ||
+      !token_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  *token_ptr = 0;
+  if (applies_to_length > kXamTokenMaxAppliesToLength) {
+    return kErrorBufferOverflow;
+  }
+  if (user_index != XUserIndexAny) {
+    if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+      return X_ERROR_NO_SUCH_USER;
+    }
+    const auto& user_profile =
+        kernel_state()->xam_state()->GetUserProfile(user_index);
+    if (user_profile->signin_state() !=
+        static_cast<uint32_t>(SignInState::SignedInToLive)) {
+      return X_ERROR_NOT_LOGGED_ON;
+    }
+  }
+  // Tokens come from the LIVE security service, which isn't reachable. The
+  // failure is returned before anything is queued, so the overlapped is left
+  // alone, as xam does for failures it finds up front; XamlHost treats a
+  // non-pending result as finished and doesn't wait on it.
+  if (!cvars::fake_xauth_tokens) {
+    return X_ERROR_NOT_SUPPORTED;
+  }
+
+  // A real token is an encrypted blob only LIVE and the service can read,
+  // sent as base64 text. This one is random bytes of a similar size.
+  std::string_view applies_to;
+  if (applies_to_ptr) {
+    applies_to =
+        std::string_view(applies_to_ptr.as<const char*>(), applies_to_length);
+    applies_to = applies_to.substr(0, applies_to.find('\0'));
+  }
+  static constexpr char kBase64[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::random_device random;
+  std::string text;
+  for (size_t i = 0; i < 0x2A0 / 3; ++i) {
+    const uint32_t bits = random() & 0xFFFFFF;
+    text += kBase64[(bits >> 18) & 63];
+    text += kBase64[(bits >> 12) & 63];
+    text += kBase64[(bits >> 6) & 63];
+    text += kBase64[bits & 63];
+  }
+  XELOGI("XamGetToken: made up a token for {}", applies_to);
+  const uint32_t token = AllocateXamToken(kXamTokenTypeSecurity, text);
+  if (!token) {
+    return X_ERROR_NOT_ENOUGH_MEMORY;
+  }
+  *token_ptr = token;
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
+                                                X_ERROR_SUCCESS);
+    return X_ERROR_IO_PENDING;
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamGetToken, kUserProfiles, kSketchy);
+
+void XamFreeToken_entry(dword_t token_ptr) {
+  if (token_ptr) {
+    kernel_state()->memory()->SystemHeapFree(token_ptr);
+  }
+}
+DECLARE_XAM_EXPORT1(XamFreeToken, kUserProfiles, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel

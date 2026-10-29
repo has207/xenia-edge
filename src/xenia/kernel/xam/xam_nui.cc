@@ -104,6 +104,18 @@ dword_result_t XamUserNuiGetUserIndexForBind_entry(lpdword_t user_index) {
 }
 DECLARE_XAM_EXPORT1(XamUserNuiGetUserIndexForBind, kNone, kStub);
 
+// The Kinect identity enrollment of a signed-in user. Without a Kinect no user
+// is ever enrolled, which reads back as index -2.
+dword_result_t XamUserNuiGetEnrollmentIndex_entry(dword_t user_index,
+                                                  lpdword_t enrollment_index) {
+  if (user_index >= XUserMaxUserCount || !enrollment_index) {
+    return X_E_INVALIDARG;
+  }
+  *enrollment_index = static_cast<uint32_t>(-2);
+  return X_E_NO_SUCH_USER;
+}
+DECLARE_XAM_EXPORT1(XamUserNuiGetEnrollmentIndex, kNone, kImplemented);
+
 struct X_NUI_DEPTH_CALIBRATION {
   uint8_t data[0x30];
 };
@@ -206,6 +218,67 @@ dword_result_t XamNuiCameraSetFlags_entry(qword_t unk1, dword_t unk2) {
   return result;
 }
 DECLARE_XAM_EXPORT1(XamNuiCameraSetFlags, kNone, kStub);
+
+// The tilt motor calls below all start by asking for the controller type and
+// fail with device-not-connected when no Kinect is attached.
+static X_HRESULT NuiTiltMotorRequest(const char* name) {
+  if (!XamNuiCameraGetTiltControllerType_entry()) {
+    return X_E_DEVICE_NOT_CONNECTED;
+  }
+  // TODO(knuckleslee): Drive the tilt motor once a Kinect can be emulated.
+  XELOGW("{}: tilt motor not emulated", name);
+  return X_E_FAIL;
+}
+
+dword_result_t XamNuiCameraElevationSetAngle_entry(int_t angle) {
+  return NuiTiltMotorRequest("XamNuiCameraElevationSetAngle");
+}
+DECLARE_XAM_EXPORT1(XamNuiCameraElevationSetAngle, kNone, kStub);
+
+dword_result_t XamNuiCameraElevationStopMovement_entry() {
+  return NuiTiltMotorRequest("XamNuiCameraElevationStopMovement");
+}
+DECLARE_XAM_EXPORT1(XamNuiCameraElevationStopMovement, kNone, kStub);
+
+// The floor plane is a 4-float vector passed by value in two registers.
+dword_result_t XamNuiCameraRememberFloor_entry(qword_t floor_plane_xy,
+                                               qword_t floor_plane_zw,
+                                               dword_t unk) {
+  return NuiTiltMotorRequest("XamNuiCameraRememberFloor");
+}
+DECLARE_XAM_EXPORT1(XamNuiCameraRememberFloor, kNone, kStub);
+
+// Forwards a tilt status report to xam's Kinect service. Only two reports
+// exist; any other id is handed back unchanged, as on the console.
+dword_result_t XamNuiCameraTiltReportStatus_entry(dword_t message,
+                                                  lpvoid_t buffer) {
+  uint32_t buffer_length;
+  switch (message) {
+    case 0x0002B006:
+      buffer_length = 0x10;
+      break;
+    case 0x0002B00C:
+      buffer_length = 0xE0;
+      break;
+    default:
+      return static_cast<uint32_t>(message);
+  }
+  return kernel_state()->app_manager()->DispatchMessageSync(
+      0xFE, message, buffer.guest_address(), buffer_length);
+}
+DECLARE_XAM_EXPORT1(XamNuiCameraTiltReportStatus, kNone, kImplemented);
+
+// Writes the sensor's serial as a narrow string. Without a sensor nothing is
+// written and the NT status for a missing device comes back.
+dword_result_t XamNuiGetDeviceSerialNumber_entry(lpvoid_t serial_buffer,
+                                                 dword_t buffer_size) {
+  if (XamNuiCameraGetTiltControllerType_entry() == 0) {
+    return 0xC000009D;  // STATUS_DEVICE_NOT_CONNECTED
+  }
+  // TODO(knuckleslee): Report a serial once a Kinect can be emulated.
+  return X_E_FAIL;
+}
+DECLARE_XAM_EXPORT1(XamNuiGetDeviceSerialNumber, kNone, kStub);
 
 dword_result_t XamIsNuiUIActive_entry() {
   return kernel_state()->xam_state()->is_xam_dialog_present_.load();
@@ -359,6 +432,74 @@ dword_result_t XamUserNuiEnableBiometric_entry(dword_t user_index,
   return X_E_INVALIDARG;
 }
 DECLARE_XAM_EXPORT1(XamUserNuiEnableBiometric, kNone, kStub);
+
+// Kinect biometric (face/body) data kept for a profile. Only a Kinect produces
+// it, so no profile ever has any to read, and xenia has nowhere to keep it.
+static X_RESULT NuiBiometricRequest(uint32_t buffer_ptr, uint32_t buffer_size,
+                                    uint32_t size_ptr,
+                                    uint32_t overlapped_ptr) {
+  if (!buffer_ptr || !buffer_size || !size_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped_ptr,
+                                                X_ERROR_FUNCTION_FAILED);
+    return X_ERROR_IO_PENDING;
+  }
+  return X_ERROR_FUNCTION_FAILED;
+}
+
+dword_result_t XamReadBiometricData_entry(
+    qword_t xuid, lpvoid_t buffer, dword_t buffer_size, lpdword_t size_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  return NuiBiometricRequest(buffer.guest_address(), buffer_size,
+                             size_ptr.guest_address(),
+                             overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamReadBiometricData, kNone, kStub);
+
+dword_result_t XamWriteBiometricData_entry(
+    qword_t xuid, lpvoid_t buffer, dword_t buffer_size, lpdword_t size_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  return NuiBiometricRequest(buffer.guest_address(), buffer_size,
+                             size_ptr.guest_address(),
+                             overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamWriteBiometricData, kNone, kStub);
+
+// Skeleton frame as the NUI runtime hands it out: a header, then six
+// skeletons whose first field is the tracking state.
+constexpr uint32_t kNuiSkeletonCount = 6;
+constexpr uint32_t kNuiSkeletonsOffset = 0x30;
+constexpr uint32_t kNuiSkeletonSize = 0x1C0;
+constexpr uint32_t kNuiSkeletonTracked = 2;
+
+// Scores the tracked skeletons of a frame into the caller's two score slots
+// and stores how many skeletons were tracked.
+dword_result_t XamNuiSkeletonScoreUpdate_entry(lpvoid_t skeleton_frame,
+                                               lpvoid_t scores) {
+  if (!skeleton_frame || !scores) {
+    return X_E_INVALIDARG;
+  }
+  uint32_t tracked_count = 0;
+  for (uint32_t i = 0; i < kNuiSkeletonCount; i++) {
+    auto state =
+        xe::load_and_swap<uint32_t>(skeleton_frame.as<uint8_t*>() +
+                                    kNuiSkeletonsOffset + i * kNuiSkeletonSize);
+    if (state == kNuiSkeletonTracked) {
+      tracked_count++;
+    }
+  }
+  if (tracked_count) {
+    // Without a Kinect no frame has tracked skeletons.
+    // TODO(knuckleslee): Score tracked skeletons for titles that make frames.
+    XELOGW("XamNuiSkeletonScoreUpdate: {} tracked skeletons not scored",
+           tracked_count);
+  }
+  xe::store_and_swap<uint32_t>(scores.as<uint8_t*>() + 0x78, tracked_count);
+  return X_E_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamNuiSkeletonScoreUpdate, kNone, kSketchy);
 
 struct X_NUI_PLAYER_ENGAGEMENT_UPDATE {
   uint8_t data[0x1C];

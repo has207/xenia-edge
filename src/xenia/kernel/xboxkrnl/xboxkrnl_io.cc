@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <functional>
@@ -14,6 +15,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
 #include "xenia/base/utf8.h"
+#include "xenia/cpu/processor.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/info/file.h"
 #include "xenia/kernel/kernel_state.h"
@@ -540,6 +542,80 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
   return result;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtWriteFile, kFileSystem, kImplemented);
+
+// The write side of NtReadFileScatter. Each segment entry points at a page of
+// the data, and the last one may be partly used.
+dword_result_t NtWriteFileGather_entry(
+    dword_t file_handle, dword_t event_handle, function_t apc_routine,
+    lpvoid_t apc_context, pointer_t<X_IO_STATUS_BLOCK> io_status_block,
+    lpdword_t segment_array, dword_t length, lpqword_t byte_offset_ptr) {
+  X_STATUS result = X_STATUS_SUCCESS;
+
+  auto ev = kernel_state()->object_table()->LookupObject<XEvent>(event_handle);
+  if (event_handle && !ev) {
+    result = X_STATUS_INVALID_HANDLE;
+  }
+
+  auto file = kernel_state()->object_table()->LookupObject<XFile>(file_handle);
+  uint64_t byte_offset = 0;
+  if (!file) {
+    result = X_STATUS_INVALID_HANDLE;
+  } else if (XSUCCEEDED(result) && length && !segment_array) {
+    result = X_STATUS_INVALID_PARAMETER;
+  } else if (XSUCCEEDED(result) &&
+             (file->is_buffered() || file->device()->name() == "STFS")) {
+    // Like a scatter read, a gather write needs an unbuffered handle.
+    result = X_STATUS_INVALID_PARAMETER;
+  } else if (XSUCCEEDED(result)) {
+    result = ValidateRequest(file.get(), apc_routine, byte_offset_ptr, true,
+                             &byte_offset);
+  }
+
+  if (XSUCCEEDED(result)) {
+    uint32_t segments_address = segment_array.guest_address();
+    uint32_t write_length = length;
+    uint32_t apc_context_address = apc_context.guest_address();
+    result = SubmitRequest(
+        file, ev, apc_routine, apc_context_address, io_status_block,
+        io_status_block.guest_address(),
+        CompletesAsync(file.get(), write_length, byte_offset, true),
+        [file, segments_address, write_length, byte_offset,
+         apc_context_address](uint32_t* bytes_written) {
+          constexpr uint32_t kPageSize = 4096;
+          // Writes at the file position or the end follow on by themselves.
+          const bool fixed_offset =
+              byte_offset != uint64_t(-1) && byte_offset != XFile::kEndOfFile;
+          uint32_t written_total = 0;
+          uint32_t segment_address = segments_address;
+          X_STATUS status = X_STATUS_SUCCESS;
+          while (written_total < write_length) {
+            const uint32_t chunk =
+                std::min(write_length - written_total, kPageSize);
+            const uint32_t buffer_address =
+                *kernel_memory()->TranslateVirtual<xe::be<uint32_t>*>(
+                    segment_address);
+            segment_address += 4;
+            uint32_t chunk_written = 0;
+            status = file->Write(
+                buffer_address, chunk,
+                fixed_offset ? byte_offset + written_total : byte_offset,
+                &chunk_written, apc_context_address, false);
+            if (XFAILED(status)) {
+              break;
+            }
+            written_total += chunk_written;
+            if (chunk_written != chunk) {
+              break;
+            }
+          }
+          *bytes_written = written_total;
+          return status;
+        });
+  }
+
+  return result;
+}
+DECLARE_XBOXKRNL_EXPORT1(NtWriteFileGather, kFileSystem, kImplemented);
 
 dword_result_t NtCreateIoCompletion_entry(
     lpdword_t out_handle, dword_t desired_access,
@@ -1069,6 +1145,220 @@ void IoDeleteDevice_entry(pointer_t<X_DEVICE_OBJECT> device_ptr,
 }
 
 DECLARE_XBOXKRNL_EXPORT1(IoDeleteDevice, kFileSystem, kStub);
+
+// Xenia never sends an IRP to a guest driver, so only one a guest built itself
+// gets here. Completing it hands the status to the requester and wakes it.
+// There are no completion routines to run or system buffers to copy back.
+void IoCompleteRequest_entry(pointer_t<X_IRP> irp, dword_t priority_boost) {
+  if (!irp) {
+    return;
+  }
+  const uint32_t iosb_ptr = irp->user_iosb_ptr.m_ptr;
+  if (iosb_ptr) {
+    auto iosb = kernel_memory()->TranslateVirtual<X_IO_STATUS_BLOCK*>(iosb_ptr);
+    iosb->status = irp->io_status.status;
+    iosb->information = irp->io_status.information;
+  }
+  const uint32_t event_ptr = irp->user_event_ptr.m_ptr;
+  if (event_ptr) {
+    xeKeSetEvent(kernel_memory()->TranslateVirtual<X_KEVENT*>(event_ptr),
+                 priority_boost, 0);
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(IoCompleteRequest, kFileSystem, kSketchy);
+
+// A driver's handler for the major functions it doesn't support.
+dword_result_t IoInvalidDeviceRequest_entry(pointer_t<X_DEVICE_OBJECT> device,
+                                            pointer_t<X_IRP> irp) {
+  if (irp) {
+    irp->io_status.status = X_STATUS_INVALID_DEVICE_REQUEST;
+    IoCompleteRequest_entry(irp, 0);
+  }
+  return X_STATUS_INVALID_DEVICE_REQUEST;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoInvalidDeviceRequest, kFileSystem, kImplemented);
+
+constexpr X_STATUS kStatusVolumeDismounted = 0xC000026E;
+
+// Asks the file system mounted on a device to let go of it, through the
+// dismount routine of the driver that owns the volume. Only a device a guest
+// created has one, the devices behind xenia's own file systems aren't guest
+// objects.
+dword_result_t IoDismountVolume_entry(pointer_t<X_DEVICE_OBJECT> device) {
+  if (!device) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint32_t volume_ptr = device->mounted_or_self_device.m_ptr;
+  if (!volume_ptr) {
+    return kStatusVolumeDismounted;
+  }
+  auto volume = kernel_memory()->TranslateVirtual<X_DEVICE_OBJECT*>(volume_ptr);
+  const uint32_t driver_ptr = volume->drive_object_ptr.m_ptr;
+  uint32_t dismount_routine = 0;
+  if (driver_ptr) {
+    dismount_routine = kernel_memory()
+                           ->TranslateVirtual<X_DRIVER_OBJECT*>(driver_ptr)
+                           ->driver_dismount_volume_ptr;
+  }
+  if (!dismount_routine) {
+    return X_STATUS_INVALID_DEVICE_REQUEST;
+  }
+  auto thread = XThread::GetCurrentThread();
+  if (!thread) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  uint64_t args[] = {volume_ptr};
+  return static_cast<uint32_t>(kernel_state()->processor()->Execute(
+      thread->thread_state(), dismount_routine, args, 1));
+}
+DECLARE_XBOXKRNL_EXPORT1(IoDismountVolume, kFileSystem, kImplemented);
+
+// A handle xenia opened sits on a host backed file system with no guest
+// volume to dismount, so a valid one is all that is checked.
+dword_result_t IoDismountVolumeByFileHandle_entry(dword_t file_handle) {
+  auto file = kernel_state()->object_table()->LookupObject<XFile>(file_handle);
+  if (!file) {
+    return X_STATUS_INVALID_HANDLE;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoDismountVolumeByFileHandle, kFileSystem, kStub);
+
+// The share bookkeeping a file system keeps per open file. The counts live in
+// the file system's SHARE_ACCESS, while the access this open was granted lives
+// in flag bits in the fourth byte of its file object.
+struct X_SHARE_ACCESS {
+  uint8_t open_count;
+  uint8_t readers;
+  uint8_t writers;
+  uint8_t deleters;
+  uint8_t shared_read;
+  uint8_t shared_write;
+  uint8_t shared_delete;
+};
+static_assert_size(X_SHARE_ACCESS, 7);
+
+constexpr uint32_t kFileObjectAccessFlagsOffset = 3;
+constexpr uint8_t kFileObjectReadAccess = 0x40;
+constexpr uint8_t kFileObjectWriteAccess = 0x20;
+constexpr uint8_t kFileObjectDeleteAccess = 0x10;
+constexpr uint8_t kFileObjectSharedRead = 0x08;
+constexpr uint8_t kFileObjectSharedWrite = 0x04;
+constexpr uint8_t kFileObjectSharedDelete = 0x02;
+constexpr uint8_t kFileObjectAccessMask = 0x7E;
+
+constexpr X_STATUS kStatusSharingViolation = 0xC0000043;
+
+// Records the access an open asks for in its file object and returns the bits.
+static uint8_t SetFileObjectAccess(uint8_t* file_object,
+                                   uint32_t desired_access,
+                                   uint32_t desired_share_access) {
+  uint8_t access = 0;
+  if (desired_access & 0x21) {  // FILE_READ_DATA | FILE_EXECUTE
+    access |= kFileObjectReadAccess;
+  }
+  if (desired_access & 0x6) {  // FILE_WRITE_DATA | FILE_APPEND_DATA
+    access |= kFileObjectWriteAccess;
+  }
+  if (desired_access & 0x10000) {  // DELETE
+    access |= kFileObjectDeleteAccess;
+  }
+  if (desired_share_access & 0x1) {
+    access |= kFileObjectSharedRead;
+  }
+  if (desired_share_access & 0x2) {
+    access |= kFileObjectSharedWrite;
+  }
+  if (desired_share_access & 0x4) {
+    access |= kFileObjectSharedDelete;
+  }
+  uint8_t& flags = file_object[kFileObjectAccessFlagsOffset];
+  flags = uint8_t((flags & ~kFileObjectAccessMask) | access);
+  return access;
+}
+
+static void AddShareAccess(X_SHARE_ACCESS* share, uint8_t access) {
+  share->open_count++;
+  share->readers += (access & kFileObjectReadAccess) ? 1 : 0;
+  share->writers += (access & kFileObjectWriteAccess) ? 1 : 0;
+  share->deleters += (access & kFileObjectDeleteAccess) ? 1 : 0;
+  share->shared_read += (access & kFileObjectSharedRead) ? 1 : 0;
+  share->shared_write += (access & kFileObjectSharedWrite) ? 1 : 0;
+  share->shared_delete += (access & kFileObjectSharedDelete) ? 1 : 0;
+}
+
+dword_result_t IoCheckShareAccess_entry(dword_t desired_access,
+                                        dword_t desired_share_access,
+                                        lpvoid_t file_object,
+                                        pointer_t<X_SHARE_ACCESS> share_access,
+                                        dword_t update) {
+  if (!file_object || !share_access) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint8_t access = SetFileObjectAccess(
+      file_object.as<uint8_t*>(), desired_access, desired_share_access);
+  // An open that neither reads, writes nor deletes is never refused.
+  if (!(access & (kFileObjectReadAccess | kFileObjectWriteAccess |
+                  kFileObjectDeleteAccess))) {
+    return X_STATUS_SUCCESS;
+  }
+  X_SHARE_ACCESS* share = share_access;
+  const uint8_t open_count = share->open_count;
+  // Each open so far must share what this one wants, and this one must share
+  // what any of them already have.
+  if (open_count == 0xFF ||
+      ((access & kFileObjectReadAccess) && share->shared_read < open_count) ||
+      ((access & kFileObjectWriteAccess) && share->shared_write < open_count) ||
+      ((access & kFileObjectDeleteAccess) &&
+       share->shared_delete < open_count) ||
+      (share->readers && !(access & kFileObjectSharedRead)) ||
+      (share->writers && !(access & kFileObjectSharedWrite)) ||
+      (share->deleters && !(access & kFileObjectSharedDelete))) {
+    return kStatusSharingViolation;
+  }
+  if (update) {
+    AddShareAccess(share, access);
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoCheckShareAccess, kFileSystem, kImplemented);
+
+void IoSetShareAccess_entry(dword_t desired_access,
+                            dword_t desired_share_access, lpvoid_t file_object,
+                            pointer_t<X_SHARE_ACCESS> share_access) {
+  if (!file_object || !share_access) {
+    return;
+  }
+  const uint8_t access = SetFileObjectAccess(
+      file_object.as<uint8_t*>(), desired_access, desired_share_access);
+  if (access & (kFileObjectReadAccess | kFileObjectWriteAccess |
+                kFileObjectDeleteAccess)) {
+    AddShareAccess(share_access, access);
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(IoSetShareAccess, kFileSystem, kImplemented);
+
+void IoRemoveShareAccess_entry(lpvoid_t file_object,
+                               pointer_t<X_SHARE_ACCESS> share_access) {
+  if (!file_object || !share_access) {
+    return;
+  }
+  const uint8_t access =
+      file_object.as<uint8_t*>()[kFileObjectAccessFlagsOffset];
+  if (!(access & (kFileObjectReadAccess | kFileObjectWriteAccess |
+                  kFileObjectDeleteAccess))) {
+    return;
+  }
+  X_SHARE_ACCESS* share = share_access;
+  share->open_count--;
+  share->readers -= (access & kFileObjectReadAccess) ? 1 : 0;
+  share->writers -= (access & kFileObjectWriteAccess) ? 1 : 0;
+  share->deleters -= (access & kFileObjectDeleteAccess) ? 1 : 0;
+  share->shared_read -= (access & kFileObjectSharedRead) ? 1 : 0;
+  share->shared_write -= (access & kFileObjectSharedWrite) ? 1 : 0;
+  share->shared_delete -= (access & kFileObjectSharedDelete) ? 1 : 0;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoRemoveShareAccess, kFileSystem, kImplemented);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

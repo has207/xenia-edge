@@ -346,6 +346,51 @@ dword_result_t RtlUnicodeStringToAnsiString_entry(
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlUnicodeStringToAnsiString, kNone, kImplemented);
 
+// Each byte widens to one character, as RtlMultiByteToUnicodeN does here. The
+// result is terminated when there is room, and the room for that is what an
+// allocated buffer adds.
+dword_result_t RtlAnsiStringToUnicodeString_entry(
+    pointer_t<X_UNICODE_STRING> destination_ptr,
+    pointer_t<X_ANSI_STRING> source_ptr, dword_t alloc_dest) {
+  if (!destination_ptr || !source_ptr) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint32_t char_count = source_ptr->length;
+  const uint32_t unicode_size = (char_count + 1) * 2;
+  if (unicode_size > 0xFFFF || (char_count && !source_ptr->pointer)) {
+    return X_STATUS_INVALID_PARAMETER_2;
+  }
+  const uint16_t length = uint16_t(char_count * 2);
+  if (alloc_dest) {
+    const uint32_t buffer_ptr = kernel_memory()->SystemHeapAlloc(unicode_size);
+    if (!buffer_ptr) {
+      return X_STATUS_NO_MEMORY;
+    }
+    destination_ptr->pointer = buffer_ptr;
+    destination_ptr->maximum_length = uint16_t(unicode_size);
+  } else if (length > destination_ptr->maximum_length ||
+             (char_count && !destination_ptr->pointer)) {
+    return X_STATUS_BUFFER_OVERFLOW;
+  }
+  destination_ptr->length = length;
+
+  auto dest = kernel_memory()->TranslateVirtual<xe::be<uint16_t>*>(
+      destination_ptr->pointer);
+  if (char_count) {
+    auto src =
+        kernel_memory()->TranslateVirtual<const uint8_t*>(source_ptr->pointer);
+    for (uint32_t i = 0; i < char_count; ++i) {
+      dest[i] = src[i];
+    }
+  }
+  if (destination_ptr->pointer &&
+      length + 2u <= destination_ptr->maximum_length) {
+    dest[char_count] = 0;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(RtlAnsiStringToUnicodeString, kNone, kImplemented);
+
 // https://msdn.microsoft.com/en-us/library/ff553113
 dword_result_t RtlMultiByteToUnicodeN_entry(lpword_t destination_ptr,
                                             dword_t destination_len,
@@ -866,6 +911,66 @@ void RtlGetStackLimits_entry(lpdword_t out_end, lpdword_t out_base,
   *out_end = stack_end;
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlGetStackLimits, kNone, kImplemented);
+
+// Guest PPC CONTEXT record.
+struct X_CONTEXT {
+  xe::be<uint32_t> context_flags;      // 0x0
+  xe::be<uint32_t> msr;                // 0x4
+  xe::be<uint32_t> iar;                // 0x8
+  xe::be<uint32_t> lr;                 // 0xC
+  xe::be<uint64_t> ctr;                // 0x10
+  xe::be<uint64_t> gpr[32];            // 0x18
+  xe::be<uint32_t> cr;                 // 0x118
+  xe::be<uint32_t> xer;                // 0x11C
+  xe::be<uint64_t> fpscr;              // 0x120
+  xe::be<double> fpr[32];              // 0x128
+  xe::be<uint32_t> user_mode_control;  // 0x228
+  xe::be<uint32_t> fill;               // 0x22C
+  xe::be<uint32_t> vscr[4];            // 0x230
+  xe::be<uint32_t> vr[128][4];         // 0x240
+};
+static_assert_size(X_CONTEXT, 0xA40);
+static_assert(offsetof(X_CONTEXT, gpr) == 0x18);
+static_assert(offsetof(X_CONTEXT, cr) == 0x118);
+static_assert(offsetof(X_CONTEXT, fpr) == 0x128);
+static_assert(offsetof(X_CONTEXT, vscr) == 0x230);
+
+constexpr uint32_t X_CONTEXT_CONTROL = 0x00000001;
+constexpr uint32_t X_CONTEXT_FLOATING_POINT = 0x00000002;
+constexpr uint32_t X_CONTEXT_INTEGER = 0x00000004;
+constexpr uint32_t X_CONTEXT_VECTOR = 0x00000010;
+
+// Captures the caller's registers. Since the import thunk doesn't touch them,
+// the guest context still holds the caller's state, and LR is its return
+// address, which unwinders use as the PC.
+void RtlCaptureContext_entry(pointer_t<X_CONTEXT> context_record,
+                             const ppc_context_t& ctx) {
+  context_record.Zero();
+  context_record->context_flags = X_CONTEXT_CONTROL | X_CONTEXT_FLOATING_POINT |
+                                  X_CONTEXT_INTEGER | X_CONTEXT_VECTOR;
+  context_record->msr = static_cast<uint32_t>(ctx->msr);
+  context_record->iar = static_cast<uint32_t>(ctx->lr);
+  context_record->lr = static_cast<uint32_t>(ctx->lr);
+  context_record->ctr = ctx->ctr;
+  for (size_t i = 0; i < 32; i++) {
+    context_record->gpr[i] = ctx->r[i];
+    context_record->fpr[i] = ctx->f[i];
+  }
+  context_record->cr = static_cast<uint32_t>(ctx->cr());
+  context_record->xer = (uint32_t(ctx->xer_so & 1) << 31) |
+                        (uint32_t(ctx->xer_ov & 1) << 30) |
+                        (uint32_t(ctx->xer_ca & 1) << 29);
+  context_record->fpscr = ctx->fpscr.value;
+  for (size_t i = 0; i < 4; i++) {
+    context_record->vscr[i] = ctx->vscr_vec.u32[i];
+  }
+  for (size_t i = 0; i < 128; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      context_record->vr[i][j] = ctx->v[i].u32[j];
+    }
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(RtlCaptureContext, kNone, kImplemented);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

@@ -179,6 +179,64 @@ dword_result_t MicDeviceRequest_entry(pointer_t<X_MIC_DEVICE> device_ptr) {
 }
 DECLARE_XBOXKRNL_EXPORT1(MicDeviceRequest, kNone, kStub);
 
+constexpr X_STATUS kStatusDeviceNotConnected = 0xC000009D;
+
+// The request block MicDeviceRequest takes, for the 0x5000 class of device.
+// None is ever attached, so a status query says not connected and anything
+// else the kernel would accept fails the same way.
+dword_result_t RmcDeviceRequest_entry(pointer_t<X_MIC_INFO> request) {
+  if (!request || request->user_index >= 4) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const auto request_type =
+      static_cast<uint16_t>(XMicRequestType(request->request_type));
+  if (request_type == uint16_t(XMicRequestType::MicGetStatus)) {
+    request->state = XMicState::MicNotConnected;
+    return X_STATUS_SUCCESS;
+  }
+  if (request_type > 10) {
+    return X_STATUS_INVALID_DEVICE_REQUEST;
+  }
+  return kStatusDeviceNotConnected;
+}
+DECLARE_XBOXKRNL_EXPORT1(RmcDeviceRequest, kNone, kImplemented);
+
+// Event tracing. Nothing collects the events, so registering only does the
+// kernel's checks and fills in the size, which is all unregistering looks at.
+struct X_ETX_PRODUCER_REGISTRATION {
+  xe::be<uint32_t> size;
+};
+
+dword_result_t EtxProducerRegister_entry(dword_t provider, lpvoid_t events,
+                                         dword_t event_count, dword_t flags,
+                                         dword_t registration_size,
+                                         lpvoid_t registration) {
+  if (registration_size < 0x40 || !registration) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  registration.Zero(registration_size);
+  registration.as<X_ETX_PRODUCER_REGISTRATION*>()->size =
+      uint32_t(registration_size);
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(EtxProducerRegister, kNone, kStub);
+
+dword_result_t EtxProducerUnregister_entry(
+    pointer_t<X_ETX_PRODUCER_REGISTRATION> registration) {
+  if (!registration || registration->size < 0x40) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(EtxProducerUnregister, kNone, kStub);
+
+// Takes the registration, the event and a variable argument list for its
+// payload, all of which go nowhere.
+dword_result_t EtxProducerLog_entry(lpvoid_t registration, dword_t event) {
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(EtxProducerLog, kNone, kStub);
+
 // The kernel's LZX decompression as cabinets use it. A context keeps the
 // stream and each call passes one compressed frame.
 //

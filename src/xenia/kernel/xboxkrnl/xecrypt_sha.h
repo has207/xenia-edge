@@ -171,6 +171,24 @@ inline void XeCryptSha256Final(XECRYPT_SHA256_STATE* state, uint8_t* out,
   std::memcpy(state->buffer, digest, sizeof(digest));
 }
 
+inline void XeCryptSha256(const uint8_t* input_1, uint32_t input_1_size,
+                          const uint8_t* input_2, uint32_t input_2_size,
+                          const uint8_t* input_3, uint32_t input_3_size,
+                          uint8_t* out, uint32_t out_size) {
+  XECRYPT_SHA256_STATE state;
+  XeCryptSha256Init(&state);
+  if (input_1 && input_1_size) {
+    XeCryptSha256Update(&state, input_1, input_1_size);
+  }
+  if (input_2 && input_2_size) {
+    XeCryptSha256Update(&state, input_2, input_2_size);
+  }
+  if (input_3 && input_3_size) {
+    XeCryptSha256Update(&state, input_3, input_3_size);
+  }
+  XeCryptSha256Final(&state, out, out_size);
+}
+
 inline mbedtls_sha512_context LoadSha512(const XECRYPT_SHA512_STATE& state) {
   mbedtls_sha512_context context;
   mbedtls_sha512_init(&context);
@@ -212,6 +230,34 @@ inline void XeCryptSha512Final(XECRYPT_SHA512_STATE* state, uint8_t* out,
     std::memcpy(out, digest, std::min<uint32_t>(out_size, sizeof(digest)));
   }
   std::memcpy(state->buffer, digest, sizeof(digest));
+}
+
+// SHA-384 is SHA-512 started from other initial values and cut to 48 bytes, so
+// it keeps the SHA-512 state and updates the same way.
+inline void XeCryptSha384Init(XECRYPT_SHA512_STATE* state) {
+  mbedtls_sha512_context context;
+  mbedtls_sha512_init(&context);
+  mbedtls_sha512_starts(&context, 1);
+  StoreSha512(context, *state);
+}
+
+inline void XeCryptSha384Update(XECRYPT_SHA512_STATE* state,
+                                const uint8_t* input, uint32_t input_size) {
+  XeCryptSha512Update(state, input, input_size);
+}
+
+// Like XeCryptSha512Final, with the digest cut to 48 bytes. The stored state
+// doesn't say which variant it is, so the full 64 bytes come out of mbedtls.
+inline void XeCryptSha384Final(XECRYPT_SHA512_STATE* state, uint8_t* out,
+                               uint32_t out_size) {
+  auto context = LoadSha512(*state);
+  uint8_t digest[64];
+  mbedtls_sha512_finish(&context, digest);
+  constexpr uint32_t kDigestSize = 48;
+  if (out_size) {
+    std::memcpy(out, digest, std::min<uint32_t>(out_size, kDigestSize));
+  }
+  std::memcpy(state->buffer, digest, kDigestSize);
 }
 
 inline void XeCryptHmacShaInit(XECRYPT_HMACSHA_STATE* state, const uint8_t* key,

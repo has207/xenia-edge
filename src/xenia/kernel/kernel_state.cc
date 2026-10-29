@@ -513,6 +513,22 @@ object_ref<XModule> KernelState::GetModule(const std::string_view name,
   return nullptr;
 }
 
+object_ref<UserModule> KernelState::GetUserModuleForAddress(uint32_t address) {
+  auto global_lock = global_critical_region_.Acquire();
+  for (auto& user_module : user_modules_) {
+    if (user_module->module_format() != UserModule::kModuleFormatXex) {
+      continue;
+    }
+    auto xex_module = user_module->xex_module();
+    uint32_t base_address = xex_module->base_address();
+    if (address >= base_address &&
+        address - base_address < xex_module->image_size()) {
+      return retain_object(user_module.get());
+    }
+  }
+  return nullptr;
+}
+
 object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
   if (!module->is_executable()) {
     return nullptr;
@@ -768,7 +784,7 @@ X_RESULT KernelState::FinishLoadingUserModule(
     // Call DllMain(DLL_PROCESS_ATTACH):
     // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
     uint64_t args[] = {
-        module->handle(),
+        module->hmodule_ptr(),
         1,  // DLL_PROCESS_ATTACH
         0,  // 0 because always dynamic
     };
@@ -960,7 +976,7 @@ void KernelState::UnloadUserModule(const object_ref<UserModule>& module,
     // Call DllMain(DLL_PROCESS_DETACH):
     // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
     uint64_t args[] = {
-        module->handle(),
+        module->hmodule_ptr(),
         0,  // DLL_PROCESS_DETACH
         0,  // 0 for now, assume XexUnloadImage is like FreeLibrary
     };
@@ -1031,13 +1047,21 @@ void KernelState::OnThreadExecute(XThread* thread) {
   // Must be called on executing thread.
   assert_true(XThread::GetCurrentThread() == thread);
 
+  // Host threads (e.g. Kernel Dispatch) live in the system process and aren't
+  // title threads. Letting one take a DLL's DLL_PROCESS_ATTACH runs the
+  // module's process init, including its KeTlsAlloc calls, in the wrong
+  // process.
+  if (!thread->is_guest_thread()) {
+    return;
+  }
+
   // Call DllMain(DLL_THREAD_ATTACH) for each user module:
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
   auto thread_state = thread->thread_state();
   for (auto user_module : user_modules_) {
     if (user_module->is_dll_module() && user_module->entry_point()) {
       uint64_t args[] = {
-          user_module->handle(),
+          user_module->hmodule_ptr(),
           user_module->is_attached()
               ? static_cast<uint64_t>(2)   // DLL_THREAD_ATTACH - Used to call
                                            // DLL for each thread created.
@@ -1064,9 +1088,10 @@ void KernelState::OnThreadExit(XThread* thread) {
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
   auto thread_state = thread->thread_state();
   for (auto user_module : user_modules_) {
-    if (user_module->is_dll_module() && user_module->entry_point()) {
+    if (thread->is_guest_thread() && user_module->is_dll_module() &&
+        user_module->entry_point()) {
       uint64_t args[] = {
-          user_module->handle(),
+          user_module->hmodule_ptr(),
           3,  // DLL_THREAD_DETACH
           0,  // 0 because always dynamic
       };

@@ -94,6 +94,35 @@ dword_result_t XamPartyGetBandwidth_entry(dword_t bandwidth_type,
 }
 DECLARE_XAM_EXPORT1(XamPartyGetBandwidth, kNone, kStub);
 
+// These xam exports pass their request to the party system app. There is no
+// party app, so they fail the way xam does when the app can't take the
+// request, without touching the overlapped.
+
+dword_result_t XamPartyCreate_entry(dword_t user_index) {
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamPartyCreate, kNone, kStub);
+
+dword_result_t XamPartySendInvite_entry(dword_t user_index, qword_t xuid,
+                                        lpvoid_t message_ptr) {
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamPartySendInvite, kNone, kStub);
+
+// Up to 100 XUIDs are placed into a formation.
+constexpr uint32_t kPartyFormationMaxUsers = 100;
+
+dword_result_t XamPartyGetFormation_entry(
+    dword_t user_index, dword_t xuid_count, lpqword_t xuids_ptr,
+    lpvoid_t formation_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!xuid_count || xuid_count > kPartyFormationMaxUsers || !xuids_ptr ||
+      !formation_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamPartyGetFormation, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

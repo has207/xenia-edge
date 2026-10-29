@@ -878,6 +878,82 @@ void RtlRaiseException_entry(pointer_t<X_EXCEPTION_RECORD> record,
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlRaiseException, kDebug, kStub);
 
+// Unwinds the guest stack from the caller up to the frame established at
+// target_frame, then resumes that frame at target_ip with return_value in r3.
+// The kernel also runs the termination handlers of each frame it removes,
+// calling their language handlers with an unwind flag. Xenia never dispatches
+// a guest exception through those handlers, so it has none of that machinery.
+// Only an unwind that crosses no frame with a handler is carried out, which
+// covers a caller resuming itself and longjmp style jumps over plain frames.
+// Anything else is logged and returns to the caller untouched.
+void RtlUnwind_entry(dword_t target_frame, dword_t target_ip,
+                     pointer_t<X_EXCEPTION_RECORD> exception_record,
+                     dword_t return_value, const ppc_context_t& context) {
+  std::vector<GuestFrame> frames;
+  WalkGuestFrames(context, &frames);
+  std::string reason;
+  size_t target = 0;
+  if (!target_frame) {
+    reason = "an exit unwind has no target frame";
+  } else {
+    while (target < frames.size() &&
+           frames[target].entry_sp != uint32_t(target_frame)) {
+      ++target;
+    }
+    if (target >= frames.size()) {
+      reason = fmt::format("no frame in {} was established at 0x{:08X}",
+                           frames.size(), uint32_t(target_frame));
+    }
+  }
+  for (size_t i = 0; reason.empty() && i < target; ++i) {
+    if (frames[i].packed >> 31) {
+      reason = fmt::format(
+          "frame #{} fn=0x{:08X} has a handler that would have to run", i,
+          frames[i].function);
+    } else if (!UnwindGuestFrame(frames[i], nullptr)) {
+      reason = fmt::format("frame #{} fn=0x{:08X} has a prolog we cannot undo",
+                           i, frames[i].function);
+    }
+  }
+  if (reason.empty() && !target_ip && target) {
+    reason = "no target ip to resume the frame at";
+  }
+  if (!reason.empty()) {
+    XELOGE(
+        "RtlUnwind(0x{:08X}, 0x{:08X}) from 0x{:08X} not carried out, {}. The "
+        "caller continues as if it returned.{}",
+        uint32_t(target_frame), uint32_t(target_ip),
+        static_cast<uint32_t>(context->lr), reason, GetGuestBacktrace(context));
+    return;
+  }
+
+  for (size_t i = 0; i < target; ++i) {
+    UnwindGuestFrame(frames[i], context);
+  }
+  context->r[1] = frames[target].sp;
+  context->r[3] = uint32_t(return_value);
+  // The import thunk returns through lr, so this is where the guest lands.
+  if (target_ip) {
+    context->lr = uint32_t(target_ip);
+  }
+  XELOGD("RtlUnwind: removed {} frames, resuming at 0x{:08X} with sp=0x{:08X}",
+         target, static_cast<uint32_t>(context->lr), frames[target].sp);
+}
+DECLARE_XBOXKRNL_EXPORT1(RtlUnwind, kDebug, kSketchy);
+
+constexpr uint32_t kExceptionContinueSearch = 1;
+
+// The language handler for __try/__except/__finally scopes. Only an exception
+// dispatcher calls it, and xenia's never calls a guest handler, so a call from
+// anywhere else gets the answer that leaves the exception to the next frame.
+dword_result_t __C_specific_handler_entry(
+    pointer_t<X_EXCEPTION_RECORD> exception_record, dword_t establisher_frame,
+    lpvoid_t context_record, lpvoid_t dispatcher_context) {
+  XELOGW("__C_specific_handler called outside a dispatch, continuing search");
+  return kExceptionContinueSearch;
+}
+DECLARE_XBOXKRNL_EXPORT1(__C_specific_handler, kDebug, kStub);
+
 void KeBugCheckEx_entry(dword_t code, dword_t param1, dword_t param2,
                         dword_t param3, dword_t param4) {
   auto msg =

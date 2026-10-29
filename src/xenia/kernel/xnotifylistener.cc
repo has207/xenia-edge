@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xnotifylistener.h"
 
+#include <algorithm>
+
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
@@ -60,9 +62,11 @@ bool XNotifyListener::DequeueNotification(XNotificationID* out_id,
     *out_id = it->first;
     *out_data = it->second;
     notifications_.erase(it);
-    if (!notifications_.size()) {
-      wait_handle_->Reset();
-    }
+  }
+  // Also reset when nothing was queued: a filtered read may have taken the
+  // last notification and left the handle signaled.
+  if (notifications_.empty()) {
+    wait_handle_->Reset();
   }
   return dequeued;
 }
@@ -70,9 +74,6 @@ bool XNotifyListener::DequeueNotification(XNotificationID* out_id,
 bool XNotifyListener::DequeueNotification(XNotificationID id,
                                           uint32_t* out_data) {
   auto global_lock = global_critical_region_.Acquire();
-  if (!notifications_.size()) {
-    return false;
-  }
   bool dequeued = false;
   for (auto it = notifications_.begin(); it != notifications_.end(); ++it) {
     if (it->first != id) {
@@ -81,10 +82,13 @@ bool XNotifyListener::DequeueNotification(XNotificationID id,
     dequeued = true;
     *out_data = it->second;
     notifications_.erase(it);
-    if (!notifications_.size()) {
-      wait_handle_->Reset();
-    }
     break;
+  }
+  // A filtered reader never takes the other notifications, so leaving the
+  // handle signaled for them makes a wait + XNotifyGetNext(id) loop spin.
+  if (std::none_of(notifications_.begin(), notifications_.end(),
+                   [id](const auto& n) { return n.first == id; })) {
+    wait_handle_->Reset();
   }
   return dequeued;
 }

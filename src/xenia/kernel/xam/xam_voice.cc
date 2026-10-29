@@ -49,6 +49,51 @@ dword_result_t XamVoiceGetMicArrayStatus_entry() {
 }
 DECLARE_XAM_EXPORT1(XamVoiceGetMicArrayStatus, kNone, kStub);
 
+// The Kinect microphone array requests go to the kernel's mic array driver
+// and come back as its NT status with the facility bit. With no array that is
+// a missing device.
+constexpr X_HRESULT kMicArrayNotConnected =
+    X_HRESULT_FROM_NT(0xC000009D);  // STATUS_DEVICE_NOT_CONNECTED
+
+// Starts a capture from the microphone array. The request block starts with
+// its size; xam resets the status fields at 0x2C..0x3F before sending it.
+dword_result_t XamVoiceGetMicArrayAudioEx_entry(lpvoid_t request,
+                                                lpvoid_t completion) {
+  if (!request) {
+    return X_E_INVALIDARG;
+  }
+  auto fields = request.as_array<uint32_t>();
+  if (fields[0] >= 0x40) {
+    fields[0x2C / 4] = 0;
+    for (uint32_t offset = 0x30; offset < 0x40; offset += 4) {
+      fields[offset / 4] = 5;
+    }
+  }
+  return kMicArrayNotConnected;
+}
+DECLARE_XAM_EXPORT1(XamVoiceGetMicArrayAudioEx, kNone, kStub);
+
+dword_result_t XamVoiceGetMicArrayUnderrunStatus_entry(
+    lpdword_t underrun_flags, lpdword_t underrun_count) {
+  if (underrun_flags) {
+    *underrun_flags = 0;
+  }
+  if (underrun_count) {
+    *underrun_count = 0;
+  }
+  return kMicArrayNotConnected;
+}
+DECLARE_XAM_EXPORT1(XamVoiceGetMicArrayUnderrunStatus, kNone, kStub);
+
+// Sound source direction from the microphone array behind a voice. Only an
+// array voice has one, and XamVoiceCreate never makes one, so the kernel's
+// device-not-available result comes back.
+dword_result_t XamVoiceGetDirectionalData_entry(lpvoid_t voice_ptr,
+                                                lpfloat_t directional_data) {
+  return X_RESULT_FROM_WIN32(0x000010DFL);  // ERROR_DEVICE_NOT_AVAILABLE
+}
+DECLARE_XAM_EXPORT1(XamVoiceGetDirectionalData, kNone, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

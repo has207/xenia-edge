@@ -9,8 +9,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <thread>
+#include <vector>
 
+#include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/string_util.h"
@@ -30,6 +33,7 @@
 #include "xenia/kernel/xthread.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
+#include "xenia/vfs/devices/host_path_entry.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/xbox.h"
@@ -558,14 +562,83 @@ dword_result_t XamContentCreateInternal_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentCreateInternal, kContent, kImplemented);
 
+// Packages can only be mounted from host files, so one inside a container
+// such as a Games on Demand package is copied out to the cache first. A copy
+// of the same size from an earlier run is reused.
+static std::filesystem::path GetContentFileHostPath(vfs::Entry* entry) {
+  if (auto host_entry = dynamic_cast<vfs::HostPathEntry*>(entry)) {
+    return host_entry->host_path();
+  }
+  const std::filesystem::path cache_path =
+      kernel_state()->emulator()->cache_root() / "content_files" /
+      fmt::format("{:08X}", kernel_state()->title_id()) /
+      xe::to_path(entry->name());
+  std::error_code error;
+  if (std::filesystem::is_regular_file(cache_path, error) &&
+      std::filesystem::file_size(cache_path, error) == entry->size()) {
+    return cache_path;
+  }
+
+  vfs::File* file = nullptr;
+  if (entry->Open(vfs::FileAccess::kFileReadData, &file) != X_STATUS_SUCCESS ||
+      !file) {
+    return {};
+  }
+  std::vector<uint8_t> data(entry->size());
+  size_t bytes_read = 0;
+  const X_STATUS status = file->ReadSync(data, 0, &bytes_read);
+  file->Destroy();
+  if (status != X_STATUS_SUCCESS || bytes_read != data.size()) {
+    return {};
+  }
+  std::filesystem::create_directories(cache_path.parent_path(), error);
+  std::ofstream out(cache_path, std::ios::binary | std::ios::trunc);
+  out.write(reinterpret_cast<const char*>(data.data()), data.size());
+  if (!out) {
+    return {};
+  }
+  return cache_path;
+}
+
 dword_result_t XamContentOpenFile_entry(
     dword_t user_index, lpstring_t root_name, lpstring_t path, dword_t flags,
     lpdword_t disposition_ptr, lpdword_t license_mask_ptr,
     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // Mounts the content package stored in a file, such as a Kinect speech
+  // database (GAME:\nuisp1033p), under root_name.
   // TODO(gibbed): arguments assumed based on XamContentCreate.
-  return X_ERROR_FILE_NOT_FOUND;
+  auto run = [path = path.value(), root_name = root_name.value(),
+              disposition_ptr, license_mask_ptr](uint32_t& extended_error,
+                                                 uint32_t& length) -> X_RESULT {
+    X_RESULT result = X_ERROR_FILE_NOT_FOUND;
+    if (auto entry = kernel_state()->file_system()->ResolvePath(path)) {
+      const std::filesystem::path host_path = GetContentFileHostPath(entry);
+      if (!host_path.empty()) {
+        result = kernel_state()->content_manager()->OpenContentFile(root_name,
+                                                                    host_path);
+      }
+    }
+    auto disposition = XSUCCEEDED(result) ? kDispositionState::Open
+                                          : kDispositionState::Unknown;
+    if (disposition_ptr) {
+      *disposition_ptr = static_cast<uint32_t>(disposition);
+    }
+    if (license_mask_ptr && XSUCCEEDED(result)) {
+      *license_mask_ptr = 0;
+    }
+    extended_error = X_HRESULT_FROM_WIN32(result);
+    length = static_cast<uint32_t>(disposition);
+    return result;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  }
+  kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+  return X_ERROR_IO_PENDING;
 }
-DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kStub);
+DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kSketchy);
 
 dword_result_t XamContentFlush_entry(lpstring_t root_name,
                                      pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
@@ -1080,6 +1153,241 @@ dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
+
+dword_result_t XamContentCopyInternal_entry(
+    lpqword_t xuid_ptr, lpdword_t device_id_ptr, lpvoid_t content_data_ptr,
+    dword_t unk1, dword_t unk2, dword_t unk3,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // xam has the dashboard copy the package to another owner or device. There
+  // is no dashboard to do it, so this fails the way xam does when its request
+  // to the dashboard fails, before touching the overlapped.
+  if (!xuid_ptr && !device_id_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (!content_data_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamContentCopyInternal, kContent, kStub);
+
+dword_result_t XamContentExistsOnDeviceInternal_entry(
+    pointer_t<XCONTENT_AGGREGATE_DATA> content_data_ptr, dword_t device_id) {
+  if (!content_data_ptr) {
+    return 0;
+  }
+  // Looks for the package on device_id instead of the one it names.
+  const XCONTENT_AGGREGATE_DATA* source = content_data_ptr;
+  XCONTENT_AGGREGATE_DATA content_data = *source;
+  content_data.device_id = device_id.value();
+  if (!GetDummyDeviceInfo(device_id)) {
+    return 0;
+  }
+  return kernel_state()->content_manager()->ContentExists(content_data.xuid,
+                                                          content_data);
+}
+DECLARE_XAM_EXPORT1(XamContentExistsOnDeviceInternal, kContent, kImplemented);
+
+// XamCache* keep files on the system cache partition, each described by a
+// 0x248 byte block: flags at 0x0 (bit 0 creates), the cache type at 0x4, an id
+// at 0x8, a 64-bit key at 0x10 and the open handle at 0x24. Nothing in xenia
+// stores into this cache, so no file can be found in it.
+constexpr uint32_t kCacheFileFlagCreate = 0x1;
+constexpr uint32_t kCacheFileHandleOffset = 0x24;
+constexpr uint32_t kCacheFileNameOffset = 0x28;
+
+dword_result_t XamCacheOpenFile_entry(lpvoid_t cache_file_ptr) {
+  if (!cache_file_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  auto cache_file = cache_file_ptr.as<uint8_t*>();
+  // xam resets the handle and name before it looks for the file.
+  xe::store_and_swap<uint32_t>(cache_file + kCacheFileHandleOffset, 0xFFFFFFFF);
+  cache_file[kCacheFileNameOffset] = 0;
+  uint32_t flags = xe::load_and_swap<uint32_t>(cache_file);
+  if (flags & kCacheFileFlagCreate) {
+    XELOGW("XamCacheOpenFile: creating cache type {:08X} files is unsupported",
+           xe::load_and_swap<uint32_t>(cache_file + 4));
+    return X_ERROR_NOT_SUPPORTED;
+  }
+  return X_ERROR_FILE_NOT_FOUND;
+}
+DECLARE_XAM_EXPORT1(XamCacheOpenFile, kContent, kStub);
+
+dword_result_t XamCacheCloseFile_entry(lpvoid_t cache_file_ptr,
+                                       dword_t delete_file) {
+  if (!cache_file_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  // XamCacheOpenFile never opens one, so there is nothing to close.
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamCacheCloseFile, kContent, kStub);
+
+dword_result_t XamCacheReset_entry(dword_t cache_type) {
+  // The cache is always empty.
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamCacheReset, kContent, kStub);
+
+// XamBackgroundDownload* drive the dashboard's download queue. Its items are
+// 0x380 bytes. There is no dashboard or marketplace, so the queue stays empty
+// and requests that would change it fail.
+constexpr uint32_t kBackgroundDownloadItemSize = 0x380;
+static std::atomic<uint32_t> background_download_mode_ = 0;
+
+static X_HRESULT BackgroundDownloadQueueRequest(
+    lpvoid_t item_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!item_ptr) {
+    return X_E_INVALIDARG;
+  }
+  // xam fails before it touches the overlapped when the dashboard can't take
+  // the request.
+  return X_E_FAIL;
+}
+
+dword_result_t XamBackgroundDownloadSetMode_entry(dword_t mode) {
+  background_download_mode_ = mode;
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadSetMode, kContent, kImplemented);
+
+dword_result_t XamBackgroundDownloadGetMode_entry() {
+  return background_download_mode_.load();
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadGetMode, kContent, kImplemented);
+
+dword_result_t XamBackgroundDownloadGetActiveItem_entry(lpdword_t active_ptr,
+                                                        lpvoid_t item_ptr) {
+  // Nothing is downloading.
+  if (active_ptr && item_ptr) {
+    *active_ptr = 0;
+    item_ptr.Zero(kBackgroundDownloadItemSize);
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadGetActiveItem, kContent, kImplemented);
+
+dword_result_t XamBackgroundDownloadItemAdd_entry(
+    dword_t user_index, lpvoid_t item_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return BackgroundDownloadQueueRequest(item_ptr, overlapped_ptr);
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadItemAdd, kContent, kStub);
+
+dword_result_t XamBackgroundDownloadItemMakeFirst_entry(
+    dword_t user_index, lpvoid_t item_ptr, dword_t flags,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return BackgroundDownloadQueueRequest(item_ptr, overlapped_ptr);
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadItemMakeFirst, kContent, kStub);
+
+dword_result_t XamBackgroundDownloadBindItems_entry(
+    dword_t user_index, lpvoid_t item_ptr, dword_t flags,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return BackgroundDownloadQueueRequest(item_ptr, overlapped_ptr);
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadBindItems, kContent, kStub);
+
+dword_result_t XamBackgroundDownloadItemGetHistoryStatus_entry(
+    dword_t user_index, lpvoid_t item_ptr, lpdword_t status_ptr) {
+  // The history is empty.
+  return X_ERROR_NOT_FOUND;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadItemGetHistoryStatus, kContent,
+                    kImplemented);
+
+dword_result_t XamBackgroundDownloadItemGetHistoryStatusEx_entry(
+    dword_t user_index, lpvoid_t item_key_ptr, lpdword_t status_ptr) {
+  return X_ERROR_NOT_FOUND;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadItemGetHistoryStatusEx, kContent,
+                    kImplemented);
+
+dword_result_t XamBackgroundDownloadItemGetStatus_entry(
+    dword_t user_index, lpvoid_t item_ptr, dword_t check_content,
+    dword_t check_active, lpdword_t is_active_ptr, lpdword_t is_queued_ptr,
+    lpdword_t in_history_ptr) {
+  // The item is neither downloading, queued nor in the history.
+  if (is_active_ptr) {
+    *is_active_ptr = 0;
+  }
+  if (is_queued_ptr) {
+    *is_queued_ptr = 0;
+  }
+  if (in_history_ptr) {
+    *in_history_ptr = 0;
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadItemGetStatus, kContent, kSketchy);
+
+dword_result_t XamBackgroundDownloadSelectDevice_entry(
+    dword_t device_id, qword_t required_bytes, lpdword_t device_id_ptr) {
+  if (!device_id_ptr) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+  // Prefers the requested device, else takes the first with enough room.
+  const uint64_t required = required_bytes;
+  const uint32_t preferred = device_id;
+  uint32_t selected = 0;
+  for (const auto* device : ListStorageDevices()) {
+    if (device->free_bytes < required) {
+      continue;
+    }
+    uint32_t id = static_cast<uint32_t>(device->device_id);
+    if (!selected || id == preferred) {
+      selected = id;
+    }
+  }
+  if (!selected) {
+    return X_ERROR_DEVICE_NOT_CONNECTED;
+  }
+  *device_id_ptr = selected;
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadSelectDevice, kContent, kSketchy);
+
+dword_result_t XamBackgroundDownloadItemToContentData_entry(
+    lpvoid_t item_ptr, dword_t use_device, lpvoid_t content_data_ptr) {
+  // Reading an offer item into package data needs the item layout, which is
+  // unknown. Report that it couldn't be converted.
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadItemToContentData, kContent, kStub);
+
+// XamXlfs* run the queue that uploads files to Xbox LIVE file storage. There is
+// no LIVE storage to upload to, so the queue can't be started.
+dword_result_t XamXlfsInitializeUploadQueue_entry(lpvoid_t params_ptr,
+                                                  lpdword_t queue_handle_ptr) {
+  if (queue_handle_ptr) {
+    *queue_handle_ptr = 0;
+  }
+  return X_E_FAIL;
+}
+DECLARE_XAM_EXPORT1(XamXlfsInitializeUploadQueue, kContent, kStub);
+
+dword_result_t XamXlfsUninitializeUploadQueue_entry(dword_t queue_handle,
+                                                    lpvoid_t params_ptr) {
+  return X_HRESULT_FROM_WIN32(X_ERROR_INVALID_HANDLE);
+}
+DECLARE_XAM_EXPORT1(XamXlfsUninitializeUploadQueue, kContent, kStub);
+
+dword_result_t XamXlfsMountUploadQueueInstance_entry(dword_t queue_handle,
+                                                     lpvoid_t params_ptr,
+                                                     lpvoid_t mount_name_ptr,
+                                                     lpvoid_t unk_ptr) {
+  return X_HRESULT_FROM_WIN32(X_ERROR_INVALID_HANDLE);
+}
+DECLARE_XAM_EXPORT1(XamXlfsMountUploadQueueInstance, kContent, kStub);
+
+dword_result_t XamXlfsUnmountUploadQueueInstance_entry(dword_t queue_handle,
+                                                       lpvoid_t mount_name_ptr,
+                                                       lpvoid_t params_ptr) {
+  return X_HRESULT_FROM_WIN32(X_ERROR_INVALID_HANDLE);
+}
+DECLARE_XAM_EXPORT1(XamXlfsUnmountUploadQueueInstance, kContent, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

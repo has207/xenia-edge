@@ -116,6 +116,16 @@ dword_result_t XamContentGetDeviceState_entry(dword_t device_id,
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceState, kContent, kStub);
 
+dword_result_t XamContentGetDefaultDevice_entry(lpdword_t device_id_ptr) {
+  if (!device_id_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  // The dummy HDD is the only writable device, so it's always the default.
+  *device_id_ptr = static_cast<uint32_t>(DummyDeviceId::HDD);
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentGetDefaultDevice, kContent, kSketchy);
+
 typedef struct {
   xe::be<uint32_t> device_id;
   xe::be<uint32_t> device_type;

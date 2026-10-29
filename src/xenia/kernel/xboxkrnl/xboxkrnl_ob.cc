@@ -10,6 +10,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ob.h"
 
 #include <cstddef>
+#include <cstring>
 #include <unordered_map>
 #include <utility>
 
@@ -754,6 +755,90 @@ dword_result_t ObDeleteSymbolicLink_entry(pointer_t<X_ANSI_STRING> path_ptr) {
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(ObDeleteSymbolicLink, kNone, kImplemented);
+
+// Follows the symbolic links along an object path and gives back the path it
+// ends at. The root has to be the DOS devices directory (-3) or none with an
+// absolute name.
+dword_result_t ObTranslateSymbolicLink_entry(
+    pointer_t<X_OBJECT_ATTRIBUTES> object_attributes,
+    pointer_t<X_ANSI_STRING> target_ptr) {
+  if (!object_attributes || !target_ptr) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint32_t root = object_attributes->root_directory;
+  const auto name = util::TranslateAnsiStringAddress(
+      kernel_memory(), object_attributes->name_ptr);
+  if (root != 0xFFFFFFFD && (root || name.empty() || name[0] != '\\')) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  auto file_system = kernel_state()->file_system();
+  std::string path = xeObSymbolicLinkName(name);
+
+  // A link is named by a whole leading component run, so try each component
+  // boundary from the shortest. The target may itself start with a link.
+  bool found = false;
+  for (int depth = 0; depth < 16; ++depth) {
+    bool resolved = false;
+    for (size_t end = 1; end <= path.size(); ++end) {
+      if (end != path.size() && path[end] != '\\') {
+        continue;
+      }
+      const std::string prefix = path.substr(0, end);
+      std::string link_target;
+      if (file_system->FindSymbolicLink(prefix, link_target)) {
+        path = link_target + path.substr(end);
+        resolved = true;
+        break;
+      }
+      if (!found && file_system->GetDevice(prefix)) {
+        found = true;
+      }
+    }
+    if (!resolved) {
+      break;
+    }
+    found = true;
+  }
+  if (!found) {
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
+  }
+
+  X_ANSI_STRING* target = target_ptr;
+  if (path.size() > target->maximum_length) {
+    target->length = 0;
+    return X_STATUS_BUFFER_TOO_SMALL;
+  }
+  if (!path.empty()) {
+    std::memcpy(kernel_memory()->TranslateVirtual<char*>(target->pointer),
+                path.data(), path.size());
+  }
+  target->length = uint16_t(path.size());
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(ObTranslateSymbolicLink, kNone, kSketchy);
+
+// Whether an object was created by a title rather than the system, from the
+// flag ObCreateObject leaves in its header.
+dword_result_t ObIsTitleObject_entry(dword_t object_body) {
+  if (object_body < sizeof(X_OBJECT_HEADER)) {
+    return 0;
+  }
+  const uint32_t header_address =
+      object_body - uint32_t(sizeof(X_OBJECT_HEADER));
+  // Only the flags word, the last in the header, is read.
+  const uint32_t flags_address =
+      header_address + uint32_t(offsetof(X_OBJECT_HEADER, flags));
+  auto heap = kernel_memory()->LookupHeap(flags_address);
+  uint32_t protect = 0;
+  if (!heap || !heap->QueryProtect(flags_address, &protect) ||
+      !(protect & kMemoryProtectRead)) {
+    return 0;
+  }
+  auto header =
+      kernel_memory()->TranslateVirtual<X_OBJECT_HEADER*>(header_address);
+  return (header->flags & OBJECT_HEADER_IS_TITLE_OBJECT) ? 1 : 0;
+}
+DECLARE_XBOXKRNL_EXPORT1(ObIsTitleObject, kNone, kImplemented);
 
 dword_result_t NtDuplicateObject_entry(dword_t handle, lpdword_t new_handle_ptr,
                                        dword_t options) {

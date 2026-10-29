@@ -89,6 +89,23 @@ dword_result_t XexGetModuleSection_entry(lpvoid_t hmodule, lpstring_t name,
 }
 DECLARE_XBOXKRNL_EXPORT1(XexGetModuleSection, kModules, kImplemented);
 
+// Returns the image base of the module containing pc (callers pass it to
+// RtlImageDirectoryEntryToData to find .pdata), and its loader entry.
+dword_result_t XexPcToFileHeader_entry(dword_t pc, lpdword_t ldr_data_ptr) {
+  auto module = kernel_state()->GetUserModuleForAddress(pc);
+  if (!module) {
+    if (ldr_data_ptr) {
+      *ldr_data_ptr = 0;
+    }
+    return 0;
+  }
+  if (ldr_data_ptr) {
+    *ldr_data_ptr = module->hmodule_ptr();
+  }
+  return module->xex_module()->base_address();
+}
+DECLARE_XBOXKRNL_EXPORT1(XexPcToFileHeader, kModules, kImplemented);
+
 inline const std::map<X_MODULE_FLAGS, std::string> xex_load_image_map = {
     {TITLE_PROCESS, "Title Process"},
     {TITLE_IMPORT, "Title Import"},

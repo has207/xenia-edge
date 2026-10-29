@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include <cstring>
 #include <thread>
 
 #include "xenia/base/clock.h"
@@ -38,6 +39,7 @@
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/fmt/include/fmt/xchar.h"
+#include "third_party/mbedtls/include/mbedtls/sha1.h"
 
 DEFINE_int32(avpack, 8,
              "Video modes\n"
@@ -1080,22 +1082,6 @@ void XamGetActiveDashAppInfo_entry(pointer_t<X_DASH_APP_INFO> dash_app) {
 }
 DECLARE_XAM_EXPORT1(XamGetActiveDashAppInfo, kNone, kImplemented);
 
-dword_result_t XamGetDashBackstackData_entry(
-    pointer_t<X_DASH_BACKSTACK_DATA> backstack_data, lpdword_t count) {
-  auto xam_state_ = kernel_state()->xam_state();
-  uint32_t total = xam_state_->dash_backstack_nodes_count_;
-  if (total) {
-    if (*count <= total) {
-      total = *count;
-    }
-    std::memcpy(backstack_data, &xam_state_->dash_backstack_data_,
-                sizeof(X_DASH_BACKSTACK_DATA) * total);
-    xam_state_->dash_backstack_nodes_count_ = 0;
-  }
-  return X_ERROR_SUCCESS;
-}
-DECLARE_XAM_EXPORT1(XamGetDashBackstackData, kNone, kImplemented);
-
 void XampWebInstrumentationSetProfileCounts_entry(dword_t live_profiles,
                                                   dword_t local_profiles,
                                                   dword_t adult_profiles,
@@ -1195,6 +1181,165 @@ dword_result_t XamUpdateGetCurrentSystemVersion_entry() {
   return PackSystemVersion(*kernel_state()->GetKernelVersion());
 }
 DECLARE_XAM_EXPORT1(XamUpdateGetCurrentSystemVersion, kNone, kImplemented);
+
+dword_result_t XamIsOptionalMediaUpdateInstalled_entry(dword_t media_id,
+                                                       dword_t min_version) {
+  // No optional media update package is installed.
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamIsOptionalMediaUpdateInstalled, kNone, kImplemented);
+
+dword_result_t XamPackageManagerGetExperienceMode_entry(lpdword_t mode_ptr) {
+  // Bit 0 marks the Kinect experience, which needs a sensor this console
+  // doesn't have.
+  if (mode_ptr) {
+    *mode_ptr = 0;
+  }
+  return X_E_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamPackageManagerGetExperienceMode, kNone, kSketchy);
+
+dword_result_t XamAppUnloadStack_entry(dword_t unload_all) {
+  // Unloads the system apps stacked over the title, such as the Guide. Xenia's
+  // dialogs aren't such apps, so there is never a stack to unload; the title
+  // keeps running. npctrl repeats this while XamIsUIActive is set, so it
+  // waits there until an open dialog is closed.
+  return X_E_FAIL;
+}
+DECLARE_XAM_EXPORT1(XamAppUnloadStack, kNone, kStub);
+
+dword_result_t XamLaunchURI_entry(dword_t unk1, lpstring_t uri_ptr,
+                                  dword_t unk2,
+                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // xam has the dashboard open the URI (a web page or marketplace link) over
+  // the title. There's no dashboard, so it fails and the title keeps running.
+  constexpr size_t kMaxUriLength = 0x3FC;
+  if (!uri_ptr || uri_ptr.value().empty() ||
+      uri_ptr.value().size() >= kMaxUriLength) {
+    return X_E_INVALIDARG;
+  }
+  XELOGI("XamLaunchURI: not opening {}", uri_ptr.value());
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedImmediateEx(
+        overlapped_ptr, X_ERROR_FUNCTION_FAILED, X_E_NOT_SUPPORTED, 0);
+    return X_E_PENDING;
+  }
+  return X_E_NOT_SUPPORTED;
+}
+DECLARE_XAM_EXPORT1(XamLaunchURI, kNone, kStub);
+
+// Web instrumentation reports are uploaded to a LIVE service. Reports get a
+// placeholder handle so titles can go through their usual calls, and nothing
+// is sent.
+constexpr size_t kWebInstrumentationMaxNameLength = 0x10;
+
+static bool IsWebInstrumentationReport(uint32_t report) {
+  return report && report != 0xFFFFFFFF;
+}
+
+void XamWebInstrumentationCreateReport_entry(lpstring_t name_ptr,
+                                             lpdword_t report_ptr) {
+  if (!name_ptr || !report_ptr ||
+      name_ptr.value().size() > kWebInstrumentationMaxNameLength) {
+    return;
+  }
+  *report_ptr = kernel_state()->memory()->SystemHeapAlloc(4);
+}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationCreateReport, kNone, kStub);
+
+void XamWebInstrumentationDestroyReport_entry(lpdword_t report_ptr) {
+  if (!report_ptr || !IsWebInstrumentationReport(*report_ptr)) {
+    return;
+  }
+  kernel_state()->memory()->SystemHeapFree(*report_ptr);
+  *report_ptr = 0;
+}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationDestroyReport, kNone, kStub);
+
+void XamWebInstrumentationSendReport_entry(dword_t report) {}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationSendReport, kNone, kStub);
+
+void XamWebInstrumentationSetUserVar_entry(dword_t report, lpvoid_t name_ptr,
+                                           lpvoid_t value_ptr) {}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationSetUserVar, kNone, kStub);
+
+dword_result_t XamRamDriveCreate_entry(lpstring_t device_name_ptr,
+                                       lpvoid_t buffer_ptr, dword_t size,
+                                       dword_t flags) {
+  // A RAM drive needs a block device backed by guest memory, which xenia's
+  // file system doesn't have. Report that it couldn't be created.
+  XELOGW("XamRamDriveCreate: can't create {} ({:X} bytes)",
+         device_name_ptr ? device_name_ptr.value() : std::string(),
+         static_cast<uint32_t>(size));
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamRamDriveCreate, kNone, kStub);
+
+dword_result_t XamRamDriveDestroy_entry(dword_t ram_drive) {
+  // XamRamDriveCreate never makes one.
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamRamDriveDestroy, kNone, kStub);
+
+// An XSigner blob is a 0x130 byte header followed by the payload. The header
+// holds a big-endian magic and, little-endian, a version, its own size, the
+// payload size and the payload's SHA-1; then an RSA signature over its first
+// 0x30 bytes.
+struct X_XSIGNER_HEADER {
+  xe::be<uint32_t> magic;         // 0x0
+  xe::le<uint32_t> version;       // 0x4
+  xe::le<uint32_t> header_size;   // 0x8
+  uint8_t unknown_c[8];           // 0xC
+  xe::le<uint32_t> payload_size;  // 0x14
+  uint8_t unknown_18[4];          // 0x18
+  uint8_t payload_digest[0x14];   // 0x1C
+  uint8_t signature[0x100];       // 0x30
+};
+static_assert_size(X_XSIGNER_HEADER, 0x130);
+
+constexpr uint32_t kXSignerMagic = 0x59544752;
+constexpr uint32_t kXSignerMinVersion = 1;
+constexpr X_HRESULT kTrustNoSignature = 0x800B0100;
+constexpr X_HRESULT kTrustSubjectNotTrusted = 0x800B0004;
+
+dword_result_t XamVerifyXSignerSignature_entry(
+    lpvoid_t data_ptr, dword_t data_size, lpdword_t header_size_ptr,
+    dword_t flags, lpvoid_t digest_ptr, dword_t digest_size) {
+  if (!data_ptr || !header_size_ptr) {
+    return X_E_INVALIDARG;
+  }
+  *header_size_ptr = 0;
+  if (digest_ptr && digest_size != 0x14) {
+    return X_E_INVALIDARG;
+  }
+  if (data_size < sizeof(X_XSIGNER_HEADER)) {
+    return kTrustNoSignature;
+  }
+  auto header = data_ptr.as<const X_XSIGNER_HEADER*>();
+  if (header->magic != kXSignerMagic) {
+    return kTrustNoSignature;
+  }
+  if (header->version < kXSignerMinVersion ||
+      header->header_size != sizeof(X_XSIGNER_HEADER) ||
+      header->payload_size != data_size - sizeof(X_XSIGNER_HEADER)) {
+    return kTrustSubjectNotTrusted;
+  }
+  // The RSA signature can only be checked with the console's public keys,
+  // which xenia doesn't have, so only the payload hash is verified.
+  uint8_t digest[0x14];
+  mbedtls_sha1(data_ptr.as<const uint8_t*>() + sizeof(X_XSIGNER_HEADER),
+               header->payload_size, digest);
+  if (std::memcmp(digest, header->payload_digest, sizeof(digest))) {
+    return kTrustSubjectNotTrusted;
+  }
+  if (digest_ptr) {
+    std::memcpy(digest_ptr.as<uint8_t*>(), header->payload_digest,
+                sizeof(digest));
+  }
+  *header_size_ptr = sizeof(X_XSIGNER_HEADER);
+  return X_E_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamVerifyXSignerSignature, kNone, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel
