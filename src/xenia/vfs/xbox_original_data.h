@@ -25,8 +25,7 @@ namespace vfs {
 // An original Xbox saved game, one folder under UDATA\<title id>.
 struct XboxOriginalSave {
   std::filesystem::path path;
-  // From its SaveMeta.xbx. Without one the game can neither open the save nor
-  // create another under the same name.
+  // From its SaveMeta.xbx.
   std::string name;
 };
 
@@ -42,7 +41,8 @@ struct XboxOriginalContent {
 std::filesystem::path FindXboxOriginalPath(const std::filesystem::path& dir,
                                            std::string_view name);
 
-// The saves in a title's UDATA folder, named ones first.
+// The saves in a title's UDATA folder. One without a name is logged and left
+// out.
 std::vector<XboxOriginalSave> ListXboxOriginalSaves(
     const std::filesystem::path& title_dir);
 

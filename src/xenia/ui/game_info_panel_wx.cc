@@ -482,14 +482,11 @@ void GameInfoPanel::BuildCompatSection(wxWindow* parent, wxBoxSizer* sizer) {
   // The database only knows Xbox 360 titles, so an original Xbox game links
   // to the list ConsoleMods keeps of them.
   if (IsOriginalXbox()) {
-    AddNoteRow(parent, sizer,
-               _("ConsoleMods lists how original Xbox games run on an Xbox "
-                 "360."));
     auto* button = new wxButton(parent, wxID_ANY, "ConsoleMods");
     button->Bind(wxEVT_BUTTON, [](wxCommandEvent&) {
       xe::LaunchWebBrowser(kXboxOriginalCompatUrl);
     });
-    sizer->Add(button, 0, wxTOP, 4);
+    sizer->Add(button, 0, wxBOTTOM, 2);
     return;
   }
 
@@ -693,11 +690,7 @@ void GameInfoPanel::AddContentRows(wxWindow* parent, wxBoxSizer* sizer,
   auto* grid = new wxFlexGridSizer(2, FromDIP(2), char_w_ * 2);
   grid->AddGrowableCol(0);
   for (const auto& item : items) {
-    auto* label = MakeElidedLabel(parent, item.name);
-    if (!item.tooltip.empty()) {
-      label->SetToolTip(item.tooltip);
-    }
-    grid->Add(label, 0, wxEXPAND);
+    grid->Add(MakeElidedLabel(parent, item.name), 0, wxEXPAND);
     grid->Add(new wxStaticText(parent, wxID_ANY, FormatSize(item.size_bytes)),
               0, wxALIGN_RIGHT);
   }
@@ -721,19 +714,7 @@ void GameInfoPanel::BuildXboxOriginalSaves(wxWindow* parent,
   const auto title_dir = XboxOriginalTitleDir("UDATA");
   std::vector<ContentItem> items;
   for (const auto& save : vfs::ListXboxOriginalSaves(title_dir)) {
-    ContentItem item;
-    item.size_bytes = PathSize(save.path);
-    if (save.name.empty()) {
-      item.name = wxString::Format(
-          _("%s (no name)"),
-          wxString::FromUTF8(xe::path_to_utf8(save.path.filename())));
-      item.tooltip =
-          _("Without a name the game can't open this save or make a new one "
-            "in its place. Delete its folder to let the game save again.");
-    } else {
-      item.name = wxString::FromUTF8(save.name);
-    }
-    items.push_back(std::move(item));
+    items.push_back({wxString::FromUTF8(save.name), PathSize(save.path)});
   }
   // The folder is XeFu's to make, so it is offered only once it exists.
   AddSectionHeader(parent, sizer,
@@ -751,7 +732,7 @@ void GameInfoPanel::BuildXboxOriginalContent(wxWindow* parent,
   std::vector<ContentItem> updates;
   if (!update_dir.empty() &&
       !vfs::FindXboxOriginalPath(update_dir, "ContentMeta.xbx").empty()) {
-    updates.push_back({_("Title update"), PathSize(update_dir)});
+    updates.push_back({"Title update", PathSize(update_dir)});
   }
   AddSectionHeader(parent, sizer,
                    wxString::Format(_("Title Updates (%zu)"), updates.size()),

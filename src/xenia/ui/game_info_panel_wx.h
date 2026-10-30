@@ -59,8 +59,6 @@ struct ContentLocation {
 struct ContentItem {
   wxString name;
   uint64_t size_bytes = 0;
-  // Replaces the full name as the row's tooltip when set.
-  wxString tooltip;
 };
 
 // Everything known about one title: art, name and play progress in a header,

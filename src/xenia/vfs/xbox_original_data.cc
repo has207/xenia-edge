@@ -14,6 +14,7 @@
 #include <iterator>
 
 #include "xenia/base/filesystem.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/string.h"
 
 namespace xe {
@@ -177,13 +178,17 @@ std::vector<XboxOriginalSave> ListXboxOriginalSaves(
     if (!meta.empty()) {
       save.name = ReadSaveMetaName(ReadMetaFile(meta));
     }
+    if (save.name.empty()) {
+      XELOGW(
+          "Original Xbox save folder {} has no name in SaveMeta.xbx so the "
+          "game can't save to it until it is deleted",
+          xe::strip_pii(xe::path_to_utf8(save.path)));
+      continue;
+    }
     saves.push_back(std::move(save));
   }
   std::sort(saves.begin(), saves.end(),
             [](const XboxOriginalSave& a, const XboxOriginalSave& b) {
-              if (a.name.empty() != b.name.empty()) {
-                return b.name.empty();
-              }
               if (LessAsciiCase(a.name, b.name)) {
                 return true;
               }

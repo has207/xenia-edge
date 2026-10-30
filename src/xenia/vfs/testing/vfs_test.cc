@@ -293,14 +293,12 @@ TEST_CASE("Original Xbox title data on disk", "[xbox_original]") {
     REQUIRE(FindXboxOriginalPath(root, "missing").empty());
   }
 
-  SECTION("Each save folder is a save, named ones first") {
+  SECTION("Only a save folder with a name is a save") {
     const auto saves = ListXboxOriginalSaves(saves_dir);
-    REQUIRE(saves.size() == 4);
+    REQUIRE(saves.size() == 2);
     REQUIRE(saves[0].name == "career");
+    REQUIRE(saves[0].path.filename() == "AAAAAAAAAAAA");
     REQUIRE(saves[1].name == "Zeta");
-    REQUIRE(saves[2].name.empty());
-    REQUIRE(saves[2].path.filename() == "12E9194916CD");
-    REQUIRE(saves[3].name.empty());
   }
 
   SECTION("Each content folder is a package") {
