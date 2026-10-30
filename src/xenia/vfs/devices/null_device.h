@@ -10,6 +10,7 @@
 #ifndef XENIA_VFS_DEVICES_NULL_DEVICE_H_
 #define XENIA_VFS_DEVICES_NULL_DEVICE_H_
 
+#include <atomic>
 #include <string>
 
 #include "xenia/vfs/device.h"
@@ -44,8 +45,17 @@ class NullDevice : public Device {
   uint32_t available_allocation_units() const override { return 0x10; }
 
   // STFC/cache code seems to require the product of the next two to equal
-  // 0x10000
-  uint32_t sectors_per_allocation_unit() const override { return 0x80; }
+  // 0x10000, unless it formatted the partition with another cluster size.
+  uint32_t sectors_per_allocation_unit() const override {
+    return sectors_per_allocation_unit_;
+  }
+
+  // A FATX header written to a partition formats it, and the volume reports
+  // the header's cluster size from then on. XNA's cache drive formats with
+  // the size it asks for and checks the volume came back with it.
+  void SetSectorsPerAllocationUnit(uint32_t sectors) {
+    sectors_per_allocation_unit_ = sectors;
+  }
 
   // STFC requires <= 0x1000
   uint32_t bytes_per_sector() const override { return 0x200; }
@@ -54,6 +64,7 @@ class NullDevice : public Device {
   std::string name_;
   std::unique_ptr<Entry> root_entry_;
   std::vector<std::string> null_paths_;
+  std::atomic<uint32_t> sectors_per_allocation_unit_ = 0x80;
 };
 
 }  // namespace vfs

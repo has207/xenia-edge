@@ -387,6 +387,16 @@ dword_result_t XamLrcGetInputWithSeek_entry(
 }
 DECLARE_XAM_EXPORT1(XamLrcGetInputWithSeek, kInput, kStub);
 
+// The playback state a title shares with remote control clients. Silverlight's
+// playback bar sends it on every command and state change.
+dword_result_t XamLrcSetMediaState_entry(lpvoid_t media_state) {
+  if (!media_state) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamLrcSetMediaState, kInput, kStub);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

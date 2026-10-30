@@ -631,15 +631,36 @@ dword_result_t XeKeysGetKey_entry(word_t key, lpvoid_t key_buffer,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysGetKey, kNone, kSketchy);
 
+// The per-console obfuscation key (0x17) differs on every console, so like the
+// key obfuscation key above it is one of our own. Data a title protects with it
+// only has to come back the same on this emulator.
+static const uint8_t xe_console_obfuscation_key[16] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+// The keys the key numbered calls (XeKeysHmacSha, XeKeysAesCbc) can use, or
+// nullptr for one we don't have.
+static const uint8_t* GetKeysKey(uint32_t key_num) {
+  switch (key_num) {
+    case CONSOLE_OBFUSCATION_KEY:
+      return xe_console_obfuscation_key;
+    case ROAMABLE_OBFUSCATION_KEY:
+      return key19;
+    default:
+      return nullptr;
+  }
+}
+
 bool XeKeysHmacSha(uint32_t key_num, const uint8_t* inp_1, uint32_t inp_1_size,
                    const uint8_t* inp_2, uint32_t inp_2_size,
                    const uint8_t* inp_3, uint32_t inp_3_size, uint8_t* out,
                    uint32_t out_size) {
-  if (key_num != 0x19) {
+  const uint8_t* key = GetKeysKey(key_num);
+  if (!key) {
     return false;
   }
-  XeCryptHmacSha(key19, sizeof(key19), inp_1, inp_1_size, inp_2, inp_2_size,
-                 inp_3, inp_3_size, out, out_size);
+  XeCryptHmacSha(key, 16, inp_1, inp_1_size, inp_2, inp_2_size, inp_3,
+                 inp_3_size, out, out_size);
   return true;
 }
 
@@ -655,6 +676,29 @@ dword_result_t XeKeysHmacSha_entry(dword_t key_num, lpvoid_t inp_1,
              : X_STATUS_UNSUCCESSFUL;
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysHmacSha, kNone, kImplemented);
+
+// AES-CBC with one of the keys above. XNA storage wraps each file's key with
+// the console obfuscation key through this.
+dword_result_t XeKeysAesCbc_entry(dword_t key_num, lpvoid_t inp_ptr,
+                                  dword_t inp_size, lpvoid_t out_ptr,
+                                  lpvoid_t feed_ptr, dword_t encrypt) {
+  const uint8_t* key = GetKeysKey(key_num);
+  if (!key) {
+    XELOGW("XeKeysAesCbc: key 0x{:X} not implemented", uint32_t(key_num));
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  if (inp_size && (!inp_ptr || !out_ptr)) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  uint8_t zero_feed[16] = {};
+  uint8_t* feed = feed_ptr ? feed_ptr.as<uint8_t*>() : zero_feed;
+  XECRYPT_AES_STATE aes;
+  XeCryptAesKey(&aes, key);
+  XeCryptAesCbc(&aes, inp_ptr.as<uint8_t*>(), inp_size, out_ptr.as<uint8_t*>(),
+                feed, encrypt != 0);
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysAesCbc, kNone, kImplemented);
 
 void XeCryptRotSumSha_entry(lpvoid_t inp_1, dword_t inp_1_size, lpvoid_t inp_2,
                             dword_t inp_2_size, lpvoid_t out,
