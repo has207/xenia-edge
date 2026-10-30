@@ -10,6 +10,7 @@
 #include "xenia/kernel/xam/content_manager.h"
 
 #include <algorithm>
+#include <cctype>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/filesystem.h"
@@ -340,6 +341,14 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(
     auto file_infos = xe::filesystem::ListFiles(package_root);
 
     for (const auto& file_info : file_infos) {
+      // An SVOD package (Games on Demand) keeps its data in a folder named
+      // after the package file with .data added, which is part of it.
+      if (file_info.type == xe::filesystem::FileInfo::Type::kDirectory &&
+          file_info.name.extension() == ".data" &&
+          std::filesystem::is_regular_file(file_info.path /
+                                           file_info.name.stem())) {
+        continue;
+      }
       XCONTENT_AGGREGATE_DATA content_data;
       if (XSUCCEEDED(ReadContentHeaderFile(file_info.path / file_info.name,
                                            xuid, title_id, content_type,
@@ -374,6 +383,39 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(
       content_data.xuid = xuid;
       result.emplace_back(std::move(content_data));
     }
+  }
+  return result;
+}
+
+// The folders named by 8 hex digits under |path|, as title IDs and content
+// types are.
+static std::vector<uint32_t> ListHexFolders(const std::filesystem::path& path) {
+  std::vector<uint32_t> result;
+  for (const auto& file_info : xe::filesystem::ListFiles(path)) {
+    const std::string name = xe::path_to_utf8(file_info.name);
+    if (file_info.type != xe::filesystem::FileInfo::Type::kDirectory ||
+        name.size() != 8 || !std::all_of(name.begin(), name.end(), [](char c) {
+          return std::isxdigit(static_cast<unsigned char>(c));
+        })) {
+      continue;
+    }
+    result.push_back(xe::string_util::from_string<uint32_t>(name, true));
+  }
+  return result;
+}
+
+std::vector<uint32_t> ContentManager::ListContentTitleIds(
+    const uint64_t xuid) const {
+  return ListHexFolders(root_path_ / fmt::format("{:016X}", xuid));
+}
+
+std::vector<XContentType> ContentManager::ListContentTypes(
+    const uint64_t xuid, const uint32_t title_id) const {
+  std::vector<XContentType> result;
+  for (const uint32_t type :
+       ListHexFolders(root_path_ / fmt::format("{:016X}", xuid) /
+                      fmt::format("{:08X}", title_id))) {
+    result.push_back(static_cast<XContentType>(type));
   }
   return result;
 }
@@ -741,6 +783,32 @@ X_RESULT ContentManager::GetContentThumbnail(
   }
   buffer->assign(metadata.thumbnail,
                  metadata.thumbnail + metadata.thumbnail_size);
+  return X_ERROR_SUCCESS;
+}
+
+X_RESULT ContentManager::GetContentMetadata(const uint64_t xuid,
+                                            const XCONTENT_AGGREGATE_DATA& data,
+                                            std::vector<uint8_t>* buffer) {
+  auto global_lock = global_critical_region_.Acquire();
+  std::filesystem::path package_path;
+  if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
+    return result;
+  }
+  if (!std::filesystem::exists(package_path)) {
+    return X_ERROR_PATH_NOT_FOUND;
+  }
+  // A package kept as a file is its own header. An extracted one keeps it in
+  // the header file.
+  auto header = vfs::XContentContainerDevice::ReadContainerHeader(
+      std::filesystem::is_directory(package_path)
+          ? PackageHeaderPath(package_path)
+          : package_path);
+  if (!header || !header->content_header.is_magic_valid()) {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+  const auto* metadata =
+      reinterpret_cast<const uint8_t*>(&header->content_metadata);
+  buffer->assign(metadata, metadata + sizeof(header->content_metadata));
   return X_ERROR_SUCCESS;
 }
 

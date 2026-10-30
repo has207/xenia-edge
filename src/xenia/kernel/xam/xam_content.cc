@@ -1157,6 +1157,50 @@ dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
 }
 DECLARE_XAM_EXPORT1(XamContentLaunchImageInternal, kContent, kSketchy);
 
+// The dashboard's content records name the title the content belongs to.
+static XCONTENT_AGGREGATE_DATA InternalContentData(
+    const XCONTENT_DATA_INTERNAL& internal) {
+  XCONTENT_AGGREGATE_DATA data = internal;
+  if (internal.title_id) {
+    data.title_id = internal.title_id;
+  }
+  data.xuid = internal.xuid;
+  return data;
+}
+
+dword_result_t XamContentGetMetaDataInternal_entry(
+    pointer_t<XCONTENT_DATA_INTERNAL> content_data_ptr, lpvoid_t metadata_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!content_data_ptr || !metadata_ptr) {
+    return CompleteRequest(overlapped_ptr, X_ERROR_INVALID_PARAMETER);
+  }
+  // Fills the XContentMetadata of the package's header. The console's xam
+  // takes the whole 0x200-byte record and returns the Win32 error of a
+  // failure, as here.
+  std::vector<uint8_t> metadata;
+  X_RESULT result = kernel_state()->content_manager()->GetContentMetadata(
+      0, InternalContentData(*content_data_ptr), &metadata);
+  if (!result) {
+    std::memcpy(metadata_ptr, metadata.data(), metadata.size());
+  }
+  return CompleteRequest(overlapped_ptr, result);
+}
+DECLARE_XAM_EXPORT1(XamContentGetMetaDataInternal, kContent, kImplemented);
+
+// The console's xam passes the record to the same launch as the other
+// XamContentLaunchImage exports, with the flags, which aren't used here.
+dword_result_t XamContentLaunchImageInternalEx_entry(
+    pointer_t<XCONTENT_DATA_INTERNAL> content_data_ptr, lpstring_t xex_name,
+    dword_t flags) {
+  if (!content_data_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return LaunchContentImage(XUserIndexNone,
+                            InternalContentData(*content_data_ptr),
+                            xex_name ? xex_name.value() : std::string());
+}
+DECLARE_XAM_EXPORT1(XamContentLaunchImageInternalEx, kContent, kImplemented);
+
 void XamContentRegisterChangeCallback_entry(dword_t callback) {
   kernel_state()->xam_state()->SetContentRegisterCallback(callback);
 }
