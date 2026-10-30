@@ -1,0 +1,720 @@
+{
+ "corpus": "notify",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-30",
+ "steps": [
+  {
+   "scenario": "signaled once",
+   "name": "create listener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 8
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "signaled once",
+   "name": "XNotifyBroadcast",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100663299
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "signaled once",
+   "name": "poll",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "signaled once",
+   "name": "poll again",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "signaled once",
+   "name": "next",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "06000003",
+    "param": "00000001"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 16
+    },
+    {
+     "pointer": "param",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "signaled once",
+   "name": "next when empty",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "id": "00000000",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 32
+    },
+    {
+     "pointer": "param",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "signaled once",
+   "name": "poll when empty",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "signaled once",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "create listener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 8
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "gamercard",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100728836
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "action pressed",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100663299
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "action pressed again",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100663299
+    },
+    {
+     "value": 3
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "next",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "06000003",
+    "param": "00000003"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 0
+    },
+    {
+     "pointer": "param",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "next again",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "06010004",
+    "param": "00000001"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 16
+    },
+    {
+     "pointer": "param",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "next when empty",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "id": "00000000",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 32
+    },
+    {
+     "pointer": "param",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "one entry per id",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "create listener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 8
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "action pressed",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100663299
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "poll",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "action pressed again",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100663299
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "poll after the repeat",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "next",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "06000003",
+    "param": "00000002"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 16
+    },
+    {
+     "pointer": "param",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "poll when empty",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "repeat signals again",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "area order",
+   "name": "create listener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 12
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "area order",
+   "name": "action pressed",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100663299
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "area order",
+   "name": "friend presence",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 67108865
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "area order",
+   "name": "next",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "04000001",
+    "param": "00000002"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 0
+    },
+    {
+     "pointer": "param",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "area order",
+   "name": "next again",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "06000003",
+    "param": "00000001"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 16
+    },
+    {
+     "pointer": "param",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "area order",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "create listener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 12
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "action pressed",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 100663299
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "friend presence",
+   "export": "XNotifyBroadcast",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 67108865
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "next action pressed",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "06000003",
+    "param": "00000001"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 100663299
+    },
+    {
+     "pointer": "id",
+     "offset": 0
+    },
+    {
+     "pointer": "param",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "poll with a friend presence left",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "next action pressed again",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "id": "00000000",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 100663299
+    },
+    {
+     "pointer": "id",
+     "offset": 24
+    },
+    {
+     "pointer": "param",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "next",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "04000001",
+    "param": "00000002"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 40
+    },
+    {
+     "pointer": "param",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "poll when empty",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 56
+    }
+   ]
+  },
+  {
+   "scenario": "two areas",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    }
+   ]
+  }
+ ]
+}
