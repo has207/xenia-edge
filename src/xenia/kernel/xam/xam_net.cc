@@ -132,19 +132,6 @@ struct XWSABUF {
   xe::be<uint32_t> buf_ptr;
 };
 
-#pragma pack(push, 4)
-struct X_PERFORMANCE_COUNTERS {
-  xe::be<uint32_t> unk1;  // 0x0, sz:0x4
-  xe::be<uint32_t> unk2;  // 0x4, sz:0x4
-  xe::be<uint32_t> unk3;  // 0x8, sz:0x4
-  xe::be<uint64_t>
-      unk4;  // 0xC, sz:0x8, set to 0 by NetDll_XHttpResetPerfCounters
-  xe::be<uint64_t>
-      unk5;  // 0x14, sz:0x8, set to 0 by NetDll_XHttpResetPerfCounters
-};
-static_assert_size(X_PERFORMANCE_COUNTERS, 0x1C);
-#pragma pack(pop)
-
 struct X_HTTP_OBJECT {
   xe::be<uint32_t> caller_type;  // 0x0, sz:0x4, 1 - title
   xe::be<uint32_t> refcount;     // 0x4, sz:0x4
@@ -1138,21 +1125,6 @@ dword_result_t NetDll_XHttpShutdown_entry(dword_t caller) {
 }
 DECLARE_XAM_EXPORT1(NetDll_XHttpShutdown, kNetworking, kStub);
 
-dword_result_t NetDll_XHttpOpen_entry(dword_t caller, lpstring_t user_agent,
-                                      dword_t access_type,
-                                      lpstring_t proxy_name,
-                                      lpstring_t proxy_bypass, dword_t flags) {
-  // retrieves xhttp directly from array X_HTTP_OBJECT_PTR_ARRAY[xnc]
-  if ((access_type != 0 && access_type != 1 && access_type != 3) ||
-      proxy_bypass) {
-    XThread::SetLastError(X_ERROR_INVALID_PARAMETER);
-  }
-
-  XThread::SetLastError(X_ERROR_NOT_SUPPORTED);  // Until properly implemented
-  return 0;
-}
-DECLARE_XAM_EXPORT1(NetDll_XHttpOpen, kNetworking, kStub);
-
 dword_result_t NetDll_socket_entry(dword_t caller, dword_t af, dword_t type,
                                    dword_t protocol) {
   XELOGI("NetDll_socket: af={}, type={}, protocol={}", af.value(), type.value(),
@@ -1891,8 +1863,6 @@ static_assert_size(X_URL_COMPONENTS, 0x3C);
 
 constexpr uint32_t X_ICU_DECODE = 0x10000000;
 constexpr uint32_t X_ICU_ESCAPE = 0x80000000;
-constexpr uint32_t X_ERROR_WINHTTP_INVALID_URL = 12005;
-constexpr uint32_t X_ERROR_WINHTTP_UNRECOGNIZED_SCHEME = 12006;
 
 enum X_INTERNET_SCHEME : uint32_t {
   X_INTERNET_SCHEME_HTTP = 1,

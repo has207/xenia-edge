@@ -19,6 +19,7 @@
 #include "xenia/kernel/kernel_module.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xam/xam_system_link.h"
+#include "xenia/kernel/xam/xam_xhttp.h"
 #include "xenia/net/system_link.h"
 
 namespace xe {
@@ -62,6 +63,10 @@ class XamModule : public KernelModule {
   void CleanupXNet(bool wsa);
   net::StartupParams xnet_startup_params();
 
+  const std::shared_ptr<XHttpState>& xhttp_state() const {
+    return xhttp_state_;
+  }
+
  private:
   uint32_t callback_ = 0;
   LoaderData loader_data_;
@@ -75,6 +80,8 @@ class XamModule : public KernelModule {
   std::mutex xnet_mutex_;
   uint32_t xnet_starts_ = 0, wsa_starts_ = 0;
   net::StartupParams xnet_startup_params_ = net::NormalizeStartupParams({});
+
+  std::shared_ptr<XHttpState> xhttp_state_ = CreateXHttpState();
 };
 
 }  // namespace xam
