@@ -7,8 +7,15 @@
  ******************************************************************************
  */
 
+#include <string>
+#include <string_view>
+
+#include "xenia/base/logging.h"
+#include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_modules.h"
+#include "xenia/kernel/xmodule.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
@@ -65,38 +72,63 @@ dword_result_t XamMediaVerificationInject_entry(dword_t r3, dword_t r4) {
 }
 DECLARE_XAM_EXPORT1(XamMediaVerificationInject, kNone, kStub);
 
-// Ordinals 0x7DC/0x7DD and 0x7E3/0x7E4 load and unload two system modules of
-// extra AV codecs through one loader, which hands back the module's export 1
-// and counts references. The modules ship with the console's system software
-// and aren't here. npctrl takes a null result as there being no extra codecs
-// and crashes cleaning up after a failed load, so loading succeeds without one.
-// The console's first load returns 0x10000000 from its module loader and later
-// ones 0. Callers only test the sign, so this always returns 0.
+// Ordinals 0x7DC/0x7DD and 0x7E3/0x7E4 load and unload the two system
+// extension modules of extra AV codecs. A load takes a reference to the module
+// and hands back its export 1, which npctrl calls for its decoder table. It
+// returns 0x10000000 when it loads the module and 0 when it only takes another
+// reference. An unload drops the reference. Without the modules in the sysext
+// folder npctrl plays only the codecs it carries itself (WMA). A load then
+// still succeeds with a null export, which npctrl takes as there being no
+// extra codecs. It crashes cleaning up after a failed load.
 constexpr X_HRESULT kErrorPointer = 0x80004003;
+constexpr X_HRESULT kModuleLoaded = 0x10000000;
 
-static dword_result_t LoadExtraAVCodecs(lpdword_t module_handle_ptr) {
-  if (!module_handle_ptr) {
+static std::string SysExtModulePath(std::string_view name) {
+  return fmt::format("\\Device\\Harddisk0\\SystemExtPartition\\{}", name);
+}
+
+static dword_result_t LoadExtraAVCodecs(lpdword_t export_ptr,
+                                        std::string_view name) {
+  if (!export_ptr) {
     return kErrorPointer;
   }
-  *module_handle_ptr = 0;
-  return X_E_SUCCESS;
+  *export_ptr = 0;
+  const std::string path = SysExtModulePath(name);
+  const bool was_loaded = kernel_state()->GetModule(path, true) != nullptr;
+  if (!xboxkrnl::xeXexLoadImage(path)) {
+    XELOGW("{} isn't in the sysext folder: no extra AV codecs", name);
+    return X_E_SUCCESS;
+  }
+  *export_ptr =
+      kernel_state()->GetModule(path, true)->GetProcAddressByOrdinal(1);
+  return was_loaded ? X_E_SUCCESS : kModuleLoaded;
 }
 
-dword_result_t XamLoadExtraAVCodecs_entry(lpdword_t module_handle_ptr) {
-  return LoadExtraAVCodecs(module_handle_ptr);
+static void UnloadExtraAVCodecs(std::string_view name) {
+  if (auto module = kernel_state()->GetModule(SysExtModulePath(name), true)) {
+    xboxkrnl::xeXexUnloadImage(module->hmodule_ptr());
+  }
 }
-DECLARE_XAM_EXPORT1(XamLoadExtraAVCodecs, kNone, kStub);
 
-void XamUnloadExtraAVCodecs_entry() {}
-DECLARE_XAM_EXPORT1(XamUnloadExtraAVCodecs, kNone, kStub);
-
-dword_result_t XamLoadExtraAVCodecs2_entry(lpdword_t module_handle_ptr) {
-  return LoadExtraAVCodecs(module_handle_ptr);
+dword_result_t XamLoadExtraAVCodecs_entry(lpdword_t export_ptr) {
+  return LoadExtraAVCodecs(export_ptr, "dash.ExtraAVCodecs.xex");
 }
-DECLARE_XAM_EXPORT1(XamLoadExtraAVCodecs2, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamLoadExtraAVCodecs, kNone, kImplemented);
 
-void XamUnloadExtraAVCodecs2_entry() {}
-DECLARE_XAM_EXPORT1(XamUnloadExtraAVCodecs2, kNone, kStub);
+void XamUnloadExtraAVCodecs_entry() {
+  UnloadExtraAVCodecs("dash.ExtraAVCodecs.xex");
+}
+DECLARE_XAM_EXPORT1(XamUnloadExtraAVCodecs, kNone, kImplemented);
+
+dword_result_t XamLoadExtraAVCodecs2_entry(lpdword_t export_ptr) {
+  return LoadExtraAVCodecs(export_ptr, "dash.ExtraAVCodecs2.xex");
+}
+DECLARE_XAM_EXPORT1(XamLoadExtraAVCodecs2, kNone, kImplemented);
+
+void XamUnloadExtraAVCodecs2_entry() {
+  UnloadExtraAVCodecs("dash.ExtraAVCodecs2.xex");
+}
+DECLARE_XAM_EXPORT1(XamUnloadExtraAVCodecs2, kNone, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel

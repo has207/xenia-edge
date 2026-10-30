@@ -2279,6 +2279,16 @@ X_STATUS Emulator::PrepareLaunch(const std::filesystem::path& path,
     file_system_->RegisterDevice(std::move(content_device));
   }
 
+  // System extension modules such as the extra AV codecs.
+  const auto sysext_path = storage_root_ / "sysext";
+  if (std::filesystem::is_directory(sysext_path)) {
+    auto sysext_device = std::make_unique<vfs::HostPathDevice>(
+        "\\Device\\Harddisk0\\SystemExtPartition", sysext_path, true);
+    if (sysext_device->Initialize()) {
+      file_system_->RegisterDevice(std::move(sysext_device));
+    }
+  }
+
   // Setup NullDevices for raw HDD partition accesses
   // Cache/STFC code baked into games tries reading/writing to these
   // By using a NullDevice that just returns success to all IO requests it
