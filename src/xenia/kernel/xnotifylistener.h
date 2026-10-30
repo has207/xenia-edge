@@ -10,6 +10,7 @@
 #ifndef XENIA_KERNEL_XNOTIFYLISTENER_H_
 #define XENIA_KERNEL_XNOTIFYLISTENER_H_
 
+#include <map>
 #include <memory>
 #include <unordered_map>
 
@@ -67,9 +68,16 @@ class XNotifyListener : public XObject {
   }
 
  private:
+  using Notifications =
+      std::map<uint32_t, std::pair<XNotificationID, uint32_t>>;
+
+  void RemoveNotification(Notifications::iterator it);
+
   std::unique_ptr<xe::threading::Event> wait_handle_;
   xe::global_critical_region global_critical_region_;
-  std::vector<std::pair<XNotificationID, uint32_t>> notifications_;
+  // One entry per notification, keyed by its area and number, so the map's
+  // order is the order they're read in.
+  Notifications notifications_;
   uint64_t mask_ = 0;
   uint32_t is_system_ = 0;
   uint32_t max_version_ = 0;
