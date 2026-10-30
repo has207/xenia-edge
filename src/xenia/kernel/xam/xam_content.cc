@@ -1080,6 +1080,71 @@ dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
+
+// XamCache* keep files on the system cache partition, each described by a
+// 0x248 byte block: flags at 0x0 (bit 0 creates), the cache type at 0x4, an id
+// at 0x8, a 64-bit key at 0x10 and the open handle at 0x24. Nothing in xenia
+// stores into this cache, so no file can be found in it.
+constexpr uint32_t kCacheFileFlagCreate = 0x1;
+constexpr uint32_t kCacheFileHandleOffset = 0x24;
+constexpr uint32_t kCacheFileNameOffset = 0x28;
+
+dword_result_t XamCacheOpenFile_entry(lpvoid_t cache_file_ptr) {
+  if (!cache_file_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  auto cache_file = cache_file_ptr.as<uint8_t*>();
+  // xam resets the handle and name before it looks for the file.
+  xe::store_and_swap<uint32_t>(cache_file + kCacheFileHandleOffset, 0xFFFFFFFF);
+  cache_file[kCacheFileNameOffset] = 0;
+  uint32_t flags = xe::load_and_swap<uint32_t>(cache_file);
+  if (flags & kCacheFileFlagCreate) {
+    XELOGW("XamCacheOpenFile: creating cache type {:08X} files is unsupported",
+           xe::load_and_swap<uint32_t>(cache_file + 4));
+    return X_ERROR_NOT_SUPPORTED;
+  }
+  return X_ERROR_FILE_NOT_FOUND;
+}
+DECLARE_XAM_EXPORT1(XamCacheOpenFile, kContent, kStub);
+
+dword_result_t XamCacheReset_entry(dword_t cache_type) {
+  // The cache is always empty.
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamCacheReset, kContent, kStub);
+
+// XamXlfs* run the queue that uploads files to Xbox LIVE file storage. There is
+// no LIVE storage to upload to, so the queue can't be started.
+dword_result_t XamXlfsInitializeUploadQueue_entry(lpvoid_t params_ptr,
+                                                  lpdword_t queue_handle_ptr) {
+  if (queue_handle_ptr) {
+    *queue_handle_ptr = 0;
+  }
+  return X_E_FAIL;
+}
+DECLARE_XAM_EXPORT1(XamXlfsInitializeUploadQueue, kContent, kStub);
+
+// XamBackgroundDownload* drive the dashboard's download queue. Its items are
+// 0x380 bytes. There is no dashboard or marketplace, so the queue stays empty.
+constexpr uint32_t kBackgroundDownloadItemSize = 0x380;
+
+dword_result_t XamBackgroundDownloadSetMode_entry(dword_t mode) {
+  // Nothing downloads in the background, so the mode changes nothing.
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadSetMode, kContent, kStub);
+
+dword_result_t XamBackgroundDownloadGetActiveItem_entry(lpdword_t active_ptr,
+                                                        lpvoid_t item_ptr) {
+  // Nothing is downloading.
+  if (active_ptr && item_ptr) {
+    *active_ptr = 0;
+    item_ptr.Zero(kBackgroundDownloadItemSize);
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadGetActiveItem, kContent, kImplemented);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

@@ -8,10 +8,15 @@
  */
 
 #include <cstdlib>
+#include <cstring>
 #include <iterator>
+#include <mutex>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "xenia/base/logging.h"
+#include "xenia/base/utf8.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -1455,6 +1460,142 @@ dword_result_t XamUserLogonEx_entry(pointer_t<X_PROFILEENUMRESULT> profile_ptr,
   }
 }
 DECLARE_XAM_EXPORT1(XamUserLogonEx, kUserProfiles, kSketchy);
+
+// The last active user data is 8 bytes handed from one title to the next; a
+// get consumes it.
+static std::mutex last_active_user_data_mutex_;
+static bool last_active_user_data_valid_ = false;
+static uint64_t last_active_user_data_ = 0;
+
+dword_result_t XamSetLastActiveUserData_entry(lpqword_t data_ptr) {
+  std::lock_guard<std::mutex> lock(last_active_user_data_mutex_);
+  if (data_ptr) {
+    last_active_user_data_valid_ = true;
+    last_active_user_data_ = *data_ptr;
+  } else {
+    last_active_user_data_valid_ = false;
+  }
+  return 1;
+}
+DECLARE_XAM_EXPORT1(XamSetLastActiveUserData, kUserProfiles, kImplemented);
+
+dword_result_t XamGetLastActiveUserData_entry(lpqword_t data_ptr) {
+  std::lock_guard<std::mutex> lock(last_active_user_data_mutex_);
+  if (!data_ptr || !last_active_user_data_valid_) {
+    return 0;
+  }
+  *data_ptr = last_active_user_data_;
+  last_active_user_data_valid_ = false;
+  return 1;
+}
+DECLARE_XAM_EXPORT1(XamGetLastActiveUserData, kUserProfiles, kImplemented);
+
+// Tokens are guest blocks of a type at 0x0, a data length at 0x4 and a pointer
+// at 0x8 to the data, which follows the header.
+struct X_XAM_TOKEN {
+  xe::be<uint32_t> type;
+  xe::be<uint32_t> data_length;
+  xe::be<uint32_t> data_ptr;
+};
+static_assert_size(X_XAM_TOKEN, 0xC);
+
+constexpr uint32_t kXamTokenTypeAppliesTo = 2;
+constexpr uint32_t kXamTokenMaxDataLength = 0x800;
+constexpr uint32_t kXamTokenMaxAppliesToLength = 0x400;
+constexpr X_RESULT kErrorBufferOverflow = 0x6F;
+
+static uint32_t AllocateXamToken(uint32_t type, std::string_view data) {
+  auto memory = kernel_state()->memory();
+  uint32_t data_length = static_cast<uint32_t>(data.size());
+  uint32_t token_ptr =
+      memory->SystemHeapAlloc(sizeof(X_XAM_TOKEN) + data_length + 1);
+  if (!token_ptr) {
+    return 0;
+  }
+  auto token = memory->TranslateVirtual<X_XAM_TOKEN*>(token_ptr);
+  token->type = type;
+  token->data_length = data_length;
+  token->data_ptr = token_ptr + sizeof(X_XAM_TOKEN);
+  auto token_data = memory->TranslateVirtual<char*>(token->data_ptr);
+  std::memcpy(token_data, data.data(), data_length);
+  token_data[data_length] = 0;
+  return token_ptr;
+}
+
+dword_result_t XamGetAppliesTo_entry(lpvoid_t url_ptr, dword_t url_length,
+                                     lpdword_t token_ptr) {
+  if (!url_ptr || !token_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  *token_ptr = 0;
+  if (url_length > kXamTokenMaxAppliesToLength) {
+    return kErrorBufferOverflow;
+  }
+  // The audience a token is asked for is the URL's scheme and host, which are
+  // case insensitive. The exact form xam builds is a guess.
+  std::string_view url(url_ptr.as<const char*>(), url_length);
+  url = url.substr(0, url.find('\0'));
+  size_t scheme_end = url.find("://");
+  if (scheme_end == std::string_view::npos || !scheme_end) {
+    return kErrorBufferOverflow;
+  }
+  size_t host_start = scheme_end + 3;
+  size_t host_end = url.find_first_of("/?#", host_start);
+  if (host_end == std::string_view::npos) {
+    host_end = url.size();
+  }
+  if (host_end == host_start) {
+    return kErrorBufferOverflow;
+  }
+  std::string applies_to = xe::utf8::lower_ascii(url.substr(0, host_end));
+  applies_to += '/';
+  if (applies_to.size() > kXamTokenMaxDataLength) {
+    return kErrorBufferOverflow;
+  }
+  uint32_t token = AllocateXamToken(kXamTokenTypeAppliesTo, applies_to);
+  if (!token) {
+    return X_ERROR_NOT_ENOUGH_MEMORY;
+  }
+  *token_ptr = token;
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamGetAppliesTo, kUserProfiles, kSketchy);
+
+dword_result_t XamGetToken_entry(dword_t user_index, lpvoid_t applies_to_ptr,
+                                 dword_t applies_to_length, lpdword_t token_ptr,
+                                 pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if ((user_index >= XUserMaxUserCount && user_index != XUserIndexAny) ||
+      !token_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  *token_ptr = 0;
+  if (applies_to_length > kXamTokenMaxAppliesToLength) {
+    return kErrorBufferOverflow;
+  }
+  if (user_index != XUserIndexAny) {
+    if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+      return X_ERROR_NO_SUCH_USER;
+    }
+    const auto& user_profile =
+        kernel_state()->xam_state()->GetUserProfile(user_index);
+    if (user_profile->signin_state() !=
+        static_cast<uint32_t>(SignInState::SignedInToLive)) {
+      return X_ERROR_NOT_LOGGED_ON;
+    }
+  }
+  // Tokens come from the LIVE security service, which isn't reachable. The
+  // failure is returned before anything is queued, so the overlapped is left
+  // alone, as xam does for failures it finds up front.
+  return X_ERROR_NOT_SUPPORTED;
+}
+DECLARE_XAM_EXPORT1(XamGetToken, kUserProfiles, kSketchy);
+
+void XamFreeToken_entry(dword_t token_ptr) {
+  if (token_ptr) {
+    kernel_state()->memory()->SystemHeapFree(token_ptr);
+  }
+}
+DECLARE_XAM_EXPORT1(XamFreeToken, kUserProfiles, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel

@@ -208,6 +208,37 @@ X_RESULT xeXamDispatchDialogAsync(T* dialog,
   return X_ERROR_SUCCESS;
 }
 
+// Brackets a guide UI that Xenia has nothing to draw for with the XN_SYS_UI
+// notifications, as if the guide had opened and been closed right away, and
+// completes the request with the given result.
+static X_RESULT xeXamDispatchHeadless(X_RESULT result, uint32_t extended_error,
+                                      uint32_t overlapped) {
+  auto pre = []() {
+    kernel_state()->BroadcastNotification(kXNotificationSystemUI, true);
+  };
+  auto post = []() {
+    std::jthread t([]() {
+      xe::threading::Sleep(kUIDelayMillis);
+      kernel_state()->BroadcastNotification(kXNotificationSystemUI, false);
+    });
+    t.detach();
+  };
+  if (!overlapped) {
+    pre();
+    post();
+    return result;
+  }
+  kernel_state()->CompleteOverlappedDeferredEx(
+      [result, extended_error](uint32_t& out_extended_error,
+                               uint32_t& length) -> X_RESULT {
+        out_extended_error = extended_error;
+        length = 0;
+        return result;
+      },
+      overlapped, pre, post);
+  return X_ERROR_IO_PENDING;
+}
+
 void MessageBoxDialog::OnDraw(ImGuiIO& io) {
   if (!has_opened_) {
     ImGui::OpenPopup(title_.c_str());
@@ -915,6 +946,58 @@ dword_result_t XamShowMarketplaceDownloadItemsUI_entry(
       close, overlapped);
 }
 DECLARE_XAM_EXPORT1(XamShowMarketplaceDownloadItemsUI, kUI, kSketchy);
+
+// Largest order the purchase UI accepts, and the receipt buffer size it asks
+// for when queried.
+constexpr uint32_t kMarketplaceOrderMaxSize = 0x13880;
+
+// Without a receipt buffer it only reports the size it needs. Buying needs a
+// signed in user and then Xbox LIVE, which Xenia doesn't have: the guide
+// reports the marketplace as unavailable and the order ends up cancelled
+// without anything written to the receipt. Returns an HRESULT.
+dword_result_t XamShowMarketplacePurchaseOrderUIEx_entry(
+    dword_t user_index, dword_t unknown, dword_t order_size, lpvoid_t order,
+    lpdword_t receipt_size_ptr, lpvoid_t receipt, dword_t unknown2,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (!receipt && receipt_size_ptr) {
+    *receipt_size_ptr = kMarketplaceOrderMaxSize;
+    return X_E_SUCCESS;
+  }
+  if (user_index >= XUserMaxUserCount || !order || !receipt ||
+      !receipt_size_ptr || order_size > kMarketplaceOrderMaxSize ||
+      receipt_size_ptr.value() < kMarketplaceOrderMaxSize) {
+    return X_E_INVALIDARG;
+  }
+  if (!kernel_state()->xam_state()->GetUserProfile(user_index)) {
+    return X_E_NO_SUCH_USER;
+  }
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    return X_E_ACCESS_DENIED;
+  }
+  XELOGI(
+      "XamShowMarketplacePurchaseOrderUIEx: no Xbox LIVE Marketplace, "
+      "cancelling the order");
+  const X_RESULT result = xeXamDispatchHeadless(
+      X_ERROR_CANCELLED, X_HRESULT_FROM_WIN32(X_ERROR_CANCELLED),
+      overlapped.guest_address());
+  return X_HRESULT_FROM_WIN32(result);
+}
+DECLARE_XAM_EXPORT1(XamShowMarketplacePurchaseOrderUIEx, kUI, kSketchy);
+
+// Asks the user to download an optional update for the media player from
+// LIVE Marketplace. user_index may be XUserIndexAny. With no LIVE the offer
+// can't be fetched and the guide closes again, which the console reports as
+// success.
+dword_result_t XamShowOptionalMediaUpdateRequiredUI_entry(
+    dword_t user_index, pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (user_index >= XUserMaxUserCount && user_index != XUserIndexAny) {
+    return X_E_INVALIDARG;
+  }
+  XELOGI("XamShowOptionalMediaUpdateRequiredUI: no Xbox LIVE Marketplace");
+  return xeXamDispatchHeadless(X_ERROR_SUCCESS, X_ERROR_SUCCESS,
+                               overlapped.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamShowOptionalMediaUpdateRequiredUI, kUI, kSketchy);
 
 dword_result_t XamShowGoldUpgradeUI_entry(dword_t user_index, dword_t unk,
                                           dword_t title_id) {

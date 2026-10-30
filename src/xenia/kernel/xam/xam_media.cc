@@ -7,6 +7,8 @@
  ******************************************************************************
  */
 
+#include <atomic>
+
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xthread.h"
@@ -64,6 +66,15 @@ dword_result_t XamMediaVerificationInject_entry(dword_t r3, dword_t r4) {
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamMediaVerificationInject, kNone, kStub);
+
+// xam keeps the closed captioning switch in a console config setting that
+// xenia's config doesn't have, so it lives here. Captions start off.
+static std::atomic<uint8_t> closed_captioning_enabled_ = 0;
+
+dword_result_t XamGetClosedCaptioningState_entry() {
+  return closed_captioning_enabled_.load();
+}
+DECLARE_XAM_EXPORT1(XamGetClosedCaptioningState, kNone, kImplemented);
 
 // Ordinals 0x7DC/0x7DD and 0x7E3/0x7E4 load and unload two system modules of
 // extra AV codecs through one loader, which hands back the module's export 1

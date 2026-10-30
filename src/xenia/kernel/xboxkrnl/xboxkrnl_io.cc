@@ -1116,6 +1116,17 @@ void IoDeleteDevice_entry(pointer_t<X_DEVICE_OBJECT> device_ptr,
 
 DECLARE_XBOXKRNL_EXPORT1(IoDeleteDevice, kFileSystem, kStub);
 
+// A handle xenia opened sits on a host backed file system with no guest
+// volume to dismount, so a valid one is all that is checked.
+dword_result_t IoDismountVolumeByFileHandle_entry(dword_t file_handle) {
+  auto file = kernel_state()->object_table()->LookupObject<XFile>(file_handle);
+  if (!file) {
+    return X_STATUS_INVALID_HANDLE;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoDismountVolumeByFileHandle, kFileSystem, kStub);
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe

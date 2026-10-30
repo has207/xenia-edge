@@ -1180,6 +1180,13 @@ dword_result_t XamUpdateGetCurrentSystemVersion_entry() {
 }
 DECLARE_XAM_EXPORT1(XamUpdateGetCurrentSystemVersion, kNone, kImplemented);
 
+dword_result_t XamIsOptionalMediaUpdateInstalled_entry(dword_t media_id,
+                                                       dword_t min_version) {
+  // No optional media update package is installed.
+  return 0;
+}
+DECLARE_XAM_EXPORT1(XamIsOptionalMediaUpdateInstalled, kNone, kImplemented);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

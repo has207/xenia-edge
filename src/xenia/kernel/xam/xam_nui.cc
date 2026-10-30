@@ -360,6 +360,23 @@ dword_result_t XamUserNuiEnableBiometric_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamUserNuiEnableBiometric, kNone, kStub);
 
+// Kinect biometric (face/body) data kept for a profile. Only a Kinect produces
+// it, so no profile ever has any to read.
+dword_result_t XamReadBiometricData_entry(
+    qword_t xuid, lpvoid_t buffer, dword_t buffer_size, lpdword_t size_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (!buffer || !buffer_size || !size_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (overlapped) {
+    kernel_state()->CompleteOverlappedImmediate(overlapped,
+                                                X_ERROR_FUNCTION_FAILED);
+    return X_ERROR_IO_PENDING;
+  }
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamReadBiometricData, kNone, kStub);
+
 struct X_NUI_PLAYER_ENGAGEMENT_UPDATE {
   uint8_t data[0x1C];
 };

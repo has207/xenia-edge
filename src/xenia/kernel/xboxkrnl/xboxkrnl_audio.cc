@@ -7,6 +7,8 @@
  ******************************************************************************
  */
 
+#include <atomic>
+
 #include "xenia/apu/audio_system.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
@@ -18,13 +20,36 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
+// The kernel keeps the active speaker configuration in a global that starts
+// out as the dashboard audio setting; XAudioSetSpeakerConfig replaces it for
+// everyone in the session (media players switch to stereo for stereo content
+// and put the user's setting back afterwards).
+static std::atomic<bool> speaker_config_overridden_{false};
+static std::atomic<uint32_t> speaker_config_override_{0};
+
 dword_result_t XAudioGetSpeakerConfig_entry(lpdword_t config_ptr) {
+  if (!config_ptr) {
+    return X_E_INVALIDARG;
+  }
+  if (speaker_config_overridden_) {
+    *config_ptr = speaker_config_override_.load();
+    return X_ERROR_SUCCESS;
+  }
   kernel_state()->xconfig()->ReadSetting(
       XCONFIG_USER_CATEGORY,
       XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_AUDIO_FLAGS, config_ptr);
   return X_ERROR_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(XAudioGetSpeakerConfig, kAudio, kImplemented);
+
+dword_result_t XAudioSetSpeakerConfig_entry(dword_t config) {
+  // Host output keeps its own channel layout; the guest mixes to 5.1 frames
+  // regardless, so only the value reported back to titles changes.
+  speaker_config_override_ = config;
+  speaker_config_overridden_ = true;
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XAudioSetSpeakerConfig, kAudio, kImplemented);
 
 // Structure for XAudioQueryDriverPerformance
 struct XAudioDriverPerformance {
