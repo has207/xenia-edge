@@ -249,8 +249,11 @@ static void NoteXeFuTitle(std::string_view path) {
   // XBEH.
   if (read_user(0x10000, &magic) && magic == 0x48454258 &&
       read_user(0x10118, &certificate) &&
-      read_user(certificate + 0x8, &certificate_title_id) &&
-      certificate_title_id == title_id) {
+      read_user(certificate + 0x8, &certificate_title_id)) {
+    // Another title's data, such as an alternate title the game mounts.
+    if (certificate_title_id != title_id) {
+      return;
+    }
     std::u16string title_name;
     for (uint32_t i = 0; i < 40; ++i) {
       uint16_t c = 0;
@@ -259,7 +262,7 @@ static void NoteXeFuTitle(std::string_view path) {
       }
       title_name.push_back(char16_t(c));
     }
-    name = xe::to_utf8(title_name);
+    name = xe::to_utf8_lossy(title_name);
     vfs::XbeMetadata xbe;
     if (read_user(certificate + 0xAC, &xbe.version)) {
       xbe.title_id = title_id;

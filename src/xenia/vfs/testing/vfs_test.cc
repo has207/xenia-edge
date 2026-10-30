@@ -141,6 +141,14 @@ TEST_CASE("XBE metadata", "[xbe]") {
     REQUIRE(m->version == 6);
   }
 
+  SECTION("A broken surrogate pair doesn't stop the name being read") {
+    auto xbe = MakeXbe(0x12);
+    Put<uint16_t>(xbe, 0x200 + 0xC + 3 * 2, 0xD800);
+    auto m = ExtractXbeMetadata(xbe.data(), xbe.size());
+    REQUIRE(m);
+    REQUIRE(m->title_name == "Jed\xEF\xBF\xBD");
+  }
+
   SECTION("The title image comes back as PNG") {
     for (uint32_t format : {0x06u, 0x12u}) {
       const auto xbe = MakeXbe(format);

@@ -21,6 +21,9 @@ int xe_strncasecmp(const char* string1, const char* string2, size_t count);
 char* xe_strdup(const char* source);
 
 std::string to_utf8(const std::u16string_view source);
+// For text a title wrote. Half of a surrogate pair on its own, which makes
+// to_utf8 throw, becomes U+FFFD.
+std::string to_utf8_lossy(const std::u16string_view source);
 std::u16string to_utf16(const std::string_view source);
 std::string utf8_to_win1252(const std::string_view source);
 std::string win1252_to_utf8(const std::string_view source);

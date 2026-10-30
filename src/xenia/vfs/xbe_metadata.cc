@@ -326,7 +326,7 @@ std::optional<XbeMetadata> ParseXbe(const XbeReader& read) {
     }
     name.push_back(c);
   }
-  metadata.title_name = xe::to_utf8(name);
+  metadata.title_name = xe::to_utf8_lossy(name);
 
   const uint32_t section_count = LoadU32(headers, kXbeSectionCount);
   const auto sections =

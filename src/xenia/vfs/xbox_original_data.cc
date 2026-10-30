@@ -73,18 +73,7 @@ std::string DecodeMetaText(std::span<const uint8_t> data) {
     }
     text.push_back(unit);
   }
-  // Half of a surrogate pair on its own would make the conversion throw.
-  for (size_t i = 0; i < text.size(); ++i) {
-    const bool high = text[i] >= 0xD800 && text[i] <= 0xDBFF;
-    const bool low = text[i] >= 0xDC00 && text[i] <= 0xDFFF;
-    if (high && i + 1 < text.size() && text[i + 1] >= 0xDC00 &&
-        text[i + 1] <= 0xDFFF) {
-      ++i;
-    } else if (high || low) {
-      text[i] = char16_t(0xFFFD);
-    }
-  }
-  return xe::to_utf8(text);
+  return xe::to_utf8_lossy(text);
 }
 
 // Calls `visit(section, key, value)` for each key=value line.

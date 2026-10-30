@@ -466,8 +466,12 @@ void GameInfoPanel::BuildDetailsSection(wxWindow* parent, wxBoxSizer* sizer) {
   AddField(parent, grid, _("Version"),
            wxString::FromUTF8(VersionToString(key_.version)),
            /*selectable=*/true);
-  auto* status = AddField(parent, grid, _("Status"), CompatStateName(compat_));
-  status->SetForegroundColour(CompatColor(compat_));
+  // The compatibility database only knows Xbox 360 titles.
+  if (!IsOriginalXbox()) {
+    auto* status =
+        AddField(parent, grid, _("Status"), CompatStateName(compat_));
+    status->SetForegroundColour(CompatColor(compat_));
+  }
 }
 
 bool GameInfoPanel::IsOriginalXbox() const {

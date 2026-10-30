@@ -58,6 +58,21 @@ std::string to_utf8(const std::u16string_view source) {
   return utfcpp::utf16to8(source);
 }
 
+std::string to_utf8_lossy(const std::u16string_view source) {
+  std::u16string text(source);
+  for (size_t i = 0; i < text.size(); ++i) {
+    const bool high = text[i] >= 0xD800 && text[i] <= 0xDBFF;
+    const bool low = text[i] >= 0xDC00 && text[i] <= 0xDFFF;
+    if (high && i + 1 < text.size() && text[i + 1] >= 0xDC00 &&
+        text[i + 1] <= 0xDFFF) {
+      ++i;
+    } else if (high || low) {
+      text[i] = char16_t(0xFFFD);
+    }
+  }
+  return utfcpp::utf16to8(text);
+}
+
 std::u16string to_utf16(const std::string_view source) {
   return utfcpp::utf8to16(source);
 }
