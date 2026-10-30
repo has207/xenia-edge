@@ -1,6 +1,6 @@
 {
  "corpus": "content",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-22",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-30",
  "steps": [
   {
    "scenario": "identity",
@@ -4669,6 +4669,21 @@
     },
     {
      "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "default device",
+   "name": "XamContentGetDefaultDevice",
+   "export": "XamContentGetDefaultDevice",
+   "r3": "0000000000000000",
+   "capture": {
+    "device": "00000001"
+   },
+   "args": [
+    {
+     "pointer": "device",
+     "offset": 0
     }
    ]
   }

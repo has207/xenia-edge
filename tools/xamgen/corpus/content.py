@@ -1,5 +1,6 @@
 """Content corpus: creating, opening, closing and deleting saves, creators,
-thumbnails, argument checks, user indices and shared content.
+thumbnails, argument checks, user indices, shared content and the default
+device.
 
 Every scenario uses its own file names under the executor's title, deletes
 them first in case an earlier run left them and closes and deletes what it
@@ -322,3 +323,8 @@ def build(corpus):
     c.delete(0, plain, name='delete plain as user 0')
     c.delete(0xFE, plain, name='delete plain as user 0xfe')
     c.delete(0, flagged, name='delete flagged after')
+
+    # xam reports the first mounted device, the hard drive here.
+    s = corpus.scenario('default device')
+    device = s.alloc(4, 'device')
+    s.call('XamContentGetDefaultDevice', device, capture=[device])
