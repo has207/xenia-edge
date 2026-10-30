@@ -31,6 +31,8 @@
 #include "xenia/vfs/device.h"
 #include "xenia/xbox.h"
 
+DECLARE_bool(apply_title_update);
+
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
@@ -171,23 +173,56 @@ struct CreateOptions {
   static constexpr uint32_t FILE_RANDOM_ACCESS = 0x00000800;
 };
 
-// XeFu, the original Xbox emulator, opens the running Xbox title's data
-// directory, Xbox1\TDATA\<title id> in the HDD's Compatibility directory, as
-// the title starts. The certificate of the XBE it loaded, at 0x10000 in user
-// mode, names the title and its version.
-static void NoteXeFuTitle(std::string_view path) {
+// XeFu, the original Xbox emulator, keeps each Xbox title's data, its T: drive,
+// in Xbox1\TDATA\<title id> in the HDD's Compatibility directory and always
+// passes full paths. Splits a lowercase path in there into the title id and
+// the rest.
+static bool SplitXeFuTitleDataPath(std::string_view path, uint32_t* title_id,
+                                   std::string_view* rest) {
   constexpr std::string_view kTitleData = "\\xbox1\\tdata\\";
-  const std::string lower = xe::utf8::lower_ascii(path);
-  const size_t found = lower.rfind(kTitleData);
-  if (found == std::string::npos) {
-    return;
+  const size_t found = path.rfind(kTitleData);
+  if (found == std::string_view::npos) {
+    return false;
   }
-  const std::string_view id =
-      std::string_view(lower).substr(found + kTitleData.size());
-  uint32_t title_id = 0;
+  const std::string_view id = path.substr(found + kTitleData.size(), 8);
   if (id.size() != 8 ||
-      std::from_chars(id.data(), id.data() + id.size(), title_id, 16).ptr !=
+      std::from_chars(id.data(), id.data() + id.size(), *title_id, 16).ptr !=
           id.data() + id.size()) {
+    return false;
+  }
+  *rest = path.substr(found + kTitleData.size() + id.size());
+  return true;
+}
+
+// An original Xbox title applies its own title update: it runs the executable
+// in T:\$u when $u\ContentMeta.xbx lists the running one's version. The status
+// that hides $u from it, success for any other path. $u still lists.
+static X_STATUS HideXeFuTitleUpdate(std::string_view path) {
+  const std::string lower = xe::utf8::lower_ascii(path);
+  uint32_t title_id;
+  std::string_view rest;
+  constexpr std::string_view kTitleUpdate = "\\$u";
+  if (!SplitXeFuTitleDataPath(lower, &title_id, &rest) ||
+      !rest.starts_with(kTitleUpdate)) {
+    return X_STATUS_SUCCESS;
+  }
+  rest.remove_prefix(kTitleUpdate.size());
+  // A trailing separator still names $u.
+  if (rest.find_first_not_of('\\') == std::string_view::npos) {
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
+  }
+  return rest.front() == '\\' ? X_STATUS_OBJECT_PATH_NOT_FOUND
+                              : X_STATUS_SUCCESS;
+}
+
+// XeFu opens the running Xbox title's data directory as the title starts. The
+// certificate of the XBE it loaded, at 0x10000 in user mode, names the title
+// and its version.
+static void NoteXeFuTitle(std::string_view path) {
+  const std::string lower = xe::utf8::lower_ascii(path);
+  uint32_t title_id = 0;
+  std::string_view rest;
+  if (!SplitXeFuTitleDataPath(lower, &title_id, &rest) || !rest.empty()) {
     return;
   }
   // XeFu's own system data, such as the soundtrack database it opens at boot.
@@ -306,37 +341,45 @@ dword_result_t IoCreateFile_entry(lpdword_t handle_out, dword_t desired_access,
     root_entry = root_file->entry();
   }
 
+  X_STATUS result = X_STATUS_SUCCESS;
+  if (!cvars::apply_title_update &&
+      kernel_state()->title_id() == kXeFuTitleId) {
+    result = HideXeFuTitleUpdate(target_path);
+  }
+
   // Attempt open (or create). The host open can block on a slow drive.
   vfs::File* vfs_file;
   vfs::FileAction file_action;
-  X_STATUS result;
-  kernel_state()->RunBlockingIo(
-      [&]() {
-        if (options & kIoOpenTargetDirectory) {
+  if (XSUCCEEDED(result)) {
+    kernel_state()->RunBlockingIo(
+        [&]() {
+          if (options & kIoOpenTargetDirectory) {
+            result = kernel_state()->file_system()->OpenFile(
+                root_entry, xe::utf8::find_base_guest_path(target_path),
+                vfs::FileDisposition::kOpen, desired_access, true, false,
+                &vfs_file, &file_action);
+            if (result == X_STATUS_OBJECT_NAME_NOT_FOUND) {
+              result = X_STATUS_OBJECT_PATH_NOT_FOUND;
+            }
+            if (XSUCCEEDED(result)) {
+              file_action =
+                  vfs_file->entry()->GetChild(
+                      xe::utf8::find_name_from_guest_path(target_path))
+                      ? vfs::FileAction::kExists
+                      : vfs::FileAction::kDoesNotExist;
+            }
+            return;
+          }
           result = kernel_state()->file_system()->OpenFile(
-              root_entry, xe::utf8::find_base_guest_path(target_path),
-              vfs::FileDisposition::kOpen, desired_access, true, false,
+              root_entry, target_path,
+              vfs::FileDisposition((uint32_t)creation_disposition),
+              desired_access,
+              (create_options & CreateOptions::FILE_DIRECTORY_FILE) != 0,
+              (create_options & CreateOptions::FILE_NON_DIRECTORY_FILE) != 0,
               &vfs_file, &file_action);
-          if (result == X_STATUS_OBJECT_NAME_NOT_FOUND) {
-            result = X_STATUS_OBJECT_PATH_NOT_FOUND;
-          }
-          if (XSUCCEEDED(result)) {
-            file_action = vfs_file->entry()->GetChild(
-                              xe::utf8::find_name_from_guest_path(target_path))
-                              ? vfs::FileAction::kExists
-                              : vfs::FileAction::kDoesNotExist;
-          }
-          return;
-        }
-        result = kernel_state()->file_system()->OpenFile(
-            root_entry, target_path,
-            vfs::FileDisposition((uint32_t)creation_disposition),
-            desired_access,
-            (create_options & CreateOptions::FILE_DIRECTORY_FILE) != 0,
-            (create_options & CreateOptions::FILE_NON_DIRECTORY_FILE) != 0,
-            &vfs_file, &file_action);
-      },
-      GuestScheduler::BlockingCallClass::kConcurrent);
+        },
+        GuestScheduler::BlockingCallClass::kConcurrent);
+  }
   object_ref<XFile> file = nullptr;
 
   // A failed open leaves the handle and the information 0.
