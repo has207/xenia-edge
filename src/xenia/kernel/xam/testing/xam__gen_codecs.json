@@ -1,0 +1,28 @@
+{
+ "corpus": "codecs",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-30",
+ "steps": [
+  {
+   "scenario": "null module pointer",
+   "name": "XamLoadExtraAVCodecs",
+   "export": "XamLoadExtraAVCodecs",
+   "r3": "FFFFFFFF80004003",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "null module pointer",
+   "name": "XamLoadExtraAVCodecs2",
+   "export": "XamLoadExtraAVCodecs2",
+   "r3": "FFFFFFFF80004003",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  }
+ ]
+}
