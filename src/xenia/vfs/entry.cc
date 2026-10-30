@@ -49,6 +49,10 @@ void Entry::Dump(xe::StringBuffer* string_buffer, int indent) {
 
 bool Entry::is_read_only() const { return device_->is_read_only(); }
 
+uint32_t Entry::sectors_per_allocation_unit() const {
+  return device_->sectors_per_allocation_unit();
+}
+
 Entry* Entry::GetChild(const std::string_view name) {
   auto global_lock = global_critical_region_.Acquire();
   auto it =

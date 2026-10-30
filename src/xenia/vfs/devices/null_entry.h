@@ -10,6 +10,7 @@
 #ifndef XENIA_VFS_DEVICES_NULL_ENTRY_H_
 #define XENIA_VFS_DEVICES_NULL_ENTRY_H_
 
+#include <atomic>
 #include <string>
 
 #include "xenia/base/filesystem.h"
@@ -32,10 +33,19 @@ class NullEntry : public Entry {
 
   bool can_map() const override { return false; }
 
+  // A raw partition takes the cluster size of the FATX header last written to
+  // its start, once there is one.
+  uint32_t sectors_per_allocation_unit() const override;
+  void set_sectors_per_allocation_unit(uint32_t sectors) {
+    sectors_per_allocation_unit_ = sectors;
+  }
+
  private:
   friend class NullDevice;
 
   bool DeleteEntryInternal(Entry* entry) override;
+
+  std::atomic<uint32_t> sectors_per_allocation_unit_ = 0;
 };
 
 }  // namespace vfs

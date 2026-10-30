@@ -11,6 +11,7 @@
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/xbox.h"
 
@@ -18,13 +19,35 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
+// The speaker configuration starts out as the dashboard audio setting.
+// XAudioSetSpeakerConfig replaces it and XAudioGetSpeakerConfig returns it
+// until the title ends.
+static XboxkrnlModule* GetXboxkrnlModule() {
+  return kernel_state()->GetKernelModule<XboxkrnlModule>("xboxkrnl.exe").get();
+}
+
 dword_result_t XAudioGetSpeakerConfig_entry(lpdword_t config_ptr) {
+  if (!config_ptr) {
+    return X_E_INVALIDARG;
+  }
+  if (const auto config = GetXboxkrnlModule()->speaker_config()) {
+    *config_ptr = *config;
+    return X_ERROR_SUCCESS;
+  }
   kernel_state()->xconfig()->ReadSetting(
       XCONFIG_USER_CATEGORY,
       XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_AUDIO_FLAGS, config_ptr);
   return X_ERROR_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(XAudioGetSpeakerConfig, kAudio, kImplemented);
+
+dword_result_t XAudioSetSpeakerConfig_entry(dword_t config) {
+  // Host output keeps its own channel layout and the guest mixes 5.1 frames
+  // regardless. Only the value reported back to titles changes.
+  GetXboxkrnlModule()->set_speaker_config(config);
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XAudioSetSpeakerConfig, kAudio, kImplemented);
 
 // Structure for XAudioQueryDriverPerformance
 struct XAudioDriverPerformance {

@@ -23,6 +23,11 @@ namespace vfs {
 NullEntry::NullEntry(Device* device, Entry* parent, std::string path)
     : Entry(device, parent, path) {}
 
+uint32_t NullEntry::sectors_per_allocation_unit() const {
+  const uint32_t sectors = sectors_per_allocation_unit_;
+  return sectors ? sectors : Entry::sectors_per_allocation_unit();
+}
+
 NullEntry::~NullEntry() = default;
 
 NullEntry* NullEntry::Create(Device* device, Entry* parent,

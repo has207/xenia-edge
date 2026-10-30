@@ -9,6 +9,9 @@
 
 #include "xenia/vfs/devices/null_file.h"
 
+#include "xenia/base/math.h"
+#include "xenia/base/memory.h"
+#include "xenia/vfs/device.h"
 #include "xenia/vfs/devices/null_entry.h"
 
 namespace xe {
@@ -35,6 +38,21 @@ X_STATUS NullFile::WriteSync(std::span<const uint8_t> buffer,
   if (!(file_access_ &
         (FileAccess::kFileWriteData | FileAccess::kFileAppendData))) {
     return X_STATUS_ACCESS_DENIED;
+  }
+
+  // The XDK cache drive formats a partition by writing a FATX volume header
+  // ('XTAF', serial, sectors per cluster) at its start. FATX mounts only
+  // clusters of a power of two sectors and at least 0x1000 bytes.
+  constexpr uint32_t kFatxMagic = 0x58544146;
+  if (byte_offset == 0 && buffer.size() >= 12 &&
+      xe::load_and_swap<uint32_t>(buffer.data()) == kFatxMagic) {
+    const uint32_t sectors = xe::load_and_swap<uint32_t>(buffer.data() + 8);
+    const uint64_t cluster_size =
+        uint64_t(sectors) * entry()->device()->bytes_per_sector();
+    if (xe::is_pow2(sectors) && sectors <= 0x80 && cluster_size >= 0x1000) {
+      static_cast<NullEntry*>(entry())->set_sectors_per_allocation_unit(
+          sectors);
+    }
   }
 
   return X_STATUS_SUCCESS;

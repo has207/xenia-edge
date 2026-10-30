@@ -8,7 +8,11 @@
  */
 
 #include <cstdlib>
+#include <cstring>
 #include <iterator>
+#include <mutex>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "xenia/base/logging.h"
@@ -1455,6 +1459,82 @@ dword_result_t XamUserLogonEx_entry(pointer_t<X_PROFILEENUMRESULT> profile_ptr,
   }
 }
 DECLARE_XAM_EXPORT1(XamUserLogonEx, kUserProfiles, kSketchy);
+
+// The last active user data is 8 bytes handed from one title to the next; a
+// get consumes it.
+static std::mutex last_active_user_data_mutex_;
+static bool last_active_user_data_valid_ = false;
+static uint64_t last_active_user_data_ = 0;
+
+dword_result_t XamSetLastActiveUserData_entry(lpqword_t data_ptr) {
+  std::lock_guard<std::mutex> lock(last_active_user_data_mutex_);
+  if (data_ptr) {
+    last_active_user_data_valid_ = true;
+    last_active_user_data_ = *data_ptr;
+  } else {
+    last_active_user_data_valid_ = false;
+  }
+  return 1;
+}
+DECLARE_XAM_EXPORT1(XamSetLastActiveUserData, kUserProfiles, kImplemented);
+
+dword_result_t XamGetLastActiveUserData_entry(lpqword_t data_ptr) {
+  std::lock_guard<std::mutex> lock(last_active_user_data_mutex_);
+  if (!data_ptr || !last_active_user_data_valid_) {
+    return 0;
+  }
+  *data_ptr = last_active_user_data_;
+  last_active_user_data_valid_ = false;
+  return 1;
+}
+DECLARE_XAM_EXPORT1(XamGetLastActiveUserData, kUserProfiles, kImplemented);
+
+// Tokens are only handed out once XampXAuthStartup has started XAuth, which
+// needs a profile signed in to LIVE and never succeeds here. A request that
+// gets past its argument checks fails with ERROR_NOT_READY.
+constexpr uint32_t kXamTokenMaxAppliesToLength = 0x400;
+constexpr X_RESULT kErrorBufferOverflow = 0x6F;
+
+dword_result_t XamGetAppliesTo_entry(lpvoid_t url_ptr, dword_t url_length,
+                                     lpdword_t token_ptr) {
+  if (!url_ptr || !token_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  // The URL needs a scheme followed by "//" at its first slash.
+  const std::string_view url(url_ptr.as<const char*>(), url_length);
+  const size_t slash = url.find('/');
+  if (url_length < 4 || url_length > kXamTokenMaxAppliesToLength ||
+      slash == std::string_view::npos || !slash || url[slash - 1] != ':' ||
+      url.substr(slash, 2) != "//") {
+    return kErrorBufferOverflow;
+  }
+  return X_ERROR_NOT_READY;
+}
+DECLARE_XAM_EXPORT1(XamGetAppliesTo, kUserProfiles, kSketchy);
+
+dword_result_t XamGetToken_entry(dword_t user_index, lpvoid_t applies_to_ptr,
+                                 dword_t applies_to_length, lpdword_t token_ptr,
+                                 pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // User index 4 gets past this and fails later, after XAuth's check.
+  if ((user_index > XUserMaxUserCount && user_index != XUserIndexAny) ||
+      !token_ptr || !applies_to_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  *token_ptr = 0;
+  if (applies_to_length > kXamTokenMaxAppliesToLength) {
+    return kErrorBufferOverflow;
+  }
+  // This fails before anything is queued and leaves the overlapped alone.
+  return X_ERROR_NOT_READY;
+}
+DECLARE_XAM_EXPORT1(XamGetToken, kUserProfiles, kSketchy);
+
+void XamFreeToken_entry(dword_t token_ptr) {
+  if (token_ptr) {
+    kernel_state()->memory()->SystemHeapFree(token_ptr);
+  }
+}
+DECLARE_XAM_EXPORT1(XamFreeToken, kUserProfiles, kImplemented);
 
 }  // namespace xam
 }  // namespace kernel

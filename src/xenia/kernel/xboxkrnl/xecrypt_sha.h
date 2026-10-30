@@ -171,6 +171,24 @@ inline void XeCryptSha256Final(XECRYPT_SHA256_STATE* state, uint8_t* out,
   std::memcpy(state->buffer, digest, sizeof(digest));
 }
 
+inline void XeCryptSha256(const uint8_t* input_1, uint32_t input_1_size,
+                          const uint8_t* input_2, uint32_t input_2_size,
+                          const uint8_t* input_3, uint32_t input_3_size,
+                          uint8_t* out, uint32_t out_size) {
+  XECRYPT_SHA256_STATE state;
+  XeCryptSha256Init(&state);
+  if (input_1 && input_1_size) {
+    XeCryptSha256Update(&state, input_1, input_1_size);
+  }
+  if (input_2 && input_2_size) {
+    XeCryptSha256Update(&state, input_2, input_2_size);
+  }
+  if (input_3 && input_3_size) {
+    XeCryptSha256Update(&state, input_3, input_3_size);
+  }
+  XeCryptSha256Final(&state, out, out_size);
+}
+
 inline mbedtls_sha512_context LoadSha512(const XECRYPT_SHA512_STATE& state) {
   mbedtls_sha512_context context;
   mbedtls_sha512_init(&context);

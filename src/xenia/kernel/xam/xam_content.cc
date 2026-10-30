@@ -1183,6 +1183,85 @@ dword_result_t XamContentGetDeviceVolumePath_entry(dword_t device_id,
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamContentGetDeviceVolumePath, kContent, kStub);
+
+// XamCache* keep files on the system cache partitions, each described by a
+// block the title owns. The id and key name the file for some cache types. No
+// cache partition is mounted here. A lookup finds nothing and a create has no
+// partition to make the file on.
+struct X_XAM_CACHE_FILE {
+  xe::be<uint32_t> flags;
+  xe::be<uint32_t> type;
+  xe::be<uint32_t> id;
+  xe::be<uint32_t> unused_C;
+  xe::be<uint64_t> key;
+  // Given for a create, found by an open.
+  xe::be<uint64_t> version;
+  xe::be<uint32_t> size;
+  xe::be<uint32_t> handle;
+  char path[0x10C];
+  // Links the open file into the cache's list.
+  uint8_t internal[0x114];
+};
+static_assert_size(X_XAM_CACHE_FILE, 0x248);
+
+constexpr uint32_t kCacheFileFlagCreate = 0x1;
+// A title's files are closed when it ends.
+constexpr uint32_t kCacheFileFlagTitle = 0x4000;
+
+dword_result_t XamCacheOpenFile_entry(pointer_t<X_XAM_CACHE_FILE> file) {
+  if (!file) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  file->flags = file->flags | kCacheFileFlagTitle;
+  const bool create = file->flags & kCacheFileFlagCreate;
+  if (!create) {
+    file->size = 0;
+    file->version = 0;
+  }
+  file->path[0] = 0;
+  file->handle = 0xFFFFFFFF;
+  return create ? X_ERROR_INVALID_DRIVE : X_ERROR_FILE_NOT_FOUND;
+}
+DECLARE_XAM_EXPORT1(XamCacheOpenFile, kContent, kStub);
+
+// Returns TRUE once the files of cache_type, or of every type for 0, are
+// deleted. There are none here.
+dword_result_t XamCacheReset_entry(dword_t cache_type) { return 1; }
+DECLARE_XAM_EXPORT1(XamCacheReset, kContent, kStub);
+
+// XamXlfs* run the queue that uploads files to Xbox LIVE file storage. Xenia
+// has no upload queue. Starting one fails whether or not a profile is signed in
+// to LIVE. Callers carry on without it. The first argument is unused.
+dword_result_t XamXlfsInitializeUploadQueue_entry(dword_t unused,
+                                                  lpdword_t queue_handle_ptr) {
+  if (queue_handle_ptr) {
+    *queue_handle_ptr = 0;
+  }
+  return X_E_FAIL;
+}
+DECLARE_XAM_EXPORT1(XamXlfsInitializeUploadQueue, kContent, kStub);
+
+// XamBackgroundDownload* drive the dashboard's download queue. Its items are
+// 0x380 bytes. There is no dashboard or marketplace to fill the queue.
+constexpr uint32_t kBackgroundDownloadItemSize = 0x380;
+
+dword_result_t XamBackgroundDownloadSetMode_entry(dword_t mode) {
+  // Nothing downloads in the background for the mode to change.
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadSetMode, kContent, kStub);
+
+dword_result_t XamBackgroundDownloadGetActiveItem_entry(lpdword_t active_ptr,
+                                                        lpvoid_t item_ptr) {
+  // Nothing is downloading.
+  if (active_ptr && item_ptr) {
+    *active_ptr = 0;
+    item_ptr.Zero(kBackgroundDownloadItemSize);
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadGetActiveItem, kContent, kImplemented);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

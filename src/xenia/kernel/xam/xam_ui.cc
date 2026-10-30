@@ -31,6 +31,7 @@
 #include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xmodule.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/ui/file_picker.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -915,6 +916,67 @@ dword_result_t XamShowMarketplaceDownloadItemsUI_entry(
       close, overlapped);
 }
 DECLARE_XAM_EXPORT1(XamShowMarketplaceDownloadItemsUI, kUI, kSketchy);
+
+// Largest order the purchase UI accepts and the receipt buffer size it asks
+// for when queried.
+constexpr uint32_t kMarketplaceOrderMaxSize = 0x13880;
+
+// Without a receipt buffer it only reports the size it needs. A purchase needs
+// a signed in user and no other system UI, then goes to the marketplace guide,
+// the Kinect one for a nonzero tracking_id. There is no marketplace here, so
+// the order is taken as cancelled. What the guide reports without LIVE isn't
+// known. Returns an HRESULT.
+dword_result_t XamShowMarketplacePurchaseOrderUIEx_entry(
+    dword_t user_index, dword_t tracking_id, dword_t order_size, lpvoid_t order,
+    lpdword_t receipt_size_ptr, lpvoid_t receipt, dword_t unknown,
+    pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (!receipt && receipt_size_ptr) {
+    *receipt_size_ptr = kMarketplaceOrderMaxSize;
+    return X_E_SUCCESS;
+  }
+  if (user_index >= XUserMaxUserCount || !order || !receipt ||
+      !receipt_size_ptr || order_size > kMarketplaceOrderMaxSize ||
+      receipt_size_ptr.value() < kMarketplaceOrderMaxSize) {
+    return X_E_INVALIDARG;
+  }
+  if (!kernel_state()->xam_state()->GetUserProfile(user_index)) {
+    return X_E_NO_SUCH_USER;
+  }
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    return X_E_ACCESS_DENIED;
+  }
+  XELOGI(
+      "XamShowMarketplacePurchaseOrderUIEx: no Xbox LIVE Marketplace, "
+      "cancelling the order");
+  const X_RESULT result = xeXamDispatchWithoutDialog(
+      []() { return X_ERROR_CANCELLED; }, overlapped.guest_address());
+  return X_HRESULT_FROM_WIN32(result);
+}
+DECLARE_XAM_EXPORT1(XamShowMarketplacePurchaseOrderUIEx, kUI, kSketchy);
+
+// Tells the user an optional media update is needed, with a message box that
+// offers the marketplace to a LIVE profile. user_index may be XUserIndexAny. A
+// bad one fails the request rather than the call. With no message box here
+// the request succeeds as if it were dismissed. The call returns 0, queued or
+// not.
+dword_result_t XamShowOptionalMediaUpdateRequiredUI_entry(
+    dword_t user_index, pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (user_index >= XUserMaxUserCount && user_index != XUserIndexAny) {
+    if (overlapped) {
+      kernel_state()->CompleteOverlappedImmediateEx(overlapped.guest_address(),
+                                                    X_ERROR_FUNCTION_FAILED,
+                                                    X_E_INVALIDARG, 0);
+    } else {
+      XThread::SetLastError(X_E_INVALIDARG);
+    }
+    return X_ERROR_SUCCESS;
+  }
+  XELOGI("XamShowOptionalMediaUpdateRequiredUI: no message box to show");
+  xeXamDispatchWithoutDialog([]() { return X_ERROR_SUCCESS; },
+                             overlapped.guest_address());
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamShowOptionalMediaUpdateRequiredUI, kUI, kSketchy);
 
 dword_result_t XamShowGoldUpgradeUI_entry(dword_t user_index, dword_t unk,
                                           dword_t title_id) {

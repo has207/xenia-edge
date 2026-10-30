@@ -106,6 +106,8 @@ class Entry {
   }
 
   bool is_read_only() const;
+  // The cluster size of the volume holding this entry, in sectors.
+  virtual uint32_t sectors_per_allocation_unit() const;
 
   Entry* GetChild(const std::string_view name);
   Entry* ResolvePath(const std::string_view path);

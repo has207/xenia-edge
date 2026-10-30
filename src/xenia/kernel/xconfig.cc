@@ -254,6 +254,10 @@ uint16_t BuildSetting(X_CONFIG_CATEGORY category, uint16_t setting,
         case XCONFIG_CONSOLE_KEYBOARD_LAYOUT:
           xe::store_and_swap<int16_t>(out, X_KEYBOARD_LAYOUT::KeyboardDefault);
           return 2;
+        case XCONFIG_CONSOLE_CLOSED_CAPTIONING:
+          // Captions off.
+          out[0] = 0;
+          return 1;
       }
       break;
     default:

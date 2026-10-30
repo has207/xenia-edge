@@ -13,6 +13,7 @@
 #include "xenia/kernel/nui.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -359,6 +360,25 @@ dword_result_t XamUserNuiEnableBiometric_entry(dword_t user_index,
   return X_E_INVALIDARG;
 }
 DECLARE_XAM_EXPORT1(XamUserNuiEnableBiometric, kNone, kStub);
+
+// Kinect biometric data kept in a profile's dashboard GPD: section 7 entry
+// 0x9000 is read into value_ptr and entry 0x9001 into buffer. Xenia doesn't
+// keep that section and never finds the entry.
+dword_result_t XamReadBiometricData_entry(
+    qword_t xuid, lpdword_t value_ptr, lpvoid_t buffer,
+    lpdword_t buffer_size_ptr, pointer_t<XAM_OVERLAPPED> overlapped) {
+  if (!value_ptr || !buffer || !buffer_size_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  if (overlapped) {
+    kernel_state()->CompleteOverlappedImmediateEx(
+        overlapped.guest_address(), X_ERROR_FUNCTION_FAILED, X_E_INVALIDARG, 0);
+    return X_ERROR_IO_PENDING;
+  }
+  XThread::SetLastError(X_E_INVALIDARG);
+  return X_ERROR_FUNCTION_FAILED;
+}
+DECLARE_XAM_EXPORT1(XamReadBiometricData, kNone, kStub);
 
 struct X_NUI_PLAYER_ENGAGEMENT_UPDATE {
   uint8_t data[0x1C];

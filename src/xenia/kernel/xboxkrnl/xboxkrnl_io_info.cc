@@ -276,7 +276,7 @@ dword_result_t NtSetInformationFile_entry(
       auto device = file->device();
       uint64_t allocation_size =
           xe::round_up(uint64_t(info->allocation_size),
-                       uint64_t(device->sectors_per_allocation_unit()) *
+                       uint64_t(file->entry()->sectors_per_allocation_unit()) *
                            device->bytes_per_sector(),
                        false);
       uint64_t file_size = 0;
@@ -392,7 +392,8 @@ dword_result_t NtQueryVolumeInformationFile_entry(
       auto info = info_ptr.as<X_FILE_FS_SIZE_INFORMATION*>();
       info->total_allocation_units = device->total_allocation_units();
       info->available_allocation_units = device->available_allocation_units();
-      info->sectors_per_allocation_unit = device->sectors_per_allocation_unit();
+      info->sectors_per_allocation_unit =
+          file->entry()->sectors_per_allocation_unit();
       info->bytes_per_sector = device->bytes_per_sector();
       // TODO(gibbed): sanity check, XCTD userland code seems to require this.
       assert_true(info->bytes_per_sector == 0x200);

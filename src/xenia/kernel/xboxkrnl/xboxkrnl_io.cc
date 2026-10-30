@@ -935,6 +935,18 @@ dword_result_t StfsControlDevice_entry(lpvoid_t device, dword_t control_code,
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(StfsControlDevice, kFileSystem, kStub);
+
+// A volume is dismounted by the DismountVolume routine of its device's driver.
+// The XDK cache drive's routine closes an event and deletes the device. It
+// isn't called here. The drive leaves both behind each time it's closed.
+dword_result_t IoDismountVolume_entry(lpvoid_t device_object) {
+  if (!device_object) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoDismountVolume, kFileSystem, kStub);
+
 // device_extension_size = additional bytes of data (aligned up to 8 byte
 // granularity) that will be allocated at the tail of the resulting device
 // object. although it is allocated at the tail, it is accessed through a
@@ -1115,6 +1127,17 @@ void IoDeleteDevice_entry(pointer_t<X_DEVICE_OBJECT> device_ptr,
 }
 
 DECLARE_XBOXKRNL_EXPORT1(IoDeleteDevice, kFileSystem, kStub);
+
+// A handle xenia opened sits on a host backed file system with no guest
+// volume to dismount. A valid one is all that is checked.
+dword_result_t IoDismountVolumeByFileHandle_entry(dword_t file_handle) {
+  auto file = kernel_state()->object_table()->LookupObject<XFile>(file_handle);
+  if (!file) {
+    return X_STATUS_INVALID_HANDLE;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(IoDismountVolumeByFileHandle, kFileSystem, kStub);
 
 }  // namespace xboxkrnl
 }  // namespace kernel

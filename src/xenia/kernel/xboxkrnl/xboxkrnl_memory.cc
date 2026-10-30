@@ -1035,6 +1035,12 @@ void KeSweepIcacheRange_entry(lpvoid_t address, dword_t length,
 DECLARE_XBOXKRNL_EXPORT2(KeSweepIcacheRange, kMemory, kImplemented,
                          kHighFrequency);
 
+// Writes dirty data cache lines back to memory, which host memory never holds
+// back. Code written here still goes through KeSweepIcacheRange to be run.
+void KeSweepDcacheRange_entry(lpvoid_t address, dword_t length) {}
+DECLARE_XBOXKRNL_EXPORT2(KeSweepDcacheRange, kMemory, kImplemented,
+                         kHighFrequency);
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe

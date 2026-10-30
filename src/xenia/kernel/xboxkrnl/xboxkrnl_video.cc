@@ -523,6 +523,14 @@ void VdSwap_entry(
 DECLARE_XBOXKRNL_EXPORT3(VdSwap, kVideo, kImplemented, kHighFrequency,
                          kImportant);
 
+void VdRegisterHDCPNotification_entry(lpvoid_t notification_ptr,
+                                      dword_t register_notification) {
+  // The block is linked into a kernel list and its routine is called when the
+  // HDCP link state changes. The host presents frames itself and the state
+  // never changes. Nothing is ever called and there is nothing to track.
+}
+DECLARE_XBOXKRNL_EXPORT1(VdRegisterHDCPNotification, kVideo, kStub);
+
 dword_result_t PsCamDeviceRequest_entry(dword_t request_type,
                                         lpvoid_t param_ptr) {
   // Quietly return X_E_FAIL to keep from log spamming due to

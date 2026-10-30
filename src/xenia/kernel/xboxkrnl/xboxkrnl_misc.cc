@@ -179,6 +179,37 @@ dword_result_t MicDeviceRequest_entry(pointer_t<X_MIC_DEVICE> device_ptr) {
 }
 DECLARE_XBOXKRNL_EXPORT1(MicDeviceRequest, kNone, kStub);
 
+// Event tracing. A producer tests the mask of enabled events at +8 of its
+// registration before it logs. Nothing collects the events here. The
+// registration is zeroed so no event is enabled. The size check and the size
+// written at +0 are guesses.
+struct X_ETX_PRODUCER_REGISTRATION {
+  xe::be<uint32_t> size;
+};
+
+dword_result_t EtxProducerRegister_entry(dword_t provider, lpvoid_t events,
+                                         dword_t event_count, dword_t flags,
+                                         dword_t registration_size,
+                                         lpvoid_t registration) {
+  if (registration_size < 0x40 || !registration) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  registration.Zero(registration_size);
+  registration.as<X_ETX_PRODUCER_REGISTRATION*>()->size =
+      uint32_t(registration_size);
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(EtxProducerRegister, kNone, kStub);
+
+dword_result_t EtxProducerUnregister_entry(
+    pointer_t<X_ETX_PRODUCER_REGISTRATION> registration) {
+  if (!registration || registration->size < 0x40) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(EtxProducerUnregister, kNone, kStub);
+
 // The kernel's LZX decompression as cabinets use it. A context keeps the
 // stream and each call passes one compressed frame.
 //

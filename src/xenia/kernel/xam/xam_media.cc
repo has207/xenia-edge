@@ -15,6 +15,7 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_modules.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xmodule.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
@@ -71,6 +72,12 @@ dword_result_t XamMediaVerificationInject_entry(dword_t r3, dword_t r4) {
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamMediaVerificationInject, kNone, kStub);
+
+dword_result_t XamGetClosedCaptioningState_entry() {
+  return kernel_state()->xconfig()->ReadSetting<uint8_t>(
+      XCONFIG_CONSOLE_CATEGORY, XCONFIG_CONSOLE_CLOSED_CAPTIONING);
+}
+DECLARE_XAM_EXPORT1(XamGetClosedCaptioningState, kNone, kImplemented);
 
 // Ordinals 0x7DC/0x7DD and 0x7E3/0x7E4 load and unload the two system
 // extension modules of extra AV codecs. A load takes a reference to the module

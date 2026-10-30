@@ -1180,6 +1180,14 @@ dword_result_t XamUpdateGetCurrentSystemVersion_entry() {
 }
 DECLARE_XAM_EXPORT1(XamUpdateGetCurrentSystemVersion, kNone, kImplemented);
 
+// Whether the installed optional media update is at least min_version. With
+// none installed only a min_version of 0 is met.
+dword_result_t XamIsOptionalMediaUpdateInstalled_entry(dword_t media_id,
+                                                       dword_t min_version) {
+  return min_version == 0;
+}
+DECLARE_XAM_EXPORT1(XamIsOptionalMediaUpdateInstalled, kNone, kImplemented);
+
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

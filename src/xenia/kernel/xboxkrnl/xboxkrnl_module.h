@@ -10,6 +10,9 @@
 #ifndef XENIA_KERNEL_XBOXKRNL_XBOXKRNL_MODULE_H_
 #define XENIA_KERNEL_XBOXKRNL_XBOXKRNL_MODULE_H_
 
+#include <atomic>
+#include <optional>
+
 #include "xenia/cpu/export_resolver.h"
 #include "xenia/kernel/kernel_module.h"
 #include "xenia/kernel/kernel_state.h"
@@ -37,8 +40,22 @@ class XboxkrnlModule : public KernelModule {
 
   void set_pix_function(uint32_t addr) { pix_function_ = addr; }
 
+  // What XAudioSetSpeakerConfig set during this run, if it was called.
+  std::optional<uint32_t> speaker_config() const {
+    if (!speaker_config_set_) {
+      return std::nullopt;
+    }
+    return speaker_config_.load();
+  }
+  void set_speaker_config(uint32_t config) {
+    speaker_config_ = config;
+    speaker_config_set_ = true;
+  }
+
  protected:
   uint32_t pix_function_ = 0;
+  std::atomic<uint32_t> speaker_config_ = 0;
+  std::atomic<bool> speaker_config_set_ = false;
 };
 
 }  // namespace xboxkrnl
