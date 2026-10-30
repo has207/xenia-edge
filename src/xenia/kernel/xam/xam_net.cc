@@ -1138,21 +1138,6 @@ dword_result_t NetDll_XHttpShutdown_entry(dword_t caller) {
 }
 DECLARE_XAM_EXPORT1(NetDll_XHttpShutdown, kNetworking, kStub);
 
-dword_result_t NetDll_XHttpOpen_entry(dword_t caller, lpstring_t user_agent,
-                                      dword_t access_type,
-                                      lpstring_t proxy_name,
-                                      lpstring_t proxy_bypass, dword_t flags) {
-  // retrieves xhttp directly from array X_HTTP_OBJECT_PTR_ARRAY[xnc]
-  if ((access_type != 0 && access_type != 1 && access_type != 3) ||
-      proxy_bypass) {
-    XThread::SetLastError(X_ERROR_INVALID_PARAMETER);
-  }
-
-  XThread::SetLastError(X_ERROR_NOT_SUPPORTED);  // Until properly implemented
-  return 0;
-}
-DECLARE_XAM_EXPORT1(NetDll_XHttpOpen, kNetworking, kStub);
-
 dword_result_t NetDll_socket_entry(dword_t caller, dword_t af, dword_t type,
                                    dword_t protocol) {
   XELOGI("NetDll_socket: af={}, type={}, protocol={}", af.value(), type.value(),
@@ -2043,6 +2028,19 @@ dword_result_t NetDll_XHttpCrackUrl_entry(dword_t caller, lpvoid_t url_ptr,
   return 1;
 }
 DECLARE_XAM_EXPORT1(NetDll_XHttpCrackUrl, kNetworking, kImplemented);
+
+// Nothing is ever transferred, so every counter is 0.
+dword_result_t NetDll_XHttpGetPerfCounters_entry(
+    dword_t caller, pointer_t<X_PERFORMANCE_COUNTERS> counters) {
+  if (!counters) {
+    XThread::SetLastError(X_ERROR_INVALID_PARAMETER);
+    return 0;
+  }
+  counters.Zero();
+  XThread::SetLastError(X_ERROR_SUCCESS);
+  return 1;
+}
+DECLARE_XAM_EXPORT1(NetDll_XHttpGetPerfCounters, kNetworking, kStub);
 
 }  // namespace xam
 }  // namespace kernel
