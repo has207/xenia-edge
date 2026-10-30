@@ -2213,6 +2213,34 @@ dword_result_t KeCancelTimer_entry(pointer_t<X_KTIMER> timer) {
 }
 DECLARE_XBOXKRNL_EXPORT1(KeCancelTimer, kThreading, kImplemented);
 
+dword_result_t KeSetTimer_entry(pointer_t<X_KTIMER> timer, qword_t due_time,
+                                pointer_t<XDPC> dpc) {
+  return KeSetTimerEx_entry(timer, due_time, 0, dpc);
+}
+DECLARE_XBOXKRNL_EXPORT1(KeSetTimer, kThreading, kImplemented);
+
+void KeInitializeMutant_entry(pointer_t<X_KMUTANT> mutant,
+                              dword_t initial_owner) {
+  mutant.Zero();
+  mutant->header.type = X_OBJECT_TYPES::MutantObject;
+  mutant->header.signal_state = initial_owner ? 0 : 1;
+  // Created now so an initial owner is the calling thread.
+  XObject::GetNativeObject<XMutant>(kernel_state(), mutant);
+}
+DECLARE_XBOXKRNL_EXPORT1(KeInitializeMutant, kThreading, kImplemented);
+
+// Returns the previous signal state.
+dword_result_t KeReleaseMutant_entry(pointer_t<X_KMUTANT> mutant,
+                                     dword_t priority_increment,
+                                     dword_t abandon, dword_t wait) {
+  const int32_t previous = int32_t(uint32_t(mutant->header.signal_state));
+  if (auto native = XObject::GetNativeObject<XMutant>(kernel_state(), mutant)) {
+    native->ReleaseMutant(priority_increment, !!abandon, !!wait);
+  }
+  return previous;
+}
+DECLARE_XBOXKRNL_EXPORT1(KeReleaseMutant, kThreading, kImplemented);
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe

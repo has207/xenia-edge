@@ -119,6 +119,7 @@ typedef uint32_t X_RESULT;
 #define X_ERROR_ABORTED                         X_RESULT_FROM_WIN32(0x000004D3L)
 #define X_ERROR_NOT_LOGGED_ON                   X_RESULT_FROM_WIN32(0x000004DDL)
 #define X_ERROR_NO_SUCH_USER                    X_RESULT_FROM_WIN32(0x00000525L)
+#define X_ERROR_FILE_CORRUPT                    X_RESULT_FROM_WIN32(0x00000570L)
 #define X_ERROR_FUNCTION_FAILED                 X_RESULT_FROM_WIN32(0x0000065BL)
 #define X_ERROR_EMPTY                           X_RESULT_FROM_WIN32(0x000010D2L)
 

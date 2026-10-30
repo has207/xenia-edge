@@ -524,6 +524,46 @@ dword_result_t XamGetLocaleDateFormat_entry(dword_t locale) {
 
 DECLARE_XAM_EXPORT1(XamGetLocaleDateFormat, kLocale, kImplemented);
 
+// Base time format per country (XCONFIG_USER_COUNTRY - 1), incremented when
+// the flags argument is 0. 1 means the format is just whether flags is set;
+// 0 keeps the default.
+static constexpr uint8_t XamCountryTimeFmtTable[0x6F] = {
+    1, 0, 0, 1, 1, 4, 0, 2, 0,  0, 0, 0, 1, 0, 0, 6, 0, 1, 1, 8, 4, 0, 1,
+    1, 1, 0, 0, 0, 0, 0, 2, 2,  0, 1, 1, 0, 6, 0, 2, 0, 0, 2, 0, 1, 1, 2,
+    0, 0, 0, 2, 0, 0, 2, 0, 0,  8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 4, 0, 0, 2, 1, 6, 0, 0,  0, 0, 0, 1, 0, 2, 0, 0, 0, 2, 1, 1, 8, 0,
+    2, 0, 0, 0, 0, 0, 1, 0, 10, 0, 6, 0, 0, 0, 0, 0, 6, 0, 1};
+
+dword_result_t XamGetLocaleTimeFormat_entry(dword_t flags) {
+  auto xconfig = kernel_state()->xconfig();
+  uint8_t country = xconfig->ReadSetting<uint8_t>(XCONFIG_USER_CATEGORY,
+                                                  XCONFIG_USER_COUNTRY);
+  uint32_t format = 6;
+  if (country >= 1 && country <= std::size(XamCountryTimeFmtTable)) {
+    uint8_t base = XamCountryTimeFmtTable[country - 1];
+    if (base == 1) {
+      format = flags != 0 ? 1 : 0;
+    } else if (base) {
+      format = base + (flags == 0 ? 1 : 0);
+    }
+  }
+
+  // The retail flags pick between the 12 and 24 hour variants.
+  uint32_t retail_flags = xconfig->ReadSetting<uint32_t>(
+      XCONFIG_USER_CATEGORY, XCONFIG_USER_RETAIL_FLAGS);
+  if (retail_flags & X_RETAIL_FLAGS::TwentyFourHourClock) {
+    static constexpr uint8_t k24Hour[] = {1, 0, 2, 3, 2, 3, 1, 0};
+    if (format >= 4 && format <= 11) {
+      format = k24Hour[format - 4];
+    }
+  } else if (format <= 3) {
+    static constexpr uint8_t k12Hour[] = {5, 4, 6, 7};
+    format = k12Hour[format];
+  }
+  return format;
+}
+DECLARE_XAM_EXPORT1(XamGetLocaleTimeFormat, kLocale, kImplemented);
+
 void XFormatDateString(uint64_t filetime, uint32_t buffer_address,
                        uint32_t buffer_size) {
   auto buffer = kernel_memory()->TranslateVirtual<char16_t*>(buffer_address);

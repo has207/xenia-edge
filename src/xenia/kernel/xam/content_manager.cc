@@ -592,6 +592,29 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
   return X_ERROR_SUCCESS;
 }
 
+X_RESULT ContentManager::OpenContentFile(
+    const std::string_view root_name,
+    const std::filesystem::path& package_path) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  if (open_packages_.count(string_key_insensitive(root_name))) {
+    return X_ERROR_ALREADY_EXISTS;
+  }
+  if (!std::filesystem::exists(package_path)) {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+
+  auto package = std::make_unique<ContentPackage>(
+      kernel_state_, root_name, XCONTENT_AGGREGATE_DATA(), package_path);
+  if (!package->is_mounted()) {
+    return X_ERROR_FILE_CORRUPT;
+  }
+
+  open_packages_.insert(
+      {string_key_insensitive::create(root_name), package.release()});
+  return X_ERROR_SUCCESS;
+}
+
 X_RESULT ContentManager::CloseContent(const std::string_view root_name) {
   auto global_lock = global_critical_region_.Acquire();
 
