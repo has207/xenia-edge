@@ -15,10 +15,15 @@
 #include <iterator>
 #include <span>
 
+#include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
+#include "xenia/base/system.h"
+#include "xenia/base/xxhash.h"
 #include "xenia/config.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/profile_manager.h"
+#include "xenia/kernel/xam/xam_state.h"
 #include "xenia/net/xnet_secure.h"
 
 // XConfig settings are kept as cvars so they flow through Xenia's existing
@@ -92,13 +97,15 @@ constexpr uint8_t kMacPrefix[] = {0x00, 0x1D, 0xD8};
 // Fills |out| (>= kMaxSettingSize bytes) with the guest-formatted bytes of the
 // requested setting and returns its size, or 0 if the setting is unhandled.
 uint16_t BuildSetting(X_CONFIG_CATEGORY category, uint16_t setting,
-                      const std::array<uint8_t, 6>& mac_address, uint8_t* out) {
+                      XConfig& config, uint8_t* out) {
   switch (category) {
     case XCONFIG_SECURED_CATEGORY:
       switch (setting) {
-        case XCONFIG_SECURED_MAC_ADDRESS:
+        case XCONFIG_SECURED_MAC_ADDRESS: {
+          const auto& mac_address = config.mac_address();
           std::copy(mac_address.begin(), mac_address.end(), out);
           return uint16_t(mac_address.size());
+        }
         case XCONFIG_SECURED_AV_REGION: {
           uint32_t region = 0;
           switch (cvars::video_standard) {
@@ -266,17 +273,57 @@ void StoreConsoleSetting(T& live, const char* name, T value) {
 
 }  // namespace
 
-XConfig::XConfig() {
-  // New for every title so instances on one machine never share it.
-  std::copy(std::begin(kMacPrefix), std::end(kMacPrefix), mac_address_.begin());
-  net::Random(std::span(mac_address_).subspan(std::size(kMacPrefix)));
+std::array<uint8_t, 6> ConsoleMacAddress(std::string_view identity) {
+  const uint64_t hash = XXH3_64bits(identity.data(), identity.size());
+  std::array<uint8_t, 6> mac;
+  std::copy(std::begin(kMacPrefix), std::end(kMacPrefix), mac.begin());
+  for (size_t i = std::size(kMacPrefix); i < mac.size(); ++i) {
+    mac[i] = uint8_t(hash >> (i * 8));
+  }
+  return mac;
+}
+
+// Not before a title asks: the profiles signed in at boot sign in while the
+// kernel is still being built.
+void XConfig::ResolveOwner() {
+  std::call_once(owner_once_, [this]() {
+    auto xam_state = kernel_state()->xam_state();
+    auto profile_manager = xam_state ? xam_state->profile_manager() : nullptr;
+    if (auto profile = profile_manager
+                           ? profile_manager->GetProfile(XUserIndexAny)
+                           : nullptr) {
+      owner_xuid_ = profile->xuid();
+    }
+    // Fixed like a console's, as some titles encrypt saves with it. Instances
+    // on one machine need different profiles signed in to System Link.
+    const std::string identity =
+        owner_xuid_ ? fmt::format("{:016X}", owner_xuid_) : xe::GetMachineId();
+    if (!identity.empty()) {
+      mac_address_ = ConsoleMacAddress(identity);
+      return;
+    }
+    XELOGW(
+        "XConfig: No machine id, so the console MAC address is new each run");
+    std::copy(std::begin(kMacPrefix), std::end(kMacPrefix),
+              mac_address_.begin());
+    net::Random(std::span(mac_address_).subspan(std::size(kMacPrefix)));
+  });
+}
+
+uint64_t XConfig::owner_xuid() {
+  ResolveOwner();
+  return owner_xuid_;
+}
+
+const std::array<uint8_t, 6>& XConfig::mac_address() {
+  ResolveOwner();
+  return mac_address_;
 }
 
 void XConfig::ReadSetting(const X_CONFIG_CATEGORY category,
                           const uint16_t setting_id, void* buffer) {
   uint8_t scratch[kMaxSettingSize] = {};
-  const uint16_t size =
-      BuildSetting(category, setting_id, mac_address_, scratch);
+  const uint16_t size = BuildSetting(category, setting_id, *this, scratch);
   if (size) {
     std::memcpy(buffer, scratch, size);
   }
@@ -285,7 +332,7 @@ void XConfig::ReadSetting(const X_CONFIG_CATEGORY category,
 uint16_t XConfig::GetSettingSize(const X_CONFIG_CATEGORY category,
                                  const uint16_t setting_id) {
   uint8_t scratch[kMaxSettingSize];
-  return BuildSetting(category, setting_id, mac_address_, scratch);
+  return BuildSetting(category, setting_id, *this, scratch);
 }
 
 void XConfig::WriteSetting(const X_CONFIG_CATEGORY category,

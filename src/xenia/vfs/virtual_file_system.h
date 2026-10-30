@@ -44,6 +44,10 @@ class VirtualFileSystem {
   Entry* ResolvePath(const std::string_view path);
 
   Entry* CreatePath(const std::string_view path, uint32_t attributes);
+  // Moves |entry| to |target_path|, which can be on a device mounted below the
+  // one a link in it names.
+  X_STATUS RenameEntry(Entry* entry, const std::string_view target_path,
+                       bool replace_existing);
   bool DeletePath(const std::string_view path);
 
   X_STATUS OpenFile(Entry* root_entry, const std::string_view path,
@@ -69,6 +73,8 @@ class VirtualFileSystem {
   std::unordered_map<std::string, std::string> symlinks_;
 
   bool ResolveSymbolicLink(const std::string_view path, std::string& result);
+  // The root of the device mounted at exactly |path|, null when none is.
+  Entry* ResolveMountRoot(const std::string_view path);
 };
 
 }  // namespace vfs

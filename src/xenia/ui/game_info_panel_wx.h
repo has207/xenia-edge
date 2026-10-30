@@ -138,6 +138,7 @@ class GameInfoPanel : public wxPanel {
   void BuildXboxOriginalSaves(wxWindow* parent, wxBoxSizer* sizer);
   void BuildXboxOriginalContent(wxWindow* parent, wxBoxSizer* sizer);
   // This title's folder under XeFu's Xbox1\<area>, empty when it has none.
+  // UDATA is the signed-in profile's.
   std::filesystem::path XboxOriginalTitleDir(std::string_view area) const;
   // Name and size rows, or a note when there are none.
   void AddContentRows(wxWindow* parent, wxBoxSizer* sizer,

@@ -23,6 +23,7 @@
 #include "xenia/vfs/entry.h"
 #include "xenia/vfs/file.h"
 #include "xenia/vfs/gdfx_util.h"
+#include "xenia/vfs/virtual_file_system.h"
 #include "xenia/vfs/xbe_metadata.h"
 #include "xenia/vfs/xbox_original_data.h"
 #include "xenia/vfs/xex_metadata.h"
@@ -320,6 +321,60 @@ TEST_CASE("Original Xbox title data on disk", "[xbox_original]") {
   std::filesystem::remove_all(root);
 }
 
+TEST_CASE("Original Xbox saves per profile", "[xbox_original]") {
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() /
+      ("xenia-vfs-xbox-saves-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+  const auto shared = root / "Xbox1" / "UDATA";
+  const auto save = std::filesystem::path("4D53004B") / "AAAAAAAAAAAA";
+  std::filesystem::create_directories(shared / save);
+  std::ofstream(shared / save / "SaveMeta.xbx") << "Name=career";
+  constexpr uint64_t kFirst = 0xE000000000000001;
+  constexpr uint64_t kSecond = 0xE000000000000002;
+  const auto first_saves = root / "E000000000000001" / "Xbox1" / "UDATA";
+  const auto second_saves = root / "E000000000000002" / "Xbox1" / "UDATA";
+
+  SECTION("No one signed in uses the shared saves") {
+    REQUIRE(FindXboxOriginalSaves(root, 0) == shared);
+    REQUIRE(PrepareXboxOriginalSaves(root, 0) == shared);
+  }
+
+  SECTION("The first profile starts with a copy of the shared saves") {
+    REQUIRE(FindXboxOriginalSaves(root, kFirst) == shared);
+    REQUIRE(PrepareXboxOriginalSaves(root, kFirst) == first_saves);
+    REQUIRE(std::filesystem::exists(first_saves / save / "SaveMeta.xbx"));
+    REQUIRE(std::filesystem::exists(shared / save / "SaveMeta.xbx"));
+    REQUIRE(FindXboxOriginalSaves(root, kFirst) == first_saves);
+  }
+
+  SECTION("Later profiles start empty") {
+    PrepareXboxOriginalSaves(root, kFirst);
+    REQUIRE(FindXboxOriginalSaves(root, kSecond) == second_saves);
+    REQUIRE(PrepareXboxOriginalSaves(root, kSecond) == second_saves);
+    REQUIRE(std::filesystem::is_empty(second_saves));
+  }
+
+  SECTION("A copy that stopped partway is made again") {
+    const auto stale = root / "E000000000000001.copying" / "Xbox1" / "UDATA";
+    std::filesystem::create_directories(stale);
+    std::ofstream(stale / "stale.bin") << "s";
+    REQUIRE(PrepareXboxOriginalSaves(root, kFirst) == first_saves);
+    REQUIRE(std::filesystem::exists(first_saves / save / "SaveMeta.xbx"));
+    REQUIRE(!std::filesystem::exists(first_saves / "stale.bin"));
+    REQUIRE(!std::filesystem::exists(root / "E000000000000001.copying"));
+  }
+
+  SECTION("The folder the saves are mounted on is made") {
+    std::filesystem::remove_all(root / "Xbox1");
+    REQUIRE(PrepareXboxOriginalSaves(root, kFirst) == first_saves);
+    REQUIRE(std::filesystem::is_directory(root / "Xbox1"));
+  }
+
+  std::filesystem::remove_all(root);
+}
+
 // A XEX2 header holding just the security info, which allows |media|.
 static std::vector<uint8_t> MakeXex(uint32_t media,
                                     uint32_t header_size = 0x200) {
@@ -356,6 +411,63 @@ TEST_CASE("XEX allowed media", "[xex]") {
     REQUIRE(m->allowed_media_types == 0);
     REQUIRE(!m->RunsFromPackageOnly());
   }
+}
+
+TEST_CASE("A device mounted on a host folder", "[vfs]") {
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() /
+      ("xenia-vfs-nested-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+  std::filesystem::create_directories(root / "outer" / "Xbox1" / "UDATA");
+  std::ofstream(root / "outer" / "Xbox1" / "UDATA" / "shared.bin") << "s";
+  std::filesystem::create_directories(root / "inner");
+  std::ofstream(root / "inner" / "own.bin") << "o";
+  {
+    VirtualFileSystem vfs;
+    auto outer = std::make_unique<HostPathDevice>("\\Device\\Outer",
+                                                  root / "outer", false);
+    auto inner = std::make_unique<HostPathDevice>(
+        "\\Device\\Outer\\Xbox1\\UDATA", root / "inner", false);
+    REQUIRE(outer->Initialize());
+    REQUIRE(inner->Initialize());
+    const Device* inner_device = inner.get();
+    vfs.RegisterDevice(std::move(outer));
+    vfs.RegisterDevice(std::move(inner));
+    vfs.RegisterSymbolicLink("Y:", "\\Device\\Outer");
+
+    SECTION("The folder's path opens the mounted device") {
+      File* file = nullptr;
+      FileAction action;
+      REQUIRE(vfs.OpenFile(nullptr, "Y:\\Xbox1\\UDATA", FileDisposition::kOpen,
+                           xe::filesystem::FileAccess::kFileReadData, true,
+                           false, &file, &action) == X_STATUS_SUCCESS);
+      REQUIRE(file->entry()->device() == inner_device);
+      file->Destroy();
+    }
+
+    SECTION("A rename stays on the mounted device") {
+      Entry* entry = vfs.ResolvePath("Y:\\Xbox1\\UDATA\\own.bin");
+      REQUIRE(entry != nullptr);
+      REQUIRE(vfs.RenameEntry(entry, "Y:\\Xbox1\\away.bin", false) ==
+              X_STATUS_NOT_SAME_DEVICE);
+      REQUIRE(vfs.RenameEntry(entry, "Y:\\Xbox1\\UDATA\\moved.bin", false) ==
+              X_STATUS_SUCCESS);
+      REQUIRE(std::filesystem::exists(root / "inner" / "moved.bin"));
+    }
+
+    SECTION("The folder it is mounted on can go missing on the host") {
+      std::filesystem::remove_all(root / "outer" / "Xbox1");
+      File* file = nullptr;
+      FileAction action;
+      REQUIRE(vfs.OpenFile(nullptr, "Y:\\Xbox1\\UDATA", FileDisposition::kOpen,
+                           xe::filesystem::FileAccess::kFileReadData, true,
+                           false, &file, &action) == X_STATUS_SUCCESS);
+      REQUIRE(file->entry()->device() == inner_device);
+      file->Destroy();
+    }
+  }
+  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("Host path entry found by its new name after a rename",

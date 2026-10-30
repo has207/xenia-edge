@@ -41,6 +41,18 @@ struct XboxOriginalContent {
 std::filesystem::path FindXboxOriginalPath(const std::filesystem::path& dir,
                                            std::string_view name);
 
+// Where |xuid|'s original Xbox saves are in the HDD's Compatibility folder: the
+// profile's own UDATA, or the shared one for 0, no one signed in. Before any
+// profile has its own, every profile reads the shared one.
+std::filesystem::path FindXboxOriginalSaves(
+    const std::filesystem::path& compatibility, uint64_t xuid);
+
+// Makes |xuid|'s own UDATA if it has none and returns it, empty when it can't,
+// and the shared Xbox1 folder it is mounted on. The first profile to get one
+// starts with a copy of the shared saves, which predate per-profile saves.
+std::filesystem::path PrepareXboxOriginalSaves(
+    const std::filesystem::path& compatibility, uint64_t xuid);
+
 // The saves in a title's UDATA folder. One without a name is logged and left
 // out.
 std::vector<XboxOriginalSave> ListXboxOriginalSaves(

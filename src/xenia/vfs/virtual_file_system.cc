@@ -200,6 +200,35 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
   return device->ResolvePath(relative_path);
 }
 
+X_STATUS VirtualFileSystem::RenameEntry(Entry* entry,
+                                        const std::string_view target_path,
+                                        bool replace_existing) {
+  // One lock, so the new folder can't go away before the entry moves into it.
+  auto global_lock = global_critical_region_.Acquire();
+  return entry->Rename(ResolvePath(xe::utf8::find_base_guest_path(target_path)),
+                       xe::utf8::find_name_from_guest_path(target_path),
+                       replace_existing);
+}
+
+Entry* VirtualFileSystem::ResolveMountRoot(const std::string_view path) {
+  auto global_lock = global_critical_region_.Acquire();
+  auto normalized_path(xe::utf8::canonicalize_guest_path(path));
+  std::string resolved_path;
+  if (ResolveSymbolicLink(normalized_path, resolved_path)) {
+    normalized_path = resolved_path;
+  }
+  for (const auto& d : devices_) {
+    std::string_view mount_path = d->mount_path();
+    if (!mount_path.empty() && mount_path.back() == '\\') {
+      mount_path.remove_suffix(1);
+    }
+    if (xe::utf8::equal_case(normalized_path, mount_path)) {
+      return d->ResolvePath("");
+    }
+  }
+  return nullptr;
+}
+
 Entry* VirtualFileSystem::CreatePath(const std::string_view path,
                                      uint32_t attributes) {
   auto path_parts = xe::utf8::split_path(path);
@@ -285,6 +314,20 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
 
     auto file_name = xe::utf8::find_name_from_guest_path(path);
     entry = parent_entry->GetChild(file_name);
+    // A device mounted on a folder of a host device is what the folder's path
+    // names. A raw partition's stand-in in a NullDevice stays what it is.
+    if (!root_entry && dynamic_cast<HostPathEntry*>(parent_entry)) {
+      if (Entry* mount_root = ResolveMountRoot(path)) {
+        // Replacing it would delete the whole device.
+        if (creation_disposition == FileDisposition::kSuperscede ||
+            creation_disposition == FileDisposition::kOverwrite ||
+            creation_disposition == FileDisposition::kOverwriteIf) {
+          *out_action = FileAction::kDoesNotExist;
+          return X_STATUS_ACCESS_DENIED;
+        }
+        entry = mount_root;
+      }
+    }
   } else if (path.empty() && root_entry) {
     // An empty relative path is the root entry itself. Replacing it would
     // delete what the root handle still refers to.
@@ -304,8 +347,9 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
       return X_STATUS_FILE_IS_A_DIRECTORY;
     }
 
-    // If the entry does not exist on the host then remove the cached entry
-    if (parent_entry) {
+    // If the entry does not exist on the host then remove the cached entry. A
+    // device mounted there has its own folder.
+    if (parent_entry && entry->device() == parent_entry->device()) {
       const xe::vfs::HostPathEntry* host_path =
           dynamic_cast<const xe::vfs::HostPathEntry*>(parent_entry);
 

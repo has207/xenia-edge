@@ -14,6 +14,7 @@
 
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
+#include "xenia/base/filesystem.h"
 #include "xenia/base/threading.h"
 #include "xenia/kernel/guest_scheduler.h"
 #include "xenia/kernel/kernel_state.h"
@@ -513,8 +514,10 @@ X_STATUS XFile::SetTimes(uint64_t create_timestamp, uint64_t access_timestamp,
 X_STATUS XFile::Rename(const std::filesystem::path file_path,
                        bool replace_existing) {
   X_STATUS result = X_STATUS_SUCCESS;
-  RunSynchronousIo(
-      [&]() { result = entry()->Rename(file_path, replace_existing); });
+  RunSynchronousIo([&]() {
+    result = kernel_state()->file_system()->RenameEntry(
+        entry(), xe::path_to_utf8(file_path), replace_existing);
+  });
   return result;
 }
 

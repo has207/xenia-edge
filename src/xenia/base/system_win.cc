@@ -64,4 +64,16 @@ bool SetProcessPriorityClass(const uint32_t priority_class) {
                           xeniaToWindowsPriorityClassMapping[priority_class]);
 }
 
+std::string GetMachineId() {
+  // Set when Windows is installed.
+  wchar_t guid[64];
+  DWORD size = sizeof(guid);
+  if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography",
+                   L"MachineGuid", RRF_RT_REG_SZ, nullptr, guid,
+                   &size) != ERROR_SUCCESS) {
+    return {};
+  }
+  return xe::to_utf8(reinterpret_cast<const char16_t*>(guid));
+}
+
 }  // namespace xe

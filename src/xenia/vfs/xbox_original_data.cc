@@ -10,6 +10,7 @@
 #include "xenia/vfs/xbox_original_data.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <iterator>
 
@@ -150,6 +151,103 @@ std::filesystem::path FindXboxOriginalPath(const std::filesystem::path& dir,
     }
   }
   return {};
+}
+
+namespace {
+
+// A profile's own Compatibility folder is named by its XUID.
+std::string ProfileFolderName(uint64_t xuid) {
+  return fmt::format("{:016X}", xuid);
+}
+
+std::filesystem::path ProfileSaves(const std::filesystem::path& compatibility,
+                                   uint64_t xuid) {
+  return compatibility / ProfileFolderName(xuid) / "Xbox1" / "UDATA";
+}
+
+std::filesystem::path SharedSaves(const std::filesystem::path& compatibility) {
+  const auto xbox1 = FindXboxOriginalPath(compatibility, "Xbox1");
+  const auto saves = xbox1.empty() ? std::filesystem::path()
+                                   : FindXboxOriginalPath(xbox1, "UDATA");
+  return saves.empty() ? compatibility / "Xbox1" / "UDATA" : saves;
+}
+
+bool AnyProfileHasSaves(const std::filesystem::path& compatibility) {
+  std::error_code ec;
+  for (std::filesystem::directory_iterator it(compatibility, ec), end;
+       !ec && it != end; it.increment(ec)) {
+    const std::string name = xe::path_to_utf8(it->path().filename());
+    std::error_code type_ec;
+    if (it->is_directory(type_ec) && name.size() == 16 &&
+        std::all_of(name.begin(), name.end(),
+                    [](char c) { return std::isxdigit(uint8_t(c)); })) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+std::filesystem::path FindXboxOriginalSaves(
+    const std::filesystem::path& compatibility, uint64_t xuid) {
+  if (!xuid) {
+    return SharedSaves(compatibility);
+  }
+  const auto own = ProfileSaves(compatibility, xuid);
+  std::error_code ec;
+  if (std::filesystem::exists(own, ec) || AnyProfileHasSaves(compatibility)) {
+    return own;
+  }
+  return SharedSaves(compatibility);
+}
+
+std::filesystem::path PrepareXboxOriginalSaves(
+    const std::filesystem::path& compatibility, uint64_t xuid) {
+  if (!xuid) {
+    return SharedSaves(compatibility);
+  }
+  // An open of the mount's own path needs the folder it is mounted in.
+  std::error_code ec;
+  if (FindXboxOriginalPath(compatibility, "Xbox1").empty()) {
+    std::filesystem::create_directories(compatibility / "Xbox1", ec);
+  }
+  const auto own = ProfileSaves(compatibility, xuid);
+  if (std::filesystem::exists(own, ec)) {
+    return own;
+  }
+  const auto shared = SharedSaves(compatibility);
+  if (!AnyProfileHasSaves(compatibility) &&
+      std::filesystem::exists(shared, ec)) {
+    // Copied beside it and moved in whole, so a copy that fails leaves no
+    // profile folder and the next launch tries again.
+    const auto copying = compatibility / (ProfileFolderName(xuid) + ".copying");
+    std::filesystem::remove_all(copying, ec);
+    if (!ec) {
+      std::filesystem::create_directories(copying / "Xbox1", ec);
+    }
+    if (!ec) {
+      std::filesystem::copy(shared, copying / "Xbox1" / "UDATA",
+                            std::filesystem::copy_options::recursive, ec);
+    }
+    if (!ec) {
+      std::filesystem::rename(copying, compatibility / ProfileFolderName(xuid),
+                              ec);
+    }
+    if (ec) {
+      XELOGE("Copying the shared original Xbox saves for {:016X} failed: {}",
+             xuid, ec.message());
+      std::error_code cleanup_ec;
+      std::filesystem::remove_all(copying, cleanup_ec);
+      return {};
+    }
+    XELOGI(
+        "Profile {:016X} starts with a copy of the shared original Xbox saves",
+        xuid);
+    return own;
+  }
+  std::filesystem::create_directories(own, ec);
+  return ec ? std::filesystem::path() : own;
 }
 
 std::vector<XboxOriginalSave> ListXboxOriginalSaves(

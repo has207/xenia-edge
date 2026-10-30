@@ -145,7 +145,7 @@ X_STATUS Entry::Rename(const std::filesystem::path file_path,
   // Store the string to ensure string_views from split_path remain valid
   const std::string path_str = xe::path_to_utf8(file_path);
   std::vector<std::string_view> path_parts = xe::utf8::split_path(path_str);
-  if (path_parts.size() < 2 || !parent_) {
+  if (path_parts.size() < 2) {
     return X_STATUS_OBJECT_NAME_INVALID;
   }
 
@@ -153,12 +153,23 @@ X_STATUS Entry::Rename(const std::filesystem::path file_path,
   path_parts.erase(path_parts.begin());
 
   const std::string guest_path = xe::utf8::join_guest_paths(path_parts);
-  Entry* new_parent =
-      device_->ResolvePath(xe::utf8::find_base_guest_path(guest_path));
+  return Rename(
+      device_->ResolvePath(xe::utf8::find_base_guest_path(guest_path)),
+      path_parts.back(), replace_existing);
+}
+
+X_STATUS Entry::Rename(Entry* new_parent, std::string_view name,
+                       bool replace_existing) {
+  auto global_lock = global_critical_region_.Acquire();
+  if (!parent_) {
+    return X_STATUS_OBJECT_NAME_INVALID;
+  }
   if (!new_parent || !(new_parent->attributes() & kFileAttributeDirectory)) {
     return X_STATUS_OBJECT_PATH_NOT_FOUND;
   }
-  const std::string_view name = path_parts.back();
+  if (new_parent->device() != device_) {
+    return X_STATUS_NOT_SAME_DEVICE;
+  }
 
   // Renaming to its own name fails too, even a change of case only.
   Entry* existing = new_parent->GetChild(name);

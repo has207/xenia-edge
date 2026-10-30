@@ -29,6 +29,9 @@ void LaunchFileExplorer(const std::filesystem::path& path);
 
 bool SetProcessPriorityClass(const uint32_t priority_class);
 
+// An id the operating system keeps for this machine, empty when it has none.
+std::string GetMachineId();
+
 enum class SimpleMessageBoxType {
   Help,
   Warning,

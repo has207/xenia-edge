@@ -48,6 +48,7 @@
 #include "xenia/kernel/xam/xdbf/spa_info.h"
 #include "xenia/kernel/xbdm/xbdm_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/memory.h"
 #include "xenia/ui/file_picker.h"
@@ -65,6 +66,7 @@
 #include "xenia/vfs/file.h"
 #include "xenia/vfs/virtual_file_system.h"
 #include "xenia/vfs/xbe_metadata.h"
+#include "xenia/vfs/xbox_original_data.h"
 #include "xenia/vfs/xex_metadata.h"
 
 #if XE_ARCH_AMD64
@@ -2362,11 +2364,27 @@ X_STATUS Emulator::PrepareLaunch(const std::filesystem::path& path,
   }
 
   if (title_id_ == kXeFuTitleId) {
+    // A signed-in profile has its own saves, and the console's MAC address,
+    // which some games encrypt them with, follows the same profile. They are
+    // ready before the Compatibility device reads its folder. Without a folder
+    // of its own the launch reads the shared saves.
+    const uint64_t xuid = kernel_state_->xconfig()->owner_xuid();
+    const auto saves =
+        xuid ? vfs::PrepareXboxOriginalSaves(compatibility_path(), xuid)
+             : std::filesystem::path();
     auto compatibility_device = std::make_unique<vfs::HostPathDevice>(
         "\\Device\\Harddisk0\\Partition1\\Compatibility", compatibility_path(),
         false);
     if (compatibility_device->Initialize()) {
       file_system_->RegisterDevice(std::move(compatibility_device));
+    }
+    if (!saves.empty()) {
+      auto saves_device = std::make_unique<vfs::HostPathDevice>(
+          "\\Device\\Harddisk0\\Partition1\\Compatibility\\Xbox1\\UDATA", saves,
+          false);
+      if (saves_device->Initialize()) {
+        file_system_->RegisterDevice(std::move(saves_device));
+      }
     }
     // xbox.xex and the XeFu builds, which XeFu also writes its config.bin to.
     auto system_device = std::make_unique<vfs::HostPathDevice>(

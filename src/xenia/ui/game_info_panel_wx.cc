@@ -708,8 +708,18 @@ std::filesystem::path GameInfoPanel::XboxOriginalTitleDir(
     return {};
   }
   // Each folder is matched in any case. A missing one leaves the rest empty.
-  auto dir = vfs::FindXboxOriginalPath(emulator->compatibility_path(), "Xbox1");
-  dir = vfs::FindXboxOriginalPath(dir, area);
+  std::filesystem::path dir;
+  if (area == "UDATA") {
+    // The signed-in profile's, as the game would get.
+    auto* profiles = profile_manager();
+    auto* profile = profiles ? profiles->GetProfile(XUserIndexAny) : nullptr;
+    dir = vfs::FindXboxOriginalSaves(emulator->compatibility_path(),
+                                     profile ? profile->xuid() : 0);
+  } else {
+    dir = vfs::FindXboxOriginalPath(
+        vfs::FindXboxOriginalPath(emulator->compatibility_path(), "Xbox1"),
+        area);
+  }
   return vfs::FindXboxOriginalPath(dir, fmt::format("{:08X}", key_.title_id));
 }
 

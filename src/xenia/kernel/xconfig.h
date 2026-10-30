@@ -14,6 +14,8 @@
 #include <concepts>
 #include <cstdint>
 #include <map>
+#include <mutex>
+#include <string_view>
 
 #include "xenia/base/byte_order.h"
 
@@ -401,13 +403,21 @@ concept XConfigValidValueType =
     std::same_as<T, uint32_t> || std::same_as<T, uint64_t> ||
     std::same_as<T, float>;
 
+// The MAC address of the console |identity| names.
+std::array<uint8_t, 6> ConsoleMacAddress(std::string_view identity);
+
 class XConfig {
  public:
-  XConfig();
+  XConfig() = default;
   ~XConfig() = default;
 
+  // The profile signed in to the lowest slot when first asked, 0 when none is.
+  // The console's MAC address and, under XeFu, the original Xbox saves follow
+  // it.
+  uint64_t owner_xuid();
+
   // The console's network adapter.
-  const std::array<uint8_t, 6>& mac_address() const { return mac_address_; }
+  const std::array<uint8_t, 6>& mac_address();
 
   // Reads a setting's raw (guest big-endian) bytes into |buffer|.
   void ReadSetting(const X_CONFIG_CATEGORY category, const uint16_t setting_id,
@@ -434,7 +444,11 @@ class XConfig {
                           const uint16_t setting_id);
 
  private:
-  std::array<uint8_t, 6> mac_address_;
+  void ResolveOwner();
+
+  std::once_flag owner_once_;
+  uint64_t owner_xuid_ = 0;
+  std::array<uint8_t, 6> mac_address_ = {};
 };
 
 }  // namespace kernel
