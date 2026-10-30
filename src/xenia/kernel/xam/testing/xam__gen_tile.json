@@ -1,0 +1,375 @@
+{
+ "corpus": "tile",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-30",
+ "steps": [
+  {
+   "scenario": "missing game icon",
+   "name": "synchronous",
+   "export": "XamReadTileToTexture",
+   "r3": "000000000000065B",
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 305419896
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "texture",
+     "offset": 0
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "missing game icon",
+   "name": "overlapped",
+   "export": "XamReadTileToTexture",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "overlapped[:0x8]": "0000065b00000000"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 305419896
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "texture",
+     "offset": 16384
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 32768
+    }
+   ]
+  },
+  {
+   "scenario": "missing gamer tile by key",
+   "name": "synchronous",
+   "export": "XamReadTileToTexture",
+   "r3": "000000000000065B",
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "value": 4294838225
+    },
+    {
+     "value": 562945658585087
+    },
+    {
+     "value": 254
+    },
+    {
+     "pointer": "texture",
+     "offset": 0
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "missing gamer tile by key",
+   "name": "overlapped",
+   "export": "XamReadTileToTexture",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "overlapped[:0x8]": "0000065b00000000"
+   },
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "value": 4294838225
+    },
+    {
+     "value": 562945658585087
+    },
+    {
+     "value": 254
+    },
+    {
+     "pointer": "texture",
+     "offset": 16384
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 32768
+    }
+   ]
+  },
+  {
+   "scenario": "empty slot",
+   "name": "synchronous",
+   "export": "XamReadTileToTexture",
+   "r3": "000000000000065B",
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "value": 4294838225
+    },
+    {
+     "value": 562945658585087
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "texture",
+     "offset": 0
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "empty slot",
+   "name": "overlapped",
+   "export": "XamReadTileToTexture",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "overlapped": "0000065b000000000000000000000000000000000000000080070525"
+   },
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "value": 4294838225
+    },
+    {
+     "value": 562945658585087
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "texture",
+     "offset": 16384
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 32768
+    }
+   ]
+  },
+  {
+   "scenario": "bad tile type",
+   "name": "synchronous",
+   "export": "XamReadTileToTexture",
+   "r3": "000000000000065B",
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 32
+    },
+    {
+     "value": 305419896
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "texture",
+     "offset": 0
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad tile type",
+   "name": "overlapped",
+   "export": "XamReadTileToTexture",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "texture[:0x40]": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "overlapped": "0000065b000000000000000000000000000000000000000080070002"
+   },
+   "args": [
+    {
+     "value": 32
+    },
+    {
+     "value": 305419896
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "texture",
+     "offset": 16384
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 32768
+    }
+   ]
+  },
+  {
+   "scenario": "null texture",
+   "name": "synchronous",
+   "export": "XamReadTileToTexture",
+   "r3": "000000000000065B",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 305419896
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "null texture",
+   "name": "overlapped",
+   "export": "XamReadTileToTexture",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "overlapped[:0x8]": "0000065b00000000"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 305419896
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 64
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 0
+    }
+   ]
+  }
+ ]
+}
