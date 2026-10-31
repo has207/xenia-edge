@@ -115,6 +115,7 @@ DECLARE_bool(widescreen);
 DECLARE_uint32(launch_flags);
 DECLARE_string(launch_data);
 DECLARE_string(launch_xbox_disc);
+DECLARE_string(launch_package);
 
 #if XE_PLATFORM_WIN32 && XE_ARCH_AMD64 == 1
 DEFINE_bool(enable_rdrand_ntdll_patch, false,
@@ -794,6 +795,7 @@ void EmulatorApp::EmulatorThread() {
     // (must be set before LaunchPath so the game sees it immediately)
     if (xam) {
       xam->loader_data().host_path = xe::path_to_utf8(abs_path);
+      xam->loader_data().package_path = cvars::launch_package;
     }
 
     // Apply per-game cvar overrides before bringing up subsystems so the
@@ -809,7 +811,7 @@ void EmulatorApp::EmulatorThread() {
         [this]() { emulator_window_->SetupGraphicsSystemPresenterPainting(); });
 
     // TODO(has207): Add archive format check like in RunTitle?
-    result = emulator_->LaunchPath(abs_path);
+    result = emulator_->LaunchPath(abs_path, cvars::launch_package);
     if (const std::string file = emulator_->TakeMissingXeFuFile();
         !file.empty()) {
       app_context().CallInUIThreadSynchronous(

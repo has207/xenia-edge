@@ -586,10 +586,13 @@ static void LaunchTitle(std::string path, std::string_view d_drive_path,
     loader_data.launch_data_present = true;
 
     std::filesystem::path host_path = loader_data.host_path;
+    std::string package_path = loader_data.package_path;
     std::string launch_path = xe::path_to_utf8(path);
 
-    XELOGI("XamLoaderLaunchTitle: original host_path={}, launch_path={}",
-           xe::strip_pii(loader_data.host_path), launch_path);
+    XELOGI(
+        "XamLoaderLaunchTitle: original host_path={}, package_path={}, "
+        "launch_path={}",
+        xe::strip_pii(loader_data.host_path), package_path, launch_path);
 
     // Remove common guest path prefixes (case-insensitive since Xbox
     // paths are case-insensitive, games may pass e.g. "GAME:\")
@@ -613,6 +616,7 @@ static void LaunchTitle(std::string path, std::string_view d_drive_path,
         return;
       }
       host_path = host_entry->host_path();
+      package_path.clear();
       launch_path = "";
     } else if (host_path.extension() == ".xex") {
       host_path.remove_filename();
@@ -620,8 +624,10 @@ static void LaunchTitle(std::string path, std::string_view d_drive_path,
       launch_path = "";
     }
 
-    XELOGI("XamLoaderLaunchTitle: normalized host_path={}, launch_path={}",
-           xe::strip_pii(xe::path_to_utf8(host_path)), launch_path);
+    XELOGI(
+        "XamLoaderLaunchTitle: normalized host_path={}, package_path={}, "
+        "launch_path={}",
+        xe::strip_pii(xe::path_to_utf8(host_path)), package_path, launch_path);
 
     // Handle title launch in-process via full Shutdown/Setup cycle. Disabled
     // on macOS — pthread_cancel there doesn't run C++ destructors, so
@@ -644,9 +650,10 @@ static void LaunchTitle(std::string path, std::string_view d_drive_path,
       // all guest threads including the caller.
       std::thread([emulator, new_host_path = std::move(new_host_path),
                    new_launch_module = std::move(new_launch_module), new_flags,
-                   new_data = std::move(new_data)]() mutable {
+                   new_data = std::move(new_data),
+                   package_path = std::move(package_path)]() mutable {
         emulator->RelaunchTitle(new_host_path, new_launch_module, new_flags,
-                                std::move(new_data));
+                                std::move(new_data), true, package_path);
       }).detach();
 
       // Stop running guest code; RelaunchTitle terminates us. Suspend can
@@ -671,7 +678,8 @@ static void LaunchTitle(std::string path, std::string_view d_drive_path,
                           loader_data.launch_flags, launch_data_hex,
                           emulator->KeepsXboxGame(host_path)
                               ? xe::path_to_utf8(emulator->xbox_disc_path())
-                              : std::string());
+                              : std::string(),
+                          package_path);
     }
 
     XELOGI("XamLoaderLaunchTitle: terminating to launch new title");

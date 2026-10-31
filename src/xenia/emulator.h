@@ -146,6 +146,10 @@ class Emulator {
   const std::filesystem::path& last_launch_path() const {
     return last_launch_path_;
   }
+  // The package inside last_launch_path() that title runs from, if any.
+  const std::string& last_launch_package() const {
+    return last_launch_package_;
+  }
 
   // Name of the title in the default language.
   const std::string& title_name() const { return title_name_; }
@@ -262,6 +266,9 @@ class Emulator {
 
   X_STATUS MountPath(const std::filesystem::path& path,
                      const std::string_view mount_path);
+  // Mounts |device| as the title's game drive.
+  X_STATUS MountDevice(std::unique_ptr<vfs::Device> device,
+                       const std::string_view mount_path);
 
   enum class FileSignatureType {
     XEX0,
@@ -286,8 +293,10 @@ class Emulator {
 
   // Launches a game from the given file path.
   // This will attempt to infer the type of the given file (such as an iso, etc)
-  // using heuristics.
-  X_STATUS LaunchPath(const std::filesystem::path& path);
+  // using heuristics. With |package_path| the disc at |path| is mounted as the
+  // drive and the game runs from the package at that path on it.
+  X_STATUS LaunchPath(const std::filesystem::path& path,
+                      std::string_view package_path = {});
 
   // Launches a game from a .xex file by mounting the containing folder as if it
   // was an extracted STFS container.
@@ -306,6 +315,11 @@ class Emulator {
 
   // Launches a game from an STFS container file.
   X_STATUS LaunchStfsContainer(const std::filesystem::path& path);
+
+  // Launches a game from the STFS package at |package_path| on the disc at
+  // |path|.
+  X_STATUS LaunchDiscPackage(const std::filesystem::path& path,
+                             std::string_view package_path);
 
   X_STATUS LaunchDefaultModule(const std::filesystem::path& path);
 
@@ -411,7 +425,8 @@ class Emulator {
   void RelaunchTitle(const std::string& host_path,
                      const std::string& launch_module, uint32_t launch_flags,
                      std::vector<uint8_t> launch_data,
-                     bool keep_xbox_game = true);
+                     bool keep_xbox_game = true,
+                     const std::string& package_path = {});
 
   // Stops the current title and returns the kernel to a fresh, idle state
   // (no title loaded). Must be called from a non-guest thread.
@@ -468,10 +483,11 @@ class Emulator {
   // Called when XamLoaderLaunchTitle requests launching a new title.
   // The callback should spawn a new process with the given parameters.
   // Parameters: host_path, launch_module, launch_flags, launch_data (hex),
-  // and the original Xbox game left in the drive for it
-  using LaunchNewTitleCallback =
-      std::function<void(const std::string&, const std::string&, uint32_t,
-                         const std::string&, const std::string&)>;
+  // the original Xbox game left in the drive for it, and the package inside
+  // host_path it runs from
+  using LaunchNewTitleCallback = std::function<void(
+      const std::string&, const std::string&, uint32_t, const std::string&,
+      const std::string&, const std::string&)>;
   LaunchNewTitleCallback on_launch_new_title() const {
     return on_launch_new_title_;
   }
@@ -529,6 +545,7 @@ class Emulator {
 
   std::filesystem::path command_line_;
   std::filesystem::path last_launch_path_;  // persists across relaunch
+  std::string last_launch_package_;
   // The original Xbox game XeFu runs, its .xbe file, disc image or package,
   // shown to XeFu as the disc. Persists across launches from xefu_path.
   std::filesystem::path xbox_disc_path_;

@@ -36,6 +36,8 @@ class XamModule : public KernelModule {
   struct LoaderData {
     bool launch_data_present = false;
     std::string host_path;  // Full host path to next title to load
+    // The package inside the disc at host_path that the title runs from.
+    std::string package_path;
     std::string
         launch_path;  // Full guest path to next xex. might be default.xex
 

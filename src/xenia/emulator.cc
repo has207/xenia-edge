@@ -101,6 +101,11 @@ DEFINE_CVar(launch_xbox_disc, "",
             "Used internally for title-to-title launches.",
             "General", true, std::string);
 
+DEFINE_CVar(launch_package, "",
+            "Package on the disc that a title restart request runs from. "
+            "Used internally for title-to-title launches.",
+            "General", true, std::string);
+
 DEFINE_bool(dump_xex, false, "Dump the main XEX to current directory on launch",
             "General");
 
@@ -605,6 +610,11 @@ void Emulator::SetPersistentEmulatorFlags(uint64_t new_flags) {
 X_STATUS Emulator::MountPath(const std::filesystem::path& path,
                              const std::string_view mount_path) {
   auto device = CreateVfsDevice(path, mount_path);
+  return MountDevice(std::move(device), mount_path);
+}
+
+X_STATUS Emulator::MountDevice(std::unique_ptr<vfs::Device> device,
+                               const std::string_view mount_path) {
   if (!device || !device->Initialize()) {
     XELOGE(
         "Unable to mount the selected file, it is an unsupported format or "
@@ -721,18 +731,24 @@ static bool IsXboxOriginalDisc(const std::filesystem::path& path) {
          vfs::FindXboxOriginalXbe(mmap->data(), mmap->size()).has_value();
 }
 
-X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
+X_STATUS Emulator::LaunchPath(const std::filesystem::path& path,
+                              std::string_view package_path) {
   // A relaunch must not tear down what this mounts into and loads from.
   std::lock_guard<std::recursive_mutex> launch_lock(launch_mutex_);
   // Remember for relaunch fallback
   if (!path.empty()) {
     last_launch_path_ = path;
+    last_launch_package_ = package_path;
   }
   if (!KeepsXboxGame(path)) {
     EjectXboxGame();
   }
   // A file an earlier launch missed says nothing about this one.
   missing_xefu_file_.clear();
+
+  if (!package_path.empty()) {
+    return LaunchDiscPackage(path, package_path);
+  }
 
   X_STATUS mount_result = X_STATUS_SUCCESS;
 
@@ -977,6 +993,34 @@ X_STATUS Emulator::LaunchStfsContainer(const std::filesystem::path& path) {
   XELOGI("LaunchStfsContainer: content type {:08X}, running as {}",
          content_type, is_disc_content ? "optical disc" : "download");
   return result;
+}
+
+X_STATUS Emulator::LaunchDiscPackage(const std::filesystem::path& path,
+                                     std::string_view package_path) {
+  constexpr std::string_view kDiscMountPath = "\\Device\\Cdrom0";
+  if (const X_STATUS result = MountPath(path, kDiscMountPath);
+      XFAILED(result)) {
+    return result;
+  }
+
+  vfs::Entry* entry = file_system_->ResolvePath(
+      xe::utf8::join_guest_paths(kDiscMountPath, package_path));
+  if (!entry) {
+    XELOGE("Package {} is not on the disc.", package_path);
+    return X_STATUS_NO_SUCH_FILE;
+  }
+  constexpr std::string_view kPackageMountPath = "\\Device\\Package_0";
+  auto package = vfs::XContentContainerDevice::CreateContentDevice(
+      kPackageMountPath, entry);
+  if (package) {
+    package->drive_timing().Configure();
+  }
+  if (const X_STATUS result =
+          MountDevice(std::move(package), kPackageMountPath);
+      XFAILED(result)) {
+    return result;
+  }
+  return LaunchStfsContainer(path);
 }
 
 X_STATUS Emulator::LaunchDefaultModule(const std::filesystem::path& path) {
@@ -1509,7 +1553,8 @@ void Emulator::RelaunchTitle(const std::string& host_path,
                              const std::string& launch_module,
                              uint32_t launch_flags,
                              std::vector<uint8_t> launch_data,
-                             bool keep_xbox_game) {
+                             bool keep_xbox_game,
+                             const std::string& package_path) {
   // Each UI launch and guest launch request relaunches on its own thread, so a
   // burst of them queues here. One a newer request replaced while it waited is
   // dropped.
@@ -1521,8 +1566,9 @@ void Emulator::RelaunchTitle(const std::string& host_path,
     return;
   }
   XELOGI(
-      "RelaunchTitle: starting full in-process relaunch, target={}, module={}",
-      xe::strip_pii(host_path), launch_module);
+      "RelaunchTitle: starting full in-process relaunch, target={}, module={}, "
+      "package={}",
+      xe::strip_pii(host_path), launch_module, package_path);
 
   // Tell WaitUntilExit not to fire on_exit when main thread dies.
   relaunching_ = true;
@@ -1586,6 +1632,9 @@ void Emulator::RelaunchTitle(const std::string& host_path,
     return;
   }
 
+  const std::string launch_package =
+      host_path.empty() ? last_launch_package_ : package_path;
+
   // Populate launch data on the fresh xam module.
   auto xam_new =
       kernel_state_->GetKernelModule<kernel::xam::XamModule>("xam.xex");
@@ -1593,6 +1642,7 @@ void Emulator::RelaunchTitle(const std::string& host_path,
     auto& ld = xam_new->loader_data();
     ld.host_path =
         host_path.empty() ? xe::path_to_utf8(command_line_) : host_path;
+    ld.package_path = launch_package;
     ld.launch_flags = launch_flags;
     ld.launch_data = std::move(launch_data);
     ld.launch_data_present = !ld.launch_data.empty();
@@ -1607,7 +1657,8 @@ void Emulator::RelaunchTitle(const std::string& host_path,
       host_path.empty() ? last_launch_path_ : xe::to_path(host_path);
   XELOGI("RelaunchTitle: launching '{}'",
          xe::strip_pii(xe::path_to_utf8(launch_target)));
-  if (const X_STATUS result = LaunchPath(launch_target); XFAILED(result)) {
+  if (const X_STATUS result = LaunchPath(launch_target, launch_package);
+      XFAILED(result)) {
     XELOGE("RelaunchTitle: launching '{}' failed: {:08X}",
            xe::strip_pii(xe::path_to_utf8(launch_target)), result);
     fail();

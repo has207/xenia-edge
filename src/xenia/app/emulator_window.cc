@@ -331,7 +331,8 @@ namespace {
 bool IsLaunchOnlyArg(std::string_view arg) {
   for (const std::string_view name :
        {"--target=", "--launch_module=", "--launch_flags=", "--launch_data=",
-        "--launch_xbox_disc=", "--slot_bindings_passthrough="}) {
+        "--launch_xbox_disc=", "--launch_package=",
+        "--slot_bindings_passthrough="}) {
     if (xe::utf8::starts_with(arg, name)) {
       return true;
     }
@@ -725,6 +726,10 @@ void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
     }
     return;
   }
+  // The disc's path belongs to the disc's own title, not the package's.
+  if (!emulator_->last_launch_package().empty()) {
+    return;
+  }
   const auto key =
       RecordLaunchedDisc(title_id, name, emulator_->last_launch_path());
   if (!key) {
@@ -893,12 +898,12 @@ void EmulatorWindow::OnEmulatorInitialized() {
   emulator_->set_on_launch_new_title(
       [this](const std::string& host_path, const std::string& launch_module,
              uint32_t launch_flags, const std::string& launch_data,
-             const std::string& xbox_disc) {
+             const std::string& xbox_disc, const std::string& package) {
         XELOGI(
             "Launching new title: host_path={}, launch_module={}, flags={}, "
-            "data_len={}, xbox_disc={}",
+            "data_len={}, xbox_disc={}, package={}",
             xe::strip_pii(host_path), launch_module, launch_flags,
-            launch_data.length(), xe::strip_pii(xbox_disc));
+            launch_data.length(), xe::strip_pii(xbox_disc), package);
 
         std::vector<std::string> args;
         // Preserve return_to_ui through the title-to-title chain
@@ -920,6 +925,9 @@ void EmulatorWindow::OnEmulatorInitialized() {
         }
         if (!xbox_disc.empty()) {
           args.push_back("--launch_xbox_disc=" + xbox_disc);
+        }
+        if (!package.empty()) {
+          args.push_back("--launch_package=" + package);
         }
         if (!SpawnEmulatorProcess(args, host_path)) {
           return;
@@ -2000,7 +2008,7 @@ bool EmulatorWindow::StopTitleAndReturnToList() {
   if (!in_process) {
     if (auto cb = emulator_->on_launch_new_title()) {
       cb(/*host_path=*/{}, /*launch_module=*/{}, /*launch_flags=*/0,
-         /*launch_data=*/{}, /*xbox_disc=*/{});
+         /*launch_data=*/{}, /*xbox_disc=*/{}, /*package=*/{});
     }
     return false;
   }
@@ -3620,7 +3628,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
     auto cb = emulator_->on_launch_new_title();
     if (cb) {
       cb(host_path, /*launch_module=*/{}, /*launch_flags=*/0,
-         /*launch_data=*/{}, /*xbox_disc=*/{});
+         /*launch_data=*/{}, /*xbox_disc=*/{}, /*package=*/{});
     }
     return X_STATUS_UNSUCCESSFUL;
   }
