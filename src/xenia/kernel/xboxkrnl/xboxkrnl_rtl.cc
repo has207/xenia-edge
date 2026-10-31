@@ -887,17 +887,14 @@ static uint32_t CapturedContextIar(uint32_t lr) {
   return lr;
 }
 
-// The import thunk leaves the caller's registers in the guest context.
-void RtlCaptureContext_entry(lpvoid_t context_record,
-                             const ppc_context_t& ctx) {
-  auto p = context_record.as<uint8_t*>();
-  const uint32_t lr = static_cast<uint32_t>(ctx->lr);
+void StoreContextRecord(uint8_t* p, const PPCContext* ctx, uint32_t iar,
+                        uint32_t lr) {
   xe::store_and_swap<uint32_t>(p + kContextFlags,
                                kContextControl | kContextFloatingPoint |
                                    kContextInteger | kContextVector);
   xe::store_and_swap<uint32_t>(p + kContextMsr,
                                static_cast<uint32_t>(ctx->msr));
-  xe::store_and_swap<uint32_t>(p + kContextIar, CapturedContextIar(lr));
+  xe::store_and_swap<uint32_t>(p + kContextIar, iar);
   xe::store_and_swap<uint32_t>(p + kContextLr, lr);
   xe::store_and_swap<uint64_t>(p + kContextCtr, ctx->ctr);
   for (size_t i = 0; i < 32; ++i) {
@@ -921,6 +918,39 @@ void RtlCaptureContext_entry(lpvoid_t context_record,
                                    ctx->v[i].u32[j]);
     }
   }
+}
+
+uint32_t LoadContextRecord(const uint8_t* p, PPCContext* ctx) {
+  ctx->lr = xe::load_and_swap<uint32_t>(p + kContextLr);
+  ctx->ctr = xe::load_and_swap<uint64_t>(p + kContextCtr);
+  for (size_t i = 0; i < 32; ++i) {
+    ctx->r[i] = xe::load_and_swap<uint64_t>(p + kContextGpr + i * 8);
+  }
+  ctx->set_cr(xe::load_and_swap<uint32_t>(p + kContextCr));
+  ctx->set_xer(xe::load_and_swap<uint32_t>(p + kContextXer));
+  ctx->fpscr.value = xe::load_and_swap<uint64_t>(p + kContextFpscr);
+  for (size_t i = 0; i < 32; ++i) {
+    ctx->f[i] = xe::load_and_swap<double>(p + kContextFpr + i * 8);
+  }
+  for (size_t i = 0; i < 4; ++i) {
+    ctx->vscr_vec.u32[i] =
+        xe::load_and_swap<uint32_t>(p + kContextVscr + i * 4);
+  }
+  for (size_t i = 0; i < 128; ++i) {
+    for (size_t j = 0; j < 4; ++j) {
+      ctx->v[i].u32[j] =
+          xe::load_and_swap<uint32_t>(p + kContextVr + i * 16 + j * 4);
+    }
+  }
+  return xe::load_and_swap<uint32_t>(p + kContextIar);
+}
+
+// The import thunk leaves the caller's registers in the guest context.
+void RtlCaptureContext_entry(lpvoid_t context_record,
+                             const ppc_context_t& ctx) {
+  const uint32_t lr = static_cast<uint32_t>(ctx->lr);
+  StoreContextRecord(context_record.as<uint8_t*>(), ctx, CapturedContextIar(lr),
+                     lr);
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlCaptureContext, kNone, kImplemented);
 

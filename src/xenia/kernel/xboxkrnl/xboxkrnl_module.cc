@@ -78,6 +78,9 @@ XboxkrnlModule::XboxkrnlModule(Emulator* emulator, KernelState* kernel_state)
 #include "xboxkrnl_module_export_groups.inc"
 #undef XE_MODULE_EXPORT_GROUP
 
+  // A call to an address with no code goes to the title's exception handlers.
+  kernel_state->processor()->set_code_fault_hook(&DispatchCodeFetchFault);
+
   // KeDebugMonitorData (?*)
   // Set to a valid value when a remote debugger is attached.
   // Offset 0x18 is a 4b pointer to a handler function that seems to take two
