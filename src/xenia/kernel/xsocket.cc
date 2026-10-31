@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstring>
 #include <deque>
+#include <memory>
 #include <thread>
 
 #include "xenia/base/clock.h"
@@ -953,11 +954,15 @@ object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
 
   asio::error_code ec;
 
-  // Accept a new connection
-  asio::ip::tcp::socket new_socket(GetIoContext());
+  // Accept a new connection. The socket is on the heap: a fiber reclaimed
+  // while it waits here never unwinds, and a socket on its stack would stay
+  // linked into the io_context's list of sockets after the stack is gone,
+  // for the next socket made to write into.
+  auto new_socket = std::make_unique<asio::ip::tcp::socket>(GetIoContext());
   asio::ip::tcp::endpoint peer_endpoint;
-  RunCooperatively(ec, RetryMode::kAccept,
-                   [&]() { acceptor_->accept(new_socket, peer_endpoint, ec); });
+  RunCooperatively(ec, RetryMode::kAccept, [&]() {
+    acceptor_->accept(*new_socket, peer_endpoint, ec);
+  });
 
   if (ec) {
     last_error_ = AsioErrorToWSAError(ec);
@@ -970,7 +975,7 @@ object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
 
   // Create a kernel object to represent the new socket
   auto socket =
-      object_ref<XSocket>(new XSocket(kernel_state_, std::move(new_socket)));
+      object_ref<XSocket>(new XSocket(kernel_state_, std::move(*new_socket)));
   socket->bound_ = true;
   // An accepted socket starts in the listener's non-blocking mode.
   if (guest_non_blocking_) {
