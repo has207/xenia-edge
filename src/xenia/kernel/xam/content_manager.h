@@ -257,6 +257,12 @@ class ContentManager {
       const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,
       const XContentType content_type) const;
 
+  // The titles with content stored for the user, and the content types a title
+  // has, for listing content across titles.
+  std::vector<uint32_t> ListContentTitleIds(const uint64_t xuid) const;
+  std::vector<XContentType> ListContentTypes(const uint64_t xuid,
+                                             const uint32_t title_id) const;
+
   std::vector<XCONTENT_AGGREGATE_DATA> ListContentODD(
       const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,
       const XContentType content_type) const;
@@ -294,6 +300,10 @@ class ContentManager {
   X_RESULT GetContentThumbnail(const uint64_t xuid,
                                const XCONTENT_AGGREGATE_DATA& data,
                                std::vector<uint8_t>* buffer);
+  // The package header's metadata, an XContentMetadata.
+  X_RESULT GetContentMetadata(const uint64_t xuid,
+                              const XCONTENT_AGGREGATE_DATA& data,
+                              std::vector<uint8_t>* buffer);
   X_RESULT SetContentThumbnail(const uint64_t xuid,
                                const XCONTENT_AGGREGATE_DATA& data,
                                std::vector<uint8_t> buffer);
