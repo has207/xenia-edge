@@ -1,6 +1,6 @@
 {
  "corpus": "codecs",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-30",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-31",
  "steps": [
   {
    "scenario": "null module pointer",
@@ -23,6 +23,144 @@
      "value": 0
     }
    ]
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs references",
+   "name": "load",
+   "export": "XamLoadExtraAVCodecs",
+   "r3": "0000000010000000",
+   "capture": {
+    "export": "9f897ab0"
+   },
+   "args": [
+    {
+     "pointer": "export",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs references",
+   "name": "load again",
+   "export": "XamLoadExtraAVCodecs",
+   "r3": "0000000000000000",
+   "capture": {
+    "export": "9f897ab0"
+   },
+   "args": [
+    {
+     "pointer": "export",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs references",
+   "name": "unload",
+   "export": "XamUnloadExtraAVCodecs",
+   "args": []
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs references",
+   "name": "unload again",
+   "export": "XamUnloadExtraAVCodecs",
+   "args": []
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs references",
+   "name": "unload with none left",
+   "export": "XamUnloadExtraAVCodecs",
+   "args": []
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs references",
+   "name": "load after unloading",
+   "export": "XamLoadExtraAVCodecs",
+   "r3": "0000000010000000",
+   "capture": {
+    "export": "9f897ab0"
+   },
+   "args": [
+    {
+     "pointer": "export",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs references",
+   "name": "unload last",
+   "export": "XamUnloadExtraAVCodecs",
+   "args": []
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs2 references",
+   "name": "load",
+   "export": "XamLoadExtraAVCodecs2",
+   "r3": "0000000010000000",
+   "capture": {
+    "export": "9c518110"
+   },
+   "args": [
+    {
+     "pointer": "export",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs2 references",
+   "name": "load again",
+   "export": "XamLoadExtraAVCodecs2",
+   "r3": "0000000000000000",
+   "capture": {
+    "export": "9c518110"
+   },
+   "args": [
+    {
+     "pointer": "export",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs2 references",
+   "name": "unload",
+   "export": "XamUnloadExtraAVCodecs2",
+   "args": []
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs2 references",
+   "name": "unload again",
+   "export": "XamUnloadExtraAVCodecs2",
+   "args": []
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs2 references",
+   "name": "unload with none left",
+   "export": "XamUnloadExtraAVCodecs2",
+   "args": []
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs2 references",
+   "name": "load after unloading",
+   "export": "XamLoadExtraAVCodecs2",
+   "r3": "0000000010000000",
+   "capture": {
+    "export": "9c518110"
+   },
+   "args": [
+    {
+     "pointer": "export",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "XamLoadExtraAVCodecs2 references",
+   "name": "unload last",
+   "export": "XamUnloadExtraAVCodecs2",
+   "args": []
   }
  ]
 }
