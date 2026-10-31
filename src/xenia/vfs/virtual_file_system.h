@@ -58,8 +58,7 @@ class VirtualFileSystem {
 
   static X_STATUS ExtractContentFile(Entry* entry,
                                      std::filesystem::path base_path,
-                                     std::atomic<uint64_t>& progress,
-                                     bool extract_to_root = false);
+                                     std::atomic<uint64_t>& progress);
   static X_STATUS ExtractContentFiles(
       Device* device, std::filesystem::path base_path,
       std::atomic<uint64_t>& progress,

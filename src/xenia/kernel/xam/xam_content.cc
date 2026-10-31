@@ -8,15 +8,12 @@
  */
 
 #include <algorithm>
-#include <atomic>
-#include <thread>
 #include <vector>
 
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/base/string_util.h"
-#include "xenia/base/threading.h"
 #include "xenia/base/utf8.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
@@ -29,14 +26,11 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xenumerator.h"
-#include "xenia/kernel/xthread.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/xbox.h"
-
-DECLARE_bool(in_process_title_relaunch);
 
 DEFINE_int32(
     license_mask, 0,
@@ -990,59 +984,43 @@ void XamLoaderGetMediaInfo_entry(lpdword_t media_type, lpdword_t title_id) {
 }
 DECLARE_XAM_EXPORT1(XamLoaderGetMediaInfo, kNone, kStub);
 
-dword_result_t XamContentLaunchImageFromFileInternal_entry(
-    lpstring_t image_location, lpstring_t xex_name, dword_t unk) {
-  const std::string image_path = static_cast<std::string>(image_location);
-  const std::string xex_name_ = static_cast<std::string>(xex_name);
+constexpr std::string_view kLaunchRootName = "XSYSLAUNCH";
 
-  vfs::Entry* entry = kernel_state()->file_system()->ResolvePath(image_path);
-
-  if (!entry) {
-    return X_STATUS_NO_SUCH_FILE;
-  }
-
-  const std::filesystem::path host_path =
-      kernel_state()->emulator()->content_root() / entry->name();
-  if (!std::filesystem::exists(host_path)) {
-    std::atomic<uint64_t> progress{0};
-
-    vfs::VirtualFileSystem::ExtractContentFile(
-        entry, kernel_state()->emulator()->content_root(), progress, true);
-  }
-
-  // In-process relaunch is disabled on macOS — see XamLoaderLaunchTitle.
-#if !XE_PLATFORM_MAC
-  if (cvars::in_process_title_relaunch) {
-    auto* emulator = kernel_state()->emulator();
-    auto host_path_utf8 = xe::path_to_utf8(host_path);
-    std::thread([emulator, host_path_utf8, module = xex_name_]() mutable {
-      emulator->RelaunchTitle(host_path_utf8, module, 0, {});
-    }).detach();
-    // Park off guest code until RelaunchTitle terminates us (Suspend can return
-    // on POSIX).
-    XThread::GetCurrentThread()->Suspend(nullptr);
-    while (true) {
-      xe::threading::NanoSleep(int64_t(1'000'000'000));
-    }
-  }
-#endif  // !XE_PLATFORM_MAC
-
-  auto on_launch_new_title = kernel_state()->emulator()->on_launch_new_title();
-  if (on_launch_new_title) {
-    XELOGI("XamContentLaunchImageFromFileInternal: spawning new title process");
-    on_launch_new_title(xe::path_to_utf8(host_path), xex_name_, 0, "", "", "");
-  }
-
-  kernel_state()->TerminateTitle();
-  return X_ERROR_SUCCESS;
+// Launches |xex_name| in the package open at the launch root.
+static void LaunchOpenedImage(const std::string& xex_name, bool on_disc) {
+  LaunchTitle(fmt::format("{}:\\{}", kLaunchRootName, xex_name), {},
+              on_disc ? 0x80 : 0);
 }
 
-DECLARE_XAM_EXPORT1(XamContentLaunchImageFromFileInternal, kContent, kStub);
+dword_result_t XamContentLaunchImageFromFileInternal_entry(
+    lpstring_t image_location, lpstring_t xex_name, dword_t unknown) {
+  if (!image_location) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  vfs::Entry* entry =
+      kernel_state()->file_system()->ResolvePath(image_location.value());
+  if (!entry) {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+
+  const X_RESULT result = kernel_state()->content_manager()->OpenContentFile(
+      kLaunchRootName, entry);
+  if (result) {
+    return result;
+  }
+
+  // The title's own device stands for its disc, as it does for disc content.
+  const vfs::Entry* title_root = kernel_state()->file_system()->ResolvePath(
+      kernel_state()->title_mount_path_);
+  LaunchOpenedImage(xex_name ? xex_name.value() : std::string(),
+                    title_root && title_root->device() == entry->device());
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamContentLaunchImageFromFileInternal, kContent, kSketchy);
 
 static X_RESULT LaunchContentImage(uint32_t user_index,
                                    const XCONTENT_AGGREGATE_DATA& content_data,
                                    const std::string& xex_name) {
-  constexpr std::string_view kLaunchRootName = "XSYSLAUNCH";
   auto content_manager = kernel_state()->content_manager();
   uint64_t xuid = 0;
   X_RESULT result = ContentXuid(user_index, xuid);
@@ -1061,10 +1039,8 @@ static X_RESULT LaunchContentImage(uint32_t user_index,
     return result;
   }
 
-  const bool on_disc =
-      content_data.device_id == static_cast<uint32_t>(DummyDeviceId::ODD);
-  LaunchTitle(fmt::format("{}:\\{}", kLaunchRootName, xex_name), {},
-              on_disc ? 0x80 : 0);
+  LaunchOpenedImage(xex_name, content_data.device_id ==
+                                  static_cast<uint32_t>(DummyDeviceId::ODD));
   return X_ERROR_SUCCESS;
 }
 

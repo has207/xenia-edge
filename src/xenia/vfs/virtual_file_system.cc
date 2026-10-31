@@ -458,10 +458,9 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
   return result;
 }
 
-X_STATUS VirtualFileSystem::ExtractContentFile(Entry* entry,
-                                               std::filesystem::path base_path,
-                                               std::atomic<uint64_t>& progress,
-                                               bool extract_to_root) {
+X_STATUS VirtualFileSystem::ExtractContentFile(
+    Entry* entry, std::filesystem::path base_path,
+    std::atomic<uint64_t>& progress) {
   // Allocate a buffer when needed.
   size_t buffer_size = 0;
   uint8_t* buffer = nullptr;
@@ -470,10 +469,6 @@ X_STATUS VirtualFileSystem::ExtractContentFile(Entry* entry,
 
   auto dest_name =
       base_path / xe::to_path(utf8::fix_path_separators(entry->path()));
-
-  if (extract_to_root) {
-    dest_name = base_path / xe::to_path(entry->name());
-  }
 
   if (entry->attributes() & kFileAttributeDirectory) {
     std::error_code error_code;
