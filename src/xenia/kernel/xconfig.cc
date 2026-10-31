@@ -258,6 +258,9 @@ uint16_t BuildSetting(X_CONFIG_CATEGORY category, uint16_t setting,
           // Captions off.
           out[0] = 0;
           return 1;
+        case XCONFIG_CONSOLE_CLOSED_CAPTIONING_SETTINGS:
+          xe::store_and_swap<uint32_t>(out, 0);
+          return 4;
       }
       break;
     default:

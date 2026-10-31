@@ -79,6 +79,25 @@ dword_result_t XamGetClosedCaptioningState_entry() {
 }
 DECLARE_XAM_EXPORT1(XamGetClosedCaptioningState, kNone, kImplemented);
 
+// Reads the 4-byte caption settings, or writes 0 when the config has none.
+dword_result_t XamGetClosedCaptioningSettings_entry(lpdword_t settings_ptr) {
+  if (!settings_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  auto xconfig = kernel_state()->xconfig();
+  if (xconfig->GetSettingSize(XCONFIG_CONSOLE_CATEGORY,
+                              XCONFIG_CONSOLE_CLOSED_CAPTIONING_SETTINGS) !=
+      sizeof(uint32_t)) {
+    *settings_ptr = 0;
+    return X_ERROR_NOT_FOUND;
+  }
+  xconfig->ReadSetting(XCONFIG_CONSOLE_CATEGORY,
+                       XCONFIG_CONSOLE_CLOSED_CAPTIONING_SETTINGS,
+                       settings_ptr);
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamGetClosedCaptioningSettings, kNone, kImplemented);
+
 // Ordinals 0x7DC/0x7DD and 0x7E3/0x7E4 load and unload the two system
 // extension modules of extra AV codecs. A load takes a reference to the module
 // and hands back its export 1, which npctrl calls for its decoder table. It
