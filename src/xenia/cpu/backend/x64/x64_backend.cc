@@ -638,10 +638,43 @@ void X64Backend::RecordMMIOExceptionForGuestInstruction(void* host_address) {
     }
   }
 }
+// A call to an address the indirection table doesn't cover, so to no code of
+// a module. The fast path reads the slot at the guest address itself, which
+// faults there. The call goes on to the resolve thunk instead, as a call to
+// code not yet translated does, which finds there's none and lets the guest's
+// handlers continue it elsewhere. JIT calls leave the target in edx.
+bool X64Backend::RedirectUncoveredCall(Exception* ex) {
+  if (code_cache_->encoded_indirection()) {
+    return false;
+  }
+  const uint64_t pc = ex->pc();
+  if (pc - code_cache_->execute_base_address() >= code_cache_->total_size()) {
+    return false;
+  }
+  const uint32_t target = uint32_t(ex->thread_context()->rdx);
+  if (ex->fault_address() != target ||
+      code_cache_->HasIndirectionSlot(target)) {
+    return false;
+  }
+  // mov eax, dword ptr [rdx], the lookup CallIndirect emits.
+  const auto* instruction = reinterpret_cast<const uint8_t*>(pc);
+  if (instruction[0] != 0x8B || instruction[1] != 0x02) {
+    return false;
+  }
+  ex->ModifyIntRegister(uint32_t(X64Register::kRax) -
+                        uint32_t(X64Register::kIntRegisterFirst)) =
+      reinterpret_cast<uint64_t>(resolve_function_thunk_);
+  ex->set_resume_pc(pc + 2);
+  return true;
+}
+
 bool X64Backend::ExceptionCallback(Exception* ex) {
   if (ex->code() == Exception::Code::kAccessViolation) {
     if (code_cache_->CommitIndirectionFault(ex->fault_address())) {
       // A slot in a chunk of the table nothing had committed yet.
+      return true;
+    }
+    if (RedirectUncoveredCall(ex)) {
       return true;
     }
     if (!ex->pc() && !code_cache_->encoded_indirection()) {

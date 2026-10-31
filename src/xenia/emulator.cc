@@ -2106,6 +2106,50 @@ bool Emulator::ExceptionCallbackThunk(Exception* ex, void* data) {
   }
 }
 
+// A guest load or store that faulted, handed from the exception handler to the
+// thunk below on the same thread.
+struct PendingDataFault {
+  Emulator* emulator;
+  uint32_t pc;
+  bool is_store;
+  uint32_t address;
+  std::string crash_msg;
+};
+static thread_local PendingDataFault pending_data_fault;
+
+// VEH-resume target for a guest load or store that faulted. Guest code can't
+// run inside the vectored exception handler, so the guest's handlers run here,
+// on the faulting thread. One that raises an exception, as the CLR's does for a
+// NullReferenceException, continues the thread wherever that lands. Otherwise
+// the thread is halted as a crash.
+[[noreturn]] static void GuestDataFaultThunk() {
+  PendingDataFault fault = std::move(pending_data_fault);
+  auto* thread = kernel::XThread::GetCurrentThread();
+  auto* context = thread->thread_state()->context();
+  auto* processor = fault.emulator->processor();
+  const uint32_t resume_address = processor->data_fault_hook()(
+      context, fault.pc, fault.is_store, fault.address);
+  if (resume_address) {
+    // The context holds the handler's CONTEXT record. The faulting function's
+    // host frame can't be re-entered mid-way, so the code goes on as a call,
+    // which suits a handler that sends the thread to a helper that raises an
+    // exception. If it returns, there is nowhere to return it to.
+    processor->ExecuteRaw(thread->thread_state(), resume_address);
+    XELOGE(
+        "Guest access violation at {:08X}: the code the handler continued at, "
+        "{:08X}, returned",
+        fault.pc, resume_address);
+  }
+  fault.emulator->ReportGuestCrash(fault.crash_msg);
+  if (thread->fiber()) {
+    HaltCrashedFiberThunk();
+  }
+  thread->Suspend(nullptr);
+  while (true) {
+    xe::threading::NanoSleep(int64_t(1'000'000'000));
+  }
+}
+
 bool Emulator::ExceptionCallback(Exception* ex) {
   // In-process relaunch/reset frees state under still-running guest threads;
   // their faults are expected, so park them instead of crashing. The teardown
@@ -2257,6 +2301,43 @@ bool Emulator::ExceptionCallback(Exception* ex) {
                     context->v[i].u32[0], context->v[i].u32[1],
                     context->v[i].u32[2], context->v[i].u32[3]));
   }
+
+  // A load or store whose address the guest can be told: the console's kernel
+  // dispatches the access violation to the frame-based handlers on the stack,
+  // and the CLR, for one, turns a read through a null reference into a
+  // NullReferenceException there.
+  const uint64_t fault_offset =
+      ex->fault_address() - reinterpret_cast<uint64_t>(memory()->virtual_membase());
+  if (ex->code() == Exception::Code::kAccessViolation && guest_function &&
+      processor()->data_fault_hook() && fault_offset <= UINT32_MAX) {
+    const uint32_t pc = guest_function->MapMachineCodeToGuestAddress(ex->pc());
+    const bool is_store = ex->access_violation_operation() ==
+                          Exception::AccessViolationOperation::kWrite;
+    XELOGW("Guest {} at {:08X} faulted at {:08X}, delivering it to the guest",
+           is_store ? "store" : "load", pc, uint32_t(fault_offset));
+    pending_data_fault = {this, pc, is_store, uint32_t(fault_offset),
+                          std::move(crash_msg)};
+    DivertToThunk(ex, &GuestDataFaultThunk);
+    return true;
+  }
+
+  ReportGuestCrash(crash_msg);
+
+  // Halt the crashed thread without unwinding the rest of the emulator. Host
+  // mode suspends self. Fiber mode diverts the resume PC to a halt thunk, since
+  // calling Suspend here would yield from inside the exception handler.
+  if (current_thread->fiber()) {
+    DivertToThunk(ex, &HaltCrashedFiberThunk);
+    return true;
+  }
+  current_thread->Suspend(nullptr);
+
+  // We should not arrive here!
+  assert_always();
+  return false;
+}
+
+void Emulator::ReportGuestCrash(const std::string& crash_msg) {
   XELOGE("{}", crash_msg);
   FlushLog();
 
@@ -2278,19 +2359,6 @@ bool Emulator::ExceptionCallback(Exception* ex) {
       xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_, "Uh-oh!", crash_dlg);
     });
   }
-
-  // Halt the crashed thread without unwinding the rest of the emulator. Host
-  // mode suspends self. Fiber mode diverts the resume PC to a halt thunk, since
-  // calling Suspend here would yield from inside the exception handler.
-  if (current_thread->fiber()) {
-    DivertToThunk(ex, &HaltCrashedFiberThunk);
-    return true;
-  }
-  current_thread->Suspend(nullptr);
-
-  // We should not arrive here!
-  assert_always();
-  return false;
 }
 
 void Emulator::WaitUntilExit() {
