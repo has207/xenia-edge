@@ -7,6 +7,9 @@
  ******************************************************************************
  */
 
+#include <algorithm>
+#include <string>
+#include <string_view>
 #include <thread>
 
 #include "xenia/base/clock.h"
@@ -16,12 +19,14 @@
 #include "xenia/base/string_util.h"
 #include "xenia/base/threading.h"
 #include "xenia/base/utf8.h"
+#include "xenia/cpu/processor.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam.h"
+#include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xam/xam_ui.h"
@@ -1180,11 +1185,53 @@ dword_result_t XamUpdateGetCurrentSystemVersion_entry() {
 }
 DECLARE_XAM_EXPORT1(XamUpdateGetCurrentSystemVersion, kNone, kImplemented);
 
-// Whether the installed optional media update is at least min_version. With
-// none installed only a min_version of 0 is met.
-dword_result_t XamIsOptionalMediaUpdateInstalled_entry(dword_t media_id,
+// The newest version an installed optional media update gives for
+// module_name. Its module_name.xex or module_nameLatest.xex returns the
+// version from export 1. 0 without an update, and the name is only read once
+// there is one.
+static uint32_t GetOptionalMediaUpdateVersion(lpstring_t module_name) {
+  constexpr uint32_t kOptionalMediaUpdateTitleId = 0xFFFE07DF;
+  constexpr std::string_view kRoot = "CodecPackLoaderRoot";
+  auto content_manager = kernel_state()->content_manager();
+  auto thread_state = XThread::GetCurrentThread()->thread_state();
+  uint32_t newest = 0;
+  for (const auto& data : content_manager->ListContent(
+           static_cast<uint32_t>(DummyDeviceId::HDD), 0,
+           kOptionalMediaUpdateTitleId, XContentType::kMarketplaceContent)) {
+    uint32_t license = 0;
+    if (content_manager->OpenContent(kRoot, 0, data, license)) {
+      continue;
+    }
+    for (std::string_view suffix : {"", "Latest"}) {
+      const std::string path =
+          fmt::format("{}:\\{}{}.xex", kRoot, module_name.value(), suffix);
+      if (!kernel_state()->file_system()->ResolvePath(path)) {
+        continue;
+      }
+      const uint32_t hmodule = xboxkrnl::xeXexLoadImage(path);
+      if (!hmodule) {
+        continue;
+      }
+      auto module = kernel_state()->GetModule(path, true);
+      if (const uint32_t get_version =
+              module ? module->GetProcAddressByOrdinal(1) : 0) {
+        newest = std::max(newest, uint32_t(kernel_state()->processor()->Execute(
+                                      thread_state, get_version, nullptr, 0)));
+      }
+      xboxkrnl::xeXexUnloadImage(hmodule);
+    }
+    content_manager->CloseContent(kRoot);
+  }
+  return newest;
+}
+
+// Whether the installed optional media update gives module_name at least
+// min_version.
+dword_result_t XamIsOptionalMediaUpdateInstalled_entry(lpstring_t module_name,
                                                        dword_t min_version) {
-  return min_version == 0;
+  const uint32_t version =
+      module_name ? GetOptionalMediaUpdateVersion(module_name) : 0;
+  return version >= min_version;
 }
 DECLARE_XAM_EXPORT1(XamIsOptionalMediaUpdateInstalled, kNone, kImplemented);
 
