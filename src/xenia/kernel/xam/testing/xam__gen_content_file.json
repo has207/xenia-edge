@@ -1,0 +1,1032 @@
+{
+ "corpus": "content_file",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-31",
+ "steps": [
+  {
+   "scenario": "arguments",
+   "name": "missing file",
+   "export": "XamContentOpenFile",
+   "r3": "0000000000000002",
+   "capture": {
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 32
+    },
+    {
+     "pointer": "path",
+     "offset": 0
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 24
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "arguments",
+   "name": "missing file overlapped",
+   "export": "XamContentOpenFile",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "license": "00000000",
+    "overlapped": "0000065b000000000000000000000000000000000000000080070002"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 32
+    },
+    {
+     "pointer": "path",
+     "offset": 40
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 64
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 72
+    }
+   ]
+  },
+  {
+   "scenario": "arguments",
+   "name": "not a package",
+   "export": "XamContentOpenFile",
+   "r3": "0000000000000570",
+   "capture": {
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 32
+    },
+    {
+     "pointer": "path",
+     "offset": 104
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 128
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "arguments",
+   "name": "not a package overlapped",
+   "export": "XamContentOpenFile",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "license": "00000000",
+    "overlapped": "0000065b000000000000000000000000000000000000000080070570"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 32
+    },
+    {
+     "pointer": "path",
+     "offset": 136
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 160
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 168
+    }
+   ]
+  },
+  {
+   "scenario": "arguments",
+   "name": "close nothing open",
+   "export": "XamContentClose",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "pointer": "root xgof",
+     "offset": 32
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "arguments",
+   "name": "root 'xg:t'",
+   "export": "XamContentOpenFile",
+   "r3": "000000000000007B",
+   "capture": {
+    "license": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xg:t",
+     "offset": 232
+    },
+    {
+     "pointer": "path",
+     "offset": 200
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 224
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "arguments",
+   "name": "root 'xg.t'",
+   "export": "XamContentOpenFile",
+   "r3": "000000000000007B",
+   "capture": {
+    "license": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xg.t",
+     "offset": 272
+    },
+    {
+     "pointer": "path",
+     "offset": 240
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 264
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "arguments",
+   "name": "root ''",
+   "export": "XamContentOpenFile",
+   "r3": "000000000000007B",
+   "capture": {
+    "license": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root ",
+     "offset": 312
+    },
+    {
+     "pointer": "path",
+     "offset": 280
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 304
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "delete first",
+   "export": "XamContentDelete",
+   "r3": "0000000000000003",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "cd b'\\xe9xgof'",
+     "offset": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "create package",
+   "export": "XamContentCreateEx",
+   "r3": "0000000000000000",
+   "capture": {
+    "disposition": "00000001",
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "root xgmk",
+     "offset": 328
+    },
+    {
+     "pointer": "cd b'\\xe9xgof'",
+     "offset": 0
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "disposition",
+     "offset": 312
+    },
+    {
+     "pointer": "license",
+     "offset": 320
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000002"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 336
+    },
+    {
+     "value": 1074790400
+    },
+    {
+     "pointer": "attributes",
+     "offset": 376
+    },
+    {
+     "pointer": "iosb",
+     "offset": 344
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 128
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtWriteFile",
+   "export": "NtWriteFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "write iosb": "0000000000000020"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "write iosb",
+     "offset": 392
+    },
+    {
+     "pointer": "data",
+     "offset": 400
+    },
+    {
+     "value": 32
+    },
+    {
+     "pointer": "offset",
+     "offset": 432
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close written file",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close xgmk",
+   "export": "XamContentClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "root xgmk",
+     "offset": 328
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "open package",
+   "export": "XamContentOpenFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "pointer": "package path",
+     "offset": 440
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 520
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 536
+    },
+    {
+     "value": 2148532224
+    },
+    {
+     "pointer": "attributes",
+     "offset": 576
+    },
+    {
+     "pointer": "iosb",
+     "offset": 544
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtReadFile",
+   "export": "NtReadFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "read iosb": "0000000000000020",
+    "read data[:0x10]": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+    "read data+0x10": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "read iosb",
+     "offset": 592
+    },
+    {
+     "pointer": "read data",
+     "offset": 600
+    },
+    {
+     "value": 32
+    },
+    {
+     "pointer": "read offset",
+     "offset": 632
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close xgof file",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "open again on its root",
+   "export": "XamContentOpenFile",
+   "r3": "00000000000000B7",
+   "capture": {
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "pointer": "package path",
+     "offset": 440
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 640
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "open on a second root",
+   "export": "XamContentOpenFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof2",
+     "offset": 656
+    },
+    {
+     "pointer": "package path",
+     "offset": 440
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 648
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 664
+    },
+    {
+     "value": 2148532224
+    },
+    {
+     "pointer": "attributes",
+     "offset": 704
+    },
+    {
+     "pointer": "iosb",
+     "offset": 672
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtReadFile",
+   "export": "NtReadFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "read iosb": "0000000000000020",
+    "read data[:0x10]": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+    "read data+0x10": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "read iosb",
+     "offset": 720
+    },
+    {
+     "pointer": "read data",
+     "offset": 728
+    },
+    {
+     "value": 32
+    },
+    {
+     "pointer": "read offset",
+     "offset": 760
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close xgof2 file",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close xgof2",
+   "export": "XamContentClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "root xgof2",
+     "offset": 656
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close xgof",
+   "export": "XamContentClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close again",
+   "export": "XamContentClose",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "open overlapped",
+   "export": "XamContentOpenFile",
+   "r3": "00000000000003E5",
+   "completed": true,
+   "capture": {
+    "license": "00000000",
+    "overlapped": "00000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "value": 255
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "pointer": "package path",
+     "offset": 440
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 768
+    },
+    {
+     "pointer": "overlapped",
+     "offset": 776
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 808
+    },
+    {
+     "value": 2148532224
+    },
+    {
+     "pointer": "attributes",
+     "offset": 848
+    },
+    {
+     "pointer": "iosb",
+     "offset": 816
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "NtReadFile",
+   "export": "NtReadFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "read iosb": "0000000000000020",
+    "read data[:0x10]": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+    "read data+0x10": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "read iosb",
+     "offset": 864
+    },
+    {
+     "pointer": "read data",
+     "offset": 872
+    },
+    {
+     "value": 32
+    },
+    {
+     "pointer": "read offset",
+     "offset": 904
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close xgof file",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close xgof",
+   "export": "XamContentClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "open as user 0",
+   "export": "XamContentOpenFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "pointer": "package path",
+     "offset": 440
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 912
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close after user 0",
+   "export": "XamContentClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "open as user 3",
+   "export": "XamContentOpenFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 3
+    },
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "pointer": "package path",
+     "offset": 440
+    },
+    {
+     "value": 67
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "license",
+     "offset": 920
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "close after user 3",
+   "export": "XamContentClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "root xgof",
+     "offset": 528
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "package",
+   "name": "delete package",
+   "export": "XamContentDelete",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "cd b'\\xe9xgof'",
+     "offset": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  }
+ ]
+}
