@@ -1,12 +1,13 @@
 """Silverlight corpus: exports the Silverlight apps call that can run on a
 console without changing anything outside the title: the token requests
 before XAuth is started, the optional media update check, the closed
-captioning state, XeKeysAesCbc with the roamable key, reading biometric data
-and the remote control media state.
+captioning state and settings, XeKeysAesCbc with the roamable key, reading
+biometric data and the remote control media state.
 
 Outputs start filled with 0xCD so a capture shows whether they were written.
 An overlapped starts with 0xCD in the fields the system writes and 0 in the
-event and completion routine.
+event and completion routine. The optional media update (title FFFE07DF,
+marketplace content) has to be installed on both sides.
 """
 
 import struct
@@ -81,14 +82,24 @@ def build(corpus):
     get_token(s, USER_NONE, 'too long', length=0x401)
     get_token(s, USER_NONE, 'overlapped', ov=True)
 
+    # Both sides have the optional media update installed, which holds
+    # CodecPack01.xex and CodecPack02.xex. YouTube asks for version 0x37CA.
     s = corpus.scenario('optional media update')
-    for media_id, version in ((0, 0), (1, 0), (1, 1),
-                              (0x12345678, 0xFFFFFFFF)):
-        s.call('XamIsOptionalMediaUpdateInstalled', media_id, version,
-               name=f'media {media_id:#x} version {version:#x}')
+    for version in (0, 1):
+        s.call('XamIsOptionalMediaUpdateInstalled', 0, version,
+               name=f'no name, version {version:#x}')
+    for module in ('CodecPack01', 'CodecPack02', 'xg_no_such_module'):
+        text = s.string(module, module)
+        for version in (0, 0x37CA, 0xFFFFFFFF):
+            s.call('XamIsOptionalMediaUpdateInstalled', text, version,
+                   name=f'{module} version {version:#x}')
 
     s = corpus.scenario('closed captioning')
     s.call('XamGetClosedCaptioningState', name='state')
+    s.call('XamGetClosedCaptioningSettings', 0, name='settings, no pointer')
+    settings = s.alloc(4, 'settings')
+    s.call('XamGetClosedCaptioningSettings', settings, name='settings',
+           capture=[settings])
 
     s = corpus.scenario('aes')
     ecb = aes(s, 0x20, False, 1, 'ecb encrypt')

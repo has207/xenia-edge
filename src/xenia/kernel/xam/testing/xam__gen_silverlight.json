@@ -1,6 +1,6 @@
 {
  "corpus": "silverlight",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-31",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, optional media update installed, 2026-10-31",
  "steps": [
   {
    "scenario": "applies to",
@@ -396,7 +396,7 @@
   },
   {
    "scenario": "optional media update",
-   "name": "media 0x0 version 0x0",
+   "name": "no name, version 0x0",
    "export": "XamIsOptionalMediaUpdateInstalled",
    "r3": "0000000000000001",
    "args": [
@@ -410,12 +410,27 @@
   },
   {
    "scenario": "optional media update",
-   "name": "media 0x1 version 0x0",
+   "name": "no name, version 0x1",
+   "export": "XamIsOptionalMediaUpdateInstalled",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "optional media update",
+   "name": "CodecPack01 version 0x0",
    "export": "XamIsOptionalMediaUpdateInstalled",
    "r3": "0000000000000001",
    "args": [
     {
-     "value": 1
+     "pointer": "CodecPack01",
+     "offset": 0
     },
     {
      "value": 0
@@ -424,26 +439,118 @@
   },
   {
    "scenario": "optional media update",
-   "name": "media 0x1 version 0x1",
+   "name": "CodecPack01 version 0x37ca",
    "export": "XamIsOptionalMediaUpdateInstalled",
    "r3": "0000000000000000",
    "args": [
     {
-     "value": 1
+     "pointer": "CodecPack01",
+     "offset": 0
     },
     {
-     "value": 1
+     "value": 14282
     }
    ]
   },
   {
    "scenario": "optional media update",
-   "name": "media 0x12345678 version 0xffffffff",
+   "name": "CodecPack01 version 0xffffffff",
    "export": "XamIsOptionalMediaUpdateInstalled",
    "r3": "0000000000000000",
    "args": [
     {
-     "value": 305419896
+     "pointer": "CodecPack01",
+     "offset": 0
+    },
+    {
+     "value": 4294967295
+    }
+   ]
+  },
+  {
+   "scenario": "optional media update",
+   "name": "CodecPack02 version 0x0",
+   "export": "XamIsOptionalMediaUpdateInstalled",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "pointer": "CodecPack02",
+     "offset": 16
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "optional media update",
+   "name": "CodecPack02 version 0x37ca",
+   "export": "XamIsOptionalMediaUpdateInstalled",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "pointer": "CodecPack02",
+     "offset": 16
+    },
+    {
+     "value": 14282
+    }
+   ]
+  },
+  {
+   "scenario": "optional media update",
+   "name": "CodecPack02 version 0xffffffff",
+   "export": "XamIsOptionalMediaUpdateInstalled",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "CodecPack02",
+     "offset": 16
+    },
+    {
+     "value": 4294967295
+    }
+   ]
+  },
+  {
+   "scenario": "optional media update",
+   "name": "xg_no_such_module version 0x0",
+   "export": "XamIsOptionalMediaUpdateInstalled",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "pointer": "xg_no_such_module",
+     "offset": 32
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "optional media update",
+   "name": "xg_no_such_module version 0x37ca",
+   "export": "XamIsOptionalMediaUpdateInstalled",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "xg_no_such_module",
+     "offset": 32
+    },
+    {
+     "value": 14282
+    }
+   ]
+  },
+  {
+   "scenario": "optional media update",
+   "name": "xg_no_such_module version 0xffffffff",
+   "export": "XamIsOptionalMediaUpdateInstalled",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "xg_no_such_module",
+     "offset": 32
     },
     {
      "value": 4294967295
@@ -456,6 +563,32 @@
    "export": "XamGetClosedCaptioningState",
    "r3": "0000000000000000",
    "args": []
+  },
+  {
+   "scenario": "closed captioning",
+   "name": "settings, no pointer",
+   "export": "XamGetClosedCaptioningSettings",
+   "r3": "0000000000000057",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "closed captioning",
+   "name": "settings",
+   "export": "XamGetClosedCaptioningSettings",
+   "r3": "0000000000000000",
+   "capture": {
+    "settings": "00000000"
+   },
+   "args": [
+    {
+     "pointer": "settings",
+     "offset": 0
+    }
+   ]
   },
   {
    "scenario": "aes",
