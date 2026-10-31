@@ -1192,8 +1192,10 @@ void KernelState::CompleteOverlappedEx(uint32_t overlapped_ptr, X_RESULT result,
                                        X_HANDLE thread_handle) {
   auto ptr = memory()->TranslateVirtual(overlapped_ptr);
   // Result last, so a caller polling it for completion reads a valid length.
+  // A completed request leaves no context behind.
   XOverlappedSetExtendedError(ptr, extended_error);
   XOverlappedSetLength(ptr, length);
+  XOverlappedSetContext(ptr, 0);
   std::atomic_thread_fence(std::memory_order_release);
   XOverlappedSetResult(ptr, result);
   // The event is left unsignaled when there is a completion routine.
