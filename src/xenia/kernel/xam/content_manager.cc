@@ -22,6 +22,7 @@
 #include "xenia/kernel/xfile.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/vfs/devices/host_path_device.h"
+#include "xenia/vfs/devices/host_path_entry.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 
 DECLARE_int32(license_mask);
@@ -41,19 +42,7 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
                                const std::filesystem::path& package_path,
                                const std::string_view root_path)
     : ContentPackage(kernel_state, root_name, data, root_path) {
-  package_path_ = package_path;
-  if (std::filesystem::is_directory(package_path)) {
-    auto device = std::make_unique<vfs::HostPathDevice>(
-        device_path_, package_path, false, false, "STFS");
-    mounted_ = device->Initialize();
-    kernel_state_->file_system()->RegisterDevice(std::move(device));
-  } else {
-    // A title can install content by copying the package file itself, so a
-    // package is either an extracted directory or a container.
-    MountContainer(vfs::XContentContainerDevice::CreateContentDevice(
-                       device_path_, package_path),
-                   xe::strip_pii(xe::path_to_utf8(package_path)));
-  }
+  MountHostPath(package_path, false);
 }
 
 ContentPackage::ContentPackage(KernelState* kernel_state,
@@ -61,6 +50,12 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
                                const XCONTENT_AGGREGATE_DATA& data,
                                vfs::Entry* package_entry)
     : ContentPackage(kernel_state, root_name, data, std::string_view()) {
+  // A host path also mounts an extracted package directory, writable only
+  // where the entry is.
+  if (auto host_entry = dynamic_cast<vfs::HostPathEntry*>(package_entry)) {
+    MountHostPath(host_entry->host_path(), host_entry->is_read_only());
+    return;
+  }
   MountContainer(vfs::XContentContainerDevice::CreateContentDevice(
                      device_path_, package_entry),
                  package_entry->absolute_path());
@@ -77,6 +72,23 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
   device_path_ = fmt::format("\\Device\\Content\\{0}\\", ++content_device_id_);
   kernel_state_->file_system()->RegisterSymbolicLink(
       root_name_ + ":", xe::utf8::join_guest_paths(device_path_, root_path));
+}
+
+void ContentPackage::MountHostPath(const std::filesystem::path& package_path,
+                                   bool read_only) {
+  package_path_ = package_path;
+  if (std::filesystem::is_directory(package_path)) {
+    auto device = std::make_unique<vfs::HostPathDevice>(
+        device_path_, package_path, read_only, false, "STFS");
+    mounted_ = device->Initialize();
+    kernel_state_->file_system()->RegisterDevice(std::move(device));
+  } else {
+    // A title can install content by copying the package file itself, so a
+    // package is either an extracted directory or a container.
+    MountContainer(vfs::XContentContainerDevice::CreateContentDevice(
+                       device_path_, package_path),
+                   xe::strip_pii(xe::path_to_utf8(package_path)));
+  }
 }
 
 void ContentPackage::MountContainer(
@@ -660,20 +672,16 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
   return X_ERROR_SUCCESS;
 }
 
-X_RESULT ContentManager::OpenContentFile(
-    const std::string_view root_name,
-    const std::filesystem::path& package_path) {
+X_RESULT ContentManager::OpenContentFile(const std::string_view root_name,
+                                         vfs::Entry* package_entry) {
   auto global_lock = global_critical_region_.Acquire();
 
   if (open_packages_.count(string_key_insensitive(root_name))) {
     return X_ERROR_ALREADY_EXISTS;
   }
-  if (!std::filesystem::exists(package_path)) {
-    return X_ERROR_FILE_NOT_FOUND;
-  }
 
   auto package = std::make_unique<ContentPackage>(
-      kernel_state_, root_name, XCONTENT_AGGREGATE_DATA(), package_path);
+      kernel_state_, root_name, XCONTENT_AGGREGATE_DATA(), package_entry);
   if (!package->is_mounted()) {
     return X_ERROR_FILE_CORRUPT;
   }

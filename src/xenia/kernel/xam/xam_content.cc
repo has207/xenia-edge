@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <fstream>
 #include <thread>
 #include <vector>
 
@@ -33,7 +32,6 @@
 #include "xenia/kernel/xthread.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
-#include "xenia/vfs/devices/host_path_entry.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/xbox.h"
@@ -562,71 +560,6 @@ dword_result_t XamContentCreateInternal_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentCreateInternal, kContent, kImplemented);
 
-// Whether the cache holds a copy of a package with this size and header. A
-// content package's header holds the hash that covers all of its data.
-static bool IsContentFileCached(const std::filesystem::path& cache_path,
-                                uint64_t size,
-                                std::span<const uint8_t> header) {
-  std::error_code error;
-  if (std::filesystem::file_size(cache_path, error) != size || error) {
-    return false;
-  }
-  std::vector<uint8_t> cached_header(header.size());
-  std::ifstream in(cache_path, std::ios::binary);
-  in.read(reinterpret_cast<char*>(cached_header.data()), cached_header.size());
-  return in && std::equal(header.begin(), header.end(), cached_header.begin());
-}
-
-// Packages can only be mounted from host files. One inside a container such
-// as a Games on Demand package is copied out to the cache under the path the
-// title opens it by. A copy from an earlier run is reused while it matches.
-static std::filesystem::path GetContentFileHostPath(std::string_view path,
-                                                    vfs::Entry* entry) {
-  if (auto host_entry = dynamic_cast<vfs::HostPathEntry*>(entry)) {
-    return host_entry->host_path();
-  }
-  std::filesystem::path cache_path =
-      kernel_state()->emulator()->cache_root() / "content_files" /
-      fmt::format("{:08X}", kernel_state()->title_id());
-  const std::string guest_path =
-      xe::utf8::lower_ascii(xe::utf8::canonicalize_guest_path(path));
-  for (std::string_view part : xe::utf8::split_path(guest_path)) {
-    if (part.ends_with(':')) {
-      part.remove_suffix(1);
-    }
-    cache_path /= xe::to_path(part);
-  }
-
-  vfs::File* file = nullptr;
-  if (entry->Open(vfs::FileAccess::kFileReadData, &file) != X_STATUS_SUCCESS ||
-      !file) {
-    return {};
-  }
-  std::vector<uint8_t> data(entry->size());
-  const std::span<uint8_t> header(data.data(),
-                                  std::min<size_t>(data.size(), 0x1000));
-  size_t bytes_read = 0;
-  if (file->ReadSync(header, 0, &bytes_read) == X_STATUS_SUCCESS &&
-      bytes_read == header.size() &&
-      IsContentFileCached(cache_path, data.size(), header)) {
-    file->Destroy();
-    return cache_path;
-  }
-  const X_STATUS status = file->ReadSync(data, 0, &bytes_read);
-  file->Destroy();
-  if (status != X_STATUS_SUCCESS || bytes_read != data.size()) {
-    return {};
-  }
-  std::error_code error;
-  std::filesystem::create_directories(cache_path.parent_path(), error);
-  std::ofstream out(cache_path, std::ios::binary | std::ios::trunc);
-  out.write(reinterpret_cast<const char*>(data.data()), data.size());
-  if (!out) {
-    return {};
-  }
-  return cache_path;
-}
-
 // Mounts the content package stored in a file, such as a Kinect speech
 // database (GAME:\nuisp1033), under root_name. unknown is a value rather than
 // an output. Only bits 12-19 of it are used and callers pass 0.
@@ -646,12 +579,8 @@ dword_result_t XamContentOpenFile_entry(
                                                  uint32_t& length) -> X_RESULT {
     X_RESULT result = X_ERROR_FILE_NOT_FOUND;
     if (auto entry = kernel_state()->file_system()->ResolvePath(path)) {
-      const std::filesystem::path host_path =
-          GetContentFileHostPath(path, entry);
-      if (!host_path.empty()) {
-        result = kernel_state()->content_manager()->OpenContentFile(root_name,
-                                                                    host_path);
-      }
+      result =
+          kernel_state()->content_manager()->OpenContentFile(root_name, entry);
     }
     extended_error = X_HRESULT_FROM_WIN32(result);
     length = 0;

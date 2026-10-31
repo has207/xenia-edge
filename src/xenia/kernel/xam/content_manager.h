@@ -235,6 +235,7 @@ class ContentPackage {
                  const XCONTENT_AGGREGATE_DATA& data,
                  const std::string_view root_path);
 
+  void MountHostPath(const std::filesystem::path& package_path, bool read_only);
   void MountContainer(std::unique_ptr<vfs::XContentContainerDevice> device,
                       const std::string_view name);
 
@@ -287,9 +288,10 @@ class ContentManager {
                        const XCONTENT_AGGREGATE_DATA& data,
                        uint32_t& content_license,
                        const uint32_t disc_number = -1);
-  // Mounts the package stored in a file (XamContentOpenFile) under root_name.
+  // Mounts the package stored in a file under root_name, on the host or inside
+  // another device such as the disc.
   X_RESULT OpenContentFile(const std::string_view root_name,
-                           const std::filesystem::path& package_path);
+                           vfs::Entry* package_entry);
   X_RESULT CloseContent(const std::string_view root_name);
   // Closes the packages mounted from files on |device| before it goes away.
   void ClosePackagesMountedFrom(const vfs::Device* device);
