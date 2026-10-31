@@ -87,6 +87,13 @@ class ObjectTable {
   std::vector<object_ref<XObject>> GetAllObjects();
   void PurgeAllObjects();  // Purges the object table of all guest objects
 
+  // The objects of the bodies CreateNative made, since a body that isn't a
+  // dispatcher has no room for the handle stashed in a dispatch header.
+  void AddAllocatedBody(uint32_t body, XObject* object);
+  void RemoveAllocatedBody(uint32_t body, const XObject* object);
+  // Null when |body| has no object or its last reference is gone.
+  object_ref<XObject> LookupAllocatedBody(uint32_t body);
+
  private:
   struct ObjectTableEntry {
     int handle_ref_count = 0;
@@ -114,6 +121,7 @@ class ObjectTable {
   uint32_t last_free_entry_ = 0;
   uint32_t last_free_host_entry_ = 0;
   std::unordered_map<string_key_case, X_HANDLE> name_table_;
+  std::unordered_map<uint32_t, XObject*> allocated_bodies_;
 };
 
 // Generic lookup

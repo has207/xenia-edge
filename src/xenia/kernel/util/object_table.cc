@@ -52,6 +52,31 @@ void ObjectTable::Reset() {
   table_ = nullptr;
   free(host_table_);
   host_table_ = nullptr;
+  allocated_bodies_.clear();
+}
+
+void ObjectTable::AddAllocatedBody(uint32_t body, XObject* object) {
+  auto global_lock = global_critical_region_.Acquire();
+  allocated_bodies_[body] = object;
+}
+
+void ObjectTable::RemoveAllocatedBody(uint32_t body, const XObject* object) {
+  auto global_lock = global_critical_region_.Acquire();
+  auto it = allocated_bodies_.find(body);
+  if (it != allocated_bodies_.end() && it->second == object) {
+    allocated_bodies_.erase(it);
+  }
+}
+
+object_ref<XObject> ObjectTable::LookupAllocatedBody(uint32_t body) {
+  auto global_lock = global_critical_region_.Acquire();
+  // One whose last reference just went is still mapped until its destructor
+  // runs.
+  auto it = allocated_bodies_.find(body);
+  if (it == allocated_bodies_.end() || !it->second->TryRetain()) {
+    return object_ref<XObject>();
+  }
+  return object_ref<XObject>(it->second);
 }
 
 X_STATUS ObjectTable::FindFreeSlot(uint32_t* out_slot, bool host) {
