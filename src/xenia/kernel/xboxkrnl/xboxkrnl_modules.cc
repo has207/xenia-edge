@@ -360,6 +360,24 @@ dword_result_t XexLoadImageHeaders_entry(pointer_t<X_ANSI_STRING> path,
     result_status = X_STATUS_BUFFER_TOO_SMALL;
   }
 
+  // The security info's offset becomes its address in the buffer, which is
+  // how titles reach it.
+  if (result_status == X_STATUS_SUCCESS) {
+    const uint32_t security_offset = header->security_offset;
+    const uint32_t remaining =
+        security_offset < header_size ? header_size - security_offset : 0;
+    const uint8_t* data = reinterpret_cast<uint8_t*>(header.host_address());
+    const uint32_t security_size =
+        remaining >= 4 ? xe::load_and_swap<uint32_t>(data + security_offset)
+                       : 0;
+    // At least everything before the page descriptors.
+    if (security_size < 0x184 || security_size > remaining) {
+      result_status = X_STATUS_INVALID_IMAGE_FORMAT;
+    } else {
+      header->security_offset = header.guest_address() + security_offset;
+    }
+  }
+
   vfs_file->Destroy();
   return result_status;
 }
