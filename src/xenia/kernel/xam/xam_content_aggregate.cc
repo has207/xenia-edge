@@ -9,72 +9,17 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
-#include "xenia/base/string_util.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xenumerator.h"
-#include "xenia/vfs/file.h"
 #include "xenia/xbox.h"
 
 namespace xe {
 namespace kernel {
 namespace xam {
-
-void AddODDContentTest(object_ref<XStaticEnumerator<XCONTENT_AGGREGATE_DATA>> e,
-                       XContentType content_type) {
-  auto root_entry = kernel_state()->file_system()->ResolvePath(
-      kernel_state()->title_mount_path_ + "\\Content\\0000000000000000");
-  if (!root_entry) {
-    return;
-  }
-
-  auto content_type_path = fmt::format("{:08X}", uint32_t(content_type));
-
-  xe::filesystem::WildcardEngine title_find_engine;
-  title_find_engine.SetRule("????????");
-
-  xe::filesystem::WildcardEngine content_find_engine;
-  content_find_engine.SetRule("????????????????");
-
-  size_t title_find_index = 0;
-  vfs::Entry* title_entry;
-  for (;;) {
-    title_entry =
-        root_entry->IterateChildren(title_find_engine, &title_find_index);
-    if (!title_entry) {
-      break;
-    }
-
-    auto title_id =
-        string_util::from_string<uint32_t>(title_entry->name(), true);
-
-    auto content_root_entry = title_entry->ResolvePath(content_type_path);
-    if (content_root_entry) {
-      size_t content_find_index = 0;
-      vfs::Entry* content_entry;
-      for (;;) {
-        content_entry = content_root_entry->IterateChildren(
-            content_find_engine, &content_find_index);
-        if (!content_entry) {
-          break;
-        }
-
-        auto item = e->AppendItem();
-        assert_not_null(item);
-        if (item) {
-          item->device_id = static_cast<uint32_t>(DummyDeviceId::ODD);
-          item->content_type = content_type;
-          item->set_display_name(to_utf16(content_entry->name()));
-          item->set_file_name(content_entry->name());
-          item->title_id = title_id;
-        }
-      }
-    }
-  }
-}
 
 // Alias XContentCreateCrossTitleEnumerator
 dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
@@ -103,45 +48,54 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
   const XContentType content_type_enum =
       static_cast<XContentType>(content_type.value());
 
-  if (!device_info || device_info->device_type == DeviceType::HDD) {
-    // Fetch any alternate title IDs defined in the XEX header
-    // (used by games to load saves from other titles, etc)
-    std::vector<uint32_t> title_ids{title_id ? title_id.value()
-                                             : kCurrentlyRunningTitleId};
-    auto exe_module = kernel_state()->GetExecutableModule();
-    if (exe_module && exe_module->xex_module()) {
-      const auto& alt_ids = exe_module->xex_module()->opt_alternate_title_ids();
-      std::ranges::copy(alt_ids, std::back_inserter(title_ids));
-    }
+  // Fetch any alternate title IDs defined in the XEX header
+  // (used by games to load saves from other titles, etc)
+  std::vector<uint32_t> title_ids{title_id ? title_id.value()
+                                           : kCurrentlyRunningTitleId};
+  auto exe_module = kernel_state()->GetExecutableModule();
+  if (exe_module && exe_module->xex_module()) {
+    const auto& alt_ids = exe_module->xex_module()->opt_alternate_title_ids();
+    std::ranges::copy(alt_ids, std::back_inserter(title_ids));
+  }
 
+  auto append_items =
+      [&e](const std::vector<XCONTENT_AGGREGATE_DATA>& content_datas) {
+        for (const auto& content_data : content_datas) {
+          auto item = e->AppendItem();
+          assert_not_null(item);
+          if (item) {
+            item->content_data.device_id = content_data.device_id;
+            item->content_data.content_type = content_data.content_type;
+            item->content_data.display_name_raw = content_data.display_name_raw;
+            std::memcpy(item->content_data.file_name_raw,
+                        content_data.file_name_raw,
+                        sizeof(content_data.file_name_raw));
+            item->content_data.padding[0] = 0;
+            item->content_data.padding[1] = 0;
+
+            item->title_id = content_data.title_id;
+          }
+        }
+      };
+
+  auto content_manager = kernel_state()->content_manager();
+  if (!device_info || device_info->device_type == DeviceType::HDD) {
     for (const auto& title_id : title_ids) {
-      // Get all content data.
-      auto content_datas = kernel_state()->content_manager()->ListContent(
+      append_items(content_manager->ListContent(
           static_cast<uint32_t>(DummyDeviceId::HDD),
           xuid == -1 ? 0 : static_cast<uint64_t>(xuid), title_id,
-          content_type_enum);
-      for (const auto& content_data : content_datas) {
-        auto item = e->AppendItem();
-        assert_not_null(item);
-        if (item) {
-          item->content_data.device_id = content_data.device_id;
-          item->content_data.content_type = content_data.content_type;
-          item->content_data.display_name_raw = content_data.display_name_raw;
-          std::memcpy(item->content_data.file_name_raw,
-                      content_data.file_name_raw,
-                      sizeof(content_data.file_name_raw));
-          item->content_data.padding[0] = 0;
-          item->content_data.padding[1] = 0;
-
-          item->title_id = content_data.title_id;
-        }
-      }
+          content_type_enum));
     }
   }
 
-  // if (!device_info || device_info->device_type == DeviceType::ODD) {
-  //   AddODDContentTest(e, content_type_enum);
-  // }
+  // Disc content is stored under XUID 0.
+  if (!device_info || device_info->device_type == DeviceType::ODD) {
+    for (const auto& title_id : title_ids) {
+      append_items(content_manager->ListContentODD(
+          static_cast<uint32_t>(DummyDeviceId::ODD), 0, title_id,
+          content_type_enum));
+    }
+  }
 
   XELOGD("XamContentAggregateCreateEnumerator: added {} items to enumerator",
          e->item_count());
