@@ -1,0 +1,7194 @@
+{
+ "corpus": "xhttp",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-31",
+ "steps": [
+  {
+   "scenario": "open",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open",
+   "name": "access type 2",
+   "export": "NetDll_XHttpOpen",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 8
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "access type 2: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "open",
+   "name": "proxy bypass",
+   "export": "NetDll_XHttpOpen",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 8
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "bypass",
+     "offset": 16
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "proxy bypass: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "open",
+   "name": "not async",
+   "export": "NetDll_XHttpOpen",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "not async: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "open",
+   "name": "other flag",
+   "export": "NetDll_XHttpOpen",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435457
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "other flag: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "open",
+   "name": "close",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "close: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open",
+   "name": "close no handle",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open",
+   "name": "close no handle: error",
+   "export": "GetLastError",
+   "r3": "0000000000000006",
+   "args": []
+  },
+  {
+   "scenario": "open",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "no server",
+   "export": "NetDll_XHttpConnect",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "no server: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "empty server",
+   "export": "NetDll_XHttpConnect",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "empty",
+     "offset": 40
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "empty server: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "server too long",
+   "export": "NetDll_XHttpConnect",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "long",
+     "offset": 48
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "server too long: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "longest server",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 312
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "longest server: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "close longest",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "longest"
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "close longest: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "unknown flag",
+   "export": "NetDll_XHttpConnect",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 24
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 16
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "unknown flag: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "secure",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 568
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 8388608
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "secure: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "close secure",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "secure"
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "close secure: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "connect handle as session",
+   "export": "NetDll_XHttpConnect",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "server",
+     "offset": 24
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "connect handle as session: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "connect",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "connect",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "open request",
+   "export": "NetDll_XHttpOpenRequest",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 24
+    },
+    {
+     "pointer": "object name",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "open request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "second request",
+   "export": "NetDll_XHttpOpenRequest",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 40
+    },
+    {
+     "pointer": "object name",
+     "offset": 48
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "second request: error",
+   "export": "GetLastError",
+   "r3": "00000000000000B7",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "session as connect",
+   "export": "NetDll_XHttpOpenRequest",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "verb",
+     "offset": 40
+    },
+    {
+     "pointer": "object name",
+     "offset": 48
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "session as connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "close request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "close request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "no object name",
+   "export": "NetDll_XHttpOpenRequest",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 40
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "no object name: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "relative object name",
+   "export": "NetDll_XHttpOpenRequest",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 40
+    },
+    {
+     "pointer": "relative",
+     "offset": 56
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "relative object name: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE6",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "size without memory",
+   "export": "NetDll_XHttpOpenRequestUsingMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 40
+    },
+    {
+     "pointer": "object name",
+     "offset": 48
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 256
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "size without memory: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "small memory",
+   "export": "NetDll_XHttpOpenRequestUsingMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 40
+    },
+    {
+     "pointer": "object name",
+     "offset": 48
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "memory",
+     "offset": 64
+    },
+    {
+     "value": 1487
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "small memory: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "memory",
+   "export": "NetDll_XHttpOpenRequestUsingMemory",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 40
+    },
+    {
+     "pointer": "object name",
+     "offset": 48
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "memory",
+     "offset": 64
+    },
+    {
+     "value": 1488
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "memory: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "close memory request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "close memory request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "open request",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "open request",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "set",
+   "export": "NetDll_XHttpSetStatusCallback",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "recorder": "callback"
+    },
+    {
+     "value": 4294967295
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "set: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "set again",
+   "export": "NetDll_XHttpSetStatusCallback",
+   "r3": "0000000082010564",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "recorder": "callback"
+    },
+    {
+     "value": 2048
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "set again: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "no handle",
+   "export": "NetDll_XHttpSetStatusCallback",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "recorder": "callback"
+    },
+    {
+     "value": 2048
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "no handle: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 136
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "open request",
+   "export": "NetDll_XHttpOpenRequest",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 152
+    },
+    {
+     "pointer": "object name",
+     "offset": 160
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "open request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "request callback",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "82010564",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "value",
+     "offset": 168
+    },
+    {
+     "pointer": "length",
+     "offset": 176
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "request callback: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "close request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "close request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "status callback",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "closing callbacks",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "capture": {
+    "callback[:0x4]": "00000003",
+    "callback+0x8+0x8[:0x8]": "0000000000000000",
+    "callback+0x8+0x10[:0x8]": "0000000000000800",
+    "callback+0x8+0x20[:0x8]": "0000000000000004",
+    "callback+0x30+0x8[:0x8]": "0000000000000000",
+    "callback+0x30+0x10[:0x8]": "0000000000000800",
+    "callback+0x30+0x20[:0x8]": "0000000000000004",
+    "callback+0x58+0x8[:0x8]": "0000000000000000",
+    "callback+0x58+0x10[:0x8]": "0000000000000800",
+    "callback+0x58+0x20[:0x8]": "0000000000000004"
+   },
+   "args": []
+  },
+  {
+   "scenario": "status callback",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "open request",
+   "export": "NetDll_XHttpOpenRequest",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 24
+    },
+    {
+     "pointer": "object name",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "open request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 1",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "value",
+     "offset": 40
+    },
+    {
+     "pointer": "length",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 1: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 2",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 2
+    },
+    {
+     "pointer": "value",
+     "offset": 56
+    },
+    {
+     "pointer": "length",
+     "offset": 64
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 2: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 3",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 3
+    },
+    {
+     "pointer": "value",
+     "offset": 72
+    },
+    {
+     "pointer": "length",
+     "offset": 80
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 3: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 5",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 5
+    },
+    {
+     "pointer": "value",
+     "offset": 88
+    },
+    {
+     "pointer": "length",
+     "offset": 96
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 5: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 6",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 104
+    },
+    {
+     "pointer": "length",
+     "offset": 112
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 6: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 12",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 12
+    },
+    {
+     "pointer": "value",
+     "offset": 120
+    },
+    {
+     "pointer": "length",
+     "offset": 128
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 12: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 22",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 22
+    },
+    {
+     "pointer": "value",
+     "offset": 136
+    },
+    {
+     "pointer": "length",
+     "offset": 144
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 22: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 23",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 23
+    },
+    {
+     "pointer": "value",
+     "offset": 152
+    },
+    {
+     "pointer": "length",
+     "offset": 160
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 23: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 31",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 31
+    },
+    {
+     "pointer": "value",
+     "offset": 168
+    },
+    {
+     "pointer": "length",
+     "offset": 176
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 31: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 34",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 34
+    },
+    {
+     "pointer": "value",
+     "offset": 184
+    },
+    {
+     "pointer": "length",
+     "offset": 192
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 34: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 45",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 45
+    },
+    {
+     "pointer": "value",
+     "offset": 200
+    },
+    {
+     "pointer": "length",
+     "offset": 208
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 45: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 63",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "value",
+     "offset": 216
+    },
+    {
+     "pointer": "length",
+     "offset": 224
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 63: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 88",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 232
+    },
+    {
+     "pointer": "length",
+     "offset": 240
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 88: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 89",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 248
+    },
+    {
+     "pointer": "length",
+     "offset": 256
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 89: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 90",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 90
+    },
+    {
+     "pointer": "value",
+     "offset": 264
+    },
+    {
+     "pointer": "length",
+     "offset": 272
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 90: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 100",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 280
+    },
+    {
+     "pointer": "length",
+     "offset": 288
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 100: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 101",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 101
+    },
+    {
+     "pointer": "value",
+     "offset": 296
+    },
+    {
+     "pointer": "length",
+     "offset": 304
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 101: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 103",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 103
+    },
+    {
+     "pointer": "value",
+     "offset": 312
+    },
+    {
+     "pointer": "length",
+     "offset": 320
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 103: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 104",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 104
+    },
+    {
+     "pointer": "value",
+     "offset": 328
+    },
+    {
+     "pointer": "length",
+     "offset": 336
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 104: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 105",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 105
+    },
+    {
+     "pointer": "value",
+     "offset": 344
+    },
+    {
+     "pointer": "length",
+     "offset": 352
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 105: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 106",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 106
+    },
+    {
+     "pointer": "value",
+     "offset": 360
+    },
+    {
+     "pointer": "length",
+     "offset": 368
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 106: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 108",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 108
+    },
+    {
+     "pointer": "value",
+     "offset": 376
+    },
+    {
+     "pointer": "length",
+     "offset": 384
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 108: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 110",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 110
+    },
+    {
+     "pointer": "value",
+     "offset": 392
+    },
+    {
+     "pointer": "length",
+     "offset": 400
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 110: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 113",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 113
+    },
+    {
+     "pointer": "value",
+     "offset": 408
+    },
+    {
+     "pointer": "length",
+     "offset": 416
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 113: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "session 114",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 114
+    },
+    {
+     "pointer": "value",
+     "offset": 424
+    },
+    {
+     "pointer": "length",
+     "offset": 432
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "session 114: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 1",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "value",
+     "offset": 440
+    },
+    {
+     "pointer": "length",
+     "offset": 448
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 1: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 2",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 2
+    },
+    {
+     "pointer": "value",
+     "offset": 456
+    },
+    {
+     "pointer": "length",
+     "offset": 464
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 2: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 3",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 3
+    },
+    {
+     "pointer": "value",
+     "offset": 472
+    },
+    {
+     "pointer": "length",
+     "offset": 480
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 3: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 5",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 5
+    },
+    {
+     "pointer": "value",
+     "offset": 488
+    },
+    {
+     "pointer": "length",
+     "offset": 496
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 5: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 6",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 504
+    },
+    {
+     "pointer": "length",
+     "offset": 512
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 6: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 12",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 12
+    },
+    {
+     "pointer": "value",
+     "offset": 520
+    },
+    {
+     "pointer": "length",
+     "offset": 528
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 12: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 22",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 22
+    },
+    {
+     "pointer": "value",
+     "offset": 536
+    },
+    {
+     "pointer": "length",
+     "offset": 544
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 22: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 23",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 23
+    },
+    {
+     "pointer": "value",
+     "offset": 552
+    },
+    {
+     "pointer": "length",
+     "offset": 560
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 23: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 31",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 31
+    },
+    {
+     "pointer": "value",
+     "offset": 568
+    },
+    {
+     "pointer": "length",
+     "offset": 576
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 31: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 34",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 34
+    },
+    {
+     "pointer": "value",
+     "offset": 584
+    },
+    {
+     "pointer": "length",
+     "offset": 592
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 34: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 45",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 45
+    },
+    {
+     "pointer": "value",
+     "offset": 600
+    },
+    {
+     "pointer": "length",
+     "offset": 608
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 45: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 63",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "value",
+     "offset": 616
+    },
+    {
+     "pointer": "length",
+     "offset": 624
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 63: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 88",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 632
+    },
+    {
+     "pointer": "length",
+     "offset": 640
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 88: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 89",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 648
+    },
+    {
+     "pointer": "length",
+     "offset": 656
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 89: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 90",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 90
+    },
+    {
+     "pointer": "value",
+     "offset": 664
+    },
+    {
+     "pointer": "length",
+     "offset": 672
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 90: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 100",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 680
+    },
+    {
+     "pointer": "length",
+     "offset": 688
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 100: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF3",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 101",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 101
+    },
+    {
+     "pointer": "value",
+     "offset": 696
+    },
+    {
+     "pointer": "length",
+     "offset": 704
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 101: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 103",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 103
+    },
+    {
+     "pointer": "value",
+     "offset": 712
+    },
+    {
+     "pointer": "length",
+     "offset": 720
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 103: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 104",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 104
+    },
+    {
+     "pointer": "value",
+     "offset": 728
+    },
+    {
+     "pointer": "length",
+     "offset": 736
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 104: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 105",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 105
+    },
+    {
+     "pointer": "value",
+     "offset": 744
+    },
+    {
+     "pointer": "length",
+     "offset": 752
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 105: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 106",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 106
+    },
+    {
+     "pointer": "value",
+     "offset": 760
+    },
+    {
+     "pointer": "length",
+     "offset": 768
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 106: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 108",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 108
+    },
+    {
+     "pointer": "value",
+     "offset": 776
+    },
+    {
+     "pointer": "length",
+     "offset": 784
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 108: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 110",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 110
+    },
+    {
+     "pointer": "value",
+     "offset": 792
+    },
+    {
+     "pointer": "length",
+     "offset": 800
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 110: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 113",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 113
+    },
+    {
+     "pointer": "value",
+     "offset": 808
+    },
+    {
+     "pointer": "length",
+     "offset": 816
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 113: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 114",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 114
+    },
+    {
+     "pointer": "value",
+     "offset": 824
+    },
+    {
+     "pointer": "length",
+     "offset": 832
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "connect 114: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 1",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "value",
+     "offset": 840
+    },
+    {
+     "pointer": "length",
+     "offset": 848
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 1: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 2",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2
+    },
+    {
+     "pointer": "value",
+     "offset": 856
+    },
+    {
+     "pointer": "length",
+     "offset": 864
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 2: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 3",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 3
+    },
+    {
+     "pointer": "value",
+     "offset": 872
+    },
+    {
+     "pointer": "length",
+     "offset": 880
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 3: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 5",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 5
+    },
+    {
+     "pointer": "value",
+     "offset": 888
+    },
+    {
+     "pointer": "length",
+     "offset": 896
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 5: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 6",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "0002bf20",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 904
+    },
+    {
+     "pointer": "length",
+     "offset": 912
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 6: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 12",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 12
+    },
+    {
+     "pointer": "value",
+     "offset": 920
+    },
+    {
+     "pointer": "length",
+     "offset": 928
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 12: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 22",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 22
+    },
+    {
+     "pointer": "value",
+     "offset": 936
+    },
+    {
+     "pointer": "length",
+     "offset": 944
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 22: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 23",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 23
+    },
+    {
+     "pointer": "value",
+     "offset": 952
+    },
+    {
+     "pointer": "length",
+     "offset": 960
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 23: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 31",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 31
+    },
+    {
+     "pointer": "value",
+     "offset": 968
+    },
+    {
+     "pointer": "length",
+     "offset": 976
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 31: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 34",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 34
+    },
+    {
+     "pointer": "value",
+     "offset": 984
+    },
+    {
+     "pointer": "length",
+     "offset": 992
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 34: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 45",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 45
+    },
+    {
+     "pointer": "value",
+     "offset": 1000
+    },
+    {
+     "pointer": "length",
+     "offset": 1008
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 45: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 63",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "value",
+     "offset": 1016
+    },
+    {
+     "pointer": "length",
+     "offset": 1024
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 63: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 88",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 1032
+    },
+    {
+     "pointer": "length",
+     "offset": 1040
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 88: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 89",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 1048
+    },
+    {
+     "pointer": "length",
+     "offset": 1056
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 89: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 90",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "0000000a",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 90
+    },
+    {
+     "pointer": "value",
+     "offset": 1064
+    },
+    {
+     "pointer": "length",
+     "offset": 1072
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 90: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 100",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 1080
+    },
+    {
+     "pointer": "length",
+     "offset": 1088
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 100: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 101",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 101
+    },
+    {
+     "pointer": "value",
+     "offset": 1096
+    },
+    {
+     "pointer": "length",
+     "offset": 1104
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 101: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 103",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 103
+    },
+    {
+     "pointer": "value",
+     "offset": 1112
+    },
+    {
+     "pointer": "length",
+     "offset": 1120
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 103: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 104",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 104
+    },
+    {
+     "pointer": "value",
+     "offset": 1128
+    },
+    {
+     "pointer": "length",
+     "offset": 1136
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 104: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 105",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 105
+    },
+    {
+     "pointer": "value",
+     "offset": 1144
+    },
+    {
+     "pointer": "length",
+     "offset": 1152
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 105: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 106",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 106
+    },
+    {
+     "pointer": "value",
+     "offset": 1160
+    },
+    {
+     "pointer": "length",
+     "offset": 1168
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 106: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 108",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 108
+    },
+    {
+     "pointer": "value",
+     "offset": 1176
+    },
+    {
+     "pointer": "length",
+     "offset": 1184
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 108: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 110",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 110
+    },
+    {
+     "pointer": "value",
+     "offset": 1192
+    },
+    {
+     "pointer": "length",
+     "offset": 1200
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 110: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 113",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 113
+    },
+    {
+     "pointer": "value",
+     "offset": 1208
+    },
+    {
+     "pointer": "length",
+     "offset": 1216
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 113: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "request 114",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 114
+    },
+    {
+     "pointer": "value",
+     "offset": 1224
+    },
+    {
+     "pointer": "length",
+     "offset": 1232
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "request 114: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "close request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "close request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "query options",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "query options",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "open request",
+   "export": "NetDll_XHttpOpenRequest",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 24
+    },
+    {
+     "pointer": "object name",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "open request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "no handle",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 40
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "no handle: error",
+   "export": "GetLastError",
+   "r3": "0000000000000006",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "no handle 104",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 104
+    },
+    {
+     "pointer": "value",
+     "offset": 48
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "no handle 104: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "receive timeout",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 56
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "receive timeout: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "receive timeout back",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00001388",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 64
+    },
+    {
+     "pointer": "length",
+     "offset": 72
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "receive timeout back: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "receive timeout 8",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 80
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "receive timeout 8: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "session receive timeout",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 88
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "session receive timeout: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "connect receive timeout",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 96
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "connect receive timeout: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 104
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "policy with max 3",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000003",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 112
+    },
+    {
+     "pointer": "length",
+     "offset": 120
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "policy with max 3: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 0 with max 3",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 128
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 0 with max 3: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 2",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 136
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 2: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 2 back",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000002",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 144
+    },
+    {
+     "pointer": "length",
+     "offset": 152
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 2 back: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects back",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000003",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 160
+    },
+    {
+     "pointer": "length",
+     "offset": 168
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects back: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects 0",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 176
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects 0: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "policy with max 0",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 184
+    },
+    {
+     "pointer": "length",
+     "offset": 192
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "policy with max 0: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 1 with max 0",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 200
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 1 with max 0: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects after 1",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "0000000a",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 208
+    },
+    {
+     "pointer": "length",
+     "offset": 216
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "max redirects after 1: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 4",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 88
+    },
+    {
+     "pointer": "value",
+     "offset": 224
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "policy 4: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "disable 8",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "value",
+     "offset": 232
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "disable 8: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "disable 10",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "value",
+     "offset": 240
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "disable 10: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "disable back",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000018",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "value",
+     "offset": 248
+    },
+    {
+     "pointer": "length",
+     "offset": 256
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "disable back: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "disable 1",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "value",
+     "offset": 264
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "disable 1: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "keep connection",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 22
+    },
+    {
+     "pointer": "value",
+     "offset": 272
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "keep connection: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "context value",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 45
+    },
+    {
+     "pointer": "value",
+     "offset": 280
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "context value: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "session 103",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 103
+    },
+    {
+     "pointer": "value",
+     "offset": 288
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "session 103: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "session 103 back",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "12345678",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "value": 103
+    },
+    {
+     "pointer": "value",
+     "offset": 296
+    },
+    {
+     "pointer": "length",
+     "offset": 304
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "session 103 back: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "connect 103",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 103
+    },
+    {
+     "pointer": "value",
+     "offset": 312
+    },
+    {
+     "pointer": "length",
+     "offset": 320
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "connect 103: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "connect callback set",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "callback value",
+     "offset": 376
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "connect callback set: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "connect callback 8",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "callback value",
+     "offset": 376
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "connect callback 8: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "connect callback back",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "820105a8",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "value",
+     "offset": 384
+    },
+    {
+     "pointer": "length",
+     "offset": 392
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "connect callback back: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "close request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "close request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "set options",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "set options",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "open request",
+   "export": "NetDll_XHttpOpenRequest",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 24
+    },
+    {
+     "pointer": "object name",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "open request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "content length",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcd",
+    "length": "00000008"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 536870921
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 40
+    },
+    {
+     "pointer": "length",
+     "offset": 48
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "content length: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF3",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "raw headers",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "00000040"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 22
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 56
+    },
+    {
+     "pointer": "length",
+     "offset": 120
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "raw headers: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF3",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "status code",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcd",
+    "length": "00000008"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 536936446
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 128
+    },
+    {
+     "pointer": "length",
+     "offset": 136
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "status code: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF3",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000001",
+   "capture": {
+    "buffer": "6578616d706c652e636f6d00cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "0000000c"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2147483663
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 144
+    },
+    {
+     "pointer": "length",
+     "offset": 208
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host, short buffer",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcd",
+    "length": "0000000c"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2147483663
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 216
+    },
+    {
+     "pointer": "length",
+     "offset": 224
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host, short buffer: error",
+   "export": "GetLastError",
+   "r3": "000000000000007A",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host, no buffer",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "length": "0000000c"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2147483663
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "length",
+     "offset": 232
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host, no buffer: error",
+   "export": "GetLastError",
+   "r3": "000000000000007A",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host with index",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000001",
+   "capture": {
+    "buffer": "6578616d706c652e636f6d00cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "0000000c",
+    "index": "00000000"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2147483663
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 240
+    },
+    {
+     "pointer": "length",
+     "offset": 304
+    },
+    {
+     "pointer": "index",
+     "offset": 312
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host with index: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host with index 1",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000001",
+   "capture": {
+    "buffer": "6578616d706c652e636f6d00cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "0000000c",
+    "index": "00000001"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2147483663
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 320
+    },
+    {
+     "pointer": "length",
+     "offset": 384
+    },
+    {
+     "pointer": "index",
+     "offset": 392
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "host with index 1: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "request accept",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "00000040"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2147483648
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 400
+    },
+    {
+     "pointer": "length",
+     "offset": 464
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "request accept: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE9",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "request custom host",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000001",
+   "capture": {
+    "buffer": "6578616d706c652e636f6d00cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "0000000c"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 2147549183
+    },
+    {
+     "pointer": "header",
+     "offset": 544
+    },
+    {
+     "pointer": "buffer",
+     "offset": 472
+    },
+    {
+     "pointer": "length",
+     "offset": 536
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "request custom host: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "custom without name",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "00000040"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 65535
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 552
+    },
+    {
+     "pointer": "length",
+     "offset": 616
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "custom without name: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "name with level",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "00000040"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 9
+    },
+    {
+     "pointer": "header",
+     "offset": 696
+    },
+    {
+     "pointer": "buffer",
+     "offset": 624
+    },
+    {
+     "pointer": "length",
+     "offset": 688
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "name with level: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "number and systemtime",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "00000040"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 1610612745
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 704
+    },
+    {
+     "pointer": "length",
+     "offset": 768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "number and systemtime: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "no length pointer",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 9
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 776
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "no length pointer: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "connect handle",
+   "export": "NetDll_XHttpQueryHeaders",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "length": "00000040"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "value": 22
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "buffer",
+     "offset": 784
+    },
+    {
+     "pointer": "length",
+     "offset": 848
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "connect handle: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF2",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "close request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "close request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "headers before response",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "headers before response",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "open request",
+   "export": "NetDll_XHttpOpenRequest",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 24
+    },
+    {
+     "pointer": "object name",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "open request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "receive",
+   "export": "NetDll_XHttpReceiveResponse",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "receive: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF3",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "read",
+   "export": "NetDll_XHttpReadData",
+   "r3": "0000000000000000",
+   "capture": {
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "pointer": "buffer",
+     "offset": 40
+    },
+    {
+     "value": 16
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "read: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF3",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "write",
+   "export": "NetDll_XHttpWriteData",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "pointer": "buffer",
+     "offset": 40
+    },
+    {
+     "value": 16
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "write: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EF3",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "optional data without total",
+   "export": "NetDll_XHttpSendRequest",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "body",
+     "offset": 56
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 4660
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "optional data without total: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "auth schemes",
+   "export": "NetDll_XHttpQueryAuthSchemes",
+   "r3": "0000000000000000",
+   "capture": {
+    "supported": "cdcdcdcd",
+    "first": "cdcdcdcd",
+    "target": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "pointer": "supported",
+     "offset": 64
+    },
+    {
+     "pointer": "first",
+     "offset": 72
+    },
+    {
+     "pointer": "target",
+     "offset": 80
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "auth schemes: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE4",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "max redirects",
+   "export": "NetDll_XHttpSetOption",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 112
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "max redirects: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "basic credentials",
+   "export": "NetDll_XHttpSetCredentials",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user",
+     "offset": 88
+    },
+    {
+     "pointer": "password",
+     "offset": 96
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "basic credentials: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "max redirects after",
+   "export": "NetDll_XHttpQueryOption",
+   "r3": "0000000000000001",
+   "capture": {
+    "value": "00000000",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 89
+    },
+    {
+     "pointer": "value",
+     "offset": 120
+    },
+    {
+     "pointer": "length",
+     "offset": 128
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "max redirects after: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "basic credentials too long",
+   "export": "NetDll_XHttpSetCredentials",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "long user",
+     "offset": 136
+    },
+    {
+     "pointer": "password",
+     "offset": 96
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "basic credentials too long: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE4",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "perf counters",
+   "export": "NetDll_XHttpGetPerfCounters",
+   "r3": "0000000000000001",
+   "capture": {
+    "counters": "00000001000000010000000100000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "counters",
+     "offset": 400
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "perf counters: error",
+   "export": "GetLastError",
+   "r3": "0000000000002EE4",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "perf counters, no pointer",
+   "export": "NetDll_XHttpGetPerfCounters",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "perf counters, no pointer: error",
+   "export": "GetLastError",
+   "r3": "0000000000000057",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "close request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "close request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "before send",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "before send",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "startup",
+   "export": "NetDll_XHttpStartup",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "open",
+   "export": "NetDll_XHttpOpen",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "user agent",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "open: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "set callback",
+   "export": "NetDll_XHttpSetStatusCallback",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "recorder": "callback"
+    },
+    {
+     "value": 2048
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "set callback: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "connect",
+   "export": "NetDll_XHttpConnect",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    },
+    {
+     "pointer": "server",
+     "offset": 136
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "open request",
+   "export": "NetDll_XHttpOpenRequest",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    },
+    {
+     "pointer": "verb",
+     "offset": 152
+    },
+    {
+     "pointer": "object name",
+     "offset": 160
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "open request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "close connect",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "connect"
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "close connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "perf counters after connect",
+   "export": "NetDll_XHttpGetPerfCounters",
+   "r3": "0000000000000001",
+   "capture": {
+    "counters": "00000001000000000000000100000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "pointer": "counters",
+     "offset": 168
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "perf counters after connect: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "close request",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "request"
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "close request: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "close session",
+   "export": "NetDll_XHttpCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "session"
+    }
+   ]
+  },
+  {
+   "scenario": "close order",
+   "name": "close session: error",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "closing callbacks",
+   "export": "GetLastError",
+   "r3": "0000000000000000",
+   "capture": {
+    "callback[:0x4]": "00000003",
+    "callback+0x8+0x8[:0x8]": "0000000000000000",
+    "callback+0x8+0x10[:0x8]": "0000000000000800",
+    "callback+0x8+0x20[:0x8]": "0000000000000004",
+    "callback+0x30+0x8[:0x8]": "0000000000000000",
+    "callback+0x30+0x10[:0x8]": "0000000000000800",
+    "callback+0x30+0x20[:0x8]": "0000000000000004",
+    "callback+0x58+0x8[:0x8]": "0000000000000000",
+    "callback+0x58+0x10[:0x8]": "0000000000000800",
+    "callback+0x58+0x20[:0x8]": "0000000000000004"
+   },
+   "args": []
+  },
+  {
+   "scenario": "close order",
+   "name": "shutdown",
+   "export": "NetDll_XHttpShutdown",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  }
+ ]
+}
