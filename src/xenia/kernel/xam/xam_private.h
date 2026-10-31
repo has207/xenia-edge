@@ -10,6 +10,9 @@
 #ifndef XENIA_KERNEL_XAM_XAM_PRIVATE_H_
 #define XENIA_KERNEL_XAM_XAM_PRIVATE_H_
 
+#include <string>
+#include <string_view>
+
 #include "xenia/cpu/export_resolver.h"
 #include "xenia/kernel/xam/xam_ordinals.h"
 
@@ -18,6 +21,10 @@ namespace kernel {
 namespace xam {
 
 xe::cpu::Export* RegisterExport_xam(xe::cpu::Export* export_entry);
+
+// XamLoaderLaunchTitleEx, which doesn't return.
+void LaunchTitle(std::string path, std::string_view d_drive_path,
+                 uint32_t flags);
 
 // Registration functions, one per file.
 #define XE_MODULE_EXPORT_GROUP(m, n)                                  \

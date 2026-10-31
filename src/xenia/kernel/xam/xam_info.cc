@@ -39,6 +39,7 @@
 #include "xenia/kernel/xthread.h"
 #include "xenia/ui/windowed_app_context.h"
 #include "xenia/vfs/devices/host_path_entry.h"
+#include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/xbox.h"
 
 #include "third_party/fmt/include/fmt/format.h"
@@ -544,10 +545,52 @@ static bool NamesDevice(std::string_view path) {
   return path.find(':') != std::string_view::npos || path.starts_with('\\');
 }
 
+// Points host_path, launch_path and package_path, which start out as the
+// title's own, at the executable at |entry| on a device outside the title, or
+// returns false when it can't be launched from there.
+static bool ResolveLaunchTarget(const vfs::Entry* entry,
+                                std::filesystem::path& host_path,
+                                std::string& launch_path,
+                                std::string& package_path) {
+  if (auto host_entry = dynamic_cast<const vfs::HostPathEntry*>(entry)) {
+    host_path = host_entry->host_path();
+    launch_path.clear();
+    package_path.clear();
+    return true;
+  }
+  auto container =
+      dynamic_cast<const vfs::XContentContainerDevice*>(entry->device());
+  if (!container) {
+    return false;
+  }
+  launch_path = entry->path();
+  const vfs::Entry* package = container->package_entry();
+  if (!package) {
+    host_path = container->GetHostPath();
+    package_path.clear();
+    return true;
+  }
+  if (auto host_package = dynamic_cast<const vfs::HostPathEntry*>(package)) {
+    host_path = host_package->host_path();
+    package_path.clear();
+    return true;
+  }
+  // Otherwise the package has to be on the title's own disc, which the
+  // relaunch mounts it from.
+  const vfs::Entry* title_root = kernel_state()->file_system()->ResolvePath(
+      kernel_state()->title_mount_path_);
+  if (!package_path.empty() || !title_root ||
+      package->device() != title_root->device()) {
+    return false;
+  }
+  package_path = package->path();
+  return true;
+}
+
 // The console's XamLoaderLaunchTitleEx, which XamLoaderLaunchTitle calls with
 // flag 4. The D: drive path is only checked for flag 4.
-static void LaunchTitle(std::string path, std::string_view d_drive_path,
-                        uint32_t flags) {
+void LaunchTitle(std::string path, std::string_view d_drive_path,
+                 uint32_t flags) {
   // Unowned, this frame never unwinds.
   auto* xam = kernel_state()->GetKernelModule<XamModule>("xam.xex").get();
 
@@ -606,18 +649,14 @@ static void LaunchTitle(std::string path, std::string_view d_drive_path,
 
     if (NamesDevice(launch_path)) {
       // Any other device is outside the title. Only a file a host directory
-      // backs can be launched from there.
-      auto host_entry = dynamic_cast<const vfs::HostPathEntry*>(entry);
-      if (!host_entry ||
-          (host_entry->attributes() & vfs::kFileAttributeDirectory)) {
+      // backs or one in a package can be launched from there.
+      if ((entry->attributes() & vfs::kFileAttributeDirectory) ||
+          !ResolveLaunchTarget(entry, host_path, launch_path, package_path)) {
         XELOGW("XamLoaderLaunchTitle: can't launch {}, exiting to dashboard",
                path);
         kernel_state()->ExitToDashboard();
         return;
       }
-      host_path = host_entry->host_path();
-      package_path.clear();
-      launch_path = "";
     } else if (host_path.extension() == ".xex") {
       host_path.remove_filename();
       host_path = ResolveHostFileName(host_path / launch_path);

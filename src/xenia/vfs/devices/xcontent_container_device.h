@@ -17,6 +17,7 @@
 #include "xenia/kernel/xam/content_manager.h"
 #include "xenia/vfs/device.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
+#include "xenia/vfs/file.h"
 
 namespace xe {
 namespace vfs {
@@ -83,6 +84,12 @@ class XContentContainerDevice : public Device {
   kernel::xam::XCONTENT_AGGREGATE_DATA content_header() const;
   uint32_t license_mask() const { return LicenseMaskFromHeader(*header_); }
 
+  const std::filesystem::path& GetHostPath() const { return host_path_; }
+  // The package's file on another device, null for a host file.
+  const Entry* package_entry() const {
+    return package_file_ ? package_file_->entry() : nullptr;
+  }
+
   const XContentContainerHeader* GetContainerHeader() const {
     return header_.get();
   }
@@ -118,8 +125,6 @@ class XContentContainerDevice : public Device {
 
   void SetFilesSize(uint64_t files_size) { files_total_size_ = files_size; }
   const uint64_t GetFilesSize() const { return files_total_size_; }
-
-  const std::filesystem::path& GetHostPath() const { return host_path_; }
 
   std::string name_;
   std::filesystem::path host_path_;

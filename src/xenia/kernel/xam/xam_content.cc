@@ -1105,67 +1105,57 @@ dword_result_t XamContentLaunchImageFromFileInternal_entry(
 
 DECLARE_XAM_EXPORT1(XamContentLaunchImageFromFileInternal, kContent, kStub);
 
-dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
-                                                   lpstring_t xex_path) {
-  XCONTENT_AGGREGATE_DATA content_data = *content_data_ptr.as<XCONTENT_DATA*>();
-
-  // title_id is written into first 8 characters of filename
-  const uint32_t title_id = xe::string_util::from_string<uint32_t>(
-      content_data.file_name().substr(0, 8), true);
-
-  // This should be done via content_manager, however as it isn't capable of
-  // such action we need to improvise.
-  const std::string package_path =
-      fmt::format("{}/Content/0000000000000000/{:08X}/{:08X}/{}",
-                  kernel_state()->title_mount_path_, title_id,
-                  static_cast<uint32_t>(content_data.content_type.get()),
-                  content_data.file_name());
-
-  auto entry = kernel_state()->file_system()->ResolvePath(package_path);
-
-  if (!entry) {
-    return X_STATUS_NO_SUCH_FILE;
+static X_RESULT LaunchContentImage(uint32_t user_index,
+                                   const XCONTENT_AGGREGATE_DATA& content_data,
+                                   const std::string& xex_name) {
+  constexpr std::string_view kLaunchRootName = "XSYSLAUNCH";
+  auto content_manager = kernel_state()->content_manager();
+  uint64_t xuid = 0;
+  X_RESULT result = ContentXuid(user_index, xuid);
+  if (!result) {
+    result = content_manager->CheckPackageName(xuid, content_data);
+  }
+  if (!result && !content_manager->ContentExists(xuid, content_data)) {
+    result = X_ERROR_PATH_NOT_FOUND;
+  }
+  uint32_t content_license = 0;
+  if (!result) {
+    result = content_manager->OpenContent(kLaunchRootName, xuid, content_data,
+                                          content_license);
+  }
+  if (result) {
+    return result;
   }
 
-  const std::filesystem::path host_path =
-      kernel_state()->emulator()->content_root() / entry->name();
-
-  if (!std::filesystem::exists(host_path)) {
-    std::atomic<uint64_t> progress{0};
-    kernel_state()->file_system()->ExtractContentFile(
-        entry, kernel_state()->emulator()->content_root(), progress, true);
-  }
-
-  // In-process relaunch is disabled on macOS — see XamLoaderLaunchTitle.
-#if !XE_PLATFORM_MAC
-  if (cvars::in_process_title_relaunch) {
-    auto* emulator = kernel_state()->emulator();
-    auto host_path_utf8 = xe::path_to_utf8(host_path);
-    std::thread([emulator, host_path_utf8,
-                 module = xex_path.value()]() mutable {
-      emulator->RelaunchTitle(host_path_utf8, module, 0, {});
-    }).detach();
-    // Park off guest code until RelaunchTitle terminates us (Suspend can return
-    // on POSIX).
-    XThread::GetCurrentThread()->Suspend(nullptr);
-    while (true) {
-      xe::threading::NanoSleep(int64_t(1'000'000'000));
-    }
-  }
-#endif  // !XE_PLATFORM_MAC
-
-  auto on_launch_new_title = kernel_state()->emulator()->on_launch_new_title();
-  if (on_launch_new_title) {
-    XELOGI("XamContentLaunchImageInternal: spawning new title process");
-    on_launch_new_title(xe::path_to_utf8(host_path), xex_path.value(), 0, "",
-                        "", "");
-  }
-
-  kernel_state()->TerminateTitle();
+  const bool on_disc =
+      content_data.device_id == static_cast<uint32_t>(DummyDeviceId::ODD);
+  LaunchTitle(fmt::format("{}:\\{}", kLaunchRootName, xex_name), {},
+              on_disc ? 0x80 : 0);
   return X_ERROR_SUCCESS;
 }
 
-DECLARE_XAM_EXPORT1(XamContentLaunchImageInternal, kContent, kStub);
+dword_result_t XamContentLaunchImage_entry(dword_t user_index,
+                                           lpvoid_t content_data_ptr,
+                                           lpstring_t xex_name) {
+  if (!content_data_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return LaunchContentImage(user_index, *content_data_ptr.as<XCONTENT_DATA*>(),
+                            xex_name ? xex_name.value() : std::string());
+}
+DECLARE_XAM_EXPORT1(XamContentLaunchImage, kContent, kSketchy);
+
+dword_result_t XamContentLaunchImageInternal_entry(lpvoid_t content_data_ptr,
+                                                   lpstring_t xex_name) {
+  if (!content_data_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  // XCONTENT_DATA_INTERNAL has the XUID and title ID at the same offsets.
+  return LaunchContentImage(XUserIndexNone,
+                            *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>(),
+                            xex_name ? xex_name.value() : std::string());
+}
+DECLARE_XAM_EXPORT1(XamContentLaunchImageInternal, kContent, kSketchy);
 
 void XamContentRegisterChangeCallback_entry(dword_t callback) {
   kernel_state()->xam_state()->SetContentRegisterCallback(callback);
