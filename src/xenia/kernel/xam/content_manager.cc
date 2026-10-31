@@ -692,13 +692,40 @@ X_RESULT ContentManager::CloseContent(const std::string_view root_name) {
   if (it == open_packages_.end()) {
     return X_ERROR_FILE_NOT_FOUND;
   }
-  auto package = it->second;
-  CloseOpenedFilesFromContent(*package);
-
-  open_packages_.erase(it);
-  delete package;
-
+  ClosePackage(it->second);
   return X_ERROR_SUCCESS;
+}
+
+void ContentManager::ClosePackage(ContentPackage* package) {
+  // Packages mounted from files in this package read through this package's
+  // device.
+  ClosePackagesMountedFrom(
+      kernel_state_->file_system()->GetDevice(package->device_path()));
+  CloseOpenedFilesFromContent(*package);
+  std::erase_if(open_packages_,
+                [package](const auto& open) { return open.second == package; });
+  delete package;
+}
+
+void ContentManager::ClosePackagesMountedFrom(const vfs::Device* device) {
+  auto global_lock = global_critical_region_.Acquire();
+  if (!device) {
+    return;
+  }
+  std::vector<std::pair<std::string, ContentPackage*>> mounted;
+  for (const auto& open : open_packages_) {
+    auto container = dynamic_cast<const vfs::XContentContainerDevice*>(
+        kernel_state_->file_system()->GetDevice(open.second->device_path()));
+    const vfs::Entry* source = container ? container->package_entry() : nullptr;
+    if (source && source->device() == device) {
+      mounted.emplace_back(std::string(open.first.view()), open.second);
+    }
+  }
+  for (const auto& [root_name, package] : mounted) {
+    XELOGW("Closing {}: the device it was mounted from is going away",
+           root_name);
+    ClosePackage(package);
+  }
 }
 
 X_RESULT ContentManager::GetContentThumbnail(

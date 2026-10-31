@@ -291,6 +291,8 @@ class ContentManager {
   X_RESULT OpenContentFile(const std::string_view root_name,
                            const std::filesystem::path& package_path);
   X_RESULT CloseContent(const std::string_view root_name);
+  // Closes the packages mounted from files on |device| before it goes away.
+  void ClosePackagesMountedFrom(const vfs::Device* device);
   X_RESULT GetContentThumbnail(const uint64_t xuid,
                                const XCONTENT_AGGREGATE_DATA& data,
                                std::vector<uint8_t>* buffer);
@@ -318,6 +320,8 @@ class ContentManager {
   std::string ResolveDiscPackageRoot(const uint64_t xuid, uint32_t title_id,
                                      const XContentType content_type) const;
   vfs::Entry* ResolveDiscPackage(const XCONTENT_AGGREGATE_DATA& data) const;
+  // Closes |package| and the packages mounted from files in it.
+  void ClosePackage(ContentPackage* package);
 
   std::unordered_set<uint32_t> FindPublisherTitleIds(
       const uint64_t xuid,

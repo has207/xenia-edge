@@ -879,6 +879,11 @@ dword_result_t XamSwapDisc_entry(
 
   // Unmount the current disc
   if (filesystem->ResolvePath(mount_path) != NULL) {
+    // So nothing mounts from the disc between closing its packages and
+    // unmounting it.
+    auto global_lock = global_critical_region::AcquireDirect();
+    kernel_state()->content_manager()->ClosePackagesMountedFrom(
+        filesystem->GetDevice(mount_path));
     filesystem->UnregisterDevice(mount_path);
   }
 
