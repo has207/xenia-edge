@@ -609,13 +609,40 @@ TEST_CASE("Host path rename checks the target name", "[vfs_rename]") {
   }
 }
 
-// A read-only STFS package holding |name|, laid out as the header, the hash
-// table, the file table block and one data block.
-static std::vector<uint8_t> MakeStfsPackage(const std::string& name,
-                                            const std::string& payload) {
-  constexpr size_t kBlockSize = 0x1000;
-  const size_t base = xe::round_up(sizeof(XContentContainerHeader), kBlockSize);
-  std::vector<uint8_t> package(base + 3 * kBlockSize);
+constexpr size_t kStfsBlockSize = 0x1000;
+
+// Where data block |block| of a read-only STFS package below 28900 blocks
+// lies, past the level 0 tables and the level 1 table that precede it.
+static size_t StfsBlockOffset(size_t block) {
+  const size_t base =
+      xe::round_up(sizeof(XContentContainerHeader), kStfsBlockSize);
+  return base +
+         (block + block / 170 + 1 + (block >= 170 ? 1 : 0)) * kStfsBlockSize;
+}
+
+struct StfsTestPackage {
+  std::vector<uint8_t> bytes;
+  // Contiguous in blocks 1 to 172, across two hash tables.
+  std::string icon;
+  // In blocks 174 then 173.
+  std::string data;
+};
+
+static StfsTestPackage MakeStfsPackage() {
+  auto fill = [](size_t size, uint8_t seed) {
+    std::string text(size, '\0');
+    for (size_t i = 0; i < size; ++i) {
+      text[i] = char(seed + i * 7 + i / kStfsBlockSize);
+    }
+    return text;
+  };
+  StfsTestPackage package;
+  package.icon = fill(171 * kStfsBlockSize + 100, 1);
+  package.data = fill(kStfsBlockSize + 50, 200);
+  package.bytes.resize(StfsBlockOffset(175));
+  auto write = [&](size_t offset, const void* data, size_t size) {
+    std::memcpy(package.bytes.data() + offset, data, size);
+  };
 
   auto header = std::make_unique<XContentContainerHeader>();
   std::memset(header.get(), 0, sizeof(XContentContainerHeader));
@@ -627,31 +654,47 @@ static std::vector<uint8_t> MakeStfsPackage(const std::string& name,
   stfs.flags.bits.read_only_format = 1;
   stfs.file_table_block_count = 1;
   stfs.set_file_table_block_number(0);
-  stfs.total_block_count = 2;
-  std::memcpy(package.data(), header.get(), sizeof(XContentContainerHeader));
+  stfs.total_block_count = 175;
+  write(0, header.get(), sizeof(XContentContainerHeader));
 
+  // The contiguous file's hash entries stay empty, it is read without them.
   StfsHashTable hashes;
   std::memset(&hashes, 0, sizeof(hashes));
   hashes.entries[0].set_level0_next_block(0xFFFFFF);
-  hashes.entries[1].set_level0_next_block(0xFFFFFF);
-  std::memcpy(package.data() + base, &hashes, sizeof(hashes));
+  write(StfsBlockOffset(0) - kStfsBlockSize, &hashes, sizeof(hashes));
+  std::memset(&hashes, 0, sizeof(hashes));
+  hashes.entries[174 % 170].set_level0_next_block(173);
+  hashes.entries[173 % 170].set_level0_next_block(0xFFFFFF);
+  write(StfsBlockOffset(170) - kStfsBlockSize, &hashes, sizeof(hashes));
 
   StfsDirectoryBlock directory;
   std::memset(&directory, 0, sizeof(directory));
-  auto& entry = directory.entries[0];
-  std::memcpy(entry.name, name.data(), name.size());
-  entry.flags.name_length = uint8_t(name.size());
-  entry.flags.contiguous = 1;
-  entry.set_valid_data_blocks(1);
-  entry.set_allocated_data_blocks(1);
-  entry.set_start_block_number(1);
-  entry.directory_index = 0xFFFF;
-  entry.length = uint32_t(payload.size());
-  std::memcpy(package.data() + base + kBlockSize, &directory,
-              sizeof(directory));
+  auto add = [&](size_t index, const char* name, bool contiguous,
+                 uint32_t start_block, const std::string& contents) {
+    auto& entry = directory.entries[index];
+    std::memcpy(entry.name, name, std::strlen(name));
+    entry.flags.name_length = uint8_t(std::strlen(name));
+    entry.flags.contiguous = contiguous;
+    const uint32_t blocks = uint32_t(
+        xe::round_up(contents.size(), kStfsBlockSize) / kStfsBlockSize);
+    entry.set_valid_data_blocks(blocks);
+    entry.set_allocated_data_blocks(blocks);
+    entry.set_start_block_number(start_block);
+    entry.directory_index = 0xFFFF;
+    entry.length = uint32_t(contents.size());
+  };
+  add(0, "icon.png", true, 1, package.icon);
+  add(1, "data.bin", false, 174, package.data);
+  write(StfsBlockOffset(0), &directory, sizeof(directory));
 
-  std::memcpy(package.data() + base + 2 * kBlockSize, payload.data(),
-              payload.size());
+  for (size_t i = 0; i * kStfsBlockSize < package.icon.size(); ++i) {
+    const size_t start = i * kStfsBlockSize;
+    write(StfsBlockOffset(1 + i), package.icon.data() + start,
+          std::min(kStfsBlockSize, package.icon.size() - start));
+  }
+  write(StfsBlockOffset(174), package.data.data(), kStfsBlockSize);
+  write(StfsBlockOffset(173), package.data.data() + kStfsBlockSize,
+        package.data.size() - kStfsBlockSize);
   return package;
 }
 
@@ -669,18 +712,17 @@ TEST_CASE("STFS package mounted from its host file or another device",
     }
   } temporary;
   REQUIRE(std::filesystem::create_directories(temporary.path / "dir"));
-  const std::string payload = "nested package payload";
-  const auto package = MakeStfsPackage("icon.png", payload);
+  const auto package = MakeStfsPackage();
   auto write = [&](const char* name, size_t size) {
     std::ofstream(temporary.path / name, std::ios::binary)
-        .write(reinterpret_cast<const char*>(package.data()), size);
+        .write(reinterpret_cast<const char*>(package.bytes.data()), size);
   };
-  write("package", package.size());
+  write("package", package.bytes.size());
   // Ends before the file table block.
-  write("short", package.size() - 2 * 0x1000);
+  write("short", StfsBlockOffset(0));
 
-  auto read = [](Device& device) {
-    Entry* entry = device.ResolvePath("icon.png");
+  auto read = [](Device& device, const char* name) {
+    Entry* entry = device.ResolvePath(name);
     REQUIRE(entry);
     File* file = nullptr;
     REQUIRE(entry->Open(FileAccess::kFileReadData, &file) == X_STATUS_SUCCESS);
@@ -699,7 +741,8 @@ TEST_CASE("STFS package mounted from its host file or another device",
         "\\Device\\Package", temporary.path / "package");
     REQUIRE(device);
     REQUIRE(device->Initialize());
-    REQUIRE(read(*device) == payload);
+    REQUIRE(read(*device, "icon.png") == package.icon);
+    REQUIRE(read(*device, "data.bin") == package.data);
   }
 
   SECTION("A host file that ends early does not mount") {
@@ -717,7 +760,8 @@ TEST_CASE("STFS package mounted from its host file or another device",
         "\\Device\\Package", disc.ResolvePath("package"));
     REQUIRE(device);
     REQUIRE(device->Initialize());
-    REQUIRE(read(*device) == payload);
+    REQUIRE(read(*device, "icon.png") == package.icon);
+    REQUIRE(read(*device, "data.bin") == package.data);
   }
 
   SECTION("A file on another device that ends early does not mount") {

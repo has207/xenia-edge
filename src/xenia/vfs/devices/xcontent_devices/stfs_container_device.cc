@@ -158,16 +158,29 @@ std::unique_ptr<StfsContainerEntry> StfsContainerDevice::ReadEntry(
   // Fill in all block records.
   // It's easier to do this now and just look them up later, at the cost
   // of some memory. Nasty chain walk.
-  // TODO(benvanik): optimize if flags.contiguous is set.
   if (entry->attributes() & X_FILE_ATTRIBUTE_NORMAL) {
     uint32_t block_index = dir_entry->start_block_number();
     size_t remaining_size = dir_entry->length;
+    size_t block_count = 0;
     while (remaining_size && block_index != kEndOfChain) {
       size_t block_size =
           std::min(static_cast<size_t>(kBlockSize), remaining_size);
       size_t offset = BlockToOffset(block_index);
-      entry->block_list_.push_back({0, offset, block_size});
+      // Blocks adjacent in the package share one record.
+      auto& block_list = entry->block_list_;
+      if (!block_list.empty() &&
+          block_list.back().offset + block_list.back().length == offset) {
+        block_list.back().length += block_size;
+      } else {
+        block_list.push_back({0, offset, block_size});
+      }
+      ++block_count;
       remaining_size -= block_size;
+      // A read-only package numbers a contiguous file's blocks consecutively.
+      if (dir_entry->flags.contiguous && header_->is_package_readonly()) {
+        ++block_index;
+        continue;
+      }
       auto block_hash = GetBlockHash(block_index);
       if (!block_hash) {
         return nullptr;
@@ -187,12 +200,11 @@ std::unique_ptr<StfsContainerEntry> StfsContainerDevice::ReadEntry(
 
     // Check that the number of blocks retrieved from hash entries matches
     // the block count read from the file entry
-    if (entry->block_list_.size() != dir_entry->allocated_data_blocks()) {
+    if (block_count != dir_entry->allocated_data_blocks()) {
       XELOGW(
           "STFS failed to read correct block-chain for entry {}, read {} "
           "blocks, expected {}",
-          entry->name_, entry->block_list_.size(),
-          dir_entry->allocated_data_blocks());
+          entry->name_, block_count, dir_entry->allocated_data_blocks());
       assert_always();
     }
   }
