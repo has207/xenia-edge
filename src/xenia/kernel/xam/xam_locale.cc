@@ -736,7 +736,7 @@ pointer_result_t XamGetLanguageTypefacePatch_entry(dword_t language) {
 DECLARE_XAM_EXPORT1(XamGetLanguageTypefacePatch, kNone, kSketchy);
 
 dword_result_t XamGetCountry_entry() {
-  return kernel_state()->xconfig()->ReadSetting<uint32_t>(
+  return kernel_state()->xconfig()->ReadSetting<uint8_t>(
       XCONFIG_USER_CATEGORY,
       XCONFIG_USER_CATEGORY_ENTRIES::XCONFIG_USER_COUNTRY);
 }
