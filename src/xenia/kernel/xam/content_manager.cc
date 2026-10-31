@@ -18,6 +18,7 @@
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xam/user_profile.h"
+#include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xfile.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/vfs/devices/host_path_device.h"
@@ -39,35 +40,55 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
                                const XCONTENT_AGGREGATE_DATA& data,
                                const std::filesystem::path& package_path,
                                const std::string_view root_path)
-    : kernel_state_(kernel_state),
-      root_name_(root_name),
-      package_path_(package_path),
-      license_(cvars::license_mask) {
-  device_path_ = fmt::format("\\Device\\Content\\{0}\\", ++content_device_id_);
-  content_data_ = data;
-
-  auto fs = kernel_state_->file_system();
+    : ContentPackage(kernel_state, root_name, data, root_path) {
+  package_path_ = package_path;
   if (std::filesystem::is_directory(package_path)) {
     auto device = std::make_unique<vfs::HostPathDevice>(
         device_path_, package_path, false, false, "STFS");
     mounted_ = device->Initialize();
-    fs->RegisterDevice(std::move(device));
+    kernel_state_->file_system()->RegisterDevice(std::move(device));
   } else {
     // A title can install content by copying the package file itself, so a
     // package is either an extracted directory or a container.
-    auto device = vfs::XContentContainerDevice::CreateContentDevice(
-        device_path_, package_path);
-    if (device && device->Initialize()) {
-      license_ = device->license_mask();
-      mounted_ = true;
-      fs->RegisterDevice(std::move(device));
-    } else {
-      XELOGE("{}: Cannot mount content container {}", __func__,
-             xe::strip_pii(xe::path_to_utf8(package_path)));
-    }
+    MountContainer(vfs::XContentContainerDevice::CreateContentDevice(
+                       device_path_, package_path),
+                   xe::strip_pii(xe::path_to_utf8(package_path)));
   }
-  fs->RegisterSymbolicLink(root_name_ + ":",
-                           xe::utf8::join_guest_paths(device_path_, root_path));
+}
+
+ContentPackage::ContentPackage(KernelState* kernel_state,
+                               const std::string_view root_name,
+                               const XCONTENT_AGGREGATE_DATA& data,
+                               vfs::Entry* package_entry)
+    : ContentPackage(kernel_state, root_name, data, std::string_view()) {
+  MountContainer(vfs::XContentContainerDevice::CreateContentDevice(
+                     device_path_, package_entry),
+                 package_entry->absolute_path());
+}
+
+ContentPackage::ContentPackage(KernelState* kernel_state,
+                               const std::string_view root_name,
+                               const XCONTENT_AGGREGATE_DATA& data,
+                               const std::string_view root_path)
+    : kernel_state_(kernel_state),
+      root_name_(root_name),
+      content_data_(data),
+      license_(cvars::license_mask) {
+  device_path_ = fmt::format("\\Device\\Content\\{0}\\", ++content_device_id_);
+  kernel_state_->file_system()->RegisterSymbolicLink(
+      root_name_ + ":", xe::utf8::join_guest_paths(device_path_, root_path));
+}
+
+void ContentPackage::MountContainer(
+    std::unique_ptr<vfs::XContentContainerDevice> device,
+    const std::string_view name) {
+  if (!device || !device->Initialize()) {
+    XELOGE("{}: Cannot mount content container {}", __func__, name);
+    return;
+  }
+  license_ = device->license_mask();
+  mounted_ = true;
+  kernel_state_->file_system()->RegisterDevice(std::move(device));
 }
 
 ContentPackage::~ContentPackage() {
@@ -166,10 +187,12 @@ static X_RESULT CheckFileName(const std::string_view name) {
   return X_ERROR_SUCCESS;
 }
 
-X_RESULT ContentManager::ResolvePackagePath(const uint64_t xuid,
-                                            const XCONTENT_AGGREGATE_DATA& data,
-                                            std::filesystem::path& path) {
-  std::string file_name = data.file_name();
+// The name a package is stored under and the XUID it's stored for.
+static X_RESULT ResolveStoredPackageName(const uint64_t xuid,
+                                         const XCONTENT_AGGREGATE_DATA& data,
+                                         std::string& file_name,
+                                         uint64_t& stored_xuid) {
+  file_name = data.file_name();
   const bool shared =
       !file_name.empty() && (uint8_t(file_name[0]) & kSharedContentFileNameBit);
   if (shared) {
@@ -177,6 +200,29 @@ X_RESULT ContentManager::ResolvePackagePath(const uint64_t xuid,
   }
   file_name = xe::string_util::trim(file_name);
   if (const X_RESULT result = CheckFileName(file_name)) {
+    return result;
+  }
+
+  stored_xuid = (data.xuid != -1 && data.xuid != 0) ? data.xuid.get() : xuid;
+  // All DLCs are stored in common directory, so we need to override xuid for
+  // them and probably some other types.
+  if (shared || data.content_type == XContentType::kMarketplaceContent) {
+    stored_xuid = 0;
+  }
+  return X_ERROR_SUCCESS;
+}
+
+static bool IsDiscContent(const XCONTENT_AGGREGATE_DATA& data) {
+  return data.device_id == static_cast<uint32_t>(DummyDeviceId::ODD);
+}
+
+X_RESULT ContentManager::ResolvePackagePath(const uint64_t xuid,
+                                            const XCONTENT_AGGREGATE_DATA& data,
+                                            std::filesystem::path& path) {
+  std::string file_name;
+  uint64_t used_xuid = 0;
+  if (const X_RESULT result =
+          ResolveStoredPackageName(xuid, data, file_name, used_xuid)) {
     return result;
   }
   // The host has to keep the name as it is, which Windows doesn't for one
@@ -190,16 +236,7 @@ X_RESULT ContentManager::ResolvePackagePath(const uint64_t xuid,
 
   // Content path:
   // content_root/title_id/content_type/data_file_name/
-  auto get_package_path = [&, data](const uint32_t title_id) {
-    uint64_t used_xuid =
-        (data.xuid != -1 && data.xuid != 0) ? data.xuid.get() : xuid;
-
-    // All DLCs are stored in common directory, so we need to override xuid for
-    // them and probably some other types.
-    if (shared || data.content_type == XContentType::kMarketplaceContent) {
-      used_xuid = 0;
-    }
-
+  auto get_package_path = [&](const uint32_t title_id) {
     auto package_root =
         ResolvePackageRoot(used_xuid, title_id, data.content_type);
     std::filesystem::path package_path = package_root / folder_name;
@@ -346,16 +383,8 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContentODD(
     const XContentType content_type) const {
   std::vector<XCONTENT_AGGREGATE_DATA> result;
 
-  auto xuid_str = fmt::format("{:016X}", xuid);
-  auto title_id_str = fmt::format("{:08X}", title_id);
-  auto content_type_str =
-      fmt::format("{:08X}", static_cast<uint32_t>(content_type));
-
-  const std::string game_content_path =
-      fmt::format("{}\\content\\{}\\{}\\{}", kernel_state_->title_mount_path_,
-                  xuid_str, title_id_str, content_type_str);
-
-  auto entry = kernel_state_->file_system()->ResolvePath(game_content_path);
+  auto entry = kernel_state_->file_system()->ResolvePath(
+      ResolveDiscPackageRoot(xuid, title_id, content_type));
 
   if (!entry) {
     return {};
@@ -374,6 +403,29 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContentODD(
   }
 
   return result;
+}
+
+std::string ContentManager::ResolveDiscPackageRoot(
+    const uint64_t xuid, uint32_t title_id,
+    const XContentType content_type) const {
+  if (title_id == kCurrentlyRunningTitleId) {
+    title_id = kernel_state_->title_id();
+  }
+  return fmt::format("{}\\content\\{:016X}\\{:08X}\\{:08X}",
+                     kernel_state_->title_mount_path_, xuid, title_id,
+                     static_cast<uint32_t>(content_type));
+}
+
+vfs::Entry* ContentManager::ResolveDiscPackage(
+    const XCONTENT_AGGREGATE_DATA& data) const {
+  std::string file_name;
+  uint64_t used_xuid = 0;
+  if (ResolveStoredPackageName(0, data, file_name, used_xuid)) {
+    return nullptr;
+  }
+  // A disc holds no user's content, only XUID 0's.
+  return kernel_state_->file_system()->ResolvePath(xe::utf8::join_guest_paths(
+      ResolveDiscPackageRoot(0, data.title_id, data.content_type), file_name));
 }
 
 std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
@@ -402,6 +454,9 @@ std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
 
 bool ContentManager::ContentExists(const uint64_t xuid,
                                    const XCONTENT_AGGREGATE_DATA& data) {
+  if (IsDiscContent(data)) {
+    return ResolveDiscPackage(data) != nullptr;
+  }
   std::filesystem::path path;
   return !ResolvePackagePath(xuid, data, path) && std::filesystem::exists(path);
 }
@@ -555,22 +610,35 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     return X_ERROR_ALREADY_EXISTS;
   }
 
-  std::filesystem::path package_path;
-  if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
-    return result;
-  }
-  if (!std::filesystem::exists(package_path)) {
-    // Does not exist, must be created.
-    return X_ERROR_FILE_NOT_FOUND;
-  }
+  std::unique_ptr<ContentPackage> package;
+  if (IsDiscContent(data)) {
+    vfs::Entry* package_entry = ResolveDiscPackage(data);
+    if (!package_entry) {
+      return X_ERROR_FILE_NOT_FOUND;
+    }
+    package = std::make_unique<ContentPackage>(kernel_state_, root_name, data,
+                                               package_entry);
+    if (!package->is_mounted()) {
+      return X_ERROR_FILE_NOT_FOUND;
+    }
+  } else {
+    std::filesystem::path package_path;
+    if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
+      return result;
+    }
+    if (!std::filesystem::exists(package_path)) {
+      // Does not exist, must be created.
+      return X_ERROR_FILE_NOT_FOUND;
+    }
 
-  // Open package.
-  auto package = ResolvePackage(root_name, xuid, data, disc_number);
-  if (!package) {
-    return X_ERROR_FILE_NOT_FOUND;
-  }
+    // Open package.
+    package = ResolvePackage(root_name, xuid, data, disc_number);
+    if (!package) {
+      return X_ERROR_FILE_NOT_FOUND;
+    }
 
-  package->LoadPackageLicenseMask(PackageHeaderPath(package_path));
+    package->LoadPackageLicenseMask(PackageHeaderPath(package_path));
+  }
 
   content_license = package->GetPackageLicense();
   if (static_cast<uint32_t>(cvars::license_mask) > 0) {

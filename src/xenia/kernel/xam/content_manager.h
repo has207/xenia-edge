@@ -27,6 +27,9 @@ namespace xe {
 namespace kernel {
 class KernelState;
 }  // namespace kernel
+namespace vfs {
+class XContentContainerDevice;
+}  // namespace vfs
 }  // namespace xe
 
 namespace xe {
@@ -206,6 +209,10 @@ class ContentPackage {
                  const XCONTENT_AGGREGATE_DATA& data,
                  const std::filesystem::path& package_path,
                  const std::string_view root_path = "");
+  // A package stored on another device, such as the disc.
+  ContentPackage(KernelState* kernel_state, const std::string_view root_name,
+                 const XCONTENT_AGGREGATE_DATA& data,
+                 vfs::Entry* package_entry);
   ~ContentPackage();
 
   void LoadPackageLicenseMask(const std::filesystem::path header_path);
@@ -224,6 +231,13 @@ class ContentPackage {
   const std::filesystem::path& package_path() const { return package_path_; }
 
  private:
+  ContentPackage(KernelState* kernel_state, const std::string_view root_name,
+                 const XCONTENT_AGGREGATE_DATA& data,
+                 const std::string_view root_path);
+
+  void MountContainer(std::unique_ptr<vfs::XContentContainerDevice> device,
+                      const std::string_view name);
+
   KernelState* kernel_state_;
   std::string root_name_;
   std::string device_path_;
@@ -301,6 +315,9 @@ class ContentManager {
   X_RESULT ResolvePackagePath(const uint64_t xuid,
                               const XCONTENT_AGGREGATE_DATA& data,
                               std::filesystem::path& path);
+  std::string ResolveDiscPackageRoot(const uint64_t xuid, uint32_t title_id,
+                                     const XContentType content_type) const;
+  vfs::Entry* ResolveDiscPackage(const XCONTENT_AGGREGATE_DATA& data) const;
 
   std::unordered_set<uint32_t> FindPublisherTitleIds(
       const uint64_t xuid,
