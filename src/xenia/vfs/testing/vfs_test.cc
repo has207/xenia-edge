@@ -18,8 +18,10 @@
 #include <vector>
 
 #include "xenia/base/byte_order.h"
+#include "xenia/base/math.h"
 #include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
+#include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/entry.h"
 #include "xenia/vfs/file.h"
 #include "xenia/vfs/gdfx_util.h"
@@ -604,6 +606,130 @@ TEST_CASE("Host path rename checks the target name", "[vfs_rename]") {
     REQUIRE(entry->Rename("cache:\\NEW.BIN") == X_STATUS_OBJECT_NAME_COLLISION);
     REQUIRE(entry->Rename("cache:\\NEW.BIN", true) == X_STATUS_ACCESS_DENIED);
     REQUIRE(entry->name() == "new.bin");
+  }
+}
+
+// A read-only STFS package holding |name|, laid out as the header, the hash
+// table, the file table block and one data block.
+static std::vector<uint8_t> MakeStfsPackage(const std::string& name,
+                                            const std::string& payload) {
+  constexpr size_t kBlockSize = 0x1000;
+  const size_t base = xe::round_up(sizeof(XContentContainerHeader), kBlockSize);
+  std::vector<uint8_t> package(base + 3 * kBlockSize);
+
+  auto header = std::make_unique<XContentContainerHeader>();
+  std::memset(header.get(), 0, sizeof(XContentContainerHeader));
+  header->content_header.magic = XContentPackageType::kPirs;
+  header->content_header.header_size = sizeof(XContentContainerHeader);
+  header->content_metadata.volume_type = XContentVolumeType::kStfs;
+  auto& stfs = header->content_metadata.volume_descriptor.stfs;
+  stfs.descriptor_length = sizeof(StfsVolumeDescriptor);
+  stfs.flags.bits.read_only_format = 1;
+  stfs.file_table_block_count = 1;
+  stfs.set_file_table_block_number(0);
+  stfs.total_block_count = 2;
+  std::memcpy(package.data(), header.get(), sizeof(XContentContainerHeader));
+
+  StfsHashTable hashes;
+  std::memset(&hashes, 0, sizeof(hashes));
+  hashes.entries[0].set_level0_next_block(0xFFFFFF);
+  hashes.entries[1].set_level0_next_block(0xFFFFFF);
+  std::memcpy(package.data() + base, &hashes, sizeof(hashes));
+
+  StfsDirectoryBlock directory;
+  std::memset(&directory, 0, sizeof(directory));
+  auto& entry = directory.entries[0];
+  std::memcpy(entry.name, name.data(), name.size());
+  entry.flags.name_length = uint8_t(name.size());
+  entry.flags.contiguous = 1;
+  entry.set_valid_data_blocks(1);
+  entry.set_allocated_data_blocks(1);
+  entry.set_start_block_number(1);
+  entry.directory_index = 0xFFFF;
+  entry.length = uint32_t(payload.size());
+  std::memcpy(package.data() + base + kBlockSize, &directory,
+              sizeof(directory));
+
+  std::memcpy(package.data() + base + 2 * kBlockSize, payload.data(),
+              payload.size());
+  return package;
+}
+
+TEST_CASE("STFS package mounted from its host file or another device",
+          "[stfs]") {
+  struct TemporaryDirectory {
+    std::filesystem::path path =
+        std::filesystem::temp_directory_path() /
+        ("xenia-vfs-stfs-" +
+         std::to_string(
+             std::chrono::steady_clock::now().time_since_epoch().count()));
+    ~TemporaryDirectory() {
+      std::error_code error;
+      std::filesystem::remove_all(path, error);
+    }
+  } temporary;
+  REQUIRE(std::filesystem::create_directories(temporary.path / "dir"));
+  const std::string payload = "nested package payload";
+  const auto package = MakeStfsPackage("icon.png", payload);
+  auto write = [&](const char* name, size_t size) {
+    std::ofstream(temporary.path / name, std::ios::binary)
+        .write(reinterpret_cast<const char*>(package.data()), size);
+  };
+  write("package", package.size());
+  // Ends before the file table block.
+  write("short", package.size() - 2 * 0x1000);
+
+  auto read = [](Device& device) {
+    Entry* entry = device.ResolvePath("icon.png");
+    REQUIRE(entry);
+    File* file = nullptr;
+    REQUIRE(entry->Open(FileAccess::kFileReadData, &file) == X_STATUS_SUCCESS);
+    std::string text(entry->size(), '\0');
+    size_t bytes_read = 0;
+    REQUIRE(
+        file->ReadSync({reinterpret_cast<uint8_t*>(text.data()), text.size()},
+                       0, &bytes_read) == X_STATUS_SUCCESS);
+    file->Destroy();
+    REQUIRE(bytes_read == text.size());
+    return text;
+  };
+
+  SECTION("From its host file") {
+    auto device = XContentContainerDevice::CreateContentDevice(
+        "\\Device\\Package", temporary.path / "package");
+    REQUIRE(device);
+    REQUIRE(device->Initialize());
+    REQUIRE(read(*device) == payload);
+  }
+
+  SECTION("A host file that ends early does not mount") {
+    auto device = XContentContainerDevice::CreateContentDevice(
+        "\\Device\\Package", temporary.path / "short");
+    REQUIRE(device);
+    REQUIRE_FALSE(device->Initialize());
+  }
+
+  HostPathDevice disc("\\Device\\Disc", temporary.path, true);
+  REQUIRE(disc.Initialize());
+
+  SECTION("From a file on another device") {
+    auto device = XContentContainerDevice::CreateContentDevice(
+        "\\Device\\Package", disc.ResolvePath("package"));
+    REQUIRE(device);
+    REQUIRE(device->Initialize());
+    REQUIRE(read(*device) == payload);
+  }
+
+  SECTION("A file on another device that ends early does not mount") {
+    auto device = XContentContainerDevice::CreateContentDevice(
+        "\\Device\\Package", disc.ResolvePath("short"));
+    REQUIRE(device);
+    REQUIRE_FALSE(device->Initialize());
+  }
+
+  SECTION("A directory on another device is not a package") {
+    REQUIRE_FALSE(XContentContainerDevice::CreateContentDevice(
+        "\\Device\\Package", disc.ResolvePath("dir")));
   }
 }
 

@@ -23,6 +23,14 @@ StfsContainerDevice::StfsContainerDevice(const std::string_view mount_path,
   SetName("STFS");
 }
 
+StfsContainerDevice::StfsContainerDevice(const std::string_view mount_path,
+                                         File* package_file)
+    : XContentContainerDevice(mount_path, package_file),
+      blocks_per_hash_table_(1),
+      block_step_{0, 0} {
+  SetName("STFS");
+}
+
 StfsContainerDevice::~StfsContainerDevice() {}
 
 void StfsContainerDevice::SetupContainer() {
@@ -42,6 +50,10 @@ XContentContainerDevice::Result StfsContainerDevice::LoadHostFiles() {
     XELOGW("STFS container is not a single file. Loading might fail!");
   }
 
+  if (package_file_) {
+    return Result::kSuccess;
+  }
+
   data_ = MappedMemory::Open(host_path_, MappedMemory::Mode::kRead);
   if (!data_) {
     return Result::kOutOfMemory;
@@ -51,7 +63,7 @@ XContentContainerDevice::Result StfsContainerDevice::LoadHostFiles() {
 }
 
 StfsContainerDevice::Result StfsContainerDevice::Read() {
-  auto root_entry = new StfsContainerEntry(this, nullptr, "", data_.get());
+  auto root_entry = new StfsContainerEntry(this, nullptr, "");
   root_entry->attributes_ = kFileAttributeDirectory;
   root_entry_ = std::unique_ptr<Entry>(root_entry);
 
@@ -66,7 +78,11 @@ StfsContainerDevice::Result StfsContainerDevice::Read() {
   size_t n = 0;
   for (n = 0; n < descriptor.file_table_block_count; n++) {
     const size_t offset = BlockToOffset(table_block_index);
-    directory = *reinterpret_cast<StfsDirectoryBlock*>(data_->data() + offset);
+    if (!ReadData(offset, {reinterpret_cast<uint8_t*>(&directory),
+                           sizeof(directory)})) {
+      XELOGE("STFS failed to read file table block {}", table_block_index);
+      return Result::kReadError;
+    }
 
     for (size_t m = 0; m < kEntriesPerDirectoryBlock; m++) {
       const StfsDirectoryEntry& dir_entry = directory.entries[m];
@@ -83,11 +99,17 @@ StfsContainerDevice::Result StfsContainerDevice::Read() {
 
       std::unique_ptr<StfsContainerEntry> entry =
           ReadEntry(parent_entry, &dir_entry);
+      if (!entry) {
+        return Result::kReadError;
+      }
       all_entries.push_back(entry.get());
       parent_entry->children_.emplace_back(std::move(entry));
     }
 
     const StfsHashEntry* block_hash = GetBlockHash(table_block_index);
+    if (!block_hash) {
+      return Result::kReadError;
+    }
     table_block_index = block_hash->level0_next_block();
     if (table_block_index == kEndOfChain) {
       break;
@@ -115,7 +137,7 @@ std::unique_ptr<StfsContainerEntry> StfsContainerDevice::ReadEntry(
     name = ansi_name;
   }
 
-  auto entry = StfsContainerEntry::Create(this, parent, name, data_.get());
+  auto entry = StfsContainerEntry::Create(this, parent, name);
 
   if (dir_entry->flags.directory) {
     entry->attributes_ = kFileAttributeDirectory;
@@ -147,6 +169,9 @@ std::unique_ptr<StfsContainerEntry> StfsContainerDevice::ReadEntry(
       entry->block_list_.push_back({0, offset, block_size});
       remaining_size -= block_size;
       auto block_hash = GetBlockHash(block_index);
+      if (!block_hash) {
+        return nullptr;
+      }
       block_index = block_hash->level0_next_block();
     }
 
@@ -239,14 +264,20 @@ const uint8_t StfsContainerDevice::GetAmountOfHashLevelsToCheck(
   return 0;
 }
 
-void StfsContainerDevice::UpdateCachedHashTable(
+bool StfsContainerDevice::UpdateCachedHashTable(
     uint32_t block_index, uint8_t hash_level,
     uint32_t& secondary_table_offset) {
   const size_t hash_offset = BlockToHashBlockOffset(block_index, hash_level);
   // Do nothing. It's already there.
   if (!cached_hash_tables_.count(hash_offset)) {
-    cached_hash_tables_[hash_offset] = *reinterpret_cast<StfsHashTable*>(
-        data_->data() + hash_offset + secondary_table_offset);
+    StfsHashTable table;
+    if (!ReadData(hash_offset + secondary_table_offset,
+                  {reinterpret_cast<uint8_t*>(&table), sizeof(table)})) {
+      XELOGE("STFS failed to read hash table at {:X}",
+             hash_offset + secondary_table_offset);
+      return false;
+    }
+    cached_hash_tables_[hash_offset] = table;
   }
 
   uint32_t record = block_index % kBlocksPerHashLevel[0];
@@ -257,14 +288,18 @@ void StfsContainerDevice::UpdateCachedHashTable(
   const StfsHashEntry* record_data =
       &cached_hash_tables_[hash_offset].entries[record];
   secondary_table_offset = record_data->levelN_active_index() ? kBlockSize : 0;
+  return true;
 }
 
-void StfsContainerDevice::UpdateCachedHashTables(
+bool StfsContainerDevice::UpdateCachedHashTables(
     uint32_t block_index, uint8_t highest_hash_level_to_update,
     uint32_t& secondary_table_offset) {
   for (int8_t level = highest_hash_level_to_update; level >= 0; level--) {
-    UpdateCachedHashTable(block_index, level, secondary_table_offset);
+    if (!UpdateCachedHashTable(block_index, level, secondary_table_offset)) {
+      return false;
+    }
   }
+  return true;
 }
 
 const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
@@ -284,12 +319,29 @@ const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
     hash_levels_to_process = 0;
   }
 
-  UpdateCachedHashTables(block_index, hash_levels_to_process,
-                         secondary_table_offset);
+  if (!UpdateCachedHashTables(block_index, hash_levels_to_process,
+                              secondary_table_offset)) {
+    return nullptr;
+  }
 
   const size_t hash_offset = BlockToHashBlockOffset(block_index, 0);
   const uint32_t record = block_index % kBlocksPerHashLevel[0];
   return &cached_hash_tables_[hash_offset].entries[record];
+}
+
+bool StfsContainerDevice::ReadData(size_t offset,
+                                   std::span<uint8_t> buffer) const {
+  if (data_) {
+    if (offset > data_->size() || buffer.size() > data_->size() - offset) {
+      return false;
+    }
+    std::memcpy(buffer.data(), data_->data() + offset, buffer.size());
+    return true;
+  }
+  size_t bytes_read = 0;
+  return package_file_->ReadSync(buffer, offset, &bytes_read) ==
+             X_STATUS_SUCCESS &&
+         bytes_read == buffer.size();
 }
 
 const uint8_t StfsContainerDevice::GetBlocksPerHashTableFromContainerHeader()

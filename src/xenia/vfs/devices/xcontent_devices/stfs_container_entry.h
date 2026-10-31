@@ -17,23 +17,17 @@ namespace vfs {
 
 class StfsContainerEntry : public XContentContainerEntry {
  public:
-  StfsContainerEntry(Device* device, Entry* parent, const std::string_view path,
-                     MappedMemory* data);
+  StfsContainerEntry(Device* device, Entry* parent,
+                     const std::string_view path);
   ~StfsContainerEntry() override;
 
-  static std::unique_ptr<StfsContainerEntry> Create(Device* device,
-                                                    Entry* parent,
-                                                    const std::string_view name,
-                                                    MappedMemory* data);
-
-  MappedMemory* data() const { return data_; }
+  static std::unique_ptr<StfsContainerEntry> Create(
+      Device* device, Entry* parent, const std::string_view name);
 
   X_STATUS Open(uint32_t desired_access, File** out_file) override;
 
  private:
   bool DeleteEntryInternal(Entry* entry) override;
-
-  MappedMemory* data_;
 };
 
 }  // namespace vfs

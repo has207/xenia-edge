@@ -10,6 +10,7 @@
 #ifndef XENIA_VFS_DEVICES_XCONTENT_DEVICES_STFS_CONTAINER_DEVICE_H_
 #define XENIA_VFS_DEVICES_XCONTENT_DEVICES_STFS_CONTAINER_DEVICE_H_
 
+#include <span>
 #include <unordered_map>
 
 #include "xenia/kernel/util/xex2_info.h"
@@ -26,6 +27,7 @@ class StfsContainerDevice : public XContentContainerDevice {
  public:
   StfsContainerDevice(const std::string_view mount_path,
                       const std::filesystem::path& host_path);
+  StfsContainerDevice(const std::string_view mount_path, File* package_file);
   ~StfsContainerDevice() override;
 
   bool is_read_only() const override {
@@ -33,7 +35,10 @@ class StfsContainerDevice : public XContentContainerDevice {
         ->content_metadata.volume_descriptor.stfs.flags.bits.read_only_format;
   }
 
-  bool supports_concurrent_io() const override { return true; }
+  bool supports_concurrent_io() const override {
+    return !package_file_ ||
+           package_file_->entry()->device()->supports_concurrent_io();
+  }
 
   bool queues_all_requests() const override { return true; }
 
@@ -52,6 +57,9 @@ class StfsContainerDevice : public XContentContainerDevice {
     }
     return 0;
   }
+
+  // False unless all of |buffer| was read.
+  bool ReadData(size_t offset, std::span<uint8_t> buffer) const;
 
  private:
   static const uint8_t kBlocksHashLevelAmount = 3;
@@ -76,9 +84,9 @@ class StfsContainerDevice : public XContentContainerDevice {
   const uint8_t GetAmountOfHashLevelsToCheck(uint32_t total_block_count) const;
 
   const StfsHashEntry* GetBlockHash(uint32_t block_index);
-  void UpdateCachedHashTable(uint32_t block_index, uint8_t hash_level,
+  bool UpdateCachedHashTable(uint32_t block_index, uint8_t hash_level,
                              uint32_t& secondary_table_offset);
-  void UpdateCachedHashTables(uint32_t block_index,
+  bool UpdateCachedHashTables(uint32_t block_index,
                               uint8_t highest_hash_level_to_update,
                               uint32_t& secondary_table_offset);
   const uint8_t GetBlocksPerHashTableFromContainerHeader() const;

@@ -31,7 +31,10 @@ VirtualFileSystem::~VirtualFileSystem() {
 }
 
 void VirtualFileSystem::Clear() {
-  devices_.clear();
+  // Newest first so a device reading through another's file goes before it.
+  while (!devices_.empty()) {
+    devices_.pop_back();
+  }
   symlinks_.clear();
 }
 

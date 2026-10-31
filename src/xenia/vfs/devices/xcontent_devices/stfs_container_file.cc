@@ -8,6 +8,7 @@
  */
 
 #include "xenia/vfs/devices/xcontent_devices/stfs_container_file.h"
+#include "xenia/vfs/devices/xcontent_devices/stfs_container_device.h"
 #include "xenia/vfs/devices/xcontent_devices/stfs_container_entry.h"
 
 namespace xe {
@@ -23,8 +24,8 @@ void StfsContainerFile::Destroy() { delete this; }
 
 size_t StfsContainerFile::Read(std::span<uint8_t> buffer, size_t offset,
                                size_t record_file) {
-  std::memcpy(buffer.data(), entry_->data()->data() + offset, buffer.size());
-  return buffer.size();
+  auto device = static_cast<const StfsContainerDevice*>(entry_->device());
+  return device->ReadData(offset, buffer) ? buffer.size() : 0;
 }
 
 }  // namespace vfs
