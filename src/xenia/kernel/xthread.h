@@ -609,6 +609,25 @@ class XThread : public XObject, public cpu::Thread {
     user_mode_ = std::move(user_mode);
   }
 
+  // A guest exception dispatch whose handler is running. One whose handler
+  // continued the thread elsewhere instead of returning stays here until the
+  // next dispatch on the thread finds it gone.
+  struct ExceptionDispatch {
+    // Where the handlers run and return to, on the back chain of whatever a
+    // handler runs.
+    uint32_t handler_sp;
+    uint32_t handler_return;
+    // A load or store at handler_return - 4 made with this lr, else a call
+    // that returns to handler_return.
+    bool data_fault;
+    uint32_t fault_lr;
+    // Its CONTEXT, EXCEPTION_RECORD and DISPATCHER_CONTEXT in the system heap.
+    uint32_t records;
+  };
+  std::vector<ExceptionDispatch>& exception_dispatches() {
+    return exception_dispatches_;
+  }
+
   // Drops the self reference from Create and any surviving handle. The delete
   // point for a fiber thread, so the caller must ensure it is not executing.
   void ReclaimExited();
@@ -825,6 +844,7 @@ class XThread : public XObject, public cpu::Thread {
   std::unique_ptr<xe::threading::Fiber> fiber_;
   xe::threading::Fiber* active_fiber_ = nullptr;
   std::unique_ptr<UserMode> user_mode_;
+  std::vector<ExceptionDispatch> exception_dispatches_;
   SchedulerLinks scheduler_links_;
   // Set by the first ReclaimExited so both terminal paths reclaim once.
   std::atomic<bool> self_reference_dropped_{false};

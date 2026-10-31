@@ -107,6 +107,9 @@ XThread::~XThread() {
     kernel_state()->memory()->SystemHeapFree(user_mode_->interrupt_frame);
     user_mode_.reset();
   }
+  for (const auto& dispatch : exception_dispatches_) {
+    kernel_state()->memory()->SystemHeapFree(dispatch.records);
+  }
 
   if (thread_state_) {
     delete thread_state_;

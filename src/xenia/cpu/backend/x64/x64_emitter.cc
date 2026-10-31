@@ -687,9 +687,21 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
     }
   }
 
-  auto fn = thread_state->processor()->ResolveFunction(
-      static_cast<uint32_t>(target_address));
-  assert_not_null(fn);
+  auto processor = thread_state->processor();
+  uint32_t address = static_cast<uint32_t>(target_address);
+  auto fn = processor->ResolveFunction(address);
+  while (!fn || !fn->is_guest()) {
+    // No code there, so the call faults on the instruction fetch, which the
+    // guest can handle by continuing elsewhere.
+    auto hook = processor->code_fault_hook();
+    const uint32_t resume_address = hook ? hook(guest_context, address) : 0;
+    if (!resume_address) {
+      XELOGE("No guest code at {:08X} for a call", address);
+      return 0;
+    }
+    address = resume_address;
+    fn = processor->ResolveFunction(address);
+  }
   auto x64_fn = static_cast<X64Function*>(fn);
   uint64_t addr = reinterpret_cast<uint64_t>(x64_fn->machine_code());
 
@@ -1246,6 +1258,22 @@ void X64Emitter::CallIndirect(const hir::Instr* instr,
           });
       jae(resolve_natively, T_NEAR);
     }
+    // Without dynamic code, a target the table doesn't cover goes to the
+    // resolve thunk, since its slot would be read from whatever the host maps
+    // there. Returns, the most common sites, are left to RedirectUncoveredCall.
+    Xbyak::Label table_slot;
+    Xbyak::Label slot_ready;
+    const bool check_range = !processor()->dynamic_code_enabled() &&
+                             !(instr->flags & hir::CALL_POSSIBLE_RETURN);
+    if (check_range) {
+      mov(eax, edx);
+      sub(eax, code_cache_->indirection_guest_base());
+      cmp(eax, code_cache_->indirection_guest_size());
+      jb(table_slot, T_SHORT);
+      mov(rax, reinterpret_cast<uint64_t>(backend()->resolve_function_thunk()));
+      jmp(slot_ready, code_cache_->encoded_indirection() ? T_NEAR : T_SHORT);
+      L(table_slot);
+    }
     if (!code_cache_->encoded_indirection()) {
       // Fast path: table mapped at host VA == guest addr; slot holds raw
       // 32-bit host target.
@@ -1272,6 +1300,9 @@ void X64Emitter::CallIndirect(const hir::Instr* instr,
       mov(rax, qword[r8 + rax * 8]);
 
       L(indirection_ready);
+    }
+    if (check_range) {
+      L(slot_ready);
     }
     if (target_ready) {
       L(*target_ready);

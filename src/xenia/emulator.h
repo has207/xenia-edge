@@ -18,6 +18,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -546,6 +547,11 @@ class Emulator {
 
   void WaitUntilExit();
 
+  // Reports a crash of the calling guest thread at pc, which fault describes,
+  // and halts it. For a fault the guest's handlers didn't take, outside the
+  // host exception handler.
+  [[noreturn]] void HaltCrashedGuestThread(uint32_t pc, std::string_view fault);
+
  public:
   xe::Delegate<uint32_t, const std::string_view> on_launch;
   // A relaunch's title failed to start.
@@ -610,6 +616,8 @@ class Emulator {
   static void SetPersistentEmulatorFlags(uint64_t new_flags);
   static bool ExceptionCallbackThunk(Exception* ex, void* data);
   bool ExceptionCallback(Exception* ex);
+  // Logs a guest crash dump and tells the user, pausing first with --debug.
+  void ReportGuestCrash(const std::string& crash_msg);
 
   std::string RemountAndResolveLaunchPath(const std::string& launch_path);
   std::string FindLaunchModule();
