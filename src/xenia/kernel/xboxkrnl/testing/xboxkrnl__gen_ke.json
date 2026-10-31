@@ -1,0 +1,297 @@
+{
+ "corpus": "ke",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-31",
+ "steps": [
+  {
+   "scenario": "mutant owned from the start",
+   "name": "KeInitializeMutant",
+   "export": "KeInitializeMutant",
+   "capture": {
+    "mutant[:0x8]": "0200000000000000"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "mutant owned from the start",
+   "name": "acquire again",
+   "export": "KeWaitForSingleObject",
+   "r3": "0000000000000000",
+   "capture": {
+    "mutant[:0x8]": "02000000ffffffff"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "zero timeout",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "mutant owned from the start",
+   "name": "release inner",
+   "export": "KeReleaseMutant",
+   "r3": "00000000FFFFFFFF",
+   "capture": {
+    "mutant[:0x8]": "0200000000000000"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "mutant owned from the start",
+   "name": "release outer",
+   "export": "KeReleaseMutant",
+   "r3": "0000000000000000",
+   "capture": {
+    "mutant[:0x8]": "0200000000000001"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "mutant free from the start",
+   "name": "KeInitializeMutant",
+   "export": "KeInitializeMutant",
+   "capture": {
+    "mutant[:0x8]": "0200000000000001"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "mutant free from the start",
+   "name": "acquire",
+   "export": "KeWaitForSingleObject",
+   "r3": "0000000000000000",
+   "capture": {
+    "mutant[:0x8]": "0200000000000000"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "zero timeout",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "mutant free from the start",
+   "name": "release",
+   "export": "KeReleaseMutant",
+   "r3": "0000000000000000",
+   "capture": {
+    "mutant[:0x8]": "0200000000000001"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "mutant free from the start",
+   "name": "acquire after release",
+   "export": "KeWaitForSingleObject",
+   "r3": "0000000000000000",
+   "capture": {
+    "mutant[:0x8]": "0200000000000000"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "zero timeout",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "mutant free from the start",
+   "name": "release again",
+   "export": "KeReleaseMutant",
+   "r3": "0000000000000000",
+   "capture": {
+    "mutant[:0x8]": "0200000000000001"
+   },
+   "args": [
+    {
+     "pointer": "mutant",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "timer",
+   "name": "KeInitializeTimerEx",
+   "export": "KeInitializeTimerEx",
+   "args": [
+    {
+     "pointer": "timer",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "timer",
+   "name": "set",
+   "export": "KeSetTimer",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "timer",
+     "offset": 0
+    },
+    {
+     "value": 18446744073707551616
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "timer",
+   "name": "set again",
+   "export": "KeSetTimer",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "pointer": "timer",
+     "offset": 0
+    },
+    {
+     "value": 18446744073707551616
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "timer",
+   "name": "cancel",
+   "export": "KeCancelTimer",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "pointer": "timer",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "timer",
+   "name": "cancel again",
+   "export": "KeCancelTimer",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "timer",
+     "offset": 0
+    }
+   ]
+  }
+ ]
+}
