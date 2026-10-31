@@ -276,6 +276,7 @@ class X64Backend : public Backend {
  private:
   static bool ExceptionCallbackThunk(Exception* ex, void* data);
   bool ExceptionCallback(Exception* ex);
+  bool RedirectUncoveredCall(Exception* ex);
   static uint64_t ReleaseFaultingReservedStore(void* data, Exception* ex);
 
   uintptr_t capstone_handle_ = 0;
