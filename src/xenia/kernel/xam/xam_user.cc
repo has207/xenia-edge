@@ -432,6 +432,56 @@ dword_result_t XamUserWriteProfileSettings_entry(
 }
 DECLARE_XAM_EXPORT1(XamUserWriteProfileSettings, kUserProfiles, kImplemented);
 
+// The console sends user preference requests to the XGI app and returns a
+// Win32 error from the result.
+static dword_result_t SendUserPreferenceRequest(uint32_t message,
+                                                uint32_t user_index,
+                                                uint32_t preference,
+                                                uint32_t value,
+                                                uint32_t overlapped_ptr) {
+  const uint32_t request_ptr = kernel_memory()->SystemHeapAlloc(0xC);
+  auto* request =
+      kernel_memory()->TranslateVirtual<xe::be<uint32_t>*>(request_ptr);
+  request[0] = user_index;
+  request[1] = preference;
+  request[2] = value;
+  const X_HRESULT result = kernel_state()->app_manager()->DispatchMessageAsync(
+      0xFB, message, request_ptr, 0xC, overlapped_ptr);
+  kernel_memory()->SystemHeapFree(request_ptr);
+  if (result == X_ERROR_IO_PENDING ||
+      result == X_HRESULT_FROM_WIN32(X_ERROR_IO_PENDING)) {
+    return X_ERROR_IO_PENDING;
+  }
+  // A title gets the app's S_FALSE as ERROR_NO_MORE_ITEMS.
+  if (result == 1) {
+    return 0x103;
+  }
+  return XFAILED(result) ? X_ERROR_FUNCTION_FAILED : X_ERROR_SUCCESS;
+}
+
+dword_result_t XamUserReadUserPreference_entry(
+    dword_t user_index, dword_t preference, lpdword_t value_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (user_index >= XUserMaxUserCount || !value_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return SendUserPreferenceRequest(0x000B0082, user_index, preference,
+                                   value_ptr.guest_address(),
+                                   overlapped_ptr.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamUserReadUserPreference, kUserProfiles, kImplemented);
+
+dword_result_t XamUserWriteUserPreference_entry(
+    dword_t user_index, dword_t preference, dword_t value,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (user_index >= XUserMaxUserCount) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  return SendUserPreferenceRequest(0x000B0083, user_index, preference, value,
+                                   overlapped_ptr.guest_address());
+}
+DECLARE_XAM_EXPORT1(XamUserWriteUserPreference, kUserProfiles, kImplemented);
+
 X_RESULT CheckUserPrivilege(uint32_t user_index, uint32_t mask,
                             uint32_t* out_value) {
   *out_value = 0;
@@ -1359,29 +1409,21 @@ dword_result_t XamUserGetUserTenure_entry(
 }
 DECLARE_XAM_EXPORT1(XamUserGetUserTenure, kUserProfiles, kImplemented);
 
-// https://github.com/TeaModz/XeLiveStealth-Full-Source/blob/d4a7439ac6241c4a13e883a6f156623d1c08f6eb/XeLive/Utils.cpp#L416
-dword_result_t XamUserLogon_entry(lpqword_t xuids_ptr, dword_t flags,
-                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
-  if (!xuids_ptr) {
-    return X_ERROR_INVALID_PARAMETER;
-  }
-
-  const auto host_xuids_ptr =
-      kernel_memory()->TranslateVirtual<xe::be<uint64_t>*>(xuids_ptr);
-
-  const auto xuids = std::vector<xe::be<uint64_t>>(
-      host_xuids_ptr, host_xuids_ptr + XUserMaxUserCount);
-
+// Signs in or out the profile of each slot with a XUID, one XUID per slot.
+static X_RESULT UserLogon(const std::vector<uint64_t>& xuids, uint32_t flags,
+                          uint32_t overlapped_ptr) {
   auto run = [xuids, flags](uint32_t& extended_error,
                             uint32_t& length) -> X_RESULT {
     auto const profile_manager = kernel_state()->xam_state()->profile_manager();
 
     X_STATUS result = X_ERROR_SUCCESS;
 
+    // The console adds each profile to the slot its XUID is in.
     if (flags & static_cast<uint32_t>(UserLogonFlags::AddUser)) {
-      for (auto& xuid : xuids) {
-        if (xuid) {
-          profile_manager->Login(xuid, XUserIndexAny, true);
+      for (uint8_t user_index = 0; user_index < XUserMaxUserCount;
+           user_index++) {
+        if (xuids[user_index]) {
+          profile_manager->Login(xuids[user_index], user_index, true);
         }
       }
     }
@@ -1435,30 +1477,38 @@ dword_result_t XamUserLogon_entry(lpqword_t xuids_ptr, dword_t flags,
     return X_ERROR_IO_PENDING;
   }
 }
+
+// https://github.com/TeaModz/XeLiveStealth-Full-Source/blob/d4a7439ac6241c4a13e883a6f156623d1c08f6eb/XeLive/Utils.cpp#L416
+dword_result_t XamUserLogon_entry(lpqword_t xuids_ptr, dword_t flags,
+                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!xuids_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+  const auto host_xuids_ptr =
+      kernel_memory()->TranslateVirtual<xe::be<uint64_t>*>(xuids_ptr);
+  return UserLogon(
+      std::vector<uint64_t>(host_xuids_ptr, host_xuids_ptr + XUserMaxUserCount),
+      flags, overlapped_ptr.guest_address());
+}
 DECLARE_XAM_EXPORT1(XamUserLogon, kUserProfiles, kImplemented);
 
-dword_result_t XamUserLogonEx_entry(pointer_t<X_PROFILEENUMRESULT> profile_ptr,
+// The console's XamUserLogon puts each XUID in an otherwise empty profile
+// record and logs on with those as this does, so this takes a record per slot
+// and logs on the profiles they name the same way. The dashboard signs in the
+// profile chosen on its sign-in screen with it.
+dword_result_t XamUserLogonEx_entry(pointer_t<X_PROFILEENUMRESULT> profiles_ptr,
                                     dword_t flags,
                                     pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
-  auto run = [profile_ptr, flags](uint32_t& extended_error,
-                                  uint32_t& length) -> X_RESULT {
-    X_STATUS result = X_ERROR_SUCCESS;
-
-    extended_error = X_HRESULT_FROM_WIN32(result);
-    length = 0;
-
-    return result;
-  };
-
-  if (!overlapped_ptr) {
-    uint32_t extended_error, length = 0;
-    return run(extended_error, length);
-  } else {
-    kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
-    return X_ERROR_IO_PENDING;
+  if (!profiles_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
   }
+  std::vector<uint64_t> xuids;
+  for (uint32_t i = 0; i < XUserMaxUserCount; i++) {
+    xuids.push_back(profiles_ptr[i].xuid_offline);
+  }
+  return UserLogon(xuids, flags, overlapped_ptr.guest_address());
 }
-DECLARE_XAM_EXPORT1(XamUserLogonEx, kUserProfiles, kSketchy);
+DECLARE_XAM_EXPORT1(XamUserLogonEx, kUserProfiles, kImplemented);
 
 // The last active user data is 8 bytes handed from one title to the next; a
 // get consumes it.

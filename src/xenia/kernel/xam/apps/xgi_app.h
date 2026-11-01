@@ -24,6 +24,12 @@ class XgiApp : public App {
 
   X_HRESULT DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                 uint32_t buffer_length) override;
+
+ private:
+  X_HRESULT ReadUserPreference(uint32_t user_index, uint32_t preference,
+                               uint32_t& value);
+  X_HRESULT WriteUserPreference(uint32_t user_index, uint32_t preference,
+                                uint32_t value);
 };
 
 }  // namespace apps
