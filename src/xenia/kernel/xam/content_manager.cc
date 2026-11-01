@@ -439,6 +439,20 @@ std::vector<uint32_t> ContentManager::ListHexFolders(
   return result;
 }
 
+std::vector<uint64_t> ContentManager::ListContentXuids() const {
+  std::vector<uint64_t> result;
+  for (const auto& file_info : xe::filesystem::ListFiles(root_path_)) {
+    const std::string name = xe::path_to_utf8(file_info.name);
+    if (file_info.type == xe::filesystem::FileInfo::Type::kDirectory &&
+        name.size() == 16 && std::ranges::all_of(name, [](char c) {
+          return std::isxdigit(static_cast<unsigned char>(c));
+        })) {
+      result.push_back(xe::string_util::from_string<uint64_t>(name, true));
+    }
+  }
+  return result;
+}
+
 std::vector<uint32_t> ContentManager::ListContentTitleIds(
     const uint32_t device_id, const uint64_t xuid) const {
   return ListHexFolders(device_id, xuid, std::nullopt);

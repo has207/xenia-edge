@@ -313,10 +313,10 @@ class ContentAggregateEnumerator : public XEnumerator {
   // Enumerates the content of other titles too.
   static constexpr uint32_t kAllTitlesFlag = 0x80000000;
 
+  // Writes the first |record_size| bytes of each XCONTENT_DATA_INTERNAL.
   ContentAggregateEnumerator(KernelState* kernel_state,
-                             size_t items_per_enumerate)
-      : XEnumerator(kernel_state, items_per_enumerate,
-                    sizeof(xam::XCONTENT_DATA_INTERNAL)) {}
+                             size_t items_per_enumerate, size_t record_size)
+      : XEnumerator(kernel_state, items_per_enumerate, record_size) {}
 
   size_t item_count() const { return items_.size(); }
 

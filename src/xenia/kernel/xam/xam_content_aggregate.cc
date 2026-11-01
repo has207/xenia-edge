@@ -21,8 +21,26 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
+// A record through license_mask, which is all of it before xam 4532.
+constexpr size_t kLegacyContentRecordSize = 0x148;
+
+// True when the title was built for a xam before 4532, whose title 0 lists
+// every title without kAllTitlesFlag.
+static bool BuiltForLegacyXam() {
+  auto exe_module = kernel_state()->GetExecutableModule();
+  if (!exe_module || !exe_module->xex_module()) {
+    return false;
+  }
+  for (const auto& library : *exe_module->xex_module()->import_libraries()) {
+    if (library.name == "xam") {
+      return library.version.build < 4532;
+    }
+  }
+  return false;
+}
+
 // Alias XContentCreateCrossTitleEnumerator. Title 0 lists the content of every
-// title and type 0xFFFFFFFF that of every type.
+// title, type 0xFFFFFFFF that of every type and XUID 0 that of every user.
 dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
                                                          dword_t device_id,
                                                          dword_t content_type,
@@ -35,7 +53,10 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
     return X_E_INVALIDARG;
   }
 
-  auto e = make_object<ContentAggregateEnumerator>(kernel_state(), 1);
+  const bool legacy = BuiltForLegacyXam();
+  auto e = make_object<ContentAggregateEnumerator>(
+      kernel_state(), 1,
+      legacy ? kLegacyContentRecordSize : sizeof(XCONTENT_DATA_INTERNAL));
   X_KENUMERATOR_CONTENT_AGGREGATE* extra;
   auto result = e->Initialize(XUserIndexAny, 0xFE, 0x2000E, 0x20010, 0, &extra);
   if (XFAILED(result)) {
@@ -70,8 +91,9 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
       // Title 0 only reaches past the title's own content with
       // ContentAggregateEnumerator::kAllTitlesFlag.
       const bool other_title =
-          !title_id && std::ranges::find(own_title_ids, item_title_id) ==
-                           own_title_ids.end();
+          !legacy && !title_id &&
+          std::ranges::find(own_title_ids, item_title_id) ==
+              own_title_ids.end();
       std::vector<XContentType> types;
       if (content_type == 0xFFFFFFFF) {
         types = content_manager->ListContentTypes(device_index, device_xuid,
@@ -94,8 +116,14 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
   };
 
   if (!device_info || device_info->device_type == DeviceType::HDD) {
-    append_device(DummyDeviceId::HDD,
-                  xuid == -1 ? 0 : static_cast<uint64_t>(xuid));
+    // XUID -1 only lists the content shared by every user.
+    const std::vector<uint64_t> xuids =
+        xuid == 0 ? content_manager->ListContentXuids()
+                  : std::vector<uint64_t>{
+                        xuid == -1 ? 0 : static_cast<uint64_t>(xuid)};
+    for (const uint64_t hdd_xuid : xuids) {
+      append_device(DummyDeviceId::HDD, hdd_xuid);
+    }
   }
 
   // Disc content is stored under XUID 0.
@@ -103,8 +131,10 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
     append_device(DummyDeviceId::ODD, 0);
   }
 
-  XELOGD("XamContentAggregateCreateEnumerator: added {} items to enumerator",
-         e->item_count());
+  XELOGD(
+      "XamContentAggregateCreateEnumerator: added {} items to enumerator, "
+      "{:X}-byte records",
+      e->item_count(), e->item_size());
 
   *handle_out = e->handle();
   return X_ERROR_SUCCESS;

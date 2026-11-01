@@ -253,8 +253,10 @@ class ContentManager {
       const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,
       const XContentType content_type) const;
 
-  // The titles with content stored on the device for the user, and the content
-  // types a title has there, for listing content across titles.
+  // The users with content stored on the hard drive, the titles with content
+  // stored on the device for a user and the content types a title has there,
+  // for listing content across titles.
+  std::vector<uint64_t> ListContentXuids() const;
   std::vector<uint32_t> ListContentTitleIds(const uint32_t device_id,
                                             const uint64_t xuid) const;
   std::vector<XContentType> ListContentTypes(const uint32_t device_id,
