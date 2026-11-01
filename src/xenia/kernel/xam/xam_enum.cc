@@ -70,8 +70,11 @@ dword_result_t XamEnumerate_entry(dword_t handle, dword_t flags,
                                   lpdword_t items_returned,
                                   pointer_t<XAM_OVERLAPPED> overlapped) {
   uint32_t dummy = 0;
-  auto result = xeXamEnumerate(handle, flags, buffer, buffer_length,
-                               !overlapped ? &dummy : nullptr, overlapped);
+  // The console's XamEnumerate sets the top bit of the flags it passes on, so
+  // a title enumerating content aggregated for title 0 gets every title's.
+  auto result = xeXamEnumerate(
+      handle, flags | ContentAggregateEnumerator::kAllTitlesFlag, buffer,
+      buffer_length, !overlapped ? &dummy : nullptr, overlapped);
   if (!overlapped && items_returned) {
     *items_returned = dummy;
   }
