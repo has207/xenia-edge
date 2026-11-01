@@ -873,7 +873,7 @@ DECLARE_XBOXKRNL_EXPORT1(RtlGetStackLimits, kNone, kImplemented);
 static uint32_t CapturedContextIar(uint32_t lr) {
   if (auto module = kernel_state()->GetUserModuleForAddress(lr)) {
     for (const auto& library : *module->xex_module()->import_libraries()) {
-      if (library.name != "xboxkrnl.exe") {
+      if (library.name != "xboxkrnl") {
         continue;
       }
       for (const auto& import : library.imports) {
