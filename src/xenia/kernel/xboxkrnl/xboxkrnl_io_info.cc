@@ -107,16 +107,33 @@ dword_result_t NtQueryInformationFile_entry(
       break;
     }
     case XFileXctdCompressionInformation: {
-      XELOGE(
-          "NtQueryInformationFile(XFileXctdCompressionInformation) "
-          "unimplemented");
-      // Files that are XCTD compressed begin with the magic 0x0FF512ED but we
-      // shouldn't detect this that way. There's probably a flag somewhere
-      // (attributes?) that defines if it's compressed or not.
-      status = X_STATUS_INVALID_PARAMETER;
-      out_length = 0;
+      // Bit 0 set for a file stored XCTD compressed, which a title then
+      // decompresses itself as it reads. Kinect Sports (4D5308C9) asks of its
+      // asset bundles, and taking a failure as "don't know" it reads a
+      // compressed one as it is and corrupts its heap. On the console this
+      // probably comes from the file system; here it's the magic such a file
+      // begins with.
+      constexpr uint32_t kXctdMagic = 0x0FF512ED;
+      uint8_t magic[4] = {};
+      size_t bytes_read = 0;
+      kernel_state()->RunBlockingIo(
+          [&]() {
+            if (file->file()->ReadSync(magic, 0, &bytes_read) !=
+                X_STATUS_SUCCESS) {
+              bytes_read = 0;
+            }
+          },
+          file->device()->supports_concurrent_io()
+              ? GuestScheduler::BlockingCallClass::kConcurrent
+              : GuestScheduler::BlockingCallClass::kSerial);
+      auto info = info_ptr.as<X_FILE_XCTD_COMPRESSION_INFORMATION*>();
+      info->flags = bytes_read == sizeof(magic) &&
+                            xe::load_and_swap<uint32_t>(magic) == kXctdMagic
+                        ? 1
+                        : 0;
+      out_length = sizeof(*info);
       break;
-    };
+    }
     case XFileNetworkOpenInformation: {
       // Make sure we're working with up-to-date information, just in case the
       // file size has changed via something other than NtSetInfoFile
