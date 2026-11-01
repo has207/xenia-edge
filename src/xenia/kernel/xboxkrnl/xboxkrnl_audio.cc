@@ -22,10 +22,6 @@ namespace xboxkrnl {
 // The speaker configuration starts out as the dashboard audio setting.
 // XAudioSetSpeakerConfig replaces it and XAudioGetSpeakerConfig returns it
 // until the title ends.
-static XboxkrnlModule* GetXboxkrnlModule() {
-  return kernel_state()->GetKernelModule<XboxkrnlModule>("xboxkrnl.exe").get();
-}
-
 dword_result_t XAudioGetSpeakerConfig_entry(lpdword_t config_ptr) {
   if (!config_ptr) {
     return X_E_INVALIDARG;

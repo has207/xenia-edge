@@ -10,6 +10,7 @@
 // This is a partial file designed to be included by other files when
 // constructing various tables.
 
+XE_MODULE_EXPORT_GROUP(xboxkrnl, Ani)
 XE_MODULE_EXPORT_GROUP(xboxkrnl, Audio)
 XE_MODULE_EXPORT_GROUP(xboxkrnl, AudioXma)
 XE_MODULE_EXPORT_GROUP(xboxkrnl, Crypt)

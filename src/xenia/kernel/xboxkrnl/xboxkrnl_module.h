@@ -17,6 +17,8 @@
 #include "xenia/kernel/kernel_module.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ordinals.h"
+#include "xenia/kernel/xevent.h"
+#include "xenia/kernel/xthread.h"
 
 // All of the exported functions:
 #include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
@@ -52,11 +54,25 @@ class XboxkrnlModule : public KernelModule {
     speaker_config_set_ = true;
   }
 
+  // Runs the boot animation |module| from its first export.
+  // Returns its thread suspended, or nullptr when it can't start.
+  object_ref<XThread> StartBootAnimation(const object_ref<UserModule>& module);
+  // Ends the boot animation and waits for its thread to exit.
+  void EndBootAnimation(uint32_t terminate);
+  void SetBootAnimationLogo(uint32_t unk0, uint32_t unk1);
+
  protected:
   uint32_t pix_function_ = 0;
   std::atomic<uint32_t> speaker_config_ = 0;
   std::atomic<bool> speaker_config_set_ = false;
+
+  std::atomic<uint32_t> ani_hmodule_ = 0;
+  std::atomic<bool> ani_started_ = false;
+  object_ref<XThread> ani_thread_;
+  object_ref<XEvent> ani_ended_event_;
 };
+
+XboxkrnlModule* GetXboxkrnlModule();
 
 }  // namespace xboxkrnl
 }  // namespace kernel

@@ -537,6 +537,16 @@ object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
   SetExecutableModule(module);
   XELOGI("KernelState: Launching module...");
 
+  // The boot animation is a DLL with no entry point.
+  if (module->is_dll_module() && !module->entry_point()) {
+    auto thread = GetKernelModule<xboxkrnl::XboxkrnlModule>("xboxkrnl.exe")
+                      ->StartBootAnimation(module);
+    if (thread) {
+      emulator()->processor()->PreLaunch();
+    }
+    return thread;
+  }
+
   // Create a thread to run in.
   // We start suspended so we can run the debugger prep.
   auto thread = object_ref<XThread>(

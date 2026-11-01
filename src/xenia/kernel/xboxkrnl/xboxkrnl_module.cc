@@ -261,6 +261,10 @@ void XboxkrnlModule::RegisterExportTable(
 
 XboxkrnlModule::~XboxkrnlModule() { xeMmForgetSegmentArrays(); }
 
+XboxkrnlModule* GetXboxkrnlModule() {
+  return kernel_state()->GetKernelModule<XboxkrnlModule>("xboxkrnl.exe").get();
+}
+
 }  // namespace xboxkrnl
 }  // namespace kernel
 }  // namespace xe
