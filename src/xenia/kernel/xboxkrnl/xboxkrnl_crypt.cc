@@ -12,6 +12,7 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
+#include "xenia/cpu/xex_module.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_crypt.h"
@@ -22,6 +23,7 @@
 #include "xenia/kernel/xboxkrnl/xecrypt_md5.h"
 #include "xenia/kernel/xboxkrnl/xecrypt_rsa.h"
 #include "xenia/kernel/xboxkrnl/xecrypt_sha.h"
+#include "xenia/vfs/virtual_file_system.h"
 
 namespace xe {
 namespace kernel {
@@ -651,6 +653,39 @@ dword_result_t XeKeysGetKey_entry(word_t key, lpvoid_t key_buffer,
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysGetKey, kNone, kSketchy);
+
+// The media ID of the disc in the drive, the XGD2 one its executable is signed
+// for.
+dword_result_t XeKeysGetMediaID_entry(lpvoid_t media_id_ptr) {
+  // Returned when there's no disc to take one from.
+  constexpr X_STATUS kNoMediaId = 0xC0052000;
+  vfs::Entry* entry = kernel_state()->file_system()->ResolvePath(
+      "\\Device\\Cdrom0\\default.xex");
+  vfs::File* file = nullptr;
+  if (!media_id_ptr || !entry ||
+      XFAILED(entry->Open(vfs::FileAccess::kFileReadData, &file))) {
+    return kNoMediaId;
+  }
+  xex2_header header;
+  constexpr size_t kHeaderSize = offsetof(xex2_header, headers);
+  constexpr size_t kMediaIdSize = sizeof(xex2_security_info::xgd2_media_id);
+  size_t bytes_read = 0;
+  bool found = XSUCCEEDED(file->ReadSync(
+                   {reinterpret_cast<uint8_t*>(&header), kHeaderSize}, 0,
+                   &bytes_read)) &&
+               bytes_read == kHeaderSize && header.magic == cpu::kXEX2Signature;
+  if (found) {
+    found = XSUCCEEDED(
+                file->ReadSync({media_id_ptr.as<uint8_t*>(), kMediaIdSize},
+                               header.security_offset +
+                                   offsetof(xex2_security_info, xgd2_media_id),
+                               &bytes_read)) &&
+            bytes_read == kMediaIdSize;
+  }
+  file->Destroy();
+  return found ? X_STATUS_SUCCESS : kNoMediaId;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysGetMediaID, kNone, kImplemented);
 
 // The per-console obfuscation key (0x17) differs on every console. Like the key
 // obfuscation key above it is one of our own. Data a title protects with it
