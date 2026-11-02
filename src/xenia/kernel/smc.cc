@@ -16,7 +16,7 @@ namespace xe {
 namespace kernel {
 
 SystemManagementController::SystemManagementController()
-    : dvd_tray_state_(X_DVD_TRAY_STATE::OPEN) {
+    : dvd_tray_state_(X_DVD_TRAY_STATE::CLOSED) {
   auto registerQuery =
       [&](X_SMC_CMD command,
           void (SystemManagementController::*fn)(X_SMC_DATA*, X_SMC_DATA*)) {
@@ -154,8 +154,9 @@ void SystemManagementController::SetIRAddress(X_SMC_DATA* smc_message,
 
 void SystemManagementController::SetDriveTray(X_SMC_DATA* smc_message,
                                               X_SMC_DATA* smc_response) {
-  SetTrayState(
-      static_cast<X_DVD_TRAY_STATE>((smc_message->smc_data[0] & 0xF) % 5));
+  // HalOpenCloseODDTray sends 0x60 to open the tray and 0x62 to close it.
+  SetTrayState(smc_message->smc_data[0] == 0x60 ? X_DVD_TRAY_STATE::OPEN
+                                                : X_DVD_TRAY_STATE::CLOSED);
 }
 
 void SystemManagementController::SetFanSpeed(X_SMC_DATA* smc_message,

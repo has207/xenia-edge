@@ -28,10 +28,11 @@ enum X_DVD_DISC_STATE {
   UNKNOWN_DISC2,
 };
 
+// The dashboard reads a disc only at 0 and fails at 2.
 enum class X_DVD_TRAY_STATE : uint8_t {
-  OPEN,
-  UNKNOWN,
   CLOSED,
+  UNKNOWN,
+  OPEN,
   OPENING,
   CLOSING
 };
@@ -248,7 +249,7 @@ class SystemManagementController {
                                          X_SMC_DATA* smc_response)>>
       smc_commands_;
 
-  X_DVD_TRAY_STATE dvd_tray_state_ = X_DVD_TRAY_STATE::OPEN;
+  X_DVD_TRAY_STATE dvd_tray_state_ = X_DVD_TRAY_STATE::CLOSED;
   REMOTE_CONTROL ir_address_ = REMOTE_CONTROL::MEDIA_REMOTE_360;
   TILT_STATE tilt_state_ = TILT_STATE::VERTICAL;
 
