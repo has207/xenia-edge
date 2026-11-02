@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <span>
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/filesystem.h"
@@ -857,6 +858,31 @@ X_RESULT ContentManager::GetContentThumbnail(
   return X_ERROR_SUCCESS;
 }
 
+// The header of content without one of its own to take the metadata from.
+static std::unique_ptr<vfs::XContentContainerHeader> MakeContentHeader(
+    const XContentType content_type, const uint32_t title_id,
+    const std::u16string_view name, const std::span<const uint8_t> thumbnail) {
+  auto header = std::make_unique<vfs::XContentContainerHeader>();
+  auto& metadata = header->content_metadata;
+  metadata.content_type = content_type;
+  metadata.execution_info.title_id = title_id;
+  for (auto& display_name : metadata.display_name_raw.chars) {
+    xe::string_util::copy_and_swap_truncating(display_name, name,
+                                              xe::countof(display_name));
+  }
+  xe::string_util::copy_and_swap_truncating(
+      metadata.title_name_raw.chars, name,
+      xe::countof(metadata.title_name_raw.chars));
+  if (!thumbnail.empty() &&
+      thumbnail.size() <= vfs::XContentMetadata::kThumbLengthV2) {
+    std::memcpy(metadata.thumbnail, thumbnail.data(), thumbnail.size());
+    std::memcpy(metadata.title_thumbnail, thumbnail.data(), thumbnail.size());
+    metadata.thumbnail_size = static_cast<uint32_t>(thumbnail.size());
+    metadata.title_thumbnail_size = static_cast<uint32_t>(thumbnail.size());
+  }
+  return header;
+}
+
 X_RESULT ContentManager::GetContentMetadata(const uint64_t xuid,
                                             const XCONTENT_AGGREGATE_DATA& data,
                                             std::vector<uint8_t>* buffer) {
@@ -870,12 +896,19 @@ X_RESULT ContentManager::GetContentMetadata(const uint64_t xuid,
   }
   // A package kept as a file is its own header. An extracted one keeps it in
   // the header file.
+  const bool extracted = std::filesystem::is_directory(package_path);
   auto header = vfs::XContentContainerDevice::ReadContainerHeader(
-      std::filesystem::is_directory(package_path)
-          ? PackageHeaderPath(package_path)
-          : package_path);
+      extracted ? PackageHeaderPath(package_path) : package_path);
   if (!header || !header->content_header.is_magic_valid()) {
-    return X_ERROR_FILE_NOT_FOUND;
+    // A header file with only the package's content data gives its type,
+    // title and name.
+    XCONTENT_AGGREGATE_DATA stored;
+    if (!extracted || ReadContentHeaderFile(package_path, xuid, data.title_id,
+                                            data.content_type, stored)) {
+      return X_ERROR_FILE_NOT_FOUND;
+    }
+    header = MakeContentHeader(stored.content_type, stored.title_id,
+                               stored.display_name(), {});
   }
   // Every string ends in a terminator, whatever the header holds.
   auto& metadata = header->content_metadata;
