@@ -848,37 +848,7 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
   }
 
   SetDeploymentType(XDeploymentType::kInstalledToHDD);
-
-  if (!kernel::IsSystemTitle(kernel_state_->title_id())) {
-    return result;
-  }
-
-  // Without installed system files the title's folder stands in for the flash.
-  std::string system_root;
-  if (!file_system_->FindSymbolicLink("\\SystemRoot", system_root)) {
-    file_system_->RegisterSymbolicLink(
-        "\\SystemRoot", utf8::find_base_guest_path(
-                            kernel_state_->GetExecutableModule()->path()));
-  }
-  // xam links media: to the flash, which holds the system fonts.
-  file_system_->RegisterSymbolicLink("media:", "\\SystemRoot");
-
-  auto module = kernel_state_->LoadUserModule("xam.xex");
-
-  if (!module) {
-    module = kernel_state_->LoadUserModule("$flash_xam.xex");
-  }
-
-  // A failure here doesn't fail the title, which has launched by now.
-  if (module) {
-    const X_STATUS xam_result =
-        kernel_state_->FinishLoadingUserModule(module, false);
-    if (XFAILED(xam_result)) {
-      XELOGE("Failed to load the system xam module: {:08X}", xam_result);
-    }
-  }
-
-  return X_STATUS_SUCCESS;
+  return result;
 }
 
 X_STATUS Emulator::LaunchDiscImage(const std::filesystem::path& path) {
@@ -2303,12 +2273,43 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     module->xex_module()->PrecompileStaticInitializers();
   }
 
+  // A dashboard asks for xam's resources as soon as it starts.
+  if (kernel::IsSystemTitle(kernel_state_->title_id())) {
+    PrepareSystemTitle();
+  }
+
   // Drops only the launch suspend, so a debugger break still holds.
   if (!boot_animation || !PlayBootAnimation()) {
     main_thread_->Resume();
   }
 
   return X_STATUS_SUCCESS;
+}
+
+void Emulator::PrepareSystemTitle() {
+  // Without installed system files the title's folder stands in for the flash.
+  std::string system_root;
+  if (!file_system_->FindSymbolicLink("\\SystemRoot", system_root)) {
+    file_system_->RegisterSymbolicLink(
+        "\\SystemRoot", utf8::find_base_guest_path(
+                            kernel_state_->GetExecutableModule()->path()));
+  }
+  // xam links media: to the flash, which holds the system fonts.
+  file_system_->RegisterSymbolicLink("media:", "\\SystemRoot");
+
+  // Only its resources are used, through the resource locators.
+  auto module = kernel_state_->LoadUserModule("\\SystemRoot\\xam.xex");
+  if (!module) {
+    module = kernel_state_->LoadUserModule("\\SystemRoot\\$flash_xam.xex");
+  }
+  // A failure here doesn't fail the title.
+  if (module) {
+    const X_STATUS result =
+        kernel_state_->FinishLoadingUserModule(module, false);
+    if (XFAILED(result)) {
+      XELOGE("Failed to load the system xam module: {:08X}", result);
+    }
+  }
 }
 
 bool Emulator::PlayBootAnimation() {

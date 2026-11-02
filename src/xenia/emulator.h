@@ -542,6 +542,8 @@ class Emulator {
   // UI-thread half of CompleteLaunch, ends with the main thread suspended.
   X_STATUS PrepareLaunch(const std::filesystem::path& path,
                          const std::string_view module_path);
+  // Links the flash and loads xam's resources for a system title.
+  void PrepareSystemTitle();
   // Plays the boot animation before the title and resumes the main thread
   // once it ends, or returns false when it can't play.
   bool PlayBootAnimation();

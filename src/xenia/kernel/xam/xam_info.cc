@@ -235,7 +235,8 @@ dword_result_t XamBuildResourceLocator_entry(qword_t module,
 }
 DECLARE_XAM_EXPORT1(XamBuildResourceLocator, kNone, kImplemented);
 
-// The xam LaunchXexFile loads for its resources, as xam or $flash_xam.
+// The xam a system title gets from \SystemRoot for its resources, as xam or
+// $flash_xam.
 static object_ref<XModule> GetSystemXamModule() {
   if (auto module = kernel_state()->GetModule("xam", true)) {
     return module;
