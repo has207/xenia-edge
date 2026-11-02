@@ -19,13 +19,14 @@ namespace vfs {
 std::unique_ptr<XContentContainerDevice>
 XContentContainerDevice::CreateContentDevice(
     const std::string_view mount_path, const std::filesystem::path& host_path) {
-  if (!std::filesystem::exists(host_path)) {
+  std::error_code ec;
+  if (!std::filesystem::exists(host_path, ec)) {
     XELOGE("Path to XContent container does not exist: {}",
            xe::strip_pii(xe::path_to_utf8(host_path)));
     return nullptr;
   }
 
-  if (std::filesystem::is_directory(host_path)) {
+  if (std::filesystem::is_directory(host_path, ec)) {
     return nullptr;
   }
 
@@ -35,8 +36,8 @@ XContentContainerDevice::CreateContentDevice(
     return nullptr;
   }
 
-  const uint64_t package_size = std::filesystem::file_size(host_path);
-  if (package_size < sizeof(XContentContainerHeader)) {
+  const uint64_t package_size = std::filesystem::file_size(host_path, ec);
+  if (ec || package_size < sizeof(XContentContainerHeader)) {
     return nullptr;
   }
 
@@ -159,11 +160,13 @@ bool XContentContainerDevice::Initialize() {
 std::unique_ptr<XContentContainerHeader>
 XContentContainerDevice::ReadContainerHeader(
     const std::filesystem::path& file_path) {
-  if (!std::filesystem::exists(file_path)) {
+  std::error_code ec;
+  if (!std::filesystem::exists(file_path, ec)) {
     return {};
   }
 
-  if (std::filesystem::file_size(file_path) < sizeof(XContentContainerHeader)) {
+  const uint64_t file_size = std::filesystem::file_size(file_path, ec);
+  if (ec || file_size < sizeof(XContentContainerHeader)) {
     return {};
   }
 
