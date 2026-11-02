@@ -831,6 +831,16 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
   // Launch the game.
   auto fs_path = fmt::format("{}\\", kDefaultGameSymbolicLink) +
                  xe::path_to_utf8(file_name);
+  // A folder holding its own xam is the title's flash even with system files
+  // installed.
+  std::string package_root;
+  if (file_system_->FindSymbolicLink(kDefaultGameSymbolicLink, package_root) &&
+      (file_system_->ResolvePath(
+           fmt::format("{}\\xam.xex", kDefaultGameSymbolicLink)) ||
+       file_system_->ResolvePath(
+           fmt::format("{}\\$flash_xam.xex", kDefaultGameSymbolicLink)))) {
+    file_system_->RegisterSymbolicLink("\\SystemRoot", package_root);
+  }
   X_STATUS result = CompleteLaunch(path, fs_path);
 
   if (XFAILED(result)) {
@@ -843,12 +853,13 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
     return result;
   }
 
-  const std::string mount_path =
-      utf8::find_base_guest_path(kernel_state_->GetExecutableModule()->path());
-
-  // System related symlinks. This should point to dashboard location in the
-  // future.
-  file_system_->RegisterSymbolicLink("\\SystemRoot", mount_path);
+  // Without installed system files the title's folder stands in for the flash.
+  std::string system_root;
+  if (!file_system_->FindSymbolicLink("\\SystemRoot", system_root)) {
+    file_system_->RegisterSymbolicLink(
+        "\\SystemRoot", utf8::find_base_guest_path(
+                            kernel_state_->GetExecutableModule()->path()));
+  }
   // xam links media: to the flash, which holds the system fonts.
   file_system_->RegisterSymbolicLink("media:", "\\SystemRoot");
 
@@ -2419,6 +2430,12 @@ X_STATUS Emulator::PrepareLaunch(const std::filesystem::path& path,
     if (device->Initialize()) {
       file_system_->RegisterDevice(std::move(device));
     }
+  }
+  // \SystemRoot is the flash, where titles find the system fonts.
+  std::string system_root;
+  if (file_system_->GetDevice("\\Device\\Flash") &&
+      !file_system_->FindSymbolicLink("\\SystemRoot", system_root)) {
+    file_system_->RegisterSymbolicLink("\\SystemRoot", "\\Device\\Flash");
   }
 
   // Setup NullDevices for raw HDD partition accesses
