@@ -88,6 +88,10 @@ namespace cpu {
 
 using xe::kernel::KernelState;
 
+void DecryptXex2ImageKey(const uint8_t* encrypted_key, uint8_t* key) {
+  aes_decrypt_buffer(xe_xex2_retail_key, encrypted_key, 16, key, 16);
+}
+
 XexModule::XexModule(Processor* processor, KernelState* kernel_state)
     : Module(processor), kernel_state_(kernel_state) {}
 

@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_modules.h"
 #include "xenia/base/logging.h"
+#include "xenia/cpu/xex_module.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
@@ -19,17 +20,14 @@ namespace xe {
 namespace kernel {
 namespace xboxkrnl {
 
-dword_result_t XexCheckExecutablePrivilege_entry(dword_t privilege) {
-  // BOOL
-  // DWORD Privilege
-
+static bool HasExecutablePrivilege(uint32_t privilege) {
   // Privilege is bit position in xe_xex2_system_flags enum - so:
   // Privilege=6 -> 0x00000040 -> XEX_SYSTEM_INSECURE_SOCKETS
   uint32_t mask = 1 << privilege;
 
   auto module = kernel_state()->GetExecutableModule();
   if (!module) {
-    return 0;
+    return false;
   }
 
   uint32_t flags = 0;
@@ -37,7 +35,33 @@ dword_result_t XexCheckExecutablePrivilege_entry(dword_t privilege) {
 
   return (flags & mask) > 0;
 }
+
+dword_result_t XexCheckExecutablePrivilege_entry(dword_t privilege) {
+  // BOOL
+  // DWORD Privilege
+  return HasExecutablePrivilege(privilege);
+}
 DECLARE_XBOXKRNL_EXPORT1(XexCheckExecutablePrivilege, kModules, kImplemented);
+
+// Takes the signed part of an XEX2 header's security info, from its RSA
+// signature on. The hypervisor checks it and decrypts its image key in place,
+// which the dashboard needs to read a disc's executable.
+dword_result_t XexTransformImageKey_entry(lpvoid_t security_info,
+                                          dword_t size) {
+  constexpr uint32_t kImageKeyOffset =
+      offsetof(xex2_security_info, aes_key) -
+      offsetof(xex2_security_info, rsa_signature);
+  if (!HasExecutablePrivilege(0)) {
+    return X_STATUS_ACCESS_DENIED;
+  }
+  if (!security_info || size < kImageKeyOffset + 0x10) {
+    return X_STATUS_TOO_MANY_SECRETS;
+  }
+  uint8_t* key = security_info.as<uint8_t*>() + kImageKeyOffset;
+  cpu::DecryptXex2ImageKey(key, key);
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XexTransformImageKey, kModules, kImplemented);
 
 dword_result_t XexGetModuleHandle(std::string module_name,
                                   xe::be<uint32_t>* hmodule_ptr) {

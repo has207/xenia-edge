@@ -83,6 +83,7 @@ typedef uint32_t X_STATUS;
 #define X_STATUS_CANCELLED                              ((X_STATUS)0xC0000120L)
 #define X_STATUS_DLL_NOT_FOUND                          ((X_STATUS)0xC0000135L)
 #define X_STATUS_ENTRYPOINT_NOT_FOUND                   ((X_STATUS)0xC0000139L)
+#define X_STATUS_TOO_MANY_SECRETS                       ((X_STATUS)0xC0000156L)
 #define X_STATUS_MAPPED_ALIGNMENT                       ((X_STATUS)0xC0000220L)
 #define X_STATUS_NOT_FOUND                              ((X_STATUS)0xC0000225L)
 #define X_STATUS_DRIVER_ORDINAL_NOT_FOUND               ((X_STATUS)0xC0000262L)

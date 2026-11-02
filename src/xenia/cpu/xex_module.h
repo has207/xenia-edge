@@ -319,6 +319,9 @@ class XexModule : public xe::cpu::Module {
   XexInfoCache info_cache_;
 };
 
+// Decrypts a retail XEX2 image key, which only the hypervisor can on a console.
+void DecryptXex2ImageKey(const uint8_t* encrypted_key, uint8_t* key);
+
 }  // namespace cpu
 }  // namespace xe
 
