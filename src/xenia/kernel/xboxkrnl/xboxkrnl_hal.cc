@@ -55,8 +55,7 @@ DECLARE_XBOXKRNL_EXPORT3(HalSendSMCMessage, kNone, kStub, kImportant,
                          kHighFrequency);
 
 void HalOpenCloseODDTray_entry(dword_t open_close) {
-  kernel_state()->smc()->SetTrayState(open_close ? X_DVD_TRAY_STATE::OPEN
-                                                 : X_DVD_TRAY_STATE::CLOSED);
+  kernel_state()->smc()->MoveTray(open_close);
 }
 DECLARE_XBOXKRNL_EXPORT1(HalOpenCloseODDTray, kNone, kStub);
 

@@ -800,15 +800,7 @@ dword_result_t XamSwapDisc_entry(
   // Mount to Cdrom0 so the game: symlink points to the new disc
   auto mount_path = "\\Device\\Cdrom0";
 
-  // Unmount the current disc
-  if (filesystem->ResolvePath(mount_path) != NULL) {
-    // So nothing mounts from the disc between closing its packages and
-    // unmounting it.
-    auto global_lock = global_critical_region::AcquireDirect();
-    kernel_state()->content_manager()->ClosePackagesMountedFrom(
-        filesystem->GetDevice(mount_path));
-    filesystem->UnregisterDevice(mount_path);
-  }
+  kernel_state()->emulator()->EjectDisc();
 
   std::u16string text_message = xe::load_and_swap<std::u16string>(
       kernel_state()->memory()->TranslateVirtual(error_message->stringTextPtr));
@@ -967,11 +959,21 @@ DECLARE_XAM_EXPORT1(XamLoaderGetDvdTrayState, kNone, kImplemented);
 
 void XamLoaderGetMediaInfoEx_entry(lpdword_t media_type, lpdword_t title_id,
                                    lpdword_t unk3) {
+  uint32_t disc_type = X_DVD_DISC_STATE::XBOX_360_GAME_DISC;
+  uint32_t disc_title_id = 0;
+  // A game is in its own drive.
+  if (kernel_state()->emulator()->UsesEmulatedDrive()) {
+    const auto disc = kernel_state()->emulator()->inserted_disc();
+    disc_type = !disc                 ? X_DVD_DISC_STATE::NO_DISC
+                : disc->xbox_original ? X_DVD_DISC_STATE::XBOX_GAME_DISC
+                                      : X_DVD_DISC_STATE::XBOX_360_GAME_DISC;
+    disc_title_id = disc ? disc->title_id : 0;
+  }
   if (media_type) {
-    *media_type = X_DVD_DISC_STATE::XBOX_360_GAME_DISC;
+    *media_type = disc_type;
   }
   if (title_id) {
-    *title_id = 0;
+    *title_id = disc_title_id;
   }
   if (unk3) {
     *unk3 = 0;

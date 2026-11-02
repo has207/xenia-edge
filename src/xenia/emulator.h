@@ -472,6 +472,27 @@ class Emulator {
   // The game can request another title to be loaded.
   const std::filesystem::path GetNewDiscPath(std::string window_message = "");
 
+  // The disc a system title finds in the drive, which goes in through its open
+  // tray. A launch starts with the drive empty.
+  struct InsertedDisc {
+    std::filesystem::path path;
+    uint32_t title_id = 0;
+    bool xbox_original = false;
+  };
+  std::optional<InsertedDisc> inserted_disc() const;
+  // Whether the running title sees the drive discs go in through, rather than
+  // its own disc or none.
+  bool UsesEmulatedDrive() const;
+  // Swaps the disc in the drive for one the app picks, leaving the drive empty
+  // when it picks none.
+  void ChangeDisc();
+  // Takes whatever disc is in the drive out of it.
+  void EjectDisc();
+  // Asked on the UI thread for the disc to put in the drive. An empty path
+  // leaves it empty.
+  using DiscPicker = std::function<std::filesystem::path()>;
+  void set_disc_picker(DiscPicker picker) { disc_picker_ = std::move(picker); }
+
   void WaitUntilExit();
 
  public:
@@ -552,6 +573,9 @@ class Emulator {
   // Sets the emulator up again after Shutdown(). Nothing runs without it, so a
   // failure is fatal.
   void SetupAgain();
+  // Mounts the disc image at |path| in the drive, or returns false when it
+  // can't.
+  bool InsertDisc(const std::filesystem::path& path);
   // Takes the original Xbox game XeFu runs out of the drive.
   void EjectXboxGame() {
     xbox_disc_path_.clear();
@@ -565,6 +589,9 @@ class Emulator {
   // shown to XeFu as the disc. Persists across launches from xefu_path.
   std::filesystem::path xbox_disc_path_;
   std::optional<vfs::XbeMetadata> xbox_game_;
+  mutable std::mutex inserted_disc_mutex_;
+  std::optional<InsertedDisc> inserted_disc_;
+  DiscPicker disc_picker_;
   // Set by the UI, cleared by whichever thread launches.
   mutable std::mutex running_xbe_mutex_;
   std::optional<vfs::XbeMetadata> running_xbe_;

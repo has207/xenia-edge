@@ -223,6 +223,9 @@ class SystemManagementController {
   X_DVD_TRAY_STATE GetTrayState() const { return dvd_tray_state_; }
 
   void SetTrayState(X_DVD_TRAY_STATE state);
+  // Opens or closes the tray. A system title opening it puts in a disc the app
+  // picks and closes it again.
+  void MoveTray(bool open);
 
   void CallCommand(X_SMC_DATA* smc_message, X_SMC_DATA* smc_response);
 

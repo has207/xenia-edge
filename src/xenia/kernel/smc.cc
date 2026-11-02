@@ -8,6 +8,7 @@
  */
 
 #include "xenia/kernel/smc.h"
+#include "xenia/emulator.h"
 #include "xenia/kernel/util/shim_utils.h"
 
 DECLARE_int32(avpack);
@@ -56,6 +57,15 @@ void SystemManagementController::SetTrayState(X_DVD_TRAY_STATE state) {
   dvd_tray_state_ = state;
   kernel_state()->BroadcastNotification(kXNotificationSystemTrayStateChanged,
                                         static_cast<uint8_t>(state));
+}
+
+void SystemManagementController::MoveTray(bool open) {
+  SetTrayState(open ? X_DVD_TRAY_STATE::OPEN : X_DVD_TRAY_STATE::CLOSED);
+  // A game keeps its disc.
+  if (open && kernel_state()->emulator()->UsesEmulatedDrive()) {
+    kernel_state()->emulator()->ChangeDisc();
+    SetTrayState(X_DVD_TRAY_STATE::CLOSED);
+  }
 }
 
 void SystemManagementController::CallCommand(X_SMC_DATA* smc_message,
@@ -155,8 +165,7 @@ void SystemManagementController::SetIRAddress(X_SMC_DATA* smc_message,
 void SystemManagementController::SetDriveTray(X_SMC_DATA* smc_message,
                                               X_SMC_DATA* smc_response) {
   // HalOpenCloseODDTray sends 0x60 to open the tray and 0x62 to close it.
-  SetTrayState(smc_message->smc_data[0] == 0x60 ? X_DVD_TRAY_STATE::OPEN
-                                                : X_DVD_TRAY_STATE::CLOSED);
+  MoveTray(smc_message->smc_data[0] == 0x60);
 }
 
 void SystemManagementController::SetFanSpeed(X_SMC_DATA* smc_message,

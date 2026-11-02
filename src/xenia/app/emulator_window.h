@@ -117,6 +117,8 @@ class EmulatorWindow {
   void OpenConfigDialog(const std::string& category = "");
   void ToggleControllerVibration();
   void FileOpen();
+  // Asks for a title or disc image to run, or returns an empty path.
+  std::filesystem::path PickTitleFile();
   void FileAddGames();
   // Starts the installed dashboard after the boot animation.
   void StartDashboard();

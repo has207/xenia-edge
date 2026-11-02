@@ -45,12 +45,14 @@
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xam/achievement_manager.h"
+#include "xenia/kernel/xam/content_manager.h"
 #include "xenia/kernel/xam/ui/disc_swap_ui.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xdbf/spa_info.h"
 #include "xenia/kernel/xbdm/xbdm_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
 #include "xenia/kernel/xconfig.h"
+#include "xenia/kernel/xfile.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/memory.h"
 #include "xenia/ui/file_picker.h"
@@ -66,10 +68,13 @@
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/entry.h"
 #include "xenia/vfs/file.h"
+#include "xenia/vfs/iso_metadata.h"
+#include "xenia/vfs/stfs_metadata.h"
 #include "xenia/vfs/virtual_file_system.h"
 #include "xenia/vfs/xbe_metadata.h"
 #include "xenia/vfs/xbox_original_data.h"
 #include "xenia/vfs/xex_metadata.h"
+#include "xenia/vfs/zar_metadata.h"
 
 #if XE_ARCH_AMD64
 #include "xenia/cpu/backend/x64/x64_backend.h"
@@ -748,6 +753,11 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path,
   }
   // A file an earlier launch missed says nothing about this one.
   missing_xefu_file_.clear();
+  // The drive starts empty.
+  {
+    std::lock_guard<std::mutex> lock(inserted_disc_mutex_);
+    inserted_disc_.reset();
+  }
 
   if (!package_path.empty()) {
     return LaunchDiscPackage(path, package_path);
@@ -869,6 +879,120 @@ std::filesystem::path Emulator::xefu_path() const {
 void Emulator::InsertXboxGame(const std::filesystem::path& path) {
   xbox_disc_path_ = path;
   xbox_game_ = vfs::ExtractXbeMetadata(path);
+}
+
+// The drive's device.
+constexpr std::string_view kDiscDrivePath = "\\Device\\Cdrom0";
+
+std::optional<Emulator::InsertedDisc> Emulator::inserted_disc() const {
+  std::lock_guard<std::mutex> lock(inserted_disc_mutex_);
+  return inserted_disc_;
+}
+
+bool Emulator::UsesEmulatedDrive() const {
+  if (!kernel::IsSystemTitle(kernel_state_->title_id())) {
+    return false;
+  }
+  // A system title launched from a disc keeps that disc.
+  const bool drive_empty = !file_system_->GetDevice(kDiscDrivePath);
+  std::lock_guard<std::mutex> lock(inserted_disc_mutex_);
+  return inserted_disc_ || drive_empty;
+}
+
+void Emulator::ChangeDisc() {
+  EjectDisc();
+  if (!disc_picker_ || !display_window_) {
+    return;
+  }
+  // The fiber parks while the picker is up, so the guest threads sharing its
+  // CPU keep running.
+  std::filesystem::path path;
+  xe::threading::Fence fence;
+  if (!display_window_->app_context().CallInUIThread([this, &path, &fence]() {
+        path = disc_picker_();
+        fence.Signal();
+      })) {
+    return;
+  }
+  kernel::GuestScheduler::WaitOnFence(fence);
+  if (!path.empty()) {
+    InsertDisc(path);
+  }
+}
+
+void Emulator::EjectDisc() {
+  {
+    std::lock_guard<std::mutex> lock(inserted_disc_mutex_);
+    inserted_disc_.reset();
+  }
+  // So nothing opens or mounts from the disc while it goes away.
+  auto global_lock = global_critical_region::AcquireDirect();
+  const vfs::Device* device = file_system_->GetDevice(kDiscDrivePath);
+  if (!device) {
+    return;
+  }
+  for (const auto& file :
+       kernel_state_->object_table()->GetObjectsByType<kernel::XFile>(
+           kernel::XObject::Type::File)) {
+    if (file->entry()->device() == device) {
+      file->ReleaseHandle();
+    }
+  }
+  kernel_state_->content_manager()->ClosePackagesMountedFrom(device);
+  file_system_->UnregisterDevice(kDiscDrivePath);
+}
+
+bool Emulator::InsertDisc(const std::filesystem::path& path) {
+  auto device = CreateVfsDevice(path, kDiscDrivePath);
+  if (!device || !device->Initialize()) {
+    XELOGE("Unable to put {} in the drive, it is an unsupported format",
+           xe::strip_pii(xe::path_to_utf8(path)));
+    return false;
+  }
+  InsertedDisc disc{path};
+  std::optional<vfs::XbeMetadata> xbe;
+  switch (GetFileSignature(path)) {
+    case FileSignatureType::XISO:
+      if (auto xex = vfs::ExtractIsoMetadata(path)) {
+        disc.title_id = xex->title_id;
+      } else {
+        xbe = vfs::ExtractXbeMetadata(path);
+      }
+      break;
+    case FileSignatureType::ZAR:
+      if (auto xex = vfs::ExtractZarMetadata(path)) {
+        disc.title_id = xex->title_id;
+      }
+      break;
+    case FileSignatureType::LIVE:
+    case FileSignatureType::CON:
+    case FileSignatureType::PIRS:
+      if (auto stfs = vfs::ExtractStfsMetadata(path)) {
+        disc.title_id = stfs->title_id;
+        // An original Xbox package names the game its executable is.
+        if (stfs->content_type == uint32_t(XContentType::kXboxTitle)) {
+          xbe = vfs::ExtractXbeMetadata(path);
+        }
+      }
+      break;
+    case FileSignatureType::XBE:
+      xbe = vfs::ExtractXbeMetadata(path);
+      break;
+    default:
+      if (auto xex = vfs::ExtractXexMetadata(path)) {
+        disc.title_id = xex->title_id;
+      }
+      break;
+  }
+  if (xbe) {
+    disc.title_id = xbe->title_id;
+    disc.xbox_original = true;
+  }
+  file_system_->RegisterDevice(std::move(device));
+  XELOGI("Put {:08X} in the drive", disc.title_id);
+  std::lock_guard<std::mutex> lock(inserted_disc_mutex_);
+  inserted_disc_ = std::move(disc);
+  return true;
 }
 
 std::optional<vfs::XbeMetadata> Emulator::running_xbe() const {

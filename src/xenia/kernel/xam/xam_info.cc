@@ -607,8 +607,14 @@ void LaunchTitle(std::string path, std::string_view d_drive_path,
   loader_data.launch_flags = flags;
 
   // Flag 4 exits to the dashboard for a path rooted at a device. Flag 2 boots
-  // the disc in the tray in place of the path, and with no tray to emulate
-  // that exits to the dashboard too.
+  // the disc in the tray in place of the path, and exits to the dashboard too
+  // when the drive is empty.
+  std::filesystem::path disc_path;
+  if (flags & 2) {
+    if (const auto disc = kernel_state()->emulator()->inserted_disc()) {
+      disc_path = disc->path;
+    }
+  }
   if ((flags & 2) || ((flags & 4) && (path.starts_with('\\') ||
                                       d_drive_path.starts_with('\\')))) {
     path.clear();
@@ -634,7 +640,7 @@ void LaunchTitle(std::string path, std::string_view d_drive_path,
   }
 
   // An empty path means exit to dashboard.
-  if (!path.empty()) {
+  if (!path.empty() || !disc_path.empty()) {
     loader_data.launch_data_present = true;
 
     std::filesystem::path host_path = loader_data.host_path;
@@ -656,7 +662,10 @@ void LaunchTitle(std::string path, std::string_view d_drive_path,
     remove_prefix("game:\\");
     remove_prefix("d:\\");
 
-    if (NamesDevice(launch_path)) {
+    if (!disc_path.empty()) {
+      host_path = disc_path;
+      package_path.clear();
+    } else if (NamesDevice(launch_path)) {
       // Any other device is outside the title. Only a file a host directory
       // backs or one in a package can be launched from there.
       if ((entry->attributes() & vfs::kFileAttributeDirectory) ||

@@ -958,6 +958,10 @@ void EmulatorWindow::OnEmulatorInitialized() {
   emulator_->set_on_disc_swap([this](uint8_t) {
     app_context_.CallInUIThread([this]() { UpdateTitle(); });
   });
+
+  // The dashboard's open tray asks for a disc the way File > Open asks for a
+  // title.
+  emulator_->set_disc_picker([this]() { return PickTitleFile(); });
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
@@ -1853,8 +1857,13 @@ void EmulatorWindow::FileDrop(const std::filesystem::path& path) {
 }
 
 void EmulatorWindow::FileOpen() {
-  std::filesystem::path path;
+  const std::filesystem::path path = PickTitleFile();
+  if (!path.empty()) {
+    RunTitle(path);
+  }
+}
 
+std::filesystem::path EmulatorWindow::PickTitleFile() {
   auto file_picker = xe::ui::FilePicker::Create();
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
   file_picker->set_type(ui::FilePicker::Type::kFile);
@@ -1878,15 +1887,11 @@ void EmulatorWindow::FileOpen() {
       //{"Content Package (*.xcp)", "*.xcp" },
       {"All Files", "*"},
   });
-  if (file_picker->Show(window_.get())) {
-    auto selected_files = file_picker->selected_files();
-    if (!selected_files.empty()) {
-      path = selected_files[0];
-    }
-    if (!path.empty()) {
-      RunTitle(path);
-    }
+  if (!file_picker->Show(window_.get()) ||
+      file_picker->selected_files().empty()) {
+    return {};
   }
+  return file_picker->selected_files().front();
 }
 
 void EmulatorWindow::StartDashboard() {
