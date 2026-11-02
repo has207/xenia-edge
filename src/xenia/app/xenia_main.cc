@@ -98,6 +98,10 @@ DECLARE_bool(force_mount_devkit);
 // EmulatorApp::EmulatorApp -> AddPositionalOption("target")).
 DEFINE_transient_path(target, "", "Specifies the target file to run.",
                       "General");
+DEFINE_transient_bool(boot_animation, false,
+                      "Plays the boot animation from the installed system "
+                      "files before the target starts.",
+                      "General");
 DEFINE_transient_bool(portable, false,
                       "Specifies if Xenia should run in portable mode.",
                       "General");
@@ -810,6 +814,9 @@ void EmulatorApp::EmulatorThread() {
     app_context().CallInUIThreadSynchronous(
         [this]() { emulator_window_->SetupGraphicsSystemPresenterPainting(); });
 
+    if (cvars::boot_animation) {
+      emulator_->RequestBootAnimation();
+    }
     // TODO(has207): Add archive format check like in RunTitle?
     result = emulator_->LaunchPath(abs_path, cvars::launch_package);
     if (const std::string file = emulator_->TakeMissingXeFuFile();

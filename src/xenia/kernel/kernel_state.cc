@@ -540,7 +540,7 @@ object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
   // The boot animation is a DLL with no entry point.
   if (module->is_dll_module() && !module->entry_point()) {
     auto thread = GetKernelModule<xboxkrnl::XboxkrnlModule>("xboxkrnl.exe")
-                      ->StartBootAnimation(module);
+                      ->StartBootAnimation(module, /*main_thread=*/true);
     if (thread) {
       emulator()->processor()->PreLaunch();
     }

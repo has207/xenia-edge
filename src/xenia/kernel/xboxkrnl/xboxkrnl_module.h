@@ -54,9 +54,11 @@ class XboxkrnlModule : public KernelModule {
     speaker_config_set_ = true;
   }
 
-  // Runs the boot animation |module| from its first export.
-  // Returns its thread suspended, or nullptr when it can't start.
-  object_ref<XThread> StartBootAnimation(const object_ref<UserModule>& module);
+  // Runs the boot animation |module| from its first export, as the title's
+  // |main_thread| when it was launched itself. Returns its thread suspended,
+  // or nullptr when it can't start.
+  object_ref<XThread> StartBootAnimation(const object_ref<UserModule>& module,
+                                         bool main_thread);
   // Ends the boot animation and waits for its thread to exit.
   void EndBootAnimation(uint32_t terminate);
   void SetBootAnimationLogo(uint32_t unk0, uint32_t unk1);

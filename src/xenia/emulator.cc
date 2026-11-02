@@ -12,7 +12,9 @@
 #include "xenia/emulator.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
+#include <utility>
 #include "config.h"
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/apu/audio_system.h"
@@ -292,6 +294,7 @@ void Emulator::Shutdown() {
   title_version_.clear();
   game_info_database_.reset();
   paused_ = false;
+  boot_animation_requested_ = false;
 
   XELOGI("Emulator::Shutdown: teardown complete");
 }
@@ -855,7 +858,7 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
     module = kernel_state_->LoadUserModule("$flash_xam.xex");
   }
 
-  // The title is running by now, so a failure here doesn't fail the launch.
+  // A failure here doesn't fail the title, which has launched by now.
   if (module) {
     const X_STATUS xam_result =
         kernel_state_->FinishLoadingUserModule(module, false);
@@ -2271,6 +2274,7 @@ static std::string format_version(xex2_version version) {
 
 X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                                   const std::string_view module_path) {
+  const bool boot_animation = std::exchange(boot_animation_requested_, false);
   // The window icon and on_launch listeners need the UI thread.
   X_STATUS result = X_STATUS_UNSUCCESSFUL;
   display_window_->app_context().CallInUIThreadSynchronous(
@@ -2289,9 +2293,78 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   }
 
   // Drops only the launch suspend, so a debugger break still holds.
-  main_thread_->Resume();
+  if (!boot_animation || !PlayBootAnimation()) {
+    main_thread_->Resume();
+  }
 
   return X_STATUS_SUCCESS;
+}
+
+bool Emulator::PlayBootAnimation() {
+  auto title = kernel_state_->GetExecutableModule();
+  // A launched boot animation is the title itself.
+  if (title->is_dll_module() && !title->entry_point()) {
+    return false;
+  }
+
+  auto animation =
+      kernel_state_->LoadUserModule("\\Device\\Flash\\bootanim.xex");
+  if (!animation) {
+    XELOGE("The boot animation isn't in the system files");
+    return false;
+  }
+  if (XFAILED(kernel_state_->FinishLoadingUserModule(animation))) {
+    XELOGE("Failed to initialize the boot animation");
+    kernel_state_->UnloadUserModule(animation);
+    return false;
+  }
+  auto xboxkrnl =
+      kernel_state_->GetKernelModule<kernel::xboxkrnl::XboxkrnlModule>(
+          "xboxkrnl.exe");
+  auto animation_thread =
+      xboxkrnl->StartBootAnimation(animation, /*main_thread=*/false);
+  if (!animation_thread) {
+    kernel_state_->UnloadUserModule(animation);
+    return false;
+  }
+
+  uint32_t logo = 0;
+  title->GetOptHeader(XEX_HEADER_XBOX360_LOGO, &logo);
+  const uint32_t first_frame = xe::logging::GetFrameNumber();
+  // Does what xam's title startup routine does before the entry point.
+  auto loader = kernel::object_ref<kernel::XHostThread>(new kernel::XHostThread(
+      kernel_state_.get(), 128 * 1024, 0,
+      [this, xboxkrnl, animation, animation_thread, logo, first_frame,
+       main_thread = main_thread_]() {
+        // Its startup clears an end request made before its first frame.
+        uint64_t timeout = static_cast<uint64_t>(-100000ll);
+        while (xe::logging::GetFrameNumber() == first_frame &&
+               animation_thread->Wait(3, 1, 0, &timeout) == X_STATUS_TIMEOUT) {
+        }
+        if (logo) {
+          auto header =
+              memory_->TranslateVirtual<const xex2_opt_ms_logo*>(logo);
+          constexpr uint32_t kLogoOffset = offsetof(xex2_opt_ms_logo, logo);
+          if (header->section_size > kLogoOffset) {
+            xboxkrnl->SetBootAnimationLogo(logo + kLogoOffset,
+                                           header->logo_size);
+          }
+        }
+        xboxkrnl->EndBootAnimation(0);
+        kernel_state_->UnloadUserModule(animation);
+        main_thread->Resume();
+        return 0;
+      },
+      0, true));
+  loader->set_name("Boot Animation Loader");
+  if (XFAILED(loader->Create())) {
+    XELOGE("Could not create the boot animation loader thread");
+    animation_thread->Terminate(0);
+    kernel_state_->UnloadUserModule(animation);
+    return false;
+  }
+  animation_thread->Resume();
+  return true;
 }
 
 void Emulator::SetupAgain() {

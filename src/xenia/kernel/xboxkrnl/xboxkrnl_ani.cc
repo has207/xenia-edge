@@ -37,7 +37,7 @@ static void CallBootAnimationExport(uint32_t address, uint64_t* args,
 }
 
 object_ref<XThread> XboxkrnlModule::StartBootAnimation(
-    const object_ref<UserModule>& module) {
+    const object_ref<UserModule>& module, bool main_thread) {
   const uint32_t play =
       module->GetProcAddressByOrdinal(kPlayBootAnimationOrdinal);
   if (!play) {
@@ -51,7 +51,7 @@ object_ref<XThread> XboxkrnlModule::StartBootAnimation(
       new XThread(kernel_state_, 0, 0, play, hmodule,
                   ThreadInitiallySuspended | PriorityClass1 | ReturnKThreadPtr |
                       AffinityCpu3,
-                  true, true));
+                  true, main_thread));
   thread->set_name("Boot Animation");
   const X_STATUS result = thread->Create();
   if (XFAILED(result)) {
@@ -87,6 +87,8 @@ void XboxkrnlModule::EndBootAnimation(uint32_t terminate) {
   if (ani_thread_) {
     xeKeWaitForSingleObject(ani_thread_->guest_object<X_KTHREAD>(), 3, 1, 0,
                             nullptr);
+    // A thread created for its pointer is dereferenced once it ends.
+    ani_thread_->ReleaseHandle();
     ani_thread_.reset();
   }
   // Whoever loaded the module unloads it.

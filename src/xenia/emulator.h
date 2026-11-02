@@ -304,6 +304,10 @@ class Emulator {
   X_STATUS LaunchPath(const std::filesystem::path& path,
                       std::string_view package_path = {});
 
+  // The next launch plays the boot animation from the flash first, as at
+  // power-on.
+  void RequestBootAnimation() { boot_animation_requested_ = true; }
+
   // Launches a game from a .xex file by mounting the containing folder as if it
   // was an extracted STFS container.
   X_STATUS LaunchXexFile(const std::filesystem::path& path);
@@ -538,6 +542,9 @@ class Emulator {
   // UI-thread half of CompleteLaunch, ends with the main thread suspended.
   X_STATUS PrepareLaunch(const std::filesystem::path& path,
                          const std::string_view module_path);
+  // Plays the boot animation before the title and resumes the main thread
+  // once it ends, or returns false when it can't play.
+  bool PlayBootAnimation();
   // Forgets the title being launched, leaving none open.
   void ResetTitleState();
   // Sets the emulator up again after Shutdown(). Nothing runs without it, so a
@@ -596,6 +603,7 @@ class Emulator {
   bool paused_;
   bool restoring_;
   std::atomic<bool> relaunching_{false};
+  bool boot_animation_requested_ = false;
   // Held across a launch and a whole relaunch so title teardown waits for a
   // launch to finish. Recursive, as a relaunch launches under it.
   std::recursive_mutex launch_mutex_;

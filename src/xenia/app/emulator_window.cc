@@ -334,7 +334,7 @@ bool IsLaunchOnlyArg(std::string_view arg) {
   for (const std::string_view name :
        {"--target=", "--launch_module=", "--launch_flags=", "--launch_data=",
         "--launch_xbox_disc=", "--launch_package=",
-        "--slot_bindings_passthrough="}) {
+        "--slot_bindings_passthrough=", "--boot_animation="}) {
     if (xe::utf8::starts_with(arg, name)) {
       return true;
     }
@@ -1031,6 +1031,11 @@ bool EmulatorWindow::Initialize() {
                              std::bind(&EmulatorWindow::FileOpen, this));
       file_open_menu_item_ = open_item.get();
       file_menu->AddChild(std::move(open_item));
+      auto start_dashboard_item =
+          WxMenuItem::Create(MenuItem::Type::kString, _("Start Dashboard"),
+                             std::bind(&EmulatorWindow::StartDashboard, this));
+      file_start_dashboard_menu_item_ = start_dashboard_item.get();
+      file_menu->AddChild(std::move(start_dashboard_item));
       auto add_games_item =
           WxMenuItem::Create(MenuItem::Type::kString, _("&Add Games..."),
                              std::bind(&EmulatorWindow::FileAddGames, this));
@@ -1884,6 +1889,14 @@ void EmulatorWindow::FileOpen() {
   }
 }
 
+void EmulatorWindow::StartDashboard() {
+  RunTitle(GetInstalledDashboardPath(), /*boot_animation=*/true);
+}
+
+std::filesystem::path EmulatorWindow::GetInstalledDashboardPath() const {
+  return emulator_->system_files_path() / "flash" / "dash.xex";
+}
+
 void EmulatorWindow::FileAddGames() {
   auto file_picker = xe::ui::FilePicker::Create();
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
@@ -2162,6 +2175,7 @@ void EmulatorWindow::ApplyContentVisibility() {
     file_stop_menu_item_->SetEnabled(title_open);
   }
   UpdateAddGamesMenuState();
+  UpdateStartDashboardMenuState();
   // Subsystem-affecting cvars and tools (install/zar) only make sense between
   // launches.
   if (config_menu_) {
@@ -2303,6 +2317,7 @@ void EmulatorWindow::InstallSystemFiles() {
           return progress.Update(int(done * 100 / total));
         });
   }
+  UpdateStartDashboardMenuState();
 
   switch (result) {
     case ui::SystemFilesResult::kSuccess:
@@ -2470,6 +2485,16 @@ void EmulatorWindow::UpdateAddGamesMenuState() {
   }
   const bool title_open = emulator_ && emulator_->is_title_open();
   file_add_games_menu_item_->SetEnabled(!title_open);
+}
+
+void EmulatorWindow::UpdateStartDashboardMenuState() {
+  if (!file_start_dashboard_menu_item_ || !emulator_) {
+    return;
+  }
+  std::error_code ec;
+  file_start_dashboard_menu_item_->SetEnabled(
+      !emulator_->is_title_open() &&
+      std::filesystem::exists(GetInstalledDashboardPath(), ec));
 }
 
 void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
@@ -3611,7 +3636,7 @@ bool EmulatorWindow::SpawnEmulatorProcess(const std::vector<std::string>& args,
 }
 
 void EmulatorWindow::LaunchTitleInNewProcess(
-    const std::filesystem::path& path_to_file) {
+    const std::filesystem::path& path_to_file, bool boot_animation) {
   // Verify the file exists
   if (!path_to_file.empty() && !std::filesystem::exists(path_to_file)) {
     XELOGE("Cannot launch title - file not found: {}",
@@ -3620,8 +3645,11 @@ void EmulatorWindow::LaunchTitleInNewProcess(
   }
 
   // Tell game process to return to UI when it exits
-  if (!SpawnEmulatorProcess({"--return_to_ui=true"},
-                            xe::path_to_utf8(path_to_file))) {
+  std::vector<std::string> args = {"--return_to_ui=true"};
+  if (boot_animation) {
+    args.push_back("--boot_animation=true");
+  }
+  if (!SpawnEmulatorProcess(args, xe::path_to_utf8(path_to_file))) {
     return;
   }
 
@@ -3633,8 +3661,8 @@ void EmulatorWindow::LaunchTitleInNewProcess(
   app_context_.QuitFromUIThread();
 }
 
-xe::X_STATUS EmulatorWindow::RunTitle(
-    const std::filesystem::path& path_to_file) {
+xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
+                                      bool boot_animation) {
   std::error_code ec = {};
   bool titleExists = std::filesystem::exists(path_to_file, ec);
 
@@ -3765,7 +3793,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
     // cvars.
     config::ReloadConfig();
     config::LoadGameConfigForFile(abs_path);
-    LaunchTitleInNewProcess(abs_path);
+    LaunchTitleInNewProcess(abs_path, boot_animation);
     return X_STATUS_SUCCESS;
   }
 
@@ -3785,7 +3813,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(
       (!last_apu.empty() && last_apu != cvars::apu)) {
     XELOGI("RunTitle: backend changed (gpu {} -> {}, apu {} -> {}); respawning",
            last_gpu, cvars::gpu, last_apu, cvars::apu);
-    LaunchTitleInNewProcess(abs_path);
+    LaunchTitleInNewProcess(abs_path, boot_animation);
     return X_STATUS_SUCCESS;
   }
   if (auto status = emulator_->SetupSubsystems(); XFAILED(status)) {
@@ -3813,6 +3841,9 @@ xe::X_STATUS EmulatorWindow::RunTitle(
   // toolbar/render transition paints immediately. Post-launch work goes
   // back to the UI thread via CallAfter.
   auto* emulator = emulator_;
+  if (boot_animation) {
+    emulator->RequestBootAnimation();
+  }
   std::thread([this, emulator, abs_path]() {
     auto result = emulator->LaunchPath(abs_path);
     if (result) {

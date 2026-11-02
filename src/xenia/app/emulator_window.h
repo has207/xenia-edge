@@ -94,8 +94,11 @@ class EmulatorWindow {
   // |target| (UTF-8, empty for the game list). Returns whether it started.
   bool SpawnEmulatorProcess(const std::vector<std::string>& args,
                             const std::string& target);
-  void LaunchTitleInNewProcess(const std::filesystem::path& path_to_file);
-  xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file);
+  // With |boot_animation| the boot animation plays before the title starts.
+  void LaunchTitleInNewProcess(const std::filesystem::path& path_to_file,
+                               bool boot_animation = false);
+  xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file,
+                        bool boot_animation = false);
   void UpdateTitle();
 
   void SetFullscreen(bool fullscreen);
@@ -115,6 +118,9 @@ class EmulatorWindow {
   void ToggleControllerVibration();
   void FileOpen();
   void FileAddGames();
+  // Starts the installed dashboard after the boot animation.
+  void StartDashboard();
+  std::filesystem::path GetInstalledDashboardPath() const;
   // Tells the user which XeFu file an original Xbox game was missing and where
   // to put it.
   void ShowMissingXeFuFile(const std::string& file);
@@ -192,6 +198,7 @@ class EmulatorWindow {
   void OnMouseUp(const ui::MouseEvent& e);
   void FileClose();
   void UpdateAddGamesMenuState();
+  void UpdateStartDashboardMenuState();
   void InstallContent();
   void InstallSystemFiles();
   void ShowContentDirectory();
@@ -261,6 +268,7 @@ class EmulatorWindow {
   uint32_t default_logical_width_ = 0;
   uint32_t default_logical_height_ = 0;
   ui::MenuItem* file_open_menu_item_ = nullptr;
+  ui::MenuItem* file_start_dashboard_menu_item_ = nullptr;
   ui::MenuItem* file_add_games_menu_item_ = nullptr;
   ui::MenuItem* file_stop_menu_item_ = nullptr;
   ui::MenuItem* profile_menu_ = nullptr;
