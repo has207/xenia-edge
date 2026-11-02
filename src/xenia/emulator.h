@@ -93,6 +93,12 @@ class Emulator {
   // Folder persistent internal emulator data is stored in.
   const std::filesystem::path& storage_root() const { return storage_root_; }
 
+  // Folder Tools > Install System Files puts the console's flash and system
+  // partitions in.
+  std::filesystem::path system_files_path() const {
+    return storage_root_ / "system";
+  }
+
   // Folder XeFu and its xbox.xex are in, shown to them as the system partition
   // Compatibility folder.
   std::filesystem::path xefu_path() const;

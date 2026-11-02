@@ -17,6 +17,7 @@
 #include "xenia/ui/install_progress_dialog_wx.h"
 #include "xenia/ui/profile_editor_dialog_wx.h"
 #include "xenia/ui/quick_settings_dialog_wx.h"
+#include "xenia/ui/system_files_installer_wx.h"
 #include "xenia/ui/windowed_app_wx.h"
 
 #include <algorithm>
@@ -159,6 +160,7 @@
 #include <wx/msgdlg.h>
 #include <wx/mstream.h>
 #include <wx/panel.h>
+#include <wx/progdlg.h>
 #include <wx/settings.h>
 #include <wx/slider.h>
 #include <wx/statbmp.h>
@@ -1121,6 +1123,9 @@ bool EmulatorWindow::Initialize() {
       tools_menu->AddChild(
           WxMenuItem::Create(MenuItem::Type::kString, _("&Install Content..."),
                              std::bind(&EmulatorWindow::InstallContent, this)));
+      tools_menu->AddChild(WxMenuItem::Create(
+          MenuItem::Type::kString, _("Install System Files..."),
+          std::bind(&EmulatorWindow::InstallSystemFiles, this)));
     }
     tools_menu_ = tools_menu.get();
     main_menu->AddChild(std::move(tools_menu));
@@ -2268,6 +2273,74 @@ void EmulatorWindow::InstallContent() {
     }).detach();
   });
   dlg.ShowModal();
+}
+
+void EmulatorWindow::InstallSystemFiles() {
+  auto file_picker = xe::ui::FilePicker::Create();
+  file_picker->set_mode(ui::FilePicker::Mode::kOpen);
+  file_picker->set_type(ui::FilePicker::Type::kFile);
+  file_picker->set_title(_("Select a USB System Update").utf8_string());
+  file_picker->set_extensions({
+      {"Zip Archives (*.zip)", "*.zip"},
+      {"All Files", "*"},
+  });
+  if (!file_picker->Show(window_.get()) ||
+      file_picker->selected_files().empty()) {
+    return;
+  }
+  const auto zip_path = file_picker->selected_files().front();
+
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  ui::SystemFilesResult result;
+  {
+    wxProgressDialog progress(_("Install System Files"),
+                              _("Installing the system files..."), 100,
+                              wx_window ? wx_window->frame() : nullptr,
+                              wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
+    result = ui::InstallSystemFiles(
+        zip_path, emulator_->system_files_path(),
+        [&progress](size_t done, size_t total) {
+          return progress.Update(int(done * 100 / total));
+        });
+  }
+
+  switch (result) {
+    case ui::SystemFilesResult::kSuccess:
+      ShowWindowMessage(
+          window_.get(), _("System files installed"),
+          wxString::Format(_("The system files are installed in:\n%s"),
+                           wxString::FromUTF8(xe::path_to_utf8(
+                               emulator_->system_files_path()))),
+          wxICON_INFORMATION);
+      break;
+    case ui::SystemFilesResult::kCancelled:
+      break;
+    case ui::SystemFilesResult::kNotSystemUpdate:
+      ShowWindowMessage(window_.get(), _("Install System Files"),
+                        _("This file isn't a USB system update."),
+                        wxICON_WARNING);
+      break;
+    case ui::SystemFilesResult::kReadFailed:
+      ShowWindowMessage(window_.get(), _("Install System Files"),
+                        _("Failed to read the system update."), wxICON_ERROR);
+      break;
+    case ui::SystemFilesResult::kWriteFailed:
+      ShowWindowMessage(window_.get(), _("Install System Files"),
+                        _("Failed to write the system files."), wxICON_ERROR);
+      break;
+    case ui::SystemFilesResult::kRestoreFailed:
+      ShowWindowMessage(
+          window_.get(), _("Install System Files"),
+          wxString::Format(
+              _("The previous system files couldn't be put back in place. "
+                "Move their folders back or delete them to install again. "
+                "They are in:\n%s"),
+              wxString::FromUTF8(
+                  xe::path_to_utf8(ui::GetUnrestoredSystemFilesPath(
+                      emulator_->system_files_path())))),
+          wxICON_ERROR);
+      break;
+  }
 }
 
 void EmulatorWindow::ShowContentDirectory() {

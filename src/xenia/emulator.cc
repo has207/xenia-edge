@@ -2332,13 +2332,19 @@ X_STATUS Emulator::PrepareLaunch(const std::filesystem::path& path,
     file_system_->RegisterDevice(std::move(content_device));
   }
 
-  // System extension modules such as the extra AV codecs.
-  const auto sysext_path = storage_root_ / "sysext";
-  if (std::filesystem::is_directory(sysext_path)) {
-    auto sysext_device = std::make_unique<vfs::HostPathDevice>(
-        "\\Device\\Harddisk0\\SystemExtPartition", sysext_path, true);
-    if (sysext_device->Initialize()) {
-      file_system_->RegisterDevice(std::move(sysext_device));
+  // The files of an installed system update.
+  for (const auto& [mount_path, folder] :
+       {std::pair{"\\Device\\Flash", "flash"},
+        std::pair{"\\Device\\Harddisk0\\SystemExtPartition", "sysext"},
+        std::pair{"\\Device\\Harddisk0\\SystemAuxPartition", "sysaux"}}) {
+    const auto host_path = system_files_path() / folder;
+    if (!std::filesystem::is_directory(host_path)) {
+      continue;
+    }
+    auto device =
+        std::make_unique<vfs::HostPathDevice>(mount_path, host_path, true);
+    if (device->Initialize()) {
+      file_system_->RegisterDevice(std::move(device));
     }
   }
 

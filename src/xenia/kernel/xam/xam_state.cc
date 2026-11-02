@@ -94,14 +94,14 @@ void XamState::LoadLanguageTypefacePatch() {
 uint32_t XamState::GetLanguageTypefacePatch(uint32_t language) const {
   // checks an out of bounds address to see if either a flag of 0x1000 or 0x2000
   // is set. If first then use xttp1, if other use xttp2, else just return empty
-  // pointer. for now only usng xttp2
+  // pointer. for now only using xttp1, the slot Install System Files fills
   uint32_t index = 0;
   if (language == 17) {  // kSChinese
-    index = 1;
+    index = 4;
   } else if (language == 8) {  // kTChinese
-    index = 2;
+    index = 5;
   } else {
-    index = 3;
+    index = 6;
   }
 
   return language_type_face_patch_[index];

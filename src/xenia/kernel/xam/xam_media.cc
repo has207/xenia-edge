@@ -13,6 +13,7 @@
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/system_manifest.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_modules.h"
 #include "xenia/kernel/xconfig.h"
@@ -102,16 +103,12 @@ DECLARE_XAM_EXPORT1(XamGetClosedCaptioningSettings, kNone, kImplemented);
 // extension modules of extra AV codecs. A load takes a reference to the module
 // and hands back its export 1, which npctrl calls for its decoder table. It
 // returns 0x10000000 when it loads the module and 0 when it only takes another
-// reference. An unload drops the reference. Without the modules in the sysext
-// folder npctrl plays only the codecs it carries itself (WMA). A load then
-// still succeeds with a null export, which npctrl takes as there being no
-// extra codecs. It crashes cleaning up after a failed load.
+// reference. An unload drops the reference. Without the system files installed
+// npctrl plays only the codecs it carries itself (WMA). A load then still
+// succeeds with a null export, which npctrl takes as there being no extra
+// codecs. It crashes cleaning up after a failed load.
 constexpr X_HRESULT kErrorPointer = 0x80004003;
 constexpr X_HRESULT kModuleLoaded = 0x10000000;
-
-static std::string SysExtModulePath(std::string_view name) {
-  return fmt::format("\\Device\\Harddisk0\\SystemExtPartition\\{}", name);
-}
 
 static dword_result_t LoadExtraAVCodecs(lpdword_t export_ptr,
                                         std::string_view name) {
@@ -119,10 +116,11 @@ static dword_result_t LoadExtraAVCodecs(lpdword_t export_ptr,
     return kErrorPointer;
   }
   *export_ptr = 0;
-  const std::string path = SysExtModulePath(name);
-  const bool was_loaded = kernel_state()->GetModule(path, true) != nullptr;
-  if (!xboxkrnl::xeXexLoadImage(path)) {
-    XELOGW("{} isn't in the sysext folder: no extra AV codecs", name);
+  const std::string path = FindSystemExtFile(name);
+  const bool was_loaded =
+      !path.empty() && kernel_state()->GetModule(path, true) != nullptr;
+  if (path.empty() || !xboxkrnl::xeXexLoadImage(path)) {
+    XELOGW("{} isn't in the system files: no extra AV codecs", name);
     return X_E_SUCCESS;
   }
   *export_ptr =
@@ -131,7 +129,11 @@ static dword_result_t LoadExtraAVCodecs(lpdword_t export_ptr,
 }
 
 static void UnloadExtraAVCodecs(std::string_view name) {
-  if (auto module = kernel_state()->GetModule(SysExtModulePath(name), true)) {
+  const std::string path = FindSystemExtFile(name);
+  if (path.empty()) {
+    return;
+  }
+  if (auto module = kernel_state()->GetModule(path, true)) {
     xboxkrnl::xeXexUnloadImage(module->hmodule_ptr());
   }
 }

@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <regex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -62,6 +63,11 @@ bool CreateEmptyFile(const std::filesystem::path& path);
 // Reads the entire file at the given path as a byte buffer.
 // Returns an empty vector on open/read failure or for empty files.
 std::vector<uint8_t> ReadAllBytes(const std::filesystem::path& path);
+
+// Writes |data| as the whole file at the given path. Returns false when it
+// can't be written completely.
+bool WriteAllBytes(const std::filesystem::path& path,
+                   std::span<const uint8_t> data);
 
 // Reads the entire file at the given path as a text string (binary mode; the
 // caller gets any \r bytes verbatim). Returns an empty string on open failure

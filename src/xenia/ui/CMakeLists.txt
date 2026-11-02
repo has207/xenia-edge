@@ -49,6 +49,11 @@ xe_embed_binary_assets(xenia-ui
     "${PROJECT_SOURCE_DIR}/assets/font" font)
 xe_embed_binary_assets(xenia-ui
     "${PROJECT_SOURCE_DIR}/assets/icon" app_icon)
+# The system files installer, a wx file, writes these.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  xe_embed_binary_assets(xenia-ui
+      "${PROJECT_SOURCE_DIR}/assets/system_font" system_font)
+endif()
 
 # Compile assets/locale/<lang>/xenia.po -> <lang>/xenia.mo at configure
 # time, then bundle the staging tree into the binary. wx_locale.cc decodes

@@ -193,6 +193,7 @@ class EmulatorWindow {
   void FileClose();
   void UpdateAddGamesMenuState();
   void InstallContent();
+  void InstallSystemFiles();
   void ShowContentDirectory();
   void CpuTimeScalarReset();
   void CpuTimeScalarSetHalf();
