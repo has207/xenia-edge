@@ -154,6 +154,16 @@ class XSocket : public XObject {
   X_STATUS IOControl(uint32_t cmd, uint8_t* arg_ptr);
 
   X_STATUS Connect(N_XSOCKADDR* name, int name_len);
+  // A non-blocking connect select hasn't seen finish, and one it saw fail. The
+  // console reports a failed one in select's write and error sets alike.
+  bool connecting() const {
+    return connect_state_ == ConnectState::kConnecting;
+  }
+  bool connect_failed() const {
+    return connect_state_ == ConnectState::kFailed;
+  }
+  // Settles a connect select found ready, by the host's SO_ERROR.
+  void SettleConnect();
   X_STATUS Bind(N_XSOCKADDR_IN* name, int name_len);
   X_STATUS Listen(int backlog);
   X_STATUS GetSockName(N_XSOCKADDR_IN* name);
@@ -254,6 +264,17 @@ class XSocket : public XObject {
 
   // Acceptor for listening TCP sockets (created when Listen() is called)
   std::optional<asio::ip::tcp::acceptor> acceptor_;
+  // Host options the guest set on the acceptor, which Connect sets again on the
+  // TCP socket it opens in the acceptor's place.
+  struct HostOption {
+    int level;
+    int name;
+    std::vector<char> value;
+  };
+  std::vector<HostOption> acceptor_options_;
+
+  enum class ConnectState { kNone, kConnecting, kFailed };
+  std::atomic<ConnectState> connect_state_{ConnectState::kNone};
 
   AddressFamily af_;    // Address family
   Type type_;           // Type (DGRAM/Stream/etc)
