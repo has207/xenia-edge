@@ -456,7 +456,7 @@ bool ends_with_case(const std::string_view haystack,
   auto end = it;
   --it;
 
-  for (size_t i = 0; i < needle_count; ++i) {
+  for (size_t i = 1; i < needle_count; ++i) {
     if (it == haystack_begin) {
       // not enough room in target for search
       return false;

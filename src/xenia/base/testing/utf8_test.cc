@@ -327,7 +327,6 @@ TEST_CASE("UTF-8 Equal Case Z", "[utf8]") {
 // TODO(gibbed): starts_with
 // TODO(gibbed): starts_with_case
 // TODO(gibbed): ends_with
-// TODO(gibbed): ends_with_case
 // TODO(gibbed): split_path
 
 #define TEST_PATH(func, input, output)                                 \
@@ -359,6 +358,17 @@ TEST_CASE("UTF-8 Equal Case Z", "[utf8]") {
     std::replace(output_value.begin(), output_value.end(), '/', '\\');     \
     REQUIRE(func(input_values, '\\') == output_value);                     \
   } while (0)
+
+TEST_CASE("UTF-8 Ends With Case", "[utf8]") {
+  REQUIRE(utf8::ends_with_case("xenonjklatin.xttp", ".xttp"));
+  REQUIRE(utf8::ends_with_case("aac.xexp", ".XEXP"));
+  REQUIRE(utf8::ends_with_case("El pingüino", "üINO"));
+  REQUIRE(utf8::ends_with_case("foo", "foo"));
+  REQUIRE(utf8::ends_with_case("foo", ""));
+  REQUIRE_FALSE(utf8::ends_with_case("foo.xttp", ".xex"));
+  REQUIRE_FALSE(utf8::ends_with_case("foo", "o.foo"));
+  REQUIRE_FALSE(utf8::ends_with_case("", "foo"));
+}
 
 TEST_CASE("UTF-8 Join Paths", "[utf8]") {
   TEST_PATHS(utf8::join_paths, "");
