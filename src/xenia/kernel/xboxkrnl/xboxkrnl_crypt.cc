@@ -592,6 +592,27 @@ void XeCryptAesCbc_entry(pointer_t<XECRYPT_AES_STATE> state_ptr,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptAesCbc, kNone, kImplemented);
 
+// The schedule is opaque to its caller, so it takes XeCryptAesKey's state. The
+// dashboard leaves 0x1D8 bytes for it and passes 128-bit keys.
+void XeCryptAesCreateKeySchedule_entry(lpvoid_t key, dword_t key_size,
+                                       pointer_t<XECRYPT_AES_STATE> schedule) {
+  if (key_size != 16) {
+    XELOGE("XeCryptAesCreateKeySchedule: {}-byte keys aren't supported",
+           uint32_t(key_size));
+    return;
+  }
+  XeCryptAesKey(schedule, key.as<uint8_t*>());
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptAesCreateKeySchedule, kNone, kSketchy);
+
+void XeCryptAesCbcDecrypt_entry(pointer_t<XECRYPT_AES_STATE> schedule,
+                                lpvoid_t inp_ptr, dword_t inp_size,
+                                lpvoid_t out_ptr, lpvoid_t feed_ptr) {
+  XeCryptAesCbc(schedule, inp_ptr.as<uint8_t*>(), inp_size,
+                out_ptr.as<uint8_t*>(), feed_ptr.as<uint8_t*>(), false);
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptAesCbcDecrypt, kNone, kImplemented);
+
 void XeCryptHmacSha_entry(lpvoid_t key, dword_t key_size_in, lpvoid_t inp_1,
                           dword_t inp_1_size, lpvoid_t inp_2,
                           dword_t inp_2_size, lpvoid_t inp_3,
