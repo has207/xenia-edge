@@ -303,15 +303,19 @@ uint32_t AsioErrorToWSAError(const asio::error_code& ec) {
   return static_cast<uint32_t>(ec.value());
 }
 
-// The Winsock code of the last call that failed on a host socket.
-static uint32_t HostSocketError() {
+// The error of the last call that failed on a host socket.
+static asio::error_code HostSocketErrorCode() {
 #if XE_PLATFORM_WIN32
   const int host_error = WSAGetLastError();
 #else
   const int host_error = errno;
 #endif  // XE_PLATFORM_WIN32
-  return AsioErrorToWSAError(
-      asio::error_code(host_error, asio::error::get_system_category()));
+  return asio::error_code(host_error, asio::error::get_system_category());
+}
+
+// The Winsock code of the last call that failed on a host socket.
+static uint32_t HostSocketError() {
+  return AsioErrorToWSAError(HostSocketErrorCode());
 }
 
 XSocket::XSocket(KernelState* kernel_state)
@@ -468,6 +472,11 @@ X_STATUS XSocket::GetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     net::StoreSocketOptionValue(optval_ptr, *optlen, broadcast_socket_);
     return X_STATUS_SUCCESS;
   }
+  // SO_ERROR is refused, a guest learns how a connect went from select's sets.
+  if (level == 0xFFFF && optname == 0x1007) {
+    last_error_ = AsioErrorToWSAError(asio::error::no_protocol_option);
+    return X_STATUS_UNSUCCESSFUL;
+  }
 
   // Map Xbox socket levels to native
   int native_level = level;
@@ -569,6 +578,11 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     last_error_ = HostSocketError();
     XELOGE("XSocket::SetOption: failed with error {:08X}", last_error_);
     return X_STATUS_UNSUCCESSFUL;
+  }
+  if (acceptor_) {
+    const char* value = static_cast<const char*>(optval_ptr);
+    acceptor_options_.push_back(
+        {native_level, native_optname, {value, value + optlen}});
   }
 
   KeepTimeout(level, optname, optval_ptr, optlen);
@@ -789,6 +803,31 @@ X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
 
   asio::error_code ec;
 
+  // asio's connect waits for the connection, where a non-blocking guest gets
+  // WSAEWOULDBLOCK and waits for it in select.
+  auto connect_stream = [&](const asio::ip::tcp::endpoint& endpoint) {
+    if (!guest_non_blocking_) {
+      RunCooperatively(ec, RetryMode::kConnect,
+                       [&]() { tcp_socket_->connect(endpoint, ec); });
+      connect_state_ = ConnectState::kNone;
+      return;
+    }
+    if (::connect(tcp_socket_->native_handle(), endpoint.data(),
+                  static_cast<socklen_t>(endpoint.size())) < 0) {
+      ec = HostSocketErrorCode();
+      // POSIX hosts report EINPROGRESS where Winsock reports WSAEWOULDBLOCK.
+      if (ec == asio::error::in_progress) {
+        ec = asio::error::would_block;
+      }
+    }
+    if (ec == asio::error::would_block) {
+      connect_state_ = ConnectState::kConnecting;
+    } else if (ec != asio::error::already_started) {
+      // WSAEALREADY leaves the pending connect to select.
+      connect_state_ = ConnectState::kNone;
+    }
+  };
+
   if (acceptor_) {
     // Transition from acceptor to tcp_socket for client connection.
     // The acceptor was created in Initialize() before we knew whether this
@@ -802,14 +841,28 @@ X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
       last_error_ = AsioErrorToWSAError(ec);
       return X_STATUS_UNSUCCESSFUL;
     }
+    // The new socket takes the FIONBIO and options the guest set on the
+    // acceptor.
+    if (guest_non_blocking_) {
+      tcp_socket_->non_blocking(true, ec);
+      if (ec) {
+        last_error_ = AsioErrorToWSAError(ec);
+        return X_STATUS_UNSUCCESSFUL;
+      }
+    }
+    const int handle = static_cast<int>(tcp_socket_->native_handle());
+    for (const HostOption& option : acceptor_options_) {
+      if (setsockopt(handle, option.level, option.name, option.value.data(),
+                     static_cast<socklen_t>(option.value.size())) < 0) {
+        XELOGW("XSocket::Connect: option {}/{} not kept: {:08X}", option.level,
+               option.name, HostSocketError());
+      }
+    }
+    acceptor_options_.clear();
 
-    asio::ip::tcp::endpoint endpoint(addr, port);
-    RunCooperatively(ec, RetryMode::kConnect,
-                     [&]() { tcp_socket_->connect(endpoint, ec); });
+    connect_stream(asio::ip::tcp::endpoint(addr, port));
   } else if (tcp_socket_) {
-    asio::ip::tcp::endpoint endpoint(addr, port);
-    RunCooperatively(ec, RetryMode::kConnect,
-                     [&]() { tcp_socket_->connect(endpoint, ec); });
+    connect_stream(asio::ip::tcp::endpoint(addr, port));
   } else if (udp_socket_) {
     asio::ip::udp::endpoint endpoint(addr, port);
     udp_socket_->connect(endpoint, ec);
@@ -821,6 +874,19 @@ X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
   }
 
   return X_STATUS_SUCCESS;
+}
+
+void XSocket::SettleConnect() {
+  if (connect_state_ != ConnectState::kConnecting) {
+    return;
+  }
+  int error = 0;
+  socklen_t length = sizeof(error);
+  if (getsockopt(static_cast<int>(native_handle()), SOL_SOCKET, SO_ERROR,
+                 reinterpret_cast<char*>(&error), &length) < 0) {
+    error = int(HostSocketError());
+  }
+  connect_state_ = error ? ConnectState::kFailed : ConnectState::kNone;
 }
 
 X_STATUS XSocket::Bind(N_XSOCKADDR_IN* name, int name_len) {
