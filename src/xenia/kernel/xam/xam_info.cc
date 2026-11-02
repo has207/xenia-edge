@@ -235,6 +235,14 @@ dword_result_t XamBuildResourceLocator_entry(qword_t module,
 }
 DECLARE_XAM_EXPORT1(XamBuildResourceLocator, kNone, kImplemented);
 
+// The xam LaunchXexFile loads for its resources, as xam or $flash_xam.
+static object_ref<XModule> GetSystemXamModule() {
+  if (auto module = kernel_state()->GetModule("xam", true)) {
+    return module;
+  }
+  return kernel_state()->GetModule("$flash_xam", true);
+}
+
 dword_result_t XamBuildGamercardResourceLocator_entry(lpu16string_t filename,
                                                       lpvoid_t buffer_ptr,
                                                       dword_t buffer_count) {
@@ -245,7 +253,7 @@ dword_result_t XamBuildGamercardResourceLocator_entry(lpu16string_t filename,
 
   // If you're running an app that'll need them, make sure to extract xam.xex
   // resources with xextool ("xextool -d . xam.xex") and add a .xzp extension.
-  const auto xam_module = kernel_state()->GetModule("xam", true);
+  const auto xam_module = GetSystemXamModule();
 
   return keXamBuildResourceLocator(xam_module ? xam_module->hmodule_ptr() : 0,
                                    u"gamercrd", filename.value(), buffer_ptr,
@@ -256,7 +264,7 @@ DECLARE_XAM_EXPORT1(XamBuildGamercardResourceLocator, kNone, kImplemented);
 dword_result_t XamBuildSharedSystemResourceLocator_entry(lpu16string_t filename,
                                                          lpvoid_t buffer_ptr,
                                                          dword_t buffer_count) {
-  const auto xam_module = kernel_state()->GetModule("xam", true);
+  const auto xam_module = GetSystemXamModule();
 
   // see notes inside XamBuildGamercardResourceLocator above
   return keXamBuildResourceLocator(xam_module ? xam_module->hmodule_ptr() : 0,

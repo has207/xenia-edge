@@ -846,6 +846,8 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
   // System related symlinks. This should point to dashboard location in the
   // future.
   file_system_->RegisterSymbolicLink("\\SystemRoot", mount_path);
+  // xam links media: to the flash, which holds the system fonts.
+  file_system_->RegisterSymbolicLink("media:", "\\SystemRoot");
 
   auto module = kernel_state_->LoadUserModule("xam.xex");
 
