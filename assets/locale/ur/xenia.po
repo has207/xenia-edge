@@ -1779,3 +1779,7 @@ msgstr ""
 #: src/xenia/app/emulator_window.cc:2320
 msgid "This file isn't a USB system update."
 msgstr "یہ فائل نظام کی USB تازہ کاری نہیں ہے۔"
+
+#: src/xenia/app/emulator_window.cc:1035
+msgid "Start Dashboard"
+msgstr "ڈیش بورڈ شروع کریں"

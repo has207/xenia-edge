@@ -1778,3 +1778,7 @@ msgstr ""
 #: src/xenia/app/emulator_window.cc:2320
 msgid "This file isn't a USB system update."
 msgstr "Tệp này không phải là bản cập nhật hệ thống qua USB."
+
+#: src/xenia/app/emulator_window.cc:1035
+msgid "Start Dashboard"
+msgstr "Khởi chạy Bảng điều khiển Xbox"

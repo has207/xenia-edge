@@ -1780,3 +1780,7 @@ msgstr ""
 #: src/xenia/app/emulator_window.cc:2320
 msgid "This file isn't a USB system update."
 msgstr "이 파일은 USB 시스템 업데이트가 아닙니다."
+
+#: src/xenia/app/emulator_window.cc:1035
+msgid "Start Dashboard"
+msgstr "대시보드 시작"

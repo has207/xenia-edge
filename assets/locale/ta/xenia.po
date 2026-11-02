@@ -1782,3 +1782,7 @@ msgstr ""
 #: src/xenia/app/emulator_window.cc:2320
 msgid "This file isn't a USB system update."
 msgstr "இந்தக் கோப்பு USB முறைமைப் புதுப்பிப்பு அல்ல."
+
+#: src/xenia/app/emulator_window.cc:1035
+msgid "Start Dashboard"
+msgstr "Xbox கட்டுப்பாட்டகத்தைத் தொடங்கு"

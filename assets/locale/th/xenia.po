@@ -1776,3 +1776,7 @@ msgstr ""
 #: src/xenia/app/emulator_window.cc:2320
 msgid "This file isn't a USB system update."
 msgstr "ไฟล์นี้ไม่ใช่การอัปเดตระบบผ่าน USB"
+
+#: src/xenia/app/emulator_window.cc:1035
+msgid "Start Dashboard"
+msgstr "เปิดแดชบอร์ด"
