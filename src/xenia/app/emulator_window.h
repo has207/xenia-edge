@@ -183,6 +183,8 @@ class EmulatorWindow {
   // Builds game_library_, running the one-time GPD->library migration if
   // needed.
   void InitializeGameLibrary();
+  // Gives the core the library releases the dashboard lists as its games.
+  void PublishLibraryTitles();
 
   // Registers a just-launched title in the library so games opened outside the
   // import flow still appear in the list.

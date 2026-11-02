@@ -654,10 +654,24 @@ void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
   presenter_painting_ = nullptr;
 }
 
+void EmulatorWindow::PublishLibraryTitles() {
+  std::vector<Emulator::LibraryTitle> titles;
+  for (const auto& entry : game_library_->entries()) {
+    if (entry.paths.empty()) {
+      continue;
+    }
+    titles.push_back(
+        {entry.title_id, entry.version, entry.name, entry.default_path().path,
+         game_library_->IconPath(entry.key()), entry.content_type});
+  }
+  emulator_->SetLibraryTitles(std::move(titles));
+}
+
 void EmulatorWindow::InitializeGameLibrary() {
   const auto library_root = emulator_->storage_root() / "library";
 
   game_library_ = std::make_unique<GameLibrary>(library_root);
+  game_library_->set_changed_callback([this]() { PublishLibraryTitles(); });
   game_library_->Load();
 
   // The files are read off the UI thread, and each result is recorded back on

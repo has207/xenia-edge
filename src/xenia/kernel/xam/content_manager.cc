@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <span>
 
 #include "third_party/fmt/include/fmt/format.h"
@@ -42,9 +43,9 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
                                const std::string_view root_name,
                                const XCONTENT_AGGREGATE_DATA& data,
                                const std::filesystem::path& package_path,
-                               const std::string_view root_path)
+                               const std::string_view root_path, bool read_only)
     : ContentPackage(kernel_state, root_name, data, root_path) {
-  MountHostPath(package_path, false);
+  MountHostPath(package_path, read_only);
 }
 
 ContentPackage::ContentPackage(KernelState* kernel_state,
@@ -79,7 +80,8 @@ ContentPackage::ContentPackage(KernelState* kernel_state,
 void ContentPackage::MountHostPath(const std::filesystem::path& package_path,
                                    bool read_only) {
   package_path_ = package_path;
-  if (std::filesystem::is_directory(package_path)) {
+  std::error_code ec;
+  if (std::filesystem::is_directory(package_path, ec)) {
     auto device = std::make_unique<vfs::HostPathDevice>(
         device_path_, package_path, read_only, false, "STFS");
     mounted_ = device->Initialize();
@@ -228,6 +230,46 @@ static X_RESULT ResolveStoredPackageName(const uint64_t xuid,
 
 static bool IsDiscContent(const XCONTENT_AGGREGATE_DATA& data) {
   return data.device_id == static_cast<uint32_t>(DummyDeviceId::ODD);
+}
+
+// The game library stands in for the dashboard's game packages with a record
+// per release, named after it.
+static constexpr std::string_view kLibraryFileNamePrefix = "XLIB";
+
+static std::string LibraryFileName(const Emulator::LibraryTitle& title) {
+  return fmt::format("{}{:08X}{:08X}", kLibraryFileNamePrefix, title.title_id,
+                     title.version);
+}
+
+static std::optional<Emulator::LibraryTitle> FindLibraryTitle(
+    Emulator* emulator, const XCONTENT_AGGREGATE_DATA& data) {
+  const std::string file_name = data.file_name();
+  if (data.device_id != static_cast<uint32_t>(DummyDeviceId::HDD) ||
+      file_name.size() != kLibraryFileNamePrefix.size() + 16 ||
+      !file_name.starts_with(kLibraryFileNamePrefix)) {
+    return std::nullopt;
+  }
+  auto parse_hex = [&](size_t offset) -> std::optional<uint32_t> {
+    uint32_t value = 0;
+    const char* begin = file_name.data() + offset;
+    const auto [end, error] = std::from_chars(begin, begin + 8, value, 16);
+    if (error != std::errc() || end != begin + 8) {
+      return std::nullopt;
+    }
+    return value;
+  };
+  const auto title_id = parse_hex(kLibraryFileNamePrefix.size());
+  const auto version = parse_hex(kLibraryFileNamePrefix.size() + 8);
+  const auto titles = emulator->LibraryTitles();
+  if (!title_id || !version || !titles) {
+    return std::nullopt;
+  }
+  for (const auto& title : *titles) {
+    if (title.title_id == *title_id && title.version == *version) {
+      return title;
+    }
+  }
+  return std::nullopt;
 }
 
 X_RESULT ContentManager::ResolvePackagePath(const uint64_t xuid,
@@ -523,8 +565,10 @@ std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
     const std::string_view root_name, const uint64_t xuid,
     const XCONTENT_AGGREGATE_DATA& data, const uint32_t disc_number) {
   std::filesystem::path package_path;
-  if (ResolvePackagePath(xuid, data, package_path) ||
-      !std::filesystem::exists(package_path)) {
+  bool library = false;
+  std::error_code ec;
+  if (ResolveReadPath(xuid, data, package_path, &library) ||
+      !std::filesystem::exists(package_path, ec)) {
     return nullptr;
   }
 
@@ -536,7 +580,7 @@ std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
       disc_number != -1 ? fmt::format("disc{:03}", disc_number) : "";
 
   auto package = std::make_unique<ContentPackage>(
-      kernel_state_, root_name, data, package_path, root_path);
+      kernel_state_, root_name, data, package_path, root_path, library);
   if (!package->is_mounted()) {
     return nullptr;
   }
@@ -549,7 +593,9 @@ bool ContentManager::ContentExists(const uint64_t xuid,
     return ResolveDiscPackage(data) != nullptr;
   }
   std::filesystem::path path;
-  return !ResolvePackagePath(xuid, data, path) && std::filesystem::exists(path);
+  std::error_code ec;
+  return !ResolveReadPath(xuid, data, path) &&
+         std::filesystem::exists(path, ec);
 }
 
 X_RESULT ContentManager::WriteContentHeaderFile(const uint64_t xuid,
@@ -649,6 +695,11 @@ X_RESULT ContentManager::CreatePackage(const uint64_t xuid,
                                        const XCONTENT_AGGREGATE_DATA& data) {
   auto global_lock = global_critical_region_.Acquire();
 
+  // A game library release is never written to.
+  if (FindLibraryTitle(kernel_state_->emulator(), data)) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+
   std::filesystem::path package_path;
   if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
     return result;
@@ -714,10 +765,13 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
     }
   } else {
     std::filesystem::path package_path;
-    if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
+    bool library = false;
+    if (const X_RESULT result =
+            ResolveReadPath(xuid, data, package_path, &library)) {
       return result;
     }
-    if (!std::filesystem::exists(package_path)) {
+    std::error_code ec;
+    if (!std::filesystem::exists(package_path, ec)) {
       // Does not exist, must be created.
       return X_ERROR_FILE_NOT_FOUND;
     }
@@ -728,7 +782,10 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
       return X_ERROR_FILE_NOT_FOUND;
     }
 
-    package->LoadPackageLicenseMask(PackageHeaderPath(package_path));
+    // A game library release mounted from its own header has its license.
+    if (!library) {
+      package->LoadPackageLicenseMask(PackageHeaderPath(package_path));
+    }
   }
 
   content_license = package->GetPackageLicense();
@@ -858,6 +915,52 @@ X_RESULT ContentManager::GetContentThumbnail(
   return X_ERROR_SUCCESS;
 }
 
+// A disc image or bare executable has no type of its own and counts as a
+// title.
+static XContentType LibraryContentType(const Emulator::LibraryTitle& title) {
+  return title.content_type == XContentType::kInvalid
+             ? XContentType::kXbox360Title
+             : title.content_type;
+}
+
+std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListLibraryContent()
+    const {
+  std::vector<XCONTENT_AGGREGATE_DATA> content;
+  const auto titles = kernel_state_->emulator()->LibraryTitles();
+  if (!titles) {
+    return content;
+  }
+  for (const auto& title : *titles) {
+    // A release without a name, like a loose executable, isn't listed.
+    if (title.name.empty()) {
+      continue;
+    }
+    XCONTENT_AGGREGATE_DATA data{};
+    data.device_id = static_cast<uint32_t>(DummyDeviceId::HDD);
+    data.content_type = LibraryContentType(title);
+    data.set_display_name(xe::to_utf16(title.name));
+    data.set_file_name(LibraryFileName(title));
+    data.title_id = title.title_id;
+    content.push_back(data);
+  }
+  return content;
+}
+
+X_RESULT ContentManager::ResolveReadPath(const uint64_t xuid,
+                                         const XCONTENT_AGGREGATE_DATA& data,
+                                         std::filesystem::path& path,
+                                         bool* library) {
+  auto title = FindLibraryTitle(kernel_state_->emulator(), data);
+  if (library) {
+    *library = title.has_value();
+  }
+  if (title) {
+    path = std::move(title->path);
+    return X_ERROR_SUCCESS;
+  }
+  return ResolvePackagePath(xuid, data, path);
+}
+
 // The header of content without one of its own to take the metadata from.
 static std::unique_ptr<vfs::XContentContainerHeader> MakeContentHeader(
     const XContentType content_type, const uint32_t title_id,
@@ -887,19 +990,32 @@ X_RESULT ContentManager::GetContentMetadata(const uint64_t xuid,
                                             const XCONTENT_AGGREGATE_DATA& data,
                                             std::vector<uint8_t>* buffer) {
   auto global_lock = global_critical_region_.Acquire();
+  const auto title = FindLibraryTitle(kernel_state_->emulator(), data);
   std::filesystem::path package_path;
-  if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
+  if (title) {
+    package_path = title->path;
+  } else if (const X_RESULT result =
+                 ResolvePackagePath(xuid, data, package_path)) {
     return result;
   }
-  if (!std::filesystem::exists(package_path)) {
+  std::error_code ec;
+  if (!std::filesystem::exists(package_path, ec)) {
     return X_ERROR_PATH_NOT_FOUND;
   }
   // A package kept as a file is its own header. An extracted one keeps it in
-  // the header file.
-  const bool extracted = std::filesystem::is_directory(package_path);
-  auto header = vfs::XContentContainerDevice::ReadContainerHeader(
-      extracted ? PackageHeaderPath(package_path) : package_path);
-  if (!header || !header->content_header.is_magic_valid()) {
+  // the header file, which a game library release has none of.
+  const bool extracted = std::filesystem::is_directory(package_path, ec);
+  std::unique_ptr<vfs::XContentContainerHeader> header;
+  if (!extracted || !title) {
+    header = vfs::XContentContainerDevice::ReadContainerHeader(
+        extracted ? PackageHeaderPath(package_path) : package_path);
+  }
+  if (title && (!header || !header->content_header.is_magic_valid())) {
+    // A disc image or executable has only what the game library knows.
+    header = MakeContentHeader(LibraryContentType(*title), title->title_id,
+                               xe::to_utf16(title->name),
+                               xe::filesystem::ReadAllBytes(title->icon_path));
+  } else if (!header || !header->content_header.is_magic_valid()) {
     // A header file with only the package's content data gives its type,
     // title and name.
     XCONTENT_AGGREGATE_DATA stored;
@@ -977,7 +1093,7 @@ X_RESULT ContentManager::GetContentAttributes(
       attributes->size = entry->size();
       return X_ERROR_SUCCESS;
     }
-    if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
+    if (const X_RESULT result = ResolveReadPath(xuid, data, package_path)) {
       return result;
     }
   }

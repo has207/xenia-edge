@@ -7,9 +7,11 @@
  ******************************************************************************
  */
 
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam_content_device.h"
@@ -17,9 +19,28 @@
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/xbox.h"
 
+DEFINE_bool(dashboard_game_library, true,
+            "List the game library as the dashboard's games. Off lists the "
+            "game packages installed in content instead.",
+            "Content");
+
 namespace xe {
 namespace kernel {
 namespace xam {
+
+// The packages the game library takes the place of for the dashboard.
+static bool IsGamePackageType(const XContentType type) {
+  switch (type) {
+    case XContentType::kInstalledGame:
+    case XContentType::kXboxTitle:
+    case XContentType::kXbox360Title:
+    case XContentType::kGameDemo:
+    case XContentType::kArcadeTitle:
+      return true;
+    default:
+      return false;
+  }
+}
 
 // A record through license_mask, which is all of it before xam 4532.
 constexpr size_t kLegacyContentRecordSize = 0x148;
@@ -76,6 +97,11 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
   std::vector<uint32_t> own_title_ids{kernel_state()->title_id()};
   std::ranges::copy(alt_ids, std::back_inserter(own_title_ids));
 
+  // The dashboard lists the game library in place of the game packages.
+  const bool library_games = cvars::dashboard_game_library && !title_id &&
+                             (xuid == 0 || xuid == -1) &&
+                             kernel_state()->title_id() == kDashboardID;
+
   auto content_manager = kernel_state()->content_manager();
   auto append_device = [&](DummyDeviceId device, uint64_t device_xuid) {
     const uint32_t device_index = static_cast<uint32_t>(device);
@@ -102,6 +128,10 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
         types.push_back(static_cast<XContentType>(content_type.value()));
       }
       for (const XContentType type : types) {
+        if (library_games && device == DummyDeviceId::HDD &&
+            IsGamePackageType(type)) {
+          continue;
+        }
         const auto content_datas =
             device == DummyDeviceId::ODD
                 ? content_manager->ListContentODD(device_index, device_xuid,
@@ -123,6 +153,15 @@ dword_result_t XamContentAggregateCreateEnumerator_entry(qword_t xuid,
                         xuid == -1 ? 0 : static_cast<uint64_t>(xuid)};
     for (const uint64_t hdd_xuid : xuids) {
       append_device(DummyDeviceId::HDD, hdd_xuid);
+    }
+    if (library_games) {
+      for (const auto& content_data : content_manager->ListLibraryContent()) {
+        if (content_type == 0xFFFFFFFF ||
+            static_cast<uint32_t>(content_data.content_type.get()) ==
+                content_type) {
+          e->AppendItem(content_data, !legacy);
+        }
+      }
     }
   }
 

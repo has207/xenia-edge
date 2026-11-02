@@ -452,6 +452,28 @@ class Emulator {
     disc_provider_ = std::move(provider);
   }
 
+  // A release in the game library, which the dashboard lists as its games.
+  struct LibraryTitle {
+    uint32_t title_id = 0;
+    uint32_t version = 0;
+    std::string name;
+    std::filesystem::path path;
+    std::filesystem::path icon_path;
+    XContentType content_type = XContentType::kInvalid;
+  };
+  // The app replaces the list whenever its game library changes, so guest
+  // threads never read the library itself.
+  void SetLibraryTitles(std::vector<LibraryTitle> titles) {
+    auto snapshot =
+        std::make_shared<const std::vector<LibraryTitle>>(std::move(titles));
+    std::lock_guard lock(library_titles_mutex_);
+    library_titles_ = std::move(snapshot);
+  }
+  std::shared_ptr<const std::vector<LibraryTitle>> LibraryTitles() const {
+    std::lock_guard lock(library_titles_mutex_);
+    return library_titles_;
+  }
+
   using DiscRecorder =
       std::function<void(uint32_t title_id, const std::filesystem::path& path)>;
   void set_disc_recorder(DiscRecorder recorder) {
@@ -597,6 +619,8 @@ class Emulator {
   std::optional<vfs::XbeMetadata> running_xbe_;
   std::string missing_xefu_file_;
   DiscProvider disc_provider_;
+  mutable std::mutex library_titles_mutex_;
+  std::shared_ptr<const std::vector<LibraryTitle>> library_titles_;
   DiscRecorder disc_recorder_;
   std::filesystem::path storage_root_;
   std::filesystem::path content_root_;

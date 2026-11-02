@@ -453,6 +453,9 @@ void GameLibrary::Load() {
       MigrateTitle(dir);
     }
   }
+  if (changed_callback_) {
+    changed_callback_();
+  }
 }
 
 void GameLibrary::MigrateTitle(const std::filesystem::path& title_dir) {
@@ -656,6 +659,9 @@ bool GameLibrary::Upsert(LibraryEntry entry) {
   } else {
     entries_.push_back(std::move(entry));
   }
+  if (changed_callback_) {
+    changed_callback_();
+  }
   return true;
 }
 
@@ -831,6 +837,9 @@ bool GameLibrary::Remove(const LibraryKey& key) {
       std::remove_if(entries_.begin(), entries_.end(),
                      [&](const LibraryEntry& e) { return e.key() == key; }),
       entries_.end());
+  if (changed_callback_) {
+    changed_callback_();
+  }
 
   // The last release takes the title folder with it, orphaned root file
   // included, or an older build would go on listing a title the user removed.

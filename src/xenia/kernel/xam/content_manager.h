@@ -211,7 +211,7 @@ class ContentPackage {
   ContentPackage(KernelState* kernel_state, const std::string_view root_name,
                  const XCONTENT_AGGREGATE_DATA& data,
                  const std::filesystem::path& package_path,
-                 const std::string_view root_path = "");
+                 const std::string_view root_path = "", bool read_only = false);
   // A package stored on another device, such as the disc.
   ContentPackage(KernelState* kernel_state, const std::string_view root_name,
                  const XCONTENT_AGGREGATE_DATA& data,
@@ -270,6 +270,9 @@ class ContentManager {
   std::vector<XContentType> ListContentTypes(const uint32_t device_id,
                                              const uint64_t xuid,
                                              const uint32_t title_id) const;
+  // A record for each release in the game library, which the dashboard lists
+  // as its games.
+  std::vector<XCONTENT_AGGREGATE_DATA> ListLibraryContent() const;
 
   std::vector<XCONTENT_AGGREGATE_DATA> ListContentODD(
       const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,
@@ -340,6 +343,12 @@ class ContentManager {
   X_RESULT ResolvePackagePath(const uint64_t xuid,
                               const XCONTENT_AGGREGATE_DATA& data,
                               std::filesystem::path& path);
+  // Where a package is read from, which is the game library's release for a
+  // record of ListLibraryContent.
+  X_RESULT ResolveReadPath(const uint64_t xuid,
+                           const XCONTENT_AGGREGATE_DATA& data,
+                           std::filesystem::path& path,
+                           bool* library = nullptr);
   std::string ResolveDiscPackageRoot(const uint64_t xuid, uint32_t title_id,
                                      const XContentType content_type) const;
   vfs::Entry* ResolveDiscPackage(const XCONTENT_AGGREGATE_DATA& data) const;

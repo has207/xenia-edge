@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -139,6 +140,11 @@ class GameLibrary {
 
   const std::vector<LibraryEntry>& entries() const { return entries_; }
 
+  // Called after each change to entries(), on the thread that made it.
+  void set_changed_callback(std::function<void()> callback) {
+    changed_callback_ = std::move(callback);
+  }
+
   LibraryEntry* Find(const LibraryKey& key);
   const LibraryEntry* Find(const LibraryKey& key) const;
   // First release of a title, for callers holding only a title id (a profile
@@ -233,6 +239,7 @@ class GameLibrary {
   std::filesystem::path root_;
   std::vector<LibraryEntry> entries_;
   std::vector<std::string> split_titles_;
+  std::function<void()> changed_callback_;
 };
 
 }  // namespace app
