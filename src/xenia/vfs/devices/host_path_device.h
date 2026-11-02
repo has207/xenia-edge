@@ -48,8 +48,8 @@ class HostPathDevice : public Device {
   uint32_t attributes() const override { return 0; }
   uint32_t component_name_max_length() const override { return 255; }
 
-  uint32_t total_allocation_units() const override { return 128 * 1024; }
-  uint32_t available_allocation_units() const override { return 128 * 1024; }
+  uint32_t total_allocation_units() const override;
+  uint32_t available_allocation_units() const override;
   uint32_t sectors_per_allocation_unit() const override { return 1; }
   uint32_t bytes_per_sector() const override { return 0x200; }
 

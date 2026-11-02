@@ -7,11 +7,13 @@
  ******************************************************************************
  */
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -533,6 +535,39 @@ TEST_CASE("Host path entry moves into the directory it is renamed into",
       REQUIRE(entry->name() == "temp.bin");
       REQUIRE(std::filesystem::exists(dir / "temp.bin"));
     }
+  }
+
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Host path device reports the space of the host volume",
+          "[vfs_space]") {
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() /
+      ("xenia-vfs-space-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+
+  {
+    HostPathDevice device("\\Device\\Test", dir, false);
+    REQUIRE(device.Initialize());
+    const uintmax_t unit_size =
+        uintmax_t(device.sectors_per_allocation_unit()) *
+        device.bytes_per_sector();
+    auto units = [&](uintmax_t bytes) {
+      return std::min<uintmax_t>(bytes / unit_size,
+                                 std::numeric_limits<uint32_t>::max());
+    };
+
+    const auto before = std::filesystem::space(dir);
+    const uint32_t total = device.total_allocation_units();
+    const uint32_t available = device.available_allocation_units();
+    const auto after = std::filesystem::space(dir);
+
+    REQUIRE(total == units(before.capacity));
+    // Other processes can move the free space between the queries.
+    REQUIRE(available >= units(std::min(before.available, after.available)));
+    REQUIRE(available <= units(std::max(before.available, after.available)));
   }
 
   std::filesystem::remove_all(dir);
