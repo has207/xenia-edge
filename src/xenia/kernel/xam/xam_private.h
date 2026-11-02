@@ -10,6 +10,7 @@
 #ifndef XENIA_KERNEL_XAM_XAM_PRIVATE_H_
 #define XENIA_KERNEL_XAM_XAM_PRIVATE_H_
 
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -25,6 +26,9 @@ xe::cpu::Export* RegisterExport_xam(xe::cpu::Export* export_entry);
 // XamLoaderLaunchTitleEx, which doesn't return.
 void LaunchTitle(std::string path, std::string_view d_drive_path,
                  uint32_t flags);
+// Launches the title at |host_path| on the host, from its default module.
+// Doesn't return.
+void LaunchHostTitle(const std::filesystem::path& host_path, uint32_t flags);
 
 // Registration functions, one per file.
 #define XE_MODULE_EXPORT_GROUP(m, n)                                  \

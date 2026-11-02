@@ -273,6 +273,9 @@ class ContentManager {
   // A record for each release in the game library, which the dashboard lists
   // as its games.
   std::vector<XCONTENT_AGGREGATE_DATA> ListLibraryContent() const;
+  // The game library path of the release a ListLibraryContent record names.
+  std::optional<std::filesystem::path> LibraryContentPath(
+      const XCONTENT_AGGREGATE_DATA& data) const;
 
   std::vector<XCONTENT_AGGREGATE_DATA> ListContentODD(
       const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,

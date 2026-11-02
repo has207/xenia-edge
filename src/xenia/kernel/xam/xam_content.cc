@@ -1026,6 +1026,14 @@ static X_RESULT LaunchContentImage(uint32_t user_index,
                                    const std::string& xex_name,
                                    uint32_t flags) {
   auto content_manager = kernel_state()->content_manager();
+  // A game library title starts from where the library keeps it.
+  if (const auto path = content_manager->LibraryContentPath(content_data)) {
+    std::error_code ec;
+    if (!std::filesystem::exists(*path, ec)) {
+      return X_ERROR_PATH_NOT_FOUND;
+    }
+    LaunchHostTitle(*path, flags);
+  }
   uint64_t xuid = 0;
   X_RESULT result = ContentXuid(user_index, xuid);
   if (!result) {

@@ -600,6 +600,72 @@ static bool ResolveLaunchTarget(const vfs::Entry* entry,
   return true;
 }
 
+// Starts the title at |host_path| with |launch_path| in it, or its default
+// module when empty. Doesn't return.
+static void StartTitle(XamModule::LoaderData& loader_data,
+                       const std::filesystem::path& host_path,
+                       std::string launch_path, std::string package_path) {
+  XELOGI(
+      "XamLoaderLaunchTitle: normalized host_path={}, package_path={}, "
+      "launch_path={}",
+      xe::strip_pii(xe::path_to_utf8(host_path)), package_path, launch_path);
+
+  // Handle title launch in-process via full Shutdown/Setup cycle. Disabled
+  // on macOS — pthread_cancel there doesn't run C++ destructors, so
+  // force-terminated guest threads leak locks and deadlock teardown; spawn a
+  // fresh process instead.
+#if !XE_PLATFORM_MAC
+  if (cvars::in_process_title_relaunch) {
+    auto emulator = kernel_state()->emulator();
+
+    XELOGI("XamLoaderLaunchTitle: in-process relaunch to '{}'",
+           xe::strip_pii(xe::path_to_utf8(host_path)));
+
+    auto new_host_path = xe::path_to_utf8(host_path);
+    auto new_launch_module = launch_path;
+    auto new_flags = loader_data.launch_flags;
+    auto new_data = loader_data.launch_data;
+    auto current_thread = XThread::GetCurrentThread();
+
+    // Must dispatch from a non-guest thread — RelaunchTitle terminates
+    // all guest threads including the caller.
+    std::thread([emulator, new_host_path = std::move(new_host_path),
+                 new_launch_module = std::move(new_launch_module), new_flags,
+                 new_data = std::move(new_data),
+                 package_path = std::move(package_path)]() mutable {
+      emulator->RelaunchTitle(new_host_path, new_launch_module, new_flags,
+                              std::move(new_data), true, package_path);
+    }).detach();
+
+    // Stop running guest code; RelaunchTitle terminates us. Suspend can
+    // return on POSIX, so park rather than fall through to spawn.
+    current_thread->Suspend(nullptr);
+    while (true) {
+      xe::threading::NanoSleep(int64_t(1'000'000'000));
+    }
+  }
+#endif  // !XE_PLATFORM_MAC
+
+  const std::string launch_data_hex =
+      HexBytes(loader_data.launch_data, loader_data.launch_data.size());
+
+  auto on_launch_new_title = kernel_state()->emulator()->on_launch_new_title();
+  if (on_launch_new_title) {
+    XELOGI("XamLoaderLaunchTitle: spawning new title process");
+    // The new process has no drive of its own to find the game in.
+    auto* emulator = kernel_state()->emulator();
+    on_launch_new_title(xe::path_to_utf8(host_path), launch_path,
+                        loader_data.launch_flags, launch_data_hex,
+                        emulator->KeepsXboxGame(host_path)
+                            ? xe::path_to_utf8(emulator->xbox_disc_path())
+                            : std::string(),
+                        package_path);
+  }
+
+  XELOGI("XamLoaderLaunchTitle: terminating to launch new title");
+  kernel_state()->TerminateTitle();  // Does not return.
+}
+
 // The console's XamLoaderLaunchTitleEx, which XamLoaderLaunchTitle calls with
 // flag 4. The D: drive path is only checked for flag 4.
 void LaunchTitle(std::string path, std::string_view d_drive_path,
@@ -685,70 +751,20 @@ void LaunchTitle(std::string path, std::string_view d_drive_path,
       launch_path = "";
     }
 
-    XELOGI(
-        "XamLoaderLaunchTitle: normalized host_path={}, package_path={}, "
-        "launch_path={}",
-        xe::strip_pii(xe::path_to_utf8(host_path)), package_path, launch_path);
-
-    // Handle title launch in-process via full Shutdown/Setup cycle. Disabled
-    // on macOS — pthread_cancel there doesn't run C++ destructors, so
-    // force-terminated guest threads leak locks and deadlock teardown; spawn a
-    // fresh process instead.
-#if !XE_PLATFORM_MAC
-    if (cvars::in_process_title_relaunch) {
-      auto emulator = kernel_state()->emulator();
-
-      XELOGI("XamLoaderLaunchTitle: in-process relaunch to '{}'",
-             xe::strip_pii(xe::path_to_utf8(host_path)));
-
-      auto new_host_path = xe::path_to_utf8(host_path);
-      auto new_launch_module = launch_path;
-      auto new_flags = loader_data.launch_flags;
-      auto new_data = loader_data.launch_data;
-      auto current_thread = XThread::GetCurrentThread();
-
-      // Must dispatch from a non-guest thread — RelaunchTitle terminates
-      // all guest threads including the caller.
-      std::thread([emulator, new_host_path = std::move(new_host_path),
-                   new_launch_module = std::move(new_launch_module), new_flags,
-                   new_data = std::move(new_data),
-                   package_path = std::move(package_path)]() mutable {
-        emulator->RelaunchTitle(new_host_path, new_launch_module, new_flags,
-                                std::move(new_data), true, package_path);
-      }).detach();
-
-      // Stop running guest code; RelaunchTitle terminates us. Suspend can
-      // return on POSIX, so park rather than fall through to spawn.
-      current_thread->Suspend(nullptr);
-      while (true) {
-        xe::threading::NanoSleep(int64_t(1'000'000'000));
-      }
-    }
-#endif  // !XE_PLATFORM_MAC
-
-    const std::string launch_data_hex =
-        HexBytes(loader_data.launch_data, loader_data.launch_data.size());
-
-    auto on_launch_new_title =
-        kernel_state()->emulator()->on_launch_new_title();
-    if (on_launch_new_title) {
-      XELOGI("XamLoaderLaunchTitle: spawning new title process");
-      // The new process has no drive of its own to find the game in.
-      auto* emulator = kernel_state()->emulator();
-      on_launch_new_title(xe::path_to_utf8(host_path), launch_path,
-                          loader_data.launch_flags, launch_data_hex,
-                          emulator->KeepsXboxGame(host_path)
-                              ? xe::path_to_utf8(emulator->xbox_disc_path())
-                              : std::string(),
-                          package_path);
-    }
-
-    XELOGI("XamLoaderLaunchTitle: terminating to launch new title");
-    kernel_state()->TerminateTitle();  // Does not return.
+    StartTitle(loader_data, host_path, std::move(launch_path),
+               std::move(package_path));
   }
 
   XELOGI("XamLoaderLaunchTitle: game requested exit to dashboard");
   kernel_state()->ExitToDashboard();
+}
+
+void LaunchHostTitle(const std::filesystem::path& host_path, uint32_t flags) {
+  auto* xam = kernel_state()->GetKernelModule<XamModule>("xam.xex").get();
+  auto& loader_data = xam->loader_data();
+  loader_data.launch_flags = flags;
+  loader_data.launch_data_present = true;
+  StartTitle(loader_data, host_path, {}, {});
 }
 
 void XamLoaderLaunchTitle_entry(lpstring_t raw_name_ptr, dword_t flags) {

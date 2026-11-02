@@ -946,6 +946,14 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListLibraryContent()
   return content;
 }
 
+std::optional<std::filesystem::path> ContentManager::LibraryContentPath(
+    const XCONTENT_AGGREGATE_DATA& data) const {
+  if (auto title = FindLibraryTitle(kernel_state_->emulator(), data)) {
+    return std::move(title->path);
+  }
+  return std::nullopt;
+}
+
 X_RESULT ContentManager::ResolveReadPath(const uint64_t xuid,
                                          const XCONTENT_AGGREGATE_DATA& data,
                                          std::filesystem::path& path,
