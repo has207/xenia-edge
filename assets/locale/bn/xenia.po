@@ -1727,3 +1727,55 @@ msgstr ""
 "%s\n"
 "\n"
 "ফাইলটি খুঁজে দেখবেন?"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "সিস্টেম আপডেট পড়া যায়নি।"
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "সিস্টেম ফাইলগুলি লেখা যায়নি।"
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "সিস্টেম ফাইল ইনস্টল করুন"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "সিস্টেম ফাইল ইনস্টল করুন…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "সিস্টেম ফাইলগুলি ইনস্টল করা হচ্ছে…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "USB সিস্টেম আপডেট নির্বাচন করুন"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "সিস্টেম ফাইলগুলি ইনস্টল হয়েছে"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"আগের সিস্টেম ফাইলগুলি যথাস্থানে ফিরিয়ে আনা যায়নি। আবার ইনস্টল করতে সেগুলির ফোল্ডার আগের জায়গায় স্থানান্তর করুন বা মুছে দিন। সেগুলি এখানে আছে:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"সিস্টেম ফাইলগুলি এখানে ইনস্টল করা আছে:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "এই ফাইলটি USB সিস্টেম আপডেট নয়।"

@@ -1730,3 +1730,55 @@ msgstr ""
 "%s\n"
 "\n"
 "கோப்பைத் தேடவா?"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "முறைமைப் புதுப்பிப்பைப் படிக்க முடியவில்லை."
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "முறைமைக் கோப்புகளை எழுத முடியவில்லை."
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "முறைமைக் கோப்புகளை நிறுவு"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "முறைமைக் கோப்புகளை நிறுவு…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "முறைமைக் கோப்புகள் நிறுவப்படுகின்றன…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "USB முறைமைப் புதுப்பிப்பைத் தேர்ந்தெடு"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "முறைமைக் கோப்புகள் நிறுவப்பட்டன"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"முந்தைய முறைமைக் கோப்புகளை அவற்றின் இடத்தில் மீண்டும் வைக்க முடியவில்லை. மீண்டும் நிறுவ, அவற்றின் கோப்புறைகளைப் பழைய இடத்திற்கு நகர்த்தவும் அல்லது நீக்கவும். அவை இங்கு உள்ளன:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"முறைமைக் கோப்புகள் இங்கு நிறுவப்பட்டுள்ளன:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "இந்தக் கோப்பு USB முறைமைப் புதுப்பிப்பு அல்ல."

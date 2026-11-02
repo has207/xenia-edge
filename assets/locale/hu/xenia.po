@@ -1732,3 +1732,55 @@ msgstr ""
 "%s\n"
 "\n"
 "Kíván tallózni a fájl után?"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "A rendszerfrissítés beolvasása sikertelen."
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "A rendszerfájlok írása sikertelen."
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "Rendszerfájlok telepítése"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "Rendszerfájlok telepítése…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "A rendszerfájlok telepítése folyamatban…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "USB-s rendszerfrissítés kiválasztása"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "A rendszerfájlok telepítve"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"A korábbi rendszerfájlokat nem sikerült visszaállítani a helyükre. Az újbóli telepítéshez helyezze vissza vagy törölje a mappáikat. A következő mappában találhatók:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"A rendszerfájlok telepítési helye:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "Ez a fájl nem USB-s rendszerfrissítés."

@@ -1724,3 +1724,55 @@ msgstr ""
 "%s\n"
 "\n"
 "เรียกดูไฟล์หรือไม่?"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "อ่านการอัปเดตระบบไม่สำเร็จ"
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "เขียนไฟล์ระบบไม่สำเร็จ"
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "ติดตั้งไฟล์ระบบ"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "ติดตั้งไฟล์ระบบ…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "กำลังติดตั้งไฟล์ระบบ…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "เลือกการอัปเดตระบบผ่าน USB"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "ติดตั้งไฟล์ระบบแล้ว"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"ไม่สามารถกู้คืนไฟล์ระบบก่อนหน้าได้ หากต้องการติดตั้งอีกครั้ง ให้ย้ายโฟลเดอร์เหล่านั้นกลับที่เดิมหรือลบทิ้ง โฟลเดอร์อยู่ที่:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"ติดตั้งไฟล์ระบบไว้ที่:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "ไฟล์นี้ไม่ใช่การอัปเดตระบบผ่าน USB"

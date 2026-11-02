@@ -1727,3 +1727,55 @@ msgstr ""
 "%s\n"
 "\n"
 "کیا فائل تلاش کریں؟"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "نظام کی تازہ کاری پڑھی نہیں جا سکی۔"
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "نظام کی فائلیں لکھی نہیں جا سکیں۔"
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "نظام کی فائلیں انسٹال کریں"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "نظام کی فائلیں انسٹال کریں…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "نظام کی فائلیں انسٹال کی جا رہی ہیں…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "نظام کی USB تازہ کاری منتخب کریں"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "نظام کی فائلیں انسٹال ہو گئیں"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"نظام کی پچھلی فائلیں اپنی جگہ پر بحال نہیں ہو سکیں۔ دوبارہ انسٹال کرنے کے لیے ان کے فولڈرز واپس منتقل کریں یا انہیں حذف کریں۔ وہ یہاں ہیں:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"نظام کی فائلیں یہاں انسٹال کی گئی ہیں:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "یہ فائل نظام کی USB تازہ کاری نہیں ہے۔"

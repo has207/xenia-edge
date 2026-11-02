@@ -1731,3 +1731,55 @@ msgstr ""
 "%s\n"
 "\n"
 "Etsitäänkö tiedostoa selaamalla?"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "Järjestelmäpäivityksen lukeminen epäonnistui."
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "Järjestelmätiedostojen kirjoittaminen epäonnistui."
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "Järjestelmätiedostojen asennus"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "Asenna järjestelmätiedostot…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "Asennetaan järjestelmätiedostoja…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "Valitse USB-järjestelmäpäivitys"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "Järjestelmätiedostot asennettu"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"Aiempia järjestelmätiedostoja ei voitu palauttaa paikoilleen. Ennen uutta asennusta siirrä niiden kansiot takaisin tai poista ne. Ne ovat kansiossa:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"Järjestelmätiedostot on asennettu kansioon:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "Tämä tiedosto ei ole USB-järjestelmäpäivitys."

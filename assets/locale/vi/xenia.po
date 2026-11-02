@@ -1726,3 +1726,55 @@ msgstr ""
 "%s\n"
 "\n"
 "Duyệt tìm tệp?"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "Không thể đọc bản cập nhật hệ thống."
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "Không thể ghi tệp hệ thống."
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "Cài đặt tệp hệ thống"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "Cài đặt tệp hệ thống…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "Đang cài đặt tệp hệ thống…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "Chọn bản cập nhật hệ thống qua USB"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "Đã cài đặt tệp hệ thống"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"Không thể khôi phục các tệp hệ thống trước đó. Hãy di chuyển các thư mục của chúng về chỗ cũ hoặc xóa chúng để cài đặt lại. Các thư mục này nằm tại:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"Tệp hệ thống đã được cài đặt tại:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "Tệp này không phải là bản cập nhật hệ thống qua USB."

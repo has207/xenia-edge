@@ -1728,3 +1728,55 @@ msgstr ""
 "%s\n"
 "\n"
 "파일을 찾아보시겠습니까?"
+
+#: src/xenia/app/emulator_window.cc:2325
+msgid "Failed to read the system update."
+msgstr "시스템 업데이트를 읽지 못했습니다."
+
+#: src/xenia/app/emulator_window.cc:2329
+msgid "Failed to write the system files."
+msgstr "시스템 파일을 쓰지 못했습니다."
+
+#: src/xenia/app/emulator_window.cc:2296
+#: src/xenia/app/emulator_window.cc:2319
+#: src/xenia/app/emulator_window.cc:2324
+#: src/xenia/app/emulator_window.cc:2328
+#: src/xenia/app/emulator_window.cc:2333
+msgid "Install System Files"
+msgstr "시스템 파일 설치"
+
+#: src/xenia/app/emulator_window.cc:1127
+msgid "Install System Files..."
+msgstr "시스템 파일 설치…"
+
+#: src/xenia/app/emulator_window.cc:2297
+msgid "Installing the system files..."
+msgstr "시스템 파일 설치 중…"
+
+#: src/xenia/app/emulator_window.cc:2282
+msgid "Select a USB System Update"
+msgstr "USB 시스템 업데이트 선택"
+
+#: src/xenia/app/emulator_window.cc:2310
+msgid "System files installed"
+msgstr "시스템 파일 설치 완료"
+
+#: src/xenia/app/emulator_window.cc:2335
+msgid ""
+"The previous system files couldn't be put back in place. Move their folders back or delete them to install again. They are in:\n"
+"%s"
+msgstr ""
+"이전 시스템 파일을 복원하지 못했습니다. 다시 설치하려면 해당 폴더를 원래 위치로 옮기거나 삭제하세요. 폴더는 다음 위치에 있습니다:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2311
+msgid ""
+"The system files are installed in:\n"
+"%s"
+msgstr ""
+"시스템 파일이 다음 위치에 설치되었습니다:\n"
+"%s"
+
+#: src/xenia/app/emulator_window.cc:2320
+msgid "This file isn't a USB system update."
+msgstr "이 파일은 USB 시스템 업데이트가 아닙니다."
