@@ -8,9 +8,13 @@
  */
 
 #include "xenia/kernel/xam/apps/xgi_app.h"
+#include "xenia/kernel/xam/xdbf/spa_info.h"
+#include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xsession.h"
 
 #include "xenia/base/logging.h"
+#include "xenia/base/string.h"
+#include "xenia/base/string_util.h"
 
 namespace xe {
 namespace kernel {
@@ -101,6 +105,19 @@ struct XUSER_ANID {
   xe::be<uint32_t> pszAnIdBuffer;
   xe::be<uint32_t> value_const;  // 1
 };
+
+// The 17559 dashboard reads the game in the drive from the SPA in its
+// executable.
+struct XGI_TITLE_INFO_FROM_SPA {
+  xe::be<uint32_t> spa_address;
+  xe::be<uint32_t> spa_size;
+  xe::be<uint32_t> name_length;  // In characters.
+  xe::be<uint32_t> name_address;
+  // The icon buffer's size going in and the icon's coming out.
+  xe::be<uint32_t> icon_size_address;
+  xe::be<uint32_t> icon_address;
+};
+static_assert_size(XGI_TITLE_INFO_FROM_SPA, 0x18);
 
 XgiApp::XgiApp(KernelState* kernel_state) : App(kernel_state, 0xFB) {}
 
@@ -351,6 +368,37 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       // Does not get sent a buffer
       XELOGD("XInvalidateGamerTileCache, unimplemented");
       return X_E_FAIL;
+    }
+    case 0x000B003C: {
+      if (buffer_length != sizeof(XGI_TITLE_INFO_FROM_SPA)) {
+        return X_E_INVALIDARG;
+      }
+      const auto* args = reinterpret_cast<XGI_TITLE_INFO_FROM_SPA*>(buffer);
+      if (!args->spa_address || !args->name_address ||
+          !args->icon_size_address || !args->icon_address) {
+        return X_E_INVALIDARG;
+      }
+      SpaInfo spa(std::span<uint8_t>(
+          memory_->TranslateVirtual<uint8_t*>(args->spa_address),
+          args->spa_size));
+      spa.Load();
+      const XLanguage language = spa.GetExistingLanguage(static_cast<XLanguage>(
+          kernel_state_->xconfig()->ReadSetting<uint32_t>(
+              XCONFIG_USER_CATEGORY, XCONFIG_USER_LANGUAGE)));
+      string_util::copy_and_swap_truncating(
+          memory_->TranslateVirtual<char16_t*>(args->name_address),
+          xe::to_utf16(spa.title_name(language)), args->name_length);
+      const std::span<const uint8_t> icon = spa.title_icon();
+      auto* icon_size =
+          memory_->TranslateVirtual<xe::be<uint32_t>*>(args->icon_size_address);
+      const bool fits = icon.size() <= *icon_size;
+      *icon_size = static_cast<uint32_t>(icon.size());
+      if (!fits) {
+        return X_E_INSUFFICIENT_BUFFER;
+      }
+      std::memcpy(memory_->TranslateVirtual(args->icon_address), icon.data(),
+                  icon.size());
+      return X_E_SUCCESS;
     }
     case 0x000B003D: {
       // Used in 5451082A, 5553081E
