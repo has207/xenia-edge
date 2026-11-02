@@ -318,6 +318,108 @@ static uint32_t HostSocketError() {
   return AsioErrorToWSAError(HostSocketErrorCode());
 }
 
+// Socket and TCP option values are big-endian, as the console keeps them:
+// numbers and BOOLs, SO_LINGER's two WORDs, and SO_SNDTIMEO's and SO_RCVTIMEO's
+// milliseconds. The host takes them in its own byte order and layout. Other
+// levels' values, addresses among them, pass as they are.
+static bool HasNumericValue(uint32_t level) {
+  return level == 0xFFFF || level == IPPROTO_TCP;
+}
+
+static bool IsTimeout(uint32_t level, uint32_t optname) {
+  return level == 0xFFFF && (optname == 0x1005 || optname == 0x1006);
+}
+
+template <typename T>
+static std::vector<char> ValueBytes(const T& value) {
+  const char* bytes = reinterpret_cast<const char*>(&value);
+  return {bytes, bytes + sizeof(value)};
+}
+
+// The guest's value of an option as the host's setsockopt takes it.
+static std::vector<char> HostOptionValue(uint32_t level, uint32_t optname,
+                                         const void* optval, uint32_t optlen) {
+  const char* guest = static_cast<const char*>(optval);
+  if (!HasNumericValue(level) || !optlen) {
+    return {guest, guest + optlen};
+  }
+  if (level == 0xFFFF && optname == 0x0080 && optlen >= 4) {
+    const auto* words = static_cast<const xe::be<uint16_t>*>(optval);
+    linger value = {};
+    value.l_onoff = words[0];
+    value.l_linger = words[1];
+    return ValueBytes(value);
+  }
+  if (IsTimeout(level, optname)) {
+    const uint32_t ms = net::SocketOptionValue(optval, optlen);
+#if XE_PLATFORM_WIN32
+    return ValueBytes(DWORD(ms));
+#else
+    timeval value = {};
+    value.tv_sec = ms / 1000;
+    value.tv_usec = ms % 1000 * 1000;
+    return ValueBytes(value);
+#endif  // XE_PLATFORM_WIN32
+  }
+  if (optlen > sizeof(uint32_t)) {
+    return {guest, guest + optlen};
+  }
+  return ValueBytes(int(net::SocketOptionValue(optval, optlen)));
+}
+
+// Reads an option of the host socket into the guest's value, big-endian, as
+// HostOptionValue takes it; false with the host's error.
+static bool ReadHostOption(uint64_t handle, int native_level, int native_name,
+                           uint32_t level, uint32_t optname, void* optval,
+                           uint32_t* optlen) {
+  auto read = [&](auto& value) {
+    socklen_t length = sizeof(value);
+    return getsockopt(static_cast<int>(handle), native_level, native_name,
+                      reinterpret_cast<char*>(&value), &length) == 0;
+  };
+  if (!HasNumericValue(level) || !*optlen ||
+      (*optlen > sizeof(uint32_t) && !(level == 0xFFFF && optname == 0x0080))) {
+    socklen_t length = static_cast<socklen_t>(*optlen);
+    if (getsockopt(static_cast<int>(handle), native_level, native_name,
+                   static_cast<char*>(optval), &length) != 0) {
+      return false;
+    }
+    *optlen = static_cast<uint32_t>(length);
+    return true;
+  }
+  uint32_t value = 0;
+  if (level == 0xFFFF && optname == 0x0080) {
+    linger host = {};
+    if (!read(host)) {
+      return false;
+    }
+    value = uint32_t(uint16_t(host.l_onoff)) << 16 | uint16_t(host.l_linger);
+  } else if (IsTimeout(level, optname)) {
+#if XE_PLATFORM_WIN32
+    DWORD host = 0;
+    if (!read(host)) {
+      return false;
+    }
+    value = host;
+#else
+    timeval host = {};
+    if (!read(host)) {
+      return false;
+    }
+    value = uint32_t(host.tv_sec * 1000 + host.tv_usec / 1000);
+#endif  // XE_PLATFORM_WIN32
+  } else {
+    // Zeroed first, as Windows gives some BOOLs in a single byte.
+    int host = 0;
+    if (!read(host)) {
+      return false;
+    }
+    value = uint32_t(host);
+  }
+  net::StoreSocketOptionValue(optval, *optlen, value);
+  return true;
+}
+
 XSocket::XSocket(KernelState* kernel_state)
     : XObject(kernel_state, kObjectType) {}
 
@@ -493,23 +595,17 @@ X_STATUS XSocket::GetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     native_optname = supported_tcp_options.at(optname);
   }
 
-  asio::error_code ec;
-  socklen_t native_optlen = static_cast<socklen_t>(*optlen);
-
-  int native_handle_val = static_cast<int>(native_handle());
-  if (native_handle_val == -1) {
+  const uint64_t handle = native_handle();
+  if (handle == static_cast<uint64_t>(-1)) {
     last_error_ = AsioErrorToWSAError(asio::error::not_socket);
     return X_STATUS_INVALID_HANDLE;
   }
 
-  int ret = getsockopt(native_handle_val, native_level, native_optname,
-                       static_cast<char*>(optval_ptr), &native_optlen);
-  if (ret < 0) {
+  if (!ReadHostOption(handle, native_level, native_optname, level, optname,
+                      optval_ptr, optlen)) {
     last_error_ = HostSocketError();
     return X_STATUS_UNSUCCESSFUL;
   }
-
-  *optlen = static_cast<uint32_t>(native_optlen);
   return X_STATUS_SUCCESS;
 }
 
@@ -573,17 +669,18 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     return X_STATUS_INVALID_HANDLE;
   }
 
+  std::vector<char> value =
+      HostOptionValue(level, optname, optval_ptr, optlen);
   int ret = setsockopt(native_handle_val, native_level, native_optname,
-                       static_cast<char*>(optval_ptr), optlen);
+                       value.data(), static_cast<socklen_t>(value.size()));
   if (ret < 0) {
     last_error_ = HostSocketError();
     XELOGE("XSocket::SetOption: failed with error {:08X}", last_error_);
     return X_STATUS_UNSUCCESSFUL;
   }
   if (acceptor_) {
-    const char* value = static_cast<const char*>(optval_ptr);
     acceptor_options_.push_back(
-        {native_level, native_optname, {value, value + optlen}});
+        {native_level, native_optname, std::move(value)});
   }
 
   KeepTimeout(level, optname, optval_ptr, optlen);
