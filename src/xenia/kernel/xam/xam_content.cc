@@ -1090,6 +1090,65 @@ dword_result_t XamContentGetMetaDataInternal_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentGetMetaDataInternal, kContent, kImplemented);
 
+#pragma pack(push, 4)
+struct X_CONTENT_ATTRIBUTES {
+  xe::be<uint32_t> file_attributes;
+  xe::be<uint64_t> creation_time;
+  xe::be<uint64_t> last_access_time;
+  xe::be<uint64_t> last_write_time;
+  xe::be<uint64_t> size;
+};
+#pragma pack(pop)
+static_assert_size(X_CONTENT_ATTRIBUTES, 0x24);
+
+// The package's file attributes, times and size with any data files.
+static X_RESULT GetContentAttributes(uint64_t xuid,
+                                     const XCONTENT_AGGREGATE_DATA& data,
+                                     X_CONTENT_ATTRIBUTES* attributes_ptr) {
+  ContentAttributes attributes;
+  if (const X_RESULT result =
+          kernel_state()->content_manager()->GetContentAttributes(
+              xuid, data, &attributes)) {
+    return result;
+  }
+  attributes_ptr->file_attributes = vfs::kFileAttributeNormal;
+  attributes_ptr->creation_time = attributes.creation_time;
+  attributes_ptr->last_access_time = attributes.last_access_time;
+  attributes_ptr->last_write_time = attributes.last_write_time;
+  attributes_ptr->size = attributes.size;
+  return X_ERROR_SUCCESS;
+}
+
+dword_result_t XamContentGetAttributes_entry(
+    dword_t user_index, lpvoid_t content_data_ptr,
+    pointer_t<X_CONTENT_ATTRIBUTES> attributes_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!content_data_ptr || !attributes_ptr) {
+    return CompleteRequest(overlapped_ptr, X_ERROR_INVALID_PARAMETER);
+  }
+  uint64_t xuid = 0;
+  X_RESULT result = ContentXuid(user_index, xuid);
+  if (!result) {
+    result = GetContentAttributes(xuid, *content_data_ptr.as<XCONTENT_DATA*>(),
+                                  attributes_ptr);
+  }
+  return CompleteRequest(overlapped_ptr, result);
+}
+DECLARE_XAM_EXPORT1(XamContentGetAttributes, kContent, kImplemented);
+
+dword_result_t XamContentGetAttributesInternal_entry(
+    lpvoid_t content_data_ptr, pointer_t<X_CONTENT_ATTRIBUTES> attributes_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!content_data_ptr || !attributes_ptr) {
+    return CompleteRequest(overlapped_ptr, X_ERROR_INVALID_PARAMETER);
+  }
+  return CompleteRequest(
+      overlapped_ptr,
+      GetContentAttributes(0, *content_data_ptr.as<XCONTENT_AGGREGATE_DATA*>(),
+                           attributes_ptr));
+}
+DECLARE_XAM_EXPORT1(XamContentGetAttributesInternal, kContent, kImplemented);
+
 dword_result_t XamContentLaunchImageInternalEx_entry(lpvoid_t content_data_ptr,
                                                      lpstring_t xex_name,
                                                      dword_t flags) {

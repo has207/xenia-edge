@@ -890,6 +890,98 @@ X_RESULT ContentManager::GetContentMetadata(const uint64_t xuid,
   return X_ERROR_SUCCESS;
 }
 
+// Games, demos and the like keep their data in files beside the package.
+static bool HasDataFiles(const XContentType content_type) {
+  switch (content_type) {
+    case XContentType::kMarketplaceContent:
+    case XContentType::kInstalledGame:
+    case XContentType::kXboxTitle:
+    case XContentType::kXbox360Title:
+    case XContentType::kGameDemo:
+    case XContentType::kArcadeTitle:
+      return true;
+    default:
+      return (static_cast<uint32_t>(content_type) & 0xFFF00000) != 0;
+  }
+}
+
+static uint64_t FileSize(const std::filesystem::path& path) {
+  std::error_code ec;
+  if (!std::filesystem::is_directory(path, ec)) {
+    const auto size = std::filesystem::file_size(path, ec);
+    return ec ? 0 : size;
+  }
+  // An extracted package is as big as its files.
+  uint64_t total = 0;
+  std::filesystem::recursive_directory_iterator it(path, ec), end;
+  for (; !ec && it != end; it.increment(ec)) {
+    // A file it can't read leaves out only that file.
+    std::error_code entry_ec;
+    if (it->is_regular_file(entry_ec)) {
+      const auto size = it->file_size(entry_ec);
+      if (!entry_ec) {
+        total += size;
+      }
+    }
+  }
+  return total;
+}
+
+X_RESULT ContentManager::GetContentAttributes(
+    const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data,
+    ContentAttributes* attributes) {
+  std::filesystem::path package_path;
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    if (IsDiscContent(data)) {
+      const vfs::Entry* entry = ResolveDiscPackage(data);
+      if (!entry) {
+        return X_ERROR_FILE_NOT_FOUND;
+      }
+      attributes->creation_time = entry->create_timestamp();
+      attributes->last_access_time = entry->access_timestamp();
+      attributes->last_write_time = entry->write_timestamp();
+      attributes->size = entry->size();
+      return X_ERROR_SUCCESS;
+    }
+    if (const X_RESULT result = ResolvePackagePath(xuid, data, package_path)) {
+      return result;
+    }
+  }
+  // Without the lock, which a large extracted package would hold for long.
+  const auto info = xe::filesystem::GetInfo(package_path);
+  if (!info) {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+  attributes->creation_time = info->create_timestamp;
+  attributes->last_access_time = info->access_timestamp;
+  attributes->last_write_time = info->write_timestamp;
+  attributes->size = FileSize(package_path);
+  // An extracted package's size already counts its data.
+  if (!HasDataFiles(data.content_type) ||
+      info->type == xe::filesystem::FileInfo::Type::kDirectory) {
+    return X_ERROR_SUCCESS;
+  }
+  const auto header =
+      vfs::XContentContainerDevice::ReadContainerHeader(package_path);
+  if (header && header->content_header.is_magic_valid()) {
+    attributes->size += header->content_metadata.data_file_size;
+    return X_ERROR_SUCCESS;
+  }
+  // Without a header, count the data files there are.
+  auto data_path = package_path;
+  data_path += ".data";
+  for (uint32_t i = 0;; ++i) {
+    const auto data_file = data_path / fmt::format("Data{:04}", i);
+    std::error_code ec;
+    if (!std::filesystem::exists(data_file, ec)) {
+      break;
+    }
+    attributes->size += FileSize(data_file);
+  }
+  return X_ERROR_SUCCESS;
+}
+
 X_RESULT ContentManager::SetContentThumbnail(
     const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data,
     std::vector<uint8_t> buffer) {

@@ -196,6 +196,14 @@ struct XCONTENT_DATA_INTERNAL : XCONTENT_DATA {  // 0x0 sz:0x134
 };
 static_assert_size(XCONTENT_DATA_INTERNAL, 0x200);
 
+// FILETIMEs and the size in bytes.
+struct ContentAttributes {
+  uint64_t creation_time;
+  uint64_t last_access_time;
+  uint64_t last_write_time;
+  uint64_t size;
+};
+
 class ContentPackage {
  public:
   // root_path is a directory inside the package to mount at, empty for the
@@ -307,6 +315,10 @@ class ContentManager {
   X_RESULT GetContentMetadata(const uint64_t xuid,
                               const XCONTENT_AGGREGATE_DATA& data,
                               std::vector<uint8_t>* buffer);
+  // The package's file times and size. A game's size includes its data files.
+  X_RESULT GetContentAttributes(const uint64_t xuid,
+                                const XCONTENT_AGGREGATE_DATA& data,
+                                ContentAttributes* attributes);
   X_RESULT SetContentThumbnail(const uint64_t xuid,
                                const XCONTENT_AGGREGATE_DATA& data,
                                std::vector<uint8_t> buffer);
