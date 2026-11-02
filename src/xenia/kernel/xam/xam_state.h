@@ -79,6 +79,9 @@ class XamState {
   // which it keeps reading while xam's UI holds the input.
   std::array<uint32_t, XUserMaxUserCount> title_input_packet_numbers_ = {};
 
+  // The online schema XamGetOnlineSchema hands out, made on first use.
+  uint32_t online_schema_address_ = 0;
+
  private:
   void LoadLanguageLocaleFallback();
   void LoadLanguageTypefacePatch();

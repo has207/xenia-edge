@@ -94,7 +94,8 @@ uint8_t schema_bin[] = {
 };
 
 dword_result_t XamGetOnlineSchema_entry() {
-  static uint32_t schema_guest = 0;
+  // Kept with the kernel, since a relaunch frees the memory it's in.
+  uint32_t& schema_guest = kernel_state()->xam_state()->online_schema_address_;
 
   if (!schema_guest) {
     schema_guest =
