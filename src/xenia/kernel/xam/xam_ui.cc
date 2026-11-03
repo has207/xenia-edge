@@ -1547,42 +1547,12 @@ static std::optional<std::vector<std::u16string>> ParseXuiStringTable(
   return strings;
 }
 
-dword_result_t XuiLoadStringTableFromFile_entry(lpu16string_t path,
-                                                lpdword_t table_ptr) {
-  if (!path || !table_ptr) {
-    return X_E_INVALIDARG;
-  }
-  // section://<module handle>,<section>#<file in its package>
-  const std::string url = xe::to_utf8(path.value());
-  constexpr std::string_view kSectionScheme = "section://";
-  if (!xe::utf8::starts_with_case(url, kSectionScheme)) {
-    XELOGW("XuiLoadStringTableFromFile: unsupported path {}", url);
-    return X_E_FAIL;
-  }
-  std::string_view location =
-      std::string_view(url).substr(kSectionScheme.size());
-  const size_t comma = location.find(',');
-  uint32_t hmodule = 0;
-  if (comma == std::string_view::npos ||
-      std::from_chars(location.data(), location.data() + comma, hmodule, 16)
-              .ptr != location.data() + comma ||
-      !hmodule) {
-    return X_E_FAIL;
-  }
-  location.remove_prefix(comma + 1);
-  const size_t hash = location.find('#');
-  const std::string section(location.substr(0, hash));
-  const std::string_view file_name = hash == std::string_view::npos
-                                         ? std::string_view()
-                                         : location.substr(hash + 1);
-
+X_HRESULT LoadXuiStringTable(XModule& module, std::string_view section,
+                             std::string_view file_name, uint32_t* table_ptr) {
   auto memory = kernel_state()->memory();
-  auto module = XModule::GetFromHModule(kernel_state(),
-                                        memory->TranslateVirtual(hmodule));
   uint32_t section_data = 0;
   uint32_t section_size = 0;
-  if (!module ||
-      XFAILED(module->GetSection(section, &section_data, &section_size))) {
+  if (XFAILED(module.GetSection(section, &section_data, &section_size))) {
     return X_E_FAIL;
   }
   const std::span<const uint8_t> resource(
@@ -1663,10 +1633,8 @@ dword_result_t XuiLoadStringTableFromFile_entry(lpu16string_t path,
   *table_ptr = table;
   return X_E_SUCCESS;
 }
-DECLARE_XAM_EXPORT1(XuiLoadStringTableFromFile, kUI, kSketchy);
 
-pointer_result_t XuiLookupStringTableByIndex_entry(dword_t table,
-                                                   dword_t index) {
+uint32_t LookupXuiStringTable(uint32_t table, uint32_t index) {
   {
     std::lock_guard<std::mutex> lock(xui_lock);
     if (!xui_string_tables.contains(table)) {
@@ -1678,6 +1646,53 @@ pointer_result_t XuiLookupStringTableByIndex_entry(dword_t table,
     return 0;
   }
   return xe::load_and_swap<uint32_t>(table_data + 4 + index * 4);
+}
+
+dword_result_t XuiLoadStringTableFromFile_entry(lpu16string_t path,
+                                                lpdword_t table_ptr) {
+  if (!path || !table_ptr) {
+    return X_E_INVALIDARG;
+  }
+  // section://<module handle>,<section>#<file in its package>
+  const std::string url = xe::to_utf8(path.value());
+  constexpr std::string_view kSectionScheme = "section://";
+  if (!xe::utf8::starts_with_case(url, kSectionScheme)) {
+    XELOGW("XuiLoadStringTableFromFile: unsupported path {}", url);
+    return X_E_FAIL;
+  }
+  std::string_view location =
+      std::string_view(url).substr(kSectionScheme.size());
+  const size_t comma = location.find(',');
+  uint32_t hmodule = 0;
+  if (comma == std::string_view::npos ||
+      std::from_chars(location.data(), location.data() + comma, hmodule, 16)
+              .ptr != location.data() + comma ||
+      !hmodule) {
+    return X_E_FAIL;
+  }
+  location.remove_prefix(comma + 1);
+  const size_t hash = location.find('#');
+  const std::string section(location.substr(0, hash));
+  const std::string_view file_name = hash == std::string_view::npos
+                                         ? std::string_view()
+                                         : location.substr(hash + 1);
+
+  auto module = XModule::GetFromHModule(
+      kernel_state(), kernel_state()->memory()->TranslateVirtual(hmodule));
+  if (!module) {
+    return X_E_FAIL;
+  }
+  uint32_t table = *table_ptr;
+  const X_HRESULT result =
+      LoadXuiStringTable(*module, section, file_name, &table);
+  *table_ptr = table;
+  return result;
+}
+DECLARE_XAM_EXPORT1(XuiLoadStringTableFromFile, kUI, kSketchy);
+
+pointer_result_t XuiLookupStringTableByIndex_entry(dword_t table,
+                                                   dword_t index) {
+  return LookupXuiStringTable(table, index);
 }
 DECLARE_XAM_EXPORT1(XuiLookupStringTableByIndex, kUI, kImplemented);
 

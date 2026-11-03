@@ -12,6 +12,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 
 #include "xenia/kernel/xam/achievement_manager.h"
 #include "xenia/kernel/xam/app_manager.h"
@@ -81,6 +82,9 @@ class XamState {
 
   // The online schema XamGetOnlineSchema hands out, made on first use.
   uint32_t online_schema_address_ = 0;
+  // xam's string table XamLookupCommonStringByIndex reads, loaded on first use.
+  // 0 when it can't be loaded.
+  std::optional<uint32_t> common_string_table_;
 
  private:
   void LoadLanguageLocaleFallback();

@@ -8,6 +8,7 @@
  */
 
 #include <algorithm>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -1531,9 +1532,26 @@ dword_result_t XamSetDvrStorage_entry(
 DECLARE_XAM_EXPORT1(XamSetDvrStorage, kNone, kStub);
 
 dword_result_t XamLookupCommonStringByIndex_entry(dword_t string_index) {
-  return 0;
+  static std::mutex lock;
+  std::lock_guard<std::mutex> guard(lock);
+  auto& table = kernel_state()->xam_state()->common_string_table_;
+  if (!table) {
+    // They're in the xam section of the system UI skin.
+    constexpr std::string_view kSkinPath = "\\SystemRoot\\huduiskin.xex";
+    uint32_t loaded = 0;
+    object_ref<XModule> skin;
+    if (xboxkrnl::xeXexLoadImage(kSkinPath)) {
+      skin = kernel_state()->GetModule(kSkinPath, true);
+    }
+    if (!skin ||
+        XFAILED(LoadXuiStringTable(*skin, "xam", "xamstrings.xus", &loaded))) {
+      XELOGW("XamLookupCommonStringByIndex: no xam string table to read");
+    }
+    table = loaded;
+  }
+  return *table ? LookupXuiStringTable(*table, string_index) : 0;
 }
-DECLARE_XAM_EXPORT1(XamLookupCommonStringByIndex, kNone, kStub);
+DECLARE_XAM_EXPORT1(XamLookupCommonStringByIndex, kNone, kImplemented);
 
 dword_result_t XamLogLocalizationEtx_entry(dword_t error_code, dword_t unk) {
   if (error_code == 0x80300034) {
