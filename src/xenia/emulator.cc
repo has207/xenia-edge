@@ -159,6 +159,7 @@ DEFINE_string(gpu, "vulkan", "Graphics system. Use: " GPU_OPTIONS, "GPU");
 #endif
 
 DECLARE_bool(allow_plugins);
+DECLARE_bool(in_process_title_relaunch);
 
 DEFINE_path(xefu_path, "",
             "Folder with XeFu, the Xbox 360's original Xbox emulator: xbox.xex "
@@ -1878,6 +1879,17 @@ void Emulator::RelaunchTitle(const std::string& host_path,
   XELOGI("RelaunchTitle: relaunch complete");
 }
 
+bool Emulator::CanRelaunchInProcess() {
+  if (!cvars::in_process_title_relaunch) {
+    return false;
+  }
+#if XE_PLATFORM_WIN32
+  return true;
+#else
+  return kernel::GuestScheduler::enabled();
+#endif
+}
+
 void Emulator::ResetTitle() {
   // Drops relaunches requested before the reset.
   ++relaunch_requests_;
@@ -2237,7 +2249,10 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   // their faults are expected, so park them instead of crashing. The teardown
   // thread isn't a guest thread, so its own faults still surface.
   if (relaunching_ && kernel::XThread::IsInThread()) {
-    DivertToThunk(ex, &HaltDuringRelaunchThunk);
+    // A sleeping fiber would hold the dispatch thread the shutdown joins.
+    DivertToThunk(ex, kernel::XThread::GetCurrentFiberThread()
+                          ? &HaltCrashedFiberThunk
+                          : &HaltDuringRelaunchThunk);
     return true;
   }
 
