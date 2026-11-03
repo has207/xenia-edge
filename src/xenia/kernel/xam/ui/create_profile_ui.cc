@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/xam/ui/create_profile_ui.h"
 #include "xenia/emulator.h"
+#include "xenia/kernel/xam/xam_state.h"
 
 namespace xe {
 namespace kernel {

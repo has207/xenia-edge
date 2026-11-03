@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/xam/ui/gamercard_ui.h"
 #include "xenia/base/png_utils.h"
+#include "xenia/kernel/xam/xam_state.h"
 #include "xenia/ui/file_picker.h"
 
 namespace xe {

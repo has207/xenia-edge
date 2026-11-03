@@ -10,6 +10,7 @@
 #ifndef XENIA_KERNEL_XAM_UI_GAMERCARD_UI_H_
 #define XENIA_KERNEL_XAM_UI_GAMERCARD_UI_H_
 
+#include "xenia/kernel/xam/user_settings.h"
 #include "xenia/kernel/xam/xam_ui.h"
 
 namespace xe {

@@ -11,6 +11,7 @@
 #define XENIA_KERNEL_XBDM_XBDM_MSIC_H_
 
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/util/xfiletime.h"
 #include "xenia/kernel/xam/xam.h"
 
 namespace xe {

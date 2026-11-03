@@ -20,6 +20,7 @@
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/crypto_utils.h"
+#include "xenia/kernel/xam/xam_state.h"
 #include "xenia/kernel/xboxkrnl/xecrypt_sha.h"
 #include "xenia/vfs/devices/host_path_device.h"
 

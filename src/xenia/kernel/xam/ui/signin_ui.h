@@ -10,6 +10,7 @@
 #ifndef XENIA_KERNEL_XAM_UI_SIGNIN_UI_H_
 #define XENIA_KERNEL_XAM_UI_SIGNIN_UI_H_
 
+#include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/xam_ui.h"
 
 namespace xe {

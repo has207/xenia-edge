@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xam/ui/signin_ui.h"
 
+#include "xenia/kernel/xam/xam_state.h"
+
 namespace xe {
 namespace kernel {
 namespace xam {

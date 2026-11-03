@@ -22,6 +22,7 @@
 #include "xenia/kernel/xam/user_profile.h"
 #include "xenia/kernel/xam/user_settings.h"
 #include "xenia/kernel/xam/xam_private.h"
+#include "xenia/kernel/xam/xam_state.h"
 #include "xenia/kernel/xenumerator.h"
 #include "xenia/kernel/xsession.h"
 #include "xenia/xbox.h"

@@ -11,6 +11,7 @@
 
 #include "xenia/emulator.h"
 #include "xenia/kernel/xam/ui/game_achievements_ui.h"
+#include "xenia/kernel/xam/xam_state.h"
 
 #include "xenia/app/emulator_window.h"
 #include "xenia/base/system.h"

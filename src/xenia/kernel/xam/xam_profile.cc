@@ -11,6 +11,7 @@
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/xam_private.h"
+#include "xenia/kernel/xam/xam_state.h"
 
 namespace xe {
 namespace kernel {

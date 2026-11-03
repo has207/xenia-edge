@@ -14,6 +14,7 @@
 
 #include "xenia/base/byte_order.h"
 #include "xenia/base/string.h"
+#include "xenia/base/string_util.h"
 #include "xenia/xbox.h"
 
 namespace xe {

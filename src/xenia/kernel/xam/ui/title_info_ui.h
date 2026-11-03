@@ -10,6 +10,8 @@
 #ifndef XENIA_KERNEL_XAM_UI_TITLE_INFO_UI_H_
 #define XENIA_KERNEL_XAM_UI_TITLE_INFO_UI_H_
 
+#include "xenia/kernel/xam/profile_manager.h"
+#include "xenia/kernel/xam/user_tracker.h"
 #include "xenia/kernel/xam/xam_ui.h"
 
 namespace xe {

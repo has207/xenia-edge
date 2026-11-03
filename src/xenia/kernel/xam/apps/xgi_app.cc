@@ -10,6 +10,7 @@
 #include "xenia/kernel/xam/apps/xgi_app.h"
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/xam/user_settings.h"
+#include "xenia/kernel/xam/xam_state.h"
 #include "xenia/kernel/xam/xdbf/spa_info.h"
 #include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xsession.h"

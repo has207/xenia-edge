@@ -11,6 +11,7 @@
 #define XENIA_KERNEL_XAM_XAM_UI_H_
 
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/xam.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
 #include "xenia/ui/imgui_gamepad_dialog.h"

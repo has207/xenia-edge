@@ -18,9 +18,11 @@
 #include "xenia/emulator.h"
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/guest_scheduler.h"
+#include "xenia/kernel/smc.h"
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/xam_state.h"
 #include "xenia/kernel/xam/xam_system_link.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
@@ -212,6 +214,18 @@ void KernelState::ShutdownDispatchThread() {
 }
 
 KernelState* KernelState::shared() { return shared_kernel_state_; }
+
+xam::AchievementManager* KernelState::achievement_manager() const {
+  return xam_state()->achievement_manager();
+}
+
+xam::AppManager* KernelState::app_manager() const {
+  return xam_state()->app_manager();
+}
+
+xam::ContentManager* KernelState::content_manager() const {
+  return xam_state()->content_manager();
+}
 
 uint32_t KernelState::title_id() const {
   if (!executable_module_) {

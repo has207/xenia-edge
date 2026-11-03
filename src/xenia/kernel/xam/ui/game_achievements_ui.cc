@@ -11,6 +11,7 @@
 
 #include "xenia/hid/input.h"
 #include "xenia/hid/input_system.h"
+#include "xenia/kernel/xam/xam_state.h"
 
 namespace xe {
 namespace kernel {

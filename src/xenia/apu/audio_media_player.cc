@@ -8,6 +8,9 @@
  */
 
 #include "xenia/apu/audio_media_player.h"
+
+#include <random>
+
 #include "xenia/apu/audio_driver.h"
 #include "xenia/apu/audio_system.h"
 #include "xenia/apu/pacing_audio_driver.h"

@@ -12,6 +12,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <random>
 #include <span>
 #include <string>
 #include <string_view>
