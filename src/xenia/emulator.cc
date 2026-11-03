@@ -42,6 +42,7 @@
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/guest_scheduler.h"
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/smc.h"
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xam/achievement_manager.h"
@@ -901,23 +902,36 @@ bool Emulator::UsesEmulatedDrive() const {
 }
 
 void Emulator::ChangeDisc() {
+  // The tray is open already, waiting on the disc being picked.
+  if (picking_disc_.exchange(true)) {
+    return;
+  }
   EjectDisc();
-  if (!disc_picker_ || !display_window_) {
-    return;
-  }
-  // The fiber parks while the picker is up, so the guest threads sharing its
-  // CPU keep running.
-  std::filesystem::path path;
-  xe::threading::Fence fence;
-  if (!display_window_->app_context().CallInUIThread([this, &path, &fence]() {
-        path = disc_picker_();
-        fence.Signal();
-      })) {
-    return;
-  }
-  kernel::GuestScheduler::WaitOnFence(fence);
-  if (!path.empty()) {
-    InsertDisc(path);
+  // The title runs on while the app picks, so it sees the drive go empty
+  // between the two discs.
+  const uint64_t launch = relaunch_requests_.load();
+  const auto close_tray = [this]() {
+    kernel_state_->smc()->SetTrayState(X_DVD_TRAY_STATE::CLOSED);
+    picking_disc_ = false;
+  };
+  if (!disc_picker_ || !display_window_ ||
+      !display_window_->app_context().CallInUIThread(
+          [this, close_tray, launch]() {
+            const std::filesystem::path path = disc_picker_();
+            // The pick is dropped for a title launched meanwhile. A launch
+            // under way holds the lock while it waits on this thread.
+            std::unique_lock<std::recursive_mutex> lock(launch_mutex_,
+                                                        std::try_to_lock);
+            if (!lock.owns_lock() || relaunch_requests_.load() != launch) {
+              picking_disc_ = false;
+              return;
+            }
+            if (!path.empty()) {
+              InsertDisc(path);
+            }
+            close_tray();
+          })) {
+    close_tray();
   }
 }
 

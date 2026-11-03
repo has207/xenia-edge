@@ -64,7 +64,6 @@ void SystemManagementController::MoveTray(bool open) {
   // A game keeps its disc.
   if (open && kernel_state()->emulator()->UsesEmulatedDrive()) {
     kernel_state()->emulator()->ChangeDisc();
-    SetTrayState(X_DVD_TRAY_STATE::CLOSED);
   }
 }
 

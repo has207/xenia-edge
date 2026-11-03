@@ -506,7 +506,8 @@ class Emulator {
   // its own disc or none.
   bool UsesEmulatedDrive() const;
   // Swaps the disc in the drive for one the app picks, leaving the drive empty
-  // when it picks none.
+  // when it picks none. Returns with the drive empty while the app picks and
+  // closes the tray when it's done.
   void ChangeDisc();
   // Takes whatever disc is in the drive out of it.
   void EjectDisc();
@@ -614,6 +615,7 @@ class Emulator {
   mutable std::mutex inserted_disc_mutex_;
   std::optional<InsertedDisc> inserted_disc_;
   DiscPicker disc_picker_;
+  std::atomic<bool> picking_disc_{false};
   // Set by the UI, cleared by whichever thread launches.
   mutable std::mutex running_xbe_mutex_;
   std::optional<vfs::XbeMetadata> running_xbe_;
