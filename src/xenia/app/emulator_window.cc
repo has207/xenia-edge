@@ -175,7 +175,6 @@
 
 DECLARE_bool(debug);
 DECLARE_path(target);
-DECLARE_bool(in_process_title_relaunch);
 DECLARE_bool(discord);
 
 DECLARE_string(hid);
@@ -2036,13 +2035,7 @@ bool EmulatorWindow::StopTitleAndReturnToList() {
   }
   target_pending_launch_ = false;
   // When in-process relaunch is off, spawn a fresh process with no target.
-  // macOS always spawns (see XamLoaderLaunchTitle).
-#if XE_PLATFORM_MAC
-  const bool in_process = false;
-#else
-  const bool in_process = cvars::in_process_title_relaunch;
-#endif
-  if (!in_process) {
+  if (!Emulator::CanRelaunchInProcess()) {
     if (auto cb = emulator_->on_launch_new_title()) {
       cb(/*host_path=*/{}, /*launch_module=*/{}, /*launch_flags=*/0,
          /*launch_data=*/{}, /*xbox_disc=*/{}, /*package=*/{});
@@ -3731,9 +3724,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
       }
     }
     auto host_path = xe::path_to_utf8(abs_path);
-    // macOS always relaunches out-of-process (see XamLoaderLaunchTitle).
-#if !XE_PLATFORM_MAC
-    if (cvars::in_process_title_relaunch) {
+    if (Emulator::CanRelaunchInProcess()) {
       // Detached non-guest thread: RelaunchTitle terminates all guest threads.
       auto* emulator = emulator_;
       std::thread([emulator, host_path = std::move(host_path)]() mutable {
@@ -3743,7 +3734,6 @@ xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
       }).detach();
       return X_STATUS_SUCCESS;
     }
-#endif  // !XE_PLATFORM_MAC
     // Otherwise spawn a fresh process (same path as the kernel relaunch).
     auto cb = emulator_->on_launch_new_title();
     if (cb) {
@@ -3777,12 +3767,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
     return X_STATUS_UNSUCCESSFUL;
   }
 
-  // macOS always relaunches out-of-process (see XamLoaderLaunchTitle).
-#if XE_PLATFORM_MAC
-  bool spawn_fresh = true;
-#else
-  bool spawn_fresh = !cvars::in_process_title_relaunch;
-#endif
+  bool spawn_fresh = !Emulator::CanRelaunchInProcess();
 #if XE_PLATFORM_LINUX
   // gamemoderun wraps the process via LD_PRELOAD (which fork inherits) and an
   // in-process launch can't add or drop it. Like the gpu/apu respawn below,

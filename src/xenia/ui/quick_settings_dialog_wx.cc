@@ -27,6 +27,8 @@
 #include "xenia/config.h"
 #include "xenia/ui/config_helpers.h"
 
+DECLARE_bool(guest_scheduler);
+
 namespace xe {
 namespace app {
 
@@ -328,10 +330,12 @@ void QuickSettingsDialog::Build() {
     auto* in_proc_label = add_label(box, _("In-Process Title Relaunch:"));
     remember_label("in_process_title_relaunch", in_proc_label);
     add_form_row(grid, in_proc_label, in_proc);
-#if XE_PLATFORM_MAC
-    // macOS always relaunches out-of-process; the cvar has no effect there.
-    in_proc->Disable();
-    in_proc->SetToolTip(_("Not supported on macOS"));
+#if !XE_PLATFORM_WIN32
+    // Without the guest scheduler titles always relaunch out-of-process here.
+    if (!cvars::guest_scheduler) {
+      in_proc->Disable();
+      in_proc->SetToolTip(_("Needs the guest scheduler"));
+    }
 #endif
 
     auto* lang = add_combo(box, "user_language", find_options("user_language"));
