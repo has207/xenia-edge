@@ -975,6 +975,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
 
   emulator_->set_on_exit_to_dashboard(
       [this]() { return StopTitleAndReturnHome(); });
+  emulator_->set_on_power_off([this]() { return StopTitleAndReturnToList(); });
 
   // Register callback for disc swap to update title bar
   emulator_->set_on_disc_swap([this](uint8_t) {

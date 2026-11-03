@@ -1036,20 +1036,28 @@ void KernelState::TerminateTitle() {
   std::quick_exit(EXIT_SUCCESS);
 }
 
-void KernelState::ExitToDashboard() {
-  XELOGI("KernelState::ExitToDashboard");
-  if (auto on_exit_to_dashboard = emulator_->on_exit_to_dashboard()) {
-    if (on_exit_to_dashboard()) {
-      // Park off guest code until the in-process reset terminates us; Suspend
-      // can return on POSIX, so loop rather than fall through to
-      // TerminateTitle.
-      auto* current_thread = XThread::GetCurrentThread();
-      current_thread->Suspend(nullptr);
-      while (true) {
-        xe::threading::NanoSleep(int64_t(1'000'000'000));
-      }
+// Doesn't return when the host UI's handler took the title down.
+static void HandOffToHostUI(const Emulator::ExitToDashboardCallback& handler) {
+  if (handler && handler()) {
+    // Park off guest code until the host's reset or exit ends us; Suspend can
+    // return on POSIX, so loop rather than fall through to TerminateTitle.
+    auto* current_thread = XThread::GetCurrentThread();
+    current_thread->Suspend(nullptr);
+    while (true) {
+      xe::threading::NanoSleep(int64_t(1'000'000'000));
     }
   }
+}
+
+void KernelState::ExitToDashboard() {
+  XELOGI("KernelState::ExitToDashboard");
+  HandOffToHostUI(emulator_->on_exit_to_dashboard());
+  TerminateTitle();
+}
+
+void KernelState::PowerOff() {
+  XELOGI("KernelState::PowerOff");
+  HandOffToHostUI(emulator_->on_power_off());
   TerminateTitle();
 }
 

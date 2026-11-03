@@ -291,6 +291,10 @@ class KernelState {
   // when it registered a handler, otherwise terminates the title.
   // This DOES NOT RETURN.
   void ExitToDashboard();
+  // ExitToDashboard for a title that powers off, with the host UI's power off
+  // handler.
+  // This DOES NOT RETURN.
+  void PowerOff();
 
   // Gracefully stops the dispatch thread. Call before force-terminating
   // threads to avoid corrupting the CV it's blocked on.

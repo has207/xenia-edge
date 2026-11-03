@@ -560,6 +560,12 @@ class Emulator {
     on_exit_to_dashboard_ = std::move(callback);
   }
 
+  // Called when the game powers off, returning as on_exit_to_dashboard does.
+  ExitToDashboardCallback on_power_off() const { return on_power_off_; }
+  void set_on_power_off(ExitToDashboardCallback callback) {
+    on_power_off_ = std::move(callback);
+  }
+
   // Called when XamSwapDisc successfully swaps to a new disc.
   // Parameters: new_disc_number
   using DiscSwapCallback = std::function<void(uint8_t)>;
@@ -681,6 +687,7 @@ class Emulator {
 
   LaunchNewTitleCallback on_launch_new_title_;
   ExitToDashboardCallback on_exit_to_dashboard_;
+  ExitToDashboardCallback on_power_off_;
   DiscSwapCallback on_disc_swap_;
 };
 
