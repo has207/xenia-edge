@@ -189,6 +189,12 @@ DEFINE_transient_bool(return_to_ui, false,
                       "when launching from UI.",
                       "General");
 
+DEFINE_bool(boot_to_dashboard, false,
+            "Start the installed dashboard after the boot animation instead of "
+            "showing the game list, and go back to the dashboard when a title "
+            "exits.",
+            "General");
+
 DEFINE_bool(fullscreen, false, "Whether to launch the emulator in fullscreen.",
             "Display");
 
@@ -922,8 +928,10 @@ void EmulatorWindow::OnEmulatorInitialized() {
             launch_data.length(), xe::strip_pii(xbox_disc), package);
 
         std::vector<std::string> args;
-        // Preserve return_to_ui through the title-to-title chain
-        if (cvars::return_to_ui) {
+        // Preserve return_to_ui through the title-to-title chain. The game list
+        // gets it too, which keeps boot_to_dashboard from starting the
+        // dashboard in its place.
+        if (cvars::return_to_ui || host_path.empty()) {
           args.push_back("--return_to_ui=true");
         }
         // Preserve fullscreen state, except when returning to UI (no game).
@@ -966,7 +974,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
       });
 
   emulator_->set_on_exit_to_dashboard(
-      [this]() { return StopTitleAndReturnToList(); });
+      [this]() { return StopTitleAndReturnHome(); });
 
   // Register callback for disc swap to update title bar
   emulator_->set_on_disc_swap([this](uint8_t) {
@@ -976,6 +984,12 @@ void EmulatorWindow::OnEmulatorInitialized() {
   // The dashboard's open tray asks for a disc the way File > Open asks for a
   // title.
   emulator_->set_disc_picker([this]() { return PickTitleFile(); });
+
+  // File > Close of a title in its own process starts a new one for the list.
+  if (cvars::target.empty() && !cvars::return_to_ui &&
+      !emulator_->is_title_open() && DashboardIsHome()) {
+    StartDashboard();
+  }
 }
 
 void EmulatorWindow::EmulatorWindowListener::OnClosing(ui::UIEvent& e) {
@@ -1733,13 +1747,15 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
 
   context_menu->AddSeparator();
 
-  context_menu->AddAction("Return to Game List", [this, input_sys]() {
+  const char* return_label =
+      DashboardIsHome() ? "Return to Dashboard" : "Return to Game List";
+  context_menu->AddAction(return_label, [this, input_sys, return_label]() {
     new ui::ImGuiConfirmDialog(
-        imgui_drawer(), "Return to Game List",
+        imgui_drawer(), return_label,
         "Really stop title? Unsaved progress will be lost.",
         [this](bool confirmed) {
           if (confirmed) {
-            StopTitleAndReturnToList();
+            StopTitleAndReturnHome();
           }
         },
         input_sys);
@@ -1916,6 +1932,12 @@ std::filesystem::path EmulatorWindow::GetInstalledDashboardPath() const {
   return emulator_->system_files_path() / "flash" / "dash.xex";
 }
 
+bool EmulatorWindow::DashboardIsHome() const {
+  std::error_code ec;
+  return cvars::boot_to_dashboard &&
+         std::filesystem::exists(GetInstalledDashboardPath(), ec);
+}
+
 void EmulatorWindow::FileAddGames() {
   auto file_picker = xe::ui::FilePicker::Create();
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
@@ -2062,6 +2084,24 @@ bool EmulatorWindow::StopTitleAndReturnToList() {
     });
   }).detach();
   return true;
+}
+
+bool EmulatorWindow::StopTitleAndReturnHome() {
+  if (!DashboardIsHome()) {
+    return StopTitleAndReturnToList();
+  }
+  if (!emulator_->is_title_open()) {
+    return false;
+  }
+  // Deferred, since the context menu asks from inside a draw. The dashboard's
+  // launch clears the file XeFu found missing, so it's taken first.
+  return app_context_.CallInUIThreadDeferred(
+      [this, missing_xefu_file = emulator_->TakeMissingXeFuFile()]() {
+        RunTitle(GetInstalledDashboardPath());
+        if (!missing_xefu_file.empty()) {
+          ShowMissingXeFuFile(missing_xefu_file);
+        }
+      });
 }
 
 void EmulatorWindow::OnLaunchFailed() {

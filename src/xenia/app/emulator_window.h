@@ -123,6 +123,8 @@ class EmulatorWindow {
   // Starts the installed dashboard after the boot animation.
   void StartDashboard();
   std::filesystem::path GetInstalledDashboardPath() const;
+  // Whether a title leaves for the dashboard rather than the game list.
+  bool DashboardIsHome() const;
   // Tells the user which XeFu file an original Xbox game was missing and where
   // to put it.
   void ShowMissingXeFuFile(const std::string& file);
@@ -317,6 +319,9 @@ class EmulatorWindow {
   // confirmation. Returns true if the title is being reset in-process, false
   // if a process swap was scheduled (or no title is open).
   bool StopTitleAndReturnToList();
+  // StopTitleAndReturnToList, or with DashboardIsHome, starts the dashboard in
+  // place of the title. Returns true when the dashboard is on its way.
+  bool StopTitleAndReturnHome();
 };
 
 }  // namespace app
