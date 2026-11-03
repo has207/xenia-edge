@@ -1256,6 +1256,10 @@ void UserModule::Dump() {
 }
 
 void UserModule::CalculateHash() {
+  // Resources alone have no code to hash.
+  if (!xex_module()->has_code()) {
+    return;
+  }
   const BaseHeap* module_heap =
       kernel_state_->memory()->LookupHeap(xex_module()->base_address());
 

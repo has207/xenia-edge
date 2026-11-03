@@ -240,6 +240,8 @@ class XexModule : public xe::cpu::Module {
   }
 
   bool is_valid_executable() const;
+  // A module of resources alone has no code, nor a PE image.
+  bool has_code() const;
 
   bool is_patch() const {
     assert_not_null(xex_header());
