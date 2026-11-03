@@ -447,11 +447,14 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
     // Handle repeating
     auto guest_now = Clock::QueryGuestUptimeMillis();
     static_assert(HID_SDL_REPEAT_DELAY >= HID_SDL_REPEAT_RATE);
-    if (last.repeat_state == RepeatState::Waiting &&
+    // A button let go while the title wasn't polling gets its up event below
+    // rather than a repeat.
+    const bool repeat_held = (curr_butts >> last.repeat_butt_idx) & 1;
+    if (repeat_held && last.repeat_state == RepeatState::Waiting &&
         (last.repeat_time + HID_SDL_REPEAT_DELAY < guest_now)) {
       last.repeat_state = RepeatState::Repeating;
     }
-    if (last.repeat_state == RepeatState::Repeating &&
+    if (repeat_held && last.repeat_state == RepeatState::Repeating &&
         (last.repeat_time + HID_SDL_REPEAT_RATE < guest_now)) {
       last.repeat_time = guest_now;
       ui::VirtualKey vk = kVkLookup.at(last.repeat_butt_idx);
