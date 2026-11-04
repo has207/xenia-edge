@@ -47,6 +47,7 @@ typedef uint32_t X_STATUS;
 #define X_STATUS_NO_MORE_FILES                          ((X_STATUS)0x80000006L)
 #define X_STATUS_UNSUCCESSFUL                           ((X_STATUS)0xC0000001L)
 #define X_STATUS_NOT_IMPLEMENTED                        ((X_STATUS)0xC0000002L)
+#define X_STATUS_INVALID_SYSTEM_SERVICE                 ((X_STATUS)0xC000001CL)
 #define X_STATUS_INVALID_INFO_CLASS                     ((X_STATUS)0xC0000003L)
 #define X_STATUS_INFO_LENGTH_MISMATCH                   ((X_STATUS)0xC0000004L)
 #define X_STATUS_ACCESS_VIOLATION                       ((X_STATUS)0xC0000005L)

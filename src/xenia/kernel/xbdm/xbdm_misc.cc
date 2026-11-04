@@ -230,6 +230,13 @@ dword_result_t DmGetSystemInfo_entry(pointer_t<XBDM_SYSTEM_INFO> info) {
 
   info->base_kernel_version.build = kBaseKernelBuildVersion;
   info->kernel_version.build = kernel_state()->GetKernelVersion()->build;
+  // The rest was left as the caller had it. The Silverlight CLR (xcoreclr.dll
+  // 0x84F0B55C) tests flags bit 0x02000000 and only uses its code cache
+  // modules, through XexReserveCodeBuffer, when it is clear; a devkit's real
+  // values are not known here.
+  info->xdk_version.major = info->xdk_version.minor = 0;
+  info->xdk_version.qfe = info->xdk_version.build = 0;
+  info->flags = 0;
 
   return XBDM_SUCCESSFUL;
 }
