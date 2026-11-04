@@ -1177,6 +1177,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     set(wxUSE_LIBJPEG OFF CACHE BOOL "" FORCE)
     set(wxUSE_LIBWEBP OFF CACHE BOOL "" FORCE)
     set(wxUSE_NANOSVG OFF CACHE BOOL "" FORCE)
+    set(wxUSE_APPINDICATOR OFF CACHE BOOL "" FORCE)
     add_subdirectory(wxWidgets)
     if(WIN32)
       # Generic file dialog (not built by default on MSW) — used as a Wine
