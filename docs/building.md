@@ -136,7 +136,7 @@ You will also need some development libraries. To get them on an Ubuntu system:
 
 ```sh
 sudo apt-get install build-essential mesa-vulkan-drivers libc++-dev libc++abi-dev liblz4-dev libvulkan-dev libx11-xcb-dev clang-21 llvm-21 ninja-build libfontconfig1-dev \
-  libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+  libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libcurl4-openssl-dev \
   libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxss-dev libxkbcommon-dev libxfixes-dev
 ```
 

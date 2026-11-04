@@ -1122,6 +1122,11 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
       find_package(OpenGL REQUIRED)
       find_package(ZLIB REQUIRED)
       find_package(EXPAT REQUIRED)
+      if(NOT APPLE)
+        # wxWebRequest's only Linux backend. Without it wx drops wxWebRequest
+        # and with it wx::net.
+        find_package(CURL REQUIRED)
+      endif()
       # Tag bare IMPORTED_LOCATION imports with Release before wx is added —
       # wx references these targets during its own configure pass, where
       # CMAKE_MAP_IMPORTED_CONFIG_DEBUG="Release;NOCONFIG" can't resolve a
@@ -1178,6 +1183,12 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     set(wxUSE_LIBWEBP OFF CACHE BOOL "" FORCE)
     set(wxUSE_NANOSVG OFF CACHE BOOL "" FORCE)
     set(wxUSE_APPINDICATOR OFF CACHE BOOL "" FORCE)
+    # Forced since wx caches these as OFF when it can't find a backend, which
+    # would outlive installing one.
+    set(wxUSE_WEBREQUEST ON CACHE BOOL "" FORCE)
+    if(UNIX AND NOT APPLE)
+      set(wxUSE_WEBREQUEST_CURL ON CACHE BOOL "" FORCE)
+    endif()
     add_subdirectory(wxWidgets)
     if(WIN32)
       # Generic file dialog (not built by default on MSW) — used as a Wine
@@ -1225,7 +1236,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     set_property(DIRECTORY PROPERTY COMPILE_OPTIONS
         "${_xe_save_thirdparty_options}")
     add_library(xe-wxWidgets INTERFACE)
-    target_link_libraries(xe-wxWidgets INTERFACE wx::aui wx::adv wx::core wx::base)
+    target_link_libraries(xe-wxWidgets INTERFACE
+        wx::aui wx::adv wx::core wx::net wx::base)
     # Consumers including wx headers must agree on wxDEBUG_LEVEL with the
     # compiled wx libraries to keep inline assert expansions consistent.
     target_compile_definitions(xe-wxWidgets INTERFACE

@@ -32,15 +32,14 @@
 #include <shellapi.h>
 #include <softpub.h>
 #include <wincrypt.h>
-#include <winhttp.h>
 #include <wintrust.h>
 
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
 #include "xenia/config.h"
+#include "xenia/ui/http_download.h"
 
-#pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "wintrust.lib")
@@ -78,17 +77,17 @@ namespace {
 // Pinned DirectX Shader Compiler redistributable. Only dxil.dll is taken from
 // it, the signer for the DXIL Mesa emits. Update all of these together when
 // bumping: the SHA-256 is the GitHub release asset's "digest" field.
-constexpr wchar_t kDxcUrl[] =
-    L"https://github.com/microsoft/DirectXShaderCompiler/releases/download/"
-    L"v1.9.2602.24/dxc_2026_05_27.zip";
+constexpr char kDxcUrl[] =
+    "https://github.com/microsoft/DirectXShaderCompiler/releases/download/"
+    "v1.9.2602.24/dxc_2026_05_27.zip";
 constexpr char kDxcSha256[] =
     "cf658aacf070d3045e31b8f1f8a696c2945f37c1095019481ef7c513368db3b4";
 
 // Pinned DirectX 12 Agility SDK redistributable (a NuGet .nupkg = zip). Version
 // must match the D3D12SDKVersion export in windowed_app_main_win (1.619.3 ->
 // 619).
-constexpr wchar_t kAgilityUrl[] =
-    L"https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.619.3";
+constexpr char kAgilityUrl[] =
+    "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.619.3";
 constexpr char kAgilitySha256[] =
     "43a7d5a3973812eb4b42623fae5275c790a005b8e48b8d7f5bb43cef39e073c5";
 
@@ -97,9 +96,9 @@ constexpr char kAgilitySha256[] =
 // kVulkanLoaderEntries zip path together when bumping the URL version. The zip
 // ships only x64 and x86 loaders, no arm64.
 #if !XE_ARCH_ARM64
-constexpr wchar_t kVulkanLoaderUrl[] =
-    L"https://sdk.lunarg.com/sdk/download/1.4.350.0/windows/"
-    L"vulkan-runtime-components.zip";
+constexpr char kVulkanLoaderUrl[] =
+    "https://sdk.lunarg.com/sdk/download/1.4.350.0/windows/"
+    "vulkan-runtime-components.zip";
 constexpr char kVulkanLoaderSha256[] =
     "23ce69f32cef3e2799617e2b1776cd0c71030d23a91f8375821cc40d76b185b9";
 #endif
@@ -144,13 +143,13 @@ constexpr RedistEntry kVulkanLoaderEntries[] = {
 // resolves to the latest build, so there's no stable SHA-256 to pin; the
 // download is validated by its Microsoft Authenticode signature instead.
 #if XE_ARCH_ARM64
-constexpr wchar_t kVCRedistUrl[] =
-    L"https://aka.ms/vs/17/release/vc_redist.arm64.exe";
+constexpr char kVCRedistUrl[] =
+    "https://aka.ms/vs/17/release/vc_redist.arm64.exe";
 constexpr wchar_t kVCRuntimeRegKey[] =
     L"SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\arm64";
 #else
-constexpr wchar_t kVCRedistUrl[] =
-    L"https://aka.ms/vs/17/release/vc_redist.x64.exe";
+constexpr char kVCRedistUrl[] =
+    "https://aka.ms/vs/17/release/vc_redist.x64.exe";
 constexpr wchar_t kVCRuntimeRegKey[] =
     L"SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64";
 #endif
@@ -234,97 +233,6 @@ void RememberVulkanDecline() {
   config::SaveConfig();
 }
 #endif
-
-bool DownloadToMemory(const wchar_t* url, std::vector<uint8_t>& out) {
-  out.clear();
-
-  URL_COMPONENTS components = {};
-  components.dwStructSize = sizeof(components);
-  wchar_t host[256] = {};
-  wchar_t path[1024] = {};
-  components.lpszHostName = host;
-  components.dwHostNameLength = DWORD(xe::countof(host));
-  components.lpszUrlPath = path;
-  components.dwUrlPathLength = DWORD(xe::countof(path));
-  if (!WinHttpCrackUrl(url, 0, 0, &components)) {
-    XELOGE("Download: failed to parse URL (error {})", GetLastError());
-    return false;
-  }
-
-  HINTERNET session =
-      WinHttpOpen(L"xenia-edge", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                  WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-  if (!session) {
-    XELOGE("Download: WinHttpOpen failed (error {})", GetLastError());
-    return false;
-  }
-  WinHttpSetTimeouts(session, 15000, 15000, 30000, 60000);
-
-  bool success = false;
-  HINTERNET connect = WinHttpConnect(session, host, components.nPort, 0);
-  if (connect) {
-    DWORD flags =
-        components.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
-    HINTERNET request =
-        WinHttpOpenRequest(connect, L"GET", path, nullptr, WINHTTP_NO_REFERER,
-                           WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-    if (request) {
-      if (WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                             WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
-          WinHttpReceiveResponse(request, nullptr)) {
-        DWORD status = 0;
-        DWORD status_size = sizeof(status);
-        WinHttpQueryHeaders(
-            request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-            WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_size,
-            WINHTTP_NO_HEADER_INDEX);
-        if (status == 200) {
-          success = true;
-          for (;;) {
-            DWORD available = 0;
-            if (!WinHttpQueryDataAvailable(request, &available)) {
-              XELOGE("Download: WinHttpQueryDataAvailable failed (error {})",
-                     GetLastError());
-              success = false;
-              break;
-            }
-            if (!available) {
-              break;
-            }
-            size_t offset = out.size();
-            out.resize(offset + available);
-            DWORD read = 0;
-            if (!WinHttpReadData(request, out.data() + offset, available,
-                                 &read)) {
-              XELOGE("Download: WinHttpReadData failed (error {})",
-                     GetLastError());
-              success = false;
-              break;
-            }
-            out.resize(offset + read);
-            if (!read) {
-              break;
-            }
-          }
-        } else {
-          XELOGE("Download: HTTP status {}", status);
-        }
-      } else {
-        XELOGE("Download: request failed (error {})", GetLastError());
-      }
-      WinHttpCloseHandle(request);
-    }
-    WinHttpCloseHandle(connect);
-  } else {
-    XELOGE("Download: WinHttpConnect failed (error {})", GetLastError());
-  }
-  WinHttpCloseHandle(session);
-
-  if (!success) {
-    out.clear();
-  }
-  return success;
-}
 
 bool VerifySha256(const std::vector<uint8_t>& data, const char* expected_hex) {
   uint8_t digest[32];
@@ -552,11 +460,11 @@ void RelaunchAndExit() {
 // Downloads `url`, verifies it against the expected SHA-256, and extracts the
 // given entries into out_dir. Shows an error dialog and returns false on any
 // failure.
-bool DownloadAndExtract(const wchar_t* url, const char* sha256_hex,
+bool DownloadAndExtract(const char* url, const char* sha256_hex,
                         const RedistEntry* entries, size_t entry_count,
                         const std::filesystem::path& out_dir) {
   std::vector<uint8_t> package;
-  if (!DownloadToMemory(url, package)) {
+  if (!HttpDownloader().DownloadToMemory(url, package)) {
     ShowError(
         _("Download failed. Check your internet connection and try again."));
     return false;
@@ -788,7 +696,7 @@ bool EnsureVCRuntime() {
 
   XELOGI("Downloading the Microsoft Visual C++ runtime from Microsoft...");
   std::vector<uint8_t> installer;
-  if (!DownloadToMemory(kVCRedistUrl, installer)) {
+  if (!HttpDownloader().DownloadToMemory(kVCRedistUrl, installer)) {
     ShowError(
         _("Download failed. Check your internet connection and try again."));
     return false;
