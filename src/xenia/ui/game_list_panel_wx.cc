@@ -495,6 +495,17 @@ void GameListPanel::MarkPlayed(const LibraryKey& key) {
 }
 
 void GameListPanel::RefreshEntry(const LibraryKey& key) {
+  auto* library = emulator_window_ ? emulator_window_->game_library() : nullptr;
+  const LibraryEntry* stored = library ? library->Find(key) : nullptr;
+  for (auto& entry : entries_) {
+    if (stored && entry.key() == key && entry.title_name != stored->name) {
+      // The name labels the card and places it in the sort and filter, so the
+      // cards are laid out again, keeping their art.
+      entry.title_name = stored->name;
+      Repopulate();
+      return;
+    }
+  }
   // Cards don't show the content type, only the pane does.
   const Entry* entry = SelectedEntry();
   if (entry && entry->key() == key) {

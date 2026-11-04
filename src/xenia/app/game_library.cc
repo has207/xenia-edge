@@ -72,6 +72,25 @@ static void NormalizeDefault(LibraryEntry& entry) {
   }
 }
 
+// The name a release without one takes from its files: theirs, else the
+// file's, or its folder's for a file named default, which says nothing.
+static std::string NameFromFiles(const GameFileInfo* info,
+                                 const std::filesystem::path& path) {
+  if (info && !info->title_name.empty()) {
+    return info->title_name;
+  }
+  if (info && !info->display_name.empty()) {
+    return info->display_name;
+  }
+  auto file = path.stem();
+  // A drive's root has no folder name.
+  if (xe::utf8::equal_case(xe::path_to_utf8(file), "default") &&
+      !path.parent_path().filename().empty()) {
+    file = path.parent_path().filename();
+  }
+  return xe::path_to_utf8(file);
+}
+
 const LibraryPath& LibraryEntry::default_path() const {
   assert_false(paths.empty());
   for (const auto& p : paths) {
@@ -537,7 +556,7 @@ std::vector<GameLibrary::MissingFields> GameLibrary::FindMissingFields() const {
   std::error_code ec;
   for (const auto& entry : entries_) {
     // A title still in an older layout gets its fields when it is migrated.
-    if (entry.content_type != XContentType::kInvalid ||
+    if ((entry.content_type != XContentType::kInvalid && !entry.name.empty()) ||
         !std::filesystem::exists(EntryDir(entry.key()) / "game.toml", ec)) {
       continue;
     }
@@ -566,12 +585,22 @@ std::optional<GameFileInfo> GameLibrary::ReadMissingFields(
 bool GameLibrary::FillMissingFields(const LibraryKey& key,
                                     const GameFileInfo& info) {
   const auto* existing = Find(key);
-  if (!existing || existing->content_type != XContentType::kInvalid ||
-      info.content_type == XContentType::kInvalid) {
+  if (!existing) {
     return false;
   }
   LibraryEntry entry = *existing;
-  entry.content_type = info.content_type;
+  if (entry.content_type == XContentType::kInvalid) {
+    entry.content_type = info.content_type;
+  }
+  // Added before its name could be read, like an executable that keeps it only
+  // in its $$XTINFO section.
+  if (entry.name.empty() && !entry.paths.empty()) {
+    entry.name = NameFromFiles(&info, entry.default_path().path);
+  }
+  if (entry.content_type == existing->content_type &&
+      entry.name == existing->name) {
+    return false;
+  }
   return Upsert(std::move(entry));
 }
 
@@ -691,6 +720,9 @@ bool GameLibrary::AddDisc(uint32_t title_id, const std::string& name,
       if (const auto* sibling = FindByTitle(title_id)) {
         entry.name = sibling->name;
       }
+    }
+    if (entry.name.empty()) {
+      entry.name = NameFromFiles(info ? &*info : nullptr, path);
     }
   }
 

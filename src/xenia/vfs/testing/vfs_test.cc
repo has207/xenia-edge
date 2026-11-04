@@ -229,6 +229,15 @@ TEST_CASE("Original Xbox save and content names", "[xbox_original]") {
     REQUIRE(ReadSaveMetaName(meta) == "Foo");
   }
 
+  SECTION("A title is named by its default TitleName, else any") {
+    REQUIRE(ReadTitleMetaName(Utf16Text(u"[JA]\r\nTitleName=Ja\r\n"
+                                        u"[default]\r\nTitleName=Def\r\n")) ==
+            "Def");
+    REQUIRE(ReadTitleMetaName(Utf16Text(u"TitleName=Halo\r\n")) == "Halo");
+    REQUIRE(ReadTitleMetaName(Utf16Text(u"[JA]\r\nTitleName=Ja\r\n")) == "Ja");
+    REQUIRE(ReadTitleMetaName(Utf16Text(u"Name=Save\r\n")).empty());
+  }
+
   const auto packs = MakeContentMeta(
       Utf16Text(u"[Default]\r\nName=Bonus Map Pack\r\n[DE]\r\n"
                 u"Name=Bonus-Karten-Paket\r\n[JA]\r\nName=\r\n"));
@@ -270,6 +279,35 @@ TEST_CASE("Original Xbox save and content names", "[xbox_original]") {
     meta = packs;
     Put<uint32_t>(meta, 0x34, uint32_t(meta.size()));
     REQUIRE(ReadContentMetaName(meta, XLanguage::kEnglish).empty());
+  }
+}
+
+TEST_CASE("XBE name without a certificate name", "[xbe]") {
+  // The certificate's name cleared, and a second section for $$XTINFO.
+  auto xbe = MakeXbe(0x12);
+  std::memset(&xbe[0x200 + 0xC], 0, 40 * 2);
+  const auto info = Utf16Text(u"[default]\r\nTitleName=Mr. Incredible\r\n");
+  const uint32_t info_offset = uint32_t(xbe.size());
+  xbe.insert(xbe.end(), info.begin(), info.end());
+  Put<uint32_t>(xbe, 0x11C, 2);
+  Put<uint32_t>(xbe, 0x338 + 0xC, info_offset);
+  Put<uint32_t>(xbe, 0x338 + 0x10, uint32_t(info.size()));
+  Put<uint32_t>(xbe, 0x338 + 0x14, 0x10000 + 0x410);
+  std::memcpy(&xbe[0x410], "$$XTINFO", 9);
+
+  SECTION("The name comes from $$XTINFO") {
+    auto m = ExtractXbeMetadata(xbe.data(), xbe.size());
+    REQUIRE(m);
+    REQUIRE(m->title_name == "Mr. Incredible");
+    REQUIRE(m->icon_png.size() > 8);
+  }
+
+  SECTION("A certificate name comes first") {
+    const char16_t name[] = u"Jedi";
+    std::memcpy(&xbe[0x200 + 0xC], name, sizeof(name));
+    auto m = ExtractXbeMetadata(xbe.data(), xbe.size());
+    REQUIRE(m);
+    REQUIRE(m->title_name == "Jedi");
   }
 }
 

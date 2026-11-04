@@ -323,6 +323,25 @@ std::string ReadSaveMetaName(std::span<const uint8_t> data) {
   return name;
 }
 
+std::string ReadTitleMetaName(std::span<const uint8_t> data) {
+  std::string name;
+  bool from_default = false;
+  ForEachMetaValue(DecodeMetaText(data), [&](std::string_view section,
+                                             std::string_view key,
+                                             std::string_view value) {
+    if (from_default || value.empty() || !EqualsAsciiCase(key, "TitleName")) {
+      return;
+    }
+    const bool is_default =
+        section.empty() || EqualsAsciiCase(section, "default");
+    if (name.empty() || is_default) {
+      name = value;
+      from_default = is_default;
+    }
+  });
+  return name;
+}
+
 std::string ReadContentMetaName(std::span<const uint8_t> data,
                                 XLanguage language) {
   if (data.size() < kContentMetaNamesSize + 4 ||

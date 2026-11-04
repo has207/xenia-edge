@@ -65,6 +65,10 @@ std::vector<XboxOriginalContent> ListXboxOriginalContent(
 // The Name in a SaveMeta.xbx, empty when it has none.
 std::string ReadSaveMetaName(std::span<const uint8_t> data);
 
+// The TitleName a TitleMeta.xbx, or the $$XTINFO section of an executable it is
+// made from, gives in its default section, else in any.
+std::string ReadTitleMetaName(std::span<const uint8_t> data);
+
 // The name a ContentMeta.xbx gives in `language`, else its default one.
 std::string ReadContentMetaName(std::span<const uint8_t> data,
                                 XLanguage language);

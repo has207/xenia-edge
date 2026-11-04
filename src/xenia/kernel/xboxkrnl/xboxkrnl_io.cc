@@ -269,17 +269,23 @@ static void NoteXeFuTitle(std::string_view path) {
       running = std::move(xbe);
     }
   }
-  if (name.empty()) {
-    name = fmt::format("{:08X}", title_id);
-  }
   // On the UI thread, which reads both.
   auto emulator = kernel_state()->emulator();
-  auto set_title = [emulator, name, running]() {
+  auto set_title = [emulator, name, running, title_id]() {
     if (running) {
       emulator->SetRunningXbe(*running);
     }
-    if (emulator->title_name() != name) {
-      emulator->SetTitleName(name);
+    // A certificate without a name leaves the game in the drive its own, which
+    // the executable keeps elsewhere.
+    std::string title = name;
+    if (title.empty()) {
+      const auto& game = emulator->xbox_game();
+      title = game && game->title_id == title_id && !game->title_name.empty()
+                  ? game->title_name
+                  : fmt::format("{:08X}", title_id);
+    }
+    if (emulator->title_name() != title) {
+      emulator->SetTitleName(title);
     }
   };
   if (auto window = emulator->display_window()) {

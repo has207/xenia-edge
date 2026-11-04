@@ -22,6 +22,7 @@
 #include "xenia/vfs/entry.h"
 #include "xenia/vfs/file.h"
 #include "xenia/vfs/stfs_metadata.h"
+#include "xenia/vfs/xbox_original_data.h"
 #include "xenia/xbox.h"
 
 // Private to this file, as the vfs library doesn't link the copy the GPU
@@ -81,6 +82,10 @@ constexpr size_t kMaxTitleImageSize = 4 * 1024 * 1024;
 
 // The dashboard's title image section.
 constexpr char kTitleImageSection[] = "$$XTIMAGE";
+// The title's name as the dashboard shows it, in TitleMeta.xbx's format. Some
+// executables keep it only here, with no name in the certificate.
+constexpr char kTitleInfoSection[] = "$$XTINFO";
+constexpr size_t kMaxTitleInfoSize = 64 * 1024;
 
 // Xbox Direct3D texture formats a title image comes in.
 constexpr uint32_t kFormatA8R8G8B8 = 0x06;
@@ -337,23 +342,30 @@ std::optional<XbeMetadata> ParseXbe(const XbeReader& read) {
   }
   for (uint32_t i = 0; i < section_count; ++i) {
     const size_t section = *sections + size_t(i) * kSectionHeaderSize;
-    const auto name_offset =
-        header_offset(LoadU32(headers, section + kSectionNameAddress),
-                      sizeof(kTitleImageSection));
-    if (!name_offset ||
-        std::memcmp(headers.data() + *name_offset, kTitleImageSection,
-                    sizeof(kTitleImageSection)) != 0) {
-      continue;
+    auto named = [&](const char* name, size_t name_size) {
+      const auto name_offset = header_offset(
+          LoadU32(headers, section + kSectionNameAddress), name_size);
+      return name_offset &&
+             std::memcmp(headers.data() + *name_offset, name, name_size) == 0;
+    };
+    const size_t raw_address = LoadU32(headers, section + kSectionRawAddress);
+    const size_t raw_size = LoadU32(headers, section + kSectionRawSize);
+    if (named(kTitleImageSection, sizeof(kTitleImageSection))) {
+      if (raw_size <= kMaxTitleImageSize) {
+        std::vector<uint8_t> image(raw_size);
+        if (read(raw_address, image)) {
+          metadata.icon_png = DecodeTitleImage(image);
+        }
+      }
+    } else if (metadata.title_name.empty() &&
+               named(kTitleInfoSection, sizeof(kTitleInfoSection))) {
+      if (raw_size <= kMaxTitleInfoSize) {
+        std::vector<uint8_t> info(raw_size);
+        if (read(raw_address, info)) {
+          metadata.title_name = ReadTitleMetaName(info);
+        }
+      }
     }
-    const size_t image_size = LoadU32(headers, section + kSectionRawSize);
-    if (image_size > kMaxTitleImageSize) {
-      break;
-    }
-    std::vector<uint8_t> image(image_size);
-    if (read(LoadU32(headers, section + kSectionRawAddress), image)) {
-      metadata.icon_png = DecodeTitleImage(image);
-    }
-    break;
   }
   return metadata;
 }
