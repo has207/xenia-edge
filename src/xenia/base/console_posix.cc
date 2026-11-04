@@ -18,4 +18,9 @@ bool has_console_attached() { return isatty(fileno(stdin)) == 1; }
 
 void AttachConsole() {}
 
+// stdout already goes wherever the launcher pointed it.
+void AttachConsoleForStdio(bool open_window) {}
+
+FILE* console_echo_stream() { return nullptr; }
+
 }  // namespace xe

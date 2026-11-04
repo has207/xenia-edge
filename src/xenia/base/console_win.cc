@@ -58,4 +58,48 @@ void AttachConsole() {
   freopen_s(&fp, "CONOUT$", "w", stderr);
 }
 
+static FILE* console_echo_stream_ = nullptr;
+
+FILE* console_echo_stream() { return console_echo_stream_; }
+
+// Whether the launcher gave this GUI process a file or pipe for the handle,
+// which the CRT has already bound its stream to.
+static bool IsStdHandleRedirected(DWORD std_handle) {
+  HANDLE handle = GetStdHandle(std_handle);
+  if (!handle || handle == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  DWORD type = GetFileType(handle);
+  return type == FILE_TYPE_DISK || type == FILE_TYPE_PIPE;
+}
+
+void AttachConsoleForStdio(bool open_window) {
+  const bool stdout_redirected = IsStdHandleRedirected(STD_OUTPUT_HANDLE);
+  const bool stderr_redirected = IsStdHandleRedirected(STD_ERROR_HANDLE);
+  if (stdout_redirected && stderr_redirected && !open_window) {
+    return;
+  }
+
+  bool has_console = ::AttachConsole(ATTACH_PARENT_PROCESS) == TRUE;
+  if (!has_console && open_window) {
+    has_console = AllocConsole() == TRUE;
+  }
+  if (!has_console) {
+    return;
+  }
+  has_console_attached_ = true;
+
+  FILE* fp;
+  if (!stdout_redirected) {
+    freopen_s(&fp, "CONOUT$", "w", stdout);
+  } else if (open_window) {
+    if (fopen_s(&fp, "CONOUT$", "w") == 0) {
+      console_echo_stream_ = fp;
+    }
+  }
+  if (!stderr_redirected) {
+    freopen_s(&fp, "CONOUT$", "w", stderr);
+  }
+}
+
 }  // namespace xe

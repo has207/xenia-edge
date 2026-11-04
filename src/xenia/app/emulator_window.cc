@@ -906,7 +906,8 @@ void EmulatorWindow::OnEmulatorInitialized() {
     game_list_panel_->Reload();
   }
   // Skip when the game list is up — fullscreen is for the render surface.
-  if (cvars::fullscreen &&
+  // Entering it activates the window.
+  if (cvars::fullscreen && MayTakeFocus() &&
       (target_pending_launch_ || emulator_->is_title_open())) {
     SetFullscreen(true);
   }
@@ -2169,6 +2170,15 @@ void EmulatorWindow::RestoreListWindow() {
   ApplyContentVisibility();
 }
 
+bool EmulatorWindow::MayTakeFocus() const {
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  wxFrame* frame = wx_window ? wx_window->frame() : nullptr;
+  if (!frame || !frame->IsShown()) {
+    return false;
+  }
+  return !xe::IsUnattended() || frame->IsActive();
+}
+
 void EmulatorWindow::ApplyContentVisibility() {
   auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
   if (!wx_window) {
@@ -2213,10 +2223,13 @@ void EmulatorWindow::ApplyContentVisibility() {
   // AUI's pane.Show() doesn't always hide the underlying wxWindow.
   render_pane->Show(show_render);
   game_list_panel_->Show(show_list);
-  if (show_render) {
+  // Focusing a child activates its frame, even a hidden one, taking the focus
+  // from whatever the user is working in.
+  const bool may_take_focus = MayTakeFocus();
+  if (may_take_focus && show_render) {
     render_pane->Raise();
     render_pane->SetFocus();
-  } else if (show_list) {
+  } else if (may_take_focus && show_list) {
     game_list_panel_->Raise();
     game_list_panel_->FocusSearch();
   }
@@ -4013,8 +4026,9 @@ xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
     OnLaunchFailed();
     return status;
   }
-  // Toggle before swap chain creation so it picks up the right size.
-  if (cvars::fullscreen && !window_->IsFullscreen()) {
+  // Toggle before swap chain creation so it picks up the right size. Entering
+  // fullscreen activates the window.
+  if (cvars::fullscreen && !window_->IsFullscreen() && MayTakeFocus()) {
     SetFullscreen(true);
   }
   {

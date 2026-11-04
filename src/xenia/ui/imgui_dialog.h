@@ -11,6 +11,7 @@
 #define XENIA_UI_IMGUI_DIALOG_H_
 
 #include <memory>
+#include <string>
 
 #include "xenia/base/threading.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -29,8 +30,13 @@ class ImGuiDialog {
   static ImGuiDialog* ShowMessageBox(ImGuiDrawer* imgui_drawer,
                                      std::string title, std::string body);
 
-  // A fence to signal when the dialog is closed.
+  // A fence to signal when the dialog is closed. When unattended, the dialog
+  // is dismissed right away, as nobody can answer it.
   void Then(xe::threading::Fence* fence);
+
+  // When unattended, logs the dialog and closes it with its default answer.
+  // Deletes the dialog.
+  void DismissUnattended();
 
   void Draw();
   // Closes and deletes the dialog now rather than on its next draw.
@@ -55,11 +61,24 @@ class ImGuiDialog {
   virtual void OnClose() {}
   virtual void OnDraw(ImGuiIO& io) {}
 
+  // What the log says about the dialog when it's shown: a title, and the text
+  // it asks or tells the user.
+  virtual std::string GetLogTitle() const;
+  virtual std::string GetLogText() const { return {}; }
+  // What the user answered, logged when the dialog closes.
+  virtual std::string GetLogResult() const { return {}; }
+  // Picks the answer an unattended run gives: whatever closing it unanswered gives,
+  // unless overridden.
+  virtual void OnUnattendedDismiss() {}
+
  private:
   static std::atomic<uint64_t> next_window_id_;
 
+  void LogShown();
+
   ImGuiDrawer* imgui_drawer_ = nullptr;
   bool has_close_pending_ = false;
+  bool has_been_logged_ = false;
   std::vector<xe::threading::Fence*> waiting_fences_;
 };
 

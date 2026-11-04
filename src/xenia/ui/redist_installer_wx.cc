@@ -204,17 +204,31 @@ bool VulkanLoaderPresent(const std::filesystem::path& vulkan_dir) {
 // Native MessageBox (not wxMessageBox) since the provider may initialize off
 // the GUI thread; only the translated string comes from wx.
 bool AskYesNo(const wxString& message) {
+  LogUIElement("message box", "Xenia", message.utf8_string());
+  // Unattended, nobody can agree to a download and install.
+  if (xe::IsUnattended()) {
+    XELOGI("Unattended: dismissed message box with No");
+    return false;
+  }
   return MessageBoxW(nullptr, message.wc_str(), L"Xenia",
                      MB_YESNO | MB_ICONWARNING | MB_TASKMODAL) == IDYES;
 }
 
 void ShowError(const wxString& message) {
+  LogUIElement("message box", "Xenia", message.utf8_string());
+  if (xe::IsUnattended()) {
+    return;
+  }
   MessageBoxW(nullptr, message.wc_str(), L"Xenia",
               MB_OK | MB_ICONERROR | MB_TASKMODAL);
 }
 
 // Persists the user's "no" so the prompt doesn't reappear after a restart.
 void RememberDecline() {
+  // An unattended "no" was never the user's.
+  if (xe::IsUnattended()) {
+    return;
+  }
   OVERRIDE_PERSIST_bool(d3d12_install_missing_runtime, false);
   config::SaveConfig();
 }
@@ -222,6 +236,9 @@ void RememberDecline() {
 // Same, but for the Visual C++ runtime's own cvar, so declining it doesn't
 // disable the D3D12 DLL prompts (and vice versa).
 void RememberVCDecline() {
+  if (xe::IsUnattended()) {
+    return;
+  }
   OVERRIDE_PERSIST_bool(update_vc_runtime, false);
   config::SaveConfig();
 }
@@ -229,6 +246,9 @@ void RememberVCDecline() {
 #if !XE_ARCH_ARM64
 // Same, but for the Vulkan loader's own cvar.
 void RememberVulkanDecline() {
+  if (xe::IsUnattended()) {
+    return;
+  }
   OVERRIDE_PERSIST_bool(vulkan_install_missing_loader, false);
   config::SaveConfig();
 }

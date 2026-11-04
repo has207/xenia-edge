@@ -306,7 +306,10 @@ LONG _UnhandledExceptionFilter(_EXCEPTION_POINTERS* ExceptionInfo) {
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
   }
-  report.DisplayExceptionMessage();
+  // Unattended, the report in the log is all anyone will see.
+  if (!xe::IsUnattended()) {
+    report.DisplayExceptionMessage();
+  }
 
   return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -316,7 +319,9 @@ LONG _UnhandledExceptionFilter(_EXCEPTION_POINTERS* ExceptionInfo) {
 // supply its positional options.
 wxIMPLEMENT_APP_NO_MAIN(xe::ui::XeniaWxApp);
 
-DEFINE_bool(enable_console, false, "Open a console window with the main window",
+DEFINE_bool(enable_console, false,
+            "Open a console window with the main window, showing the log. A "
+            "redirected stdout gets the log too.",
             "Logging");
 
 int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE hinstance_prev,
