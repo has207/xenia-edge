@@ -112,9 +112,9 @@ void AssertFailed(const char* expression, const char* file, int line) {
 
   if (debugging::IsDebuggerAttached()) {
     raise(SIGTRAP);
-  } else if (!ignore_all_asserts) {
+  } else if (!ignore_all_asserts && !IsUnattended()) {
     // Without a debugger SIGTRAP terminates the process, ask instead like the
-    // assertion dialog on Windows.
+    // assertion dialog on Windows. Unattended, it goes on as Ignore does.
     const std::string message = fmt::format(
         "Assertion failed!\n\nFile: {}\nLine: {}\n\nExpression: {}\n\n"
         "Abort closes Xenia, Ignore continues execution.",

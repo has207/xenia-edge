@@ -58,4 +58,33 @@ void AttachConsole() {
   freopen_s(&fp, "CONOUT$", "w", stderr);
 }
 
+// Whether the launcher gave this GUI process a file or pipe for the handle,
+// which the CRT has already bound its stream to.
+static bool IsStdHandleRedirected(DWORD std_handle) {
+  HANDLE handle = GetStdHandle(std_handle);
+  if (!handle || handle == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  DWORD type = GetFileType(handle);
+  return type == FILE_TYPE_DISK || type == FILE_TYPE_PIPE;
+}
+
+void AttachConsoleForStdio() {
+  const bool stdout_redirected = IsStdHandleRedirected(STD_OUTPUT_HANDLE);
+  const bool stderr_redirected = IsStdHandleRedirected(STD_ERROR_HANDLE);
+  if ((stdout_redirected && stderr_redirected) ||
+      !::AttachConsole(ATTACH_PARENT_PROCESS)) {
+    return;
+  }
+  has_console_attached_ = true;
+
+  FILE* fp;
+  if (!stdout_redirected) {
+    freopen_s(&fp, "CONOUT$", "w", stdout);
+  }
+  if (!stderr_redirected) {
+    freopen_s(&fp, "CONOUT$", "w", stderr);
+  }
+}
+
 }  // namespace xe

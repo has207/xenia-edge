@@ -1831,6 +1831,10 @@ void KeBugCheckEx_entry(dword_t code, dword_t param1, dword_t param2,
     xe::debugging::Break();
   }
 
+  if (xe::IsUnattended()) {
+    xe::ExitUnattended(EXIT_FAILURE, "title crashed (KeBugCheck)");
+  }
+
   // Show crash dialog and suspend the guest thread instead of killing the
   // host process.
   auto current_thread = kernel::XThread::GetCurrentThread();

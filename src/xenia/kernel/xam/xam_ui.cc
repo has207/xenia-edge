@@ -240,6 +240,29 @@ X_RESULT xeXamDispatchDialogAsync(std::function<T*()> create_dialog,
   return X_ERROR_SUCCESS;
 }
 
+std::string MessageBoxDialog::GetLogText() const {
+  std::string text = description_;
+  for (size_t i = 0; i < buttons_.size(); ++i) {
+    text += fmt::format("\n[{}] {}{}", i, buttons_[i],
+                        i == default_button_ ? " (default)" : "");
+  }
+  return text;
+}
+
+std::string MessageBoxDialog::GetLogResult() const {
+  return fmt::format(
+      "button [{}] {}", chosen_button_,
+      chosen_button_ < buttons_.size() ? buttons_[chosen_button_] : "");
+}
+
+std::string KeyboardInputDialog::GetLogText() const {
+  return fmt::format("{}\nDefault text: \"{}\"", description_, default_text_);
+}
+
+std::string KeyboardInputDialog::GetLogResult() const {
+  return cancelled_ ? "cancelled" : fmt::format("entered \"{}\"", text_);
+}
+
 void MessageBoxDialog::OnDraw(ImGuiIO& io) {
   if (!has_opened_) {
     ImGui::OpenPopup(title_.c_str());

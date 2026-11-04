@@ -76,6 +76,9 @@ void LaunchFileExplorer(const std::filesystem::path& path) {
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
+  if (SkipSimpleMessageBox(type, message)) {
+    return;
+  }
   void* libsdl = LoadSDL3Library();
   assert_not_null(libsdl);
   if (libsdl) {

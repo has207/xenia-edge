@@ -18,6 +18,11 @@
 
 #include "xenia/base/cvar.h"
 
+DEFINE_transient_bool(disable_ui, false,
+                      "Shows no window. Needs unattended, since nobody could "
+                      "answer a dialog or close Xenia.",
+                      "General");
+
 DEFINE_bool(disable_doubleclick_fullscreen, false,
             "Allows the user to disable the behavior where a fast double-click "
             "causes Xenia to enter fullscreen mode.",
@@ -119,7 +124,9 @@ static wxPoint ReadInitialFramePositionFromConfig() {
 }
 
 void WxWindow::SaveGeometryToConfig() {
-  if (!frame_ || frame_->IsFullScreen()) {
+  // A frame disable_ui keeps hidden was never placed and has no geometry worth
+  // keeping.
+  if (!frame_ || frame_->IsFullScreen() || cvars::disable_ui) {
     return;
   }
   auto* config = wxConfigBase::Get();
@@ -375,10 +382,13 @@ bool WxWindow::OpenImpl() {
   }
 #endif
 
-  RestoreGeometryFromConfig();
+  // disable_ui keeps the frame hidden for the whole run.
+  if (!cvars::disable_ui) {
+    RestoreGeometryFromConfig();
 
-  if (IsFullscreen()) {
-    frame_->ShowFullScreen(true);
+    if (IsFullscreen()) {
+      frame_->ShowFullScreen(true);
+    }
   }
 
 #if XE_PLATFORM_MAC
@@ -387,8 +397,10 @@ bool WxWindow::OpenImpl() {
   frame_->EnableFullScreenView(true);
 #endif
 
-  frame_->Show(true);
-  render_target()->SetFocus();
+  if (!cvars::disable_ui) {
+    frame_->Show(true);
+    render_target()->SetFocus();
+  }
 
   wxSize client_size = render_target()->GetClientSize();
   WindowDestructionReceiver destruction_receiver(this);
@@ -412,6 +424,9 @@ uint32_t WxWindow::GetLatestDpiImpl() const { return dpi_; }
 
 void WxWindow::ApplyNewFullscreen() {
   if (!frame_) {
+    return;
+  }
+  if (cvars::disable_ui) {
     return;
   }
   bool fullscreen = IsFullscreen();

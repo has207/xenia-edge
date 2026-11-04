@@ -9,9 +9,12 @@
 
 #include "xenia/ui/imgui_dialog.h"
 
+#include <typeinfo>
+
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/imgui/imgui.h"
 #include "xenia/base/assert.h"
+#include "xenia/base/logging.h"
 #include "xenia/ui/imgui_drawer.h"
 
 namespace xe {
@@ -34,6 +37,23 @@ ImGuiDialog::~ImGuiDialog() {
 
 void ImGuiDialog::Then(xe::threading::Fence* fence) {
   waiting_fences_.push_back(fence);
+}
+
+void ImGuiDialog::DismissUnattended() {
+  LogUIElement("dialog", GetLogTitle(), GetLogText());
+  OnUnattendedDismiss();
+  const std::string result = GetLogResult();
+  if (result.empty()) {
+    XELOGI("Unattended: dismissed {}", GetLogTitle());
+  } else {
+    XELOGI("Unattended: dismissed {}: {}", GetLogTitle(), result);
+  }
+  Destroy();
+}
+
+std::string ImGuiDialog::GetLogTitle() const {
+  // MSVC names it "class xe::...", which is clear enough for a log.
+  return typeid(*this).name();
 }
 
 void ImGuiDialog::Close() { has_close_pending_ = true; }
@@ -69,6 +89,11 @@ class MessageBoxDialog final : public ImGuiDialog {
       : ImGuiDialog(imgui_drawer),
         title_(fmt::format("{}###{}", title, GetWindowId())),
         body_(std::move(body)) {}
+
+  std::string GetLogTitle() const override {
+    return title_.substr(0, title_.find("###"));
+  }
+  std::string GetLogText() const override { return body_; }
 
   void OnDraw(ImGuiIO& io) override {
     if (!has_opened_) {

@@ -306,7 +306,10 @@ LONG _UnhandledExceptionFilter(_EXCEPTION_POINTERS* ExceptionInfo) {
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
   }
-  report.DisplayExceptionMessage();
+  // Unattended, the report in the log is all anyone will see.
+  if (!xe::IsUnattended()) {
+    report.DisplayExceptionMessage();
+  }
 
   return EXCEPTION_CONTINUE_SEARCH;
 }

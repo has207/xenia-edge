@@ -33,6 +33,9 @@ ImGuiNotification::ImGuiNotification(ui::ImGuiDrawer* imgui_drawer,
     notification_text_.append("\n");
     notification_text_.append(description_);
   }
+  if (IsUnattended()) {
+    LogUIElement("notification", title_, description_);
+  }
 }
 
 ImGuiNotification::~ImGuiNotification() {

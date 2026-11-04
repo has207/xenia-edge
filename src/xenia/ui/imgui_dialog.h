@@ -11,6 +11,7 @@
 #define XENIA_UI_IMGUI_DIALOG_H_
 
 #include <memory>
+#include <string>
 
 #include "xenia/base/threading.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -31,6 +32,10 @@ class ImGuiDialog {
 
   // A fence to signal when the dialog is closed.
   void Then(xe::threading::Fence* fence);
+
+  // Logs the dialog and closes it with the answer an unattended run gives.
+  // Deletes the dialog.
+  void DismissUnattended();
 
   void Draw();
   // Closes and deletes the dialog now rather than on its next draw.
@@ -54,6 +59,14 @@ class ImGuiDialog {
   virtual void OnShow() {}
   virtual void OnClose() {}
   virtual void OnDraw(ImGuiIO& io) {}
+
+  // What an unattended run logs for the dialog: its title, the text it asks or
+  // tells the user and the answer it gave.
+  virtual std::string GetLogTitle() const;
+  virtual std::string GetLogText() const { return {}; }
+  virtual std::string GetLogResult() const { return {}; }
+  // Sets the answer an unattended run gives, closing it unanswered by default.
+  virtual void OnUnattendedDismiss() {}
 
  private:
   static std::atomic<uint64_t> next_window_id_;

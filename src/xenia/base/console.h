@@ -17,6 +17,10 @@ bool has_console_attached();
 
 void AttachConsole();
 
+// For an unattended run: keeps stdout and stderr where the launcher redirected
+// them (a file or pipe) and binds the others to the launching console.
+void AttachConsoleForStdio();
+
 }  // namespace xe
 
 #endif  // XENIA_BASE_CONSOLE_H_

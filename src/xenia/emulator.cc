@@ -228,7 +228,9 @@ Emulator::Emulator(const std::filesystem::path& command_line,
   // Show a disclaimer that links to the quickstart
   // guide the first time they ever open the emulator
   uint64_t persistent_flags = GetPersistentEmulatorFlags();
-  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
+  // Unattended, it waits for a later run with someone there to read it.
+  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged) &&
+      !xe::IsUnattended()) {
     if ((MessageBoxW(
              nullptr,
              L"DISCLAIMER: Xenia is not for enabling illegal activity, and "
@@ -2317,6 +2319,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
           fiber_self->handle(), fiber_self->thread_id(), code_name,
           fault_detail, ex->pc(), module_offset, guest_lr, host_sp,
           host_sp % 16);
+      if (xe::IsUnattended()) {
+        ExitUnattended(EXIT_FAILURE, "host crash on a guest thread");
+      }
       DivertToThunk(ex, &HaltCrashedFiberThunk);
       return true;
     }
@@ -2390,6 +2395,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
 
 void Emulator::ReportGuestCrash(const std::string& crash_msg) {
   XELOGE("{}", crash_msg);
+  if (xe::IsUnattended()) {
+    ExitUnattended(EXIT_FAILURE, "title crashed");
+  }
   FlushLog();
 
   // Only pause the entire emulator if debugging is enabled. After the dump,

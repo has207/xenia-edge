@@ -118,6 +118,16 @@ void ImGuiDrawer::AddDialog(ImGuiDialog* dialog) {
     }
   }
   dialogs_.push_back(dialog);
+  // Nobody answers an unattended run's dialogs. Each is dismissed after the UI
+  // thread task that creates it, which also sets it up.
+  if (IsUnattended()) {
+    PostDeferredCallback([this, dialog]() {
+      if (std::ranges::find(std::as_const(dialogs_), dialog) !=
+          dialogs_.cend()) {
+        dialog->DismissUnattended();
+      }
+    });
+  }
 }
 
 void ImGuiDrawer::RemoveDialog(ImGuiDialog* dialog) {
