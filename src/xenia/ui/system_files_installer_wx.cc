@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <span>
@@ -23,12 +24,14 @@
 #include <wx/zipstrm.h>
 
 #include "third_party/fmt/include/fmt/format.h"
+#include "third_party/mbedtls/include/mbedtls/sha256.h"
 #include "third_party/zlib-ng/zlib-ng.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/utf8.h"
 #include "xenia/kernel/xam/system_manifest.h"
+#include "xenia/ui/http_download.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/entry.h"
 #include "xenia/vfs/file.h"
@@ -41,6 +44,8 @@ namespace ui {
 
 namespace {
 
+constexpr std::array<std::string_view, 3> kInstalledFolders = {
+    "flash", "sysext", "sysaux"};
 constexpr std::string_view kUpdateFolder = "$SystemUpdate/";
 constexpr std::string_view kFlashPrefix = "$flash_";
 constexpr size_t kFontSignatureOffset = 4;
@@ -48,6 +53,14 @@ constexpr size_t kFontSignatureSize = 0x100;
 constexpr size_t kFontHeaderSize = 0x118;
 // Far above the few hundred KiB the tables of a retail font unpack to.
 constexpr size_t kMaxFontTablesSize = 16 * 1024 * 1024;
+
+// The 17559 USB system update.
+constexpr char kSystemUpdateUrl[] =
+    "https://download.microsoft.com/download/8/f/4/"
+    "8f456817-e264-4207-9b95-6efc990fee98/SystemUpdate_17559_USB.zip";
+constexpr uint64_t kSystemUpdateSize = 115992188;
+constexpr std::string_view kSystemUpdateSha256 =
+    "38885a3ab6b9854fb4fa31d5ddf21a4fddfd4cfb25e219060cfb0c2fb31f208f";
 
 // A flash font the update only patches, and the one built to stand in for it.
 struct BaseFont {
@@ -278,18 +291,101 @@ SystemFilesResult UnzipUpdate(
   return SystemFilesResult::kSuccess;
 }
 
+// Whether the SHA-256 of the file at |path| is |expected_hex|.
+bool FileHasSha256(const std::filesystem::path& path,
+                   std::string_view expected_hex) {
+  FILE* file = xe::filesystem::OpenFile(path, "rb");
+  if (!file) {
+    return false;
+  }
+  mbedtls_sha256_context context;
+  mbedtls_sha256_init(&context);
+  mbedtls_sha256_starts(&context, 0);
+  std::vector<uint8_t> buffer(1024 * 1024);
+  size_t read;
+  while ((read = std::fread(buffer.data(), 1, buffer.size(), file)) != 0) {
+    mbedtls_sha256_update(&context, buffer.data(), read);
+  }
+  const bool read_failed = std::ferror(file) != 0;
+  std::fclose(file);
+  uint8_t digest[32];
+  mbedtls_sha256_finish(&context, digest);
+  mbedtls_sha256_free(&context);
+  if (read_failed) {
+    return false;
+  }
+  std::string hex;
+  for (const uint8_t byte : digest) {
+    hex += fmt::format("{:02x}", byte);
+  }
+  return hex == expected_hex;
+}
+
 }  // namespace
+
+bool HasSystemFiles(const std::filesystem::path& system_path) {
+  std::error_code ec;
+  for (const auto folder : kInstalledFolders) {
+    if (std::filesystem::exists(system_path / folder, ec)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 std::filesystem::path GetUnrestoredSystemFilesPath(
     const std::filesystem::path& system_path) {
   return system_path / "unrestored";
 }
 
+std::filesystem::path GetSystemUpdateDownloadPath(
+    const std::filesystem::path& system_path) {
+  return system_path / "download" / "SystemUpdate_17559_USB.zip";
+}
+
+SystemUpdateDownload DownloadSystemUpdate(
+    const std::filesystem::path& system_path,
+    const std::function<bool(uint64_t received, uint64_t size)>& progress) {
+  const auto zip_path = GetSystemUpdateDownloadPath(system_path);
+  std::error_code ec;
+  // Only a verified download is given the zip's name.
+  if (std::filesystem::file_size(zip_path, ec) == kSystemUpdateSize) {
+    return SystemUpdateDownload::kDownloaded;
+  }
+  auto partial_path = zip_path;
+  partial_path += ".partial";
+  switch (DownloadFile(kSystemUpdateUrl, partial_path,
+                       [&progress](uint64_t received, uint64_t) {
+                         return progress(std::min(received, kSystemUpdateSize),
+                                         kSystemUpdateSize);
+                       })) {
+    case DownloadResult::kSuccess:
+      break;
+    case DownloadResult::kCancelled:
+      return SystemUpdateDownload::kCancelled;
+    case DownloadResult::kFailed:
+      return SystemUpdateDownload::kFailed;
+    case DownloadResult::kWriteFailed:
+      return SystemUpdateDownload::kWriteFailed;
+  }
+  if (!FileHasSha256(partial_path, kSystemUpdateSha256)) {
+    XELOGE("System files: the downloaded update doesn't match its SHA-256");
+    std::filesystem::remove(partial_path, ec);
+    return SystemUpdateDownload::kNotVerified;
+  }
+  std::filesystem::rename(partial_path, zip_path, ec);
+  if (ec) {
+    std::filesystem::remove(partial_path, ec);
+    return SystemUpdateDownload::kWriteFailed;
+  }
+  return SystemUpdateDownload::kDownloaded;
+}
+
 SystemFilesResult InstallSystemFiles(
     const std::filesystem::path& zip_path,
     const std::filesystem::path& system_path,
     const std::function<bool(size_t done, size_t total)>& progress) {
-  const std::array<std::string_view, 3> folders = {"flash", "sysext", "sysaux"};
+  const auto& folders = kInstalledFolders;
   const auto staging_path = system_path / "staging";
   const auto unrestored_path = GetUnrestoredSystemFilesPath(system_path);
   const auto update_path = staging_path / "update";

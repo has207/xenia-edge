@@ -11,11 +11,35 @@
 #define XENIA_UI_SYSTEM_FILES_INSTALLER_WX_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 
 namespace xe {
 namespace ui {
+
+enum class SystemUpdateDownload {
+  kDownloaded,
+  kCancelled,
+  kFailed,
+  // The file downloaded isn't the update. It's discarded.
+  kNotVerified,
+  // The update couldn't be saved.
+  kWriteFailed,
+};
+
+// Downloads the USB system update from Microsoft to
+// GetSystemUpdateDownloadPath on the UI thread, unless an earlier download is
+// there. |progress| gets the bytes received out of the update's size and
+// cancels by returning false.
+SystemUpdateDownload DownloadSystemUpdate(
+    const std::filesystem::path& system_path,
+    const std::function<bool(uint64_t received, uint64_t size)>& progress);
+
+// Where DownloadSystemUpdate saves the update, outside the staging folder
+// InstallSystemFiles clears.
+std::filesystem::path GetSystemUpdateDownloadPath(
+    const std::filesystem::path& system_path);
 
 enum class SystemFilesResult {
   kSuccess,
@@ -38,6 +62,9 @@ SystemFilesResult InstallSystemFiles(
     const std::filesystem::path& zip_path,
     const std::filesystem::path& system_path,
     const std::function<bool(size_t done, size_t total)>& progress);
+
+// Whether InstallSystemFiles has installed files in |system_path|.
+bool HasSystemFiles(const std::filesystem::path& system_path);
 
 // Where InstallSystemFiles leaves a previous install it couldn't put back.
 std::filesystem::path GetUnrestoredSystemFilesPath(

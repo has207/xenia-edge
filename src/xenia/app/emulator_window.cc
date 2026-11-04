@@ -1161,9 +1161,15 @@ bool EmulatorWindow::Initialize() {
       tools_menu->AddChild(
           WxMenuItem::Create(MenuItem::Type::kString, _("&Install Content..."),
                              std::bind(&EmulatorWindow::InstallContent, this)));
-      tools_menu->AddChild(WxMenuItem::Create(
-          MenuItem::Type::kString, _("Install System Files..."),
-          std::bind(&EmulatorWindow::InstallSystemFiles, this)));
+      auto system_files_menu =
+          WxMenuItem::Create(MenuItem::Type::kPopup, _("Install System Files"));
+      system_files_menu->AddChild(WxMenuItem::Create(
+          MenuItem::Type::kString, _("Download && Install..."),
+          std::bind(&EmulatorWindow::DownloadSystemFiles, this)));
+      system_files_menu->AddChild(WxMenuItem::Create(
+          MenuItem::Type::kString, _("Select File..."),
+          std::bind(&EmulatorWindow::SelectSystemFiles, this)));
+      tools_menu->AddChild(std::move(system_files_menu));
     }
     tools_menu_ = tools_menu.get();
     main_menu->AddChild(std::move(tools_menu));
@@ -2349,7 +2355,72 @@ void EmulatorWindow::InstallContent() {
   dlg.ShowModal();
 }
 
-void EmulatorWindow::InstallSystemFiles() {
+bool EmulatorWindow::ConfirmReplaceSystemFiles() {
+  if (!ui::HasSystemFiles(emulator_->system_files_path())) {
+    return true;
+  }
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  wxMessageDialog prompt(
+      wx_window ? wx_window->frame() : nullptr,
+      _("System files are already installed. Do you want to replace them?"),
+      _("Install System Files"), wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+  return prompt.ShowModal() == wxID_YES;
+}
+
+void EmulatorWindow::DownloadSystemFiles() {
+  if (!ConfirmReplaceSystemFiles()) {
+    return;
+  }
+  const auto system_path = emulator_->system_files_path();
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  ui::SystemUpdateDownload result;
+  {
+    wxProgressDialog progress(_("Install System Files"),
+                              _("Downloading the system update..."), 100,
+                              wx_window ? wx_window->frame() : nullptr,
+                              wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
+    result = ui::DownloadSystemUpdate(
+        system_path, [&progress](uint64_t received, uint64_t size) {
+          // The dialog closes itself at 100, which must wait for the update
+          // to be verified.
+          return progress.Update(
+              int(std::min(received * 100 / size, uint64_t(99))));
+        });
+  }
+  switch (result) {
+    case ui::SystemUpdateDownload::kDownloaded:
+      break;
+    case ui::SystemUpdateDownload::kCancelled:
+      return;
+    case ui::SystemUpdateDownload::kFailed:
+      ShowWindowMessage(
+          window_.get(), _("Install System Files"),
+          _("Download failed. Check your internet connection and try again."),
+          wxICON_ERROR);
+      return;
+    case ui::SystemUpdateDownload::kNotVerified:
+      ShowWindowMessage(window_.get(), _("Install System Files"),
+                        _("The downloaded file failed integrity verification "
+                          "and was discarded."),
+                        wxICON_ERROR);
+      return;
+    case ui::SystemUpdateDownload::kWriteFailed:
+      ShowWindowMessage(window_.get(), _("Install System Files"),
+                        _("Failed to write the system files."), wxICON_ERROR);
+      return;
+  }
+  // Kept until it's installed, so a failed install doesn't download it again.
+  const auto zip_path = ui::GetSystemUpdateDownloadPath(system_path);
+  if (InstallSystemFiles(zip_path)) {
+    std::error_code ec;
+    std::filesystem::remove(zip_path, ec);
+  }
+}
+
+void EmulatorWindow::SelectSystemFiles() {
+  if (!ConfirmReplaceSystemFiles()) {
+    return;
+  }
   auto file_picker = xe::ui::FilePicker::Create();
   file_picker->set_mode(ui::FilePicker::Mode::kOpen);
   file_picker->set_type(ui::FilePicker::Type::kFile);
@@ -2362,8 +2433,10 @@ void EmulatorWindow::InstallSystemFiles() {
       file_picker->selected_files().empty()) {
     return;
   }
-  const auto zip_path = file_picker->selected_files().front();
+  InstallSystemFiles(file_picker->selected_files().front());
+}
 
+bool EmulatorWindow::InstallSystemFiles(const std::filesystem::path& zip_path) {
   auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
   ui::SystemFilesResult result;
   {
@@ -2416,6 +2489,7 @@ void EmulatorWindow::InstallSystemFiles() {
           wxICON_ERROR);
       break;
   }
+  return result == ui::SystemFilesResult::kSuccess;
 }
 
 void EmulatorWindow::ShowContentDirectory() {

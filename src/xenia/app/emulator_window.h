@@ -206,7 +206,12 @@ class EmulatorWindow {
   void UpdateAddGamesMenuState();
   void UpdateStartDashboardMenuState();
   void InstallContent();
-  void InstallSystemFiles();
+  void DownloadSystemFiles();
+  void SelectSystemFiles();
+  // Whether there are no system files to replace or the user chose to.
+  bool ConfirmReplaceSystemFiles();
+  // Whether the system files were installed.
+  bool InstallSystemFiles(const std::filesystem::path& zip_path);
   void ShowContentDirectory();
   void CpuTimeScalarReset();
   void CpuTimeScalarSetHalf();
