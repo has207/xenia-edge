@@ -547,12 +547,8 @@ static std::filesystem::path ResolveHostFileName(
   if (dir.empty() || name.empty()) {
     return path;
   }
-  for (const auto& info : xe::filesystem::ListFiles(dir)) {
-    if (xe::utf8::equal_case(xe::path_to_utf8(info.name), name)) {
-      return dir / info.name;
-    }
-  }
-  return path;
+  const auto found = xe::filesystem::FindChildIgnoringCase(dir, name);
+  return found.empty() ? path : found;
 }
 
 // Whether |path| names a device rather than a file next to the title.

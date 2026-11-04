@@ -160,19 +160,6 @@ std::filesystem::path ContentManager::ResolvePackageRoot(
   return root_path_ / xuid_str / title_id_str / content_type_str;
 }
 
-// FATX is case-insensitive, so on a case-sensitive host filesystem (Linux)
-// fall back to a package directory that differs only in case.
-static std::filesystem::path ResolveNameInsensitive(
-    const std::filesystem::path& parent, const std::string_view name) {
-  std::error_code ec;
-  for (const auto& child : std::filesystem::directory_iterator(parent, ec)) {
-    if (xe::utf8::equal_case(xe::path_to_utf8(child.path().filename()), name)) {
-      return child.path();
-    }
-  }
-  return {};
-}
-
 // The error a package's file name fails with in FATX, if any.
 static X_RESULT CheckFileName(const std::string_view name) {
   // FATX refuses "." and ".." and these characters in any component.
@@ -298,8 +285,11 @@ X_RESULT ContentManager::ResolvePackagePath(const uint64_t xuid,
         ResolvePackageRoot(used_xuid, title_id, data.content_type);
     std::filesystem::path package_path = package_root / folder_name;
 
+    // FATX is case-insensitive so on a case-sensitive host filesystem (Linux)
+    // fall back to a package directory that differs only in case.
     if (!std::filesystem::exists(package_path)) {
-      auto existing = ResolveNameInsensitive(package_root, file_name);
+      auto existing =
+          xe::filesystem::FindChildIgnoringCase(package_root, file_name);
       if (!existing.empty()) {
         package_path = existing;
       }

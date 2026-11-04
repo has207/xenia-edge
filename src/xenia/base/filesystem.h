@@ -69,6 +69,10 @@ std::vector<uint8_t> ReadAllBytes(const std::filesystem::path& path);
 bool WriteAllBytes(const std::filesystem::path& path,
                    std::span<const uint8_t> data);
 
+// The child of |parent| named |name| ignoring case, empty if there's none.
+std::filesystem::path FindChildIgnoringCase(const std::filesystem::path& parent,
+                                            const std::string_view name);
+
 // Reads the entire file at the given path as a text string (binary mode; the
 // caller gets any \r bytes verbatim). Returns an empty string on open failure
 // or for empty files.
