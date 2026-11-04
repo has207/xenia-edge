@@ -671,7 +671,8 @@ void EmulatorWindow::PublishLibraryTitles() {
     }
     titles.push_back(
         {entry.title_id, entry.version, entry.name, entry.default_path().path,
-         game_library_->IconPath(entry.key()), entry.content_type});
+         game_library_->IconPath(entry.key()),
+         game_library_->BoxArtPath(entry.key()), entry.content_type});
   }
   emulator_->SetLibraryTitles(std::move(titles));
 }
@@ -2517,7 +2518,7 @@ bool EmulatorWindow::InstallSystemFiles(const std::filesystem::path& zip_path) {
                               wx_window ? wx_window->frame() : nullptr,
                               wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
     result = ui::InstallSystemFiles(
-        zip_path, emulator_->system_files_path(),
+        zip_path, emulator_->system_files_path(), emulator_->patches_path(),
         [&progress](size_t done, size_t total) {
           return progress.Update(int(done * 100 / total));
         });

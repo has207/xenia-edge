@@ -47,6 +47,7 @@
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xam/achievement_manager.h"
 #include "xenia/kernel/xam/content_manager.h"
+#include "xenia/kernel/xam/title_image_device.h"
 #include "xenia/kernel/xam/ui/disc_swap_ui.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_state.h"
@@ -423,7 +424,7 @@ X_STATUS Emulator::Setup(
   // Bring up the virtual filesystem used by the kernel.
   file_system_ = std::make_unique<xe::vfs::VirtualFileSystem>();
 
-  patcher_ = std::make_unique<xe::patcher::Patcher>(storage_root_ / "patches");
+  patcher_ = std::make_unique<xe::patcher::Patcher>(patches_path());
 
   XELOGI("{}: Initializing Kernel...", __func__);
   // Shared kernel state.
@@ -2435,6 +2436,19 @@ void Emulator::PrepareSystemTitle() {
   }
   // xam links media: to the flash, which holds the system fonts.
   file_system_->RegisterSymbolicLink("media:", "\\SystemRoot");
+
+  // The dashboard loads box art from under kTitleImageUriRoot.
+  std::string title_images;
+  if (!file_system_->FindSymbolicLink(kernel::xam::kTitleImageSymbolicLink,
+                                      title_images)) {
+    auto device = std::make_unique<kernel::xam::TitleImageDevice>(
+        kernel::xam::kTitleImageMountPath, cache_root_, this);
+    if (device->Initialize() &&
+        file_system_->RegisterDevice(std::move(device))) {
+      file_system_->RegisterSymbolicLink(kernel::xam::kTitleImageSymbolicLink,
+                                         kernel::xam::kTitleImageMountPath);
+    }
+  }
 
   // Only its resources are used, through the resource locators.
   auto module = kernel_state_->LoadUserModule("\\SystemRoot\\xam.xex");

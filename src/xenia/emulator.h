@@ -99,6 +99,11 @@ class Emulator {
     return storage_root_ / "system";
   }
 
+  // Folder the patcher applies .patch.toml files from at launch.
+  std::filesystem::path patches_path() const {
+    return storage_root_ / "patches";
+  }
+
   // Folder XeFu and its xbox.xex are in, shown to them as the system partition
   // Compatibility folder.
   std::filesystem::path xefu_path() const;
@@ -459,6 +464,8 @@ class Emulator {
     std::string name;
     std::filesystem::path path;
     std::filesystem::path icon_path;
+    // The downloaded cover, which may not exist.
+    std::filesystem::path boxart_path;
     XContentType content_type = XContentType::kInvalid;
   };
   // The app replaces the list whenever its game library changes, so guest

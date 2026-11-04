@@ -26,6 +26,7 @@
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/title_image_device.h"
 #include "xenia/kernel/xam/xam.h"
 #include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xam/xam_module.h"
@@ -168,6 +169,15 @@ dword_result_t XamQueryLiveHiveW_entry(
   X_RESULT extended_error = 0x80151802;  // X_ONLINE_E_LOGON_NOT_LOGGED_ON
   if (!feature_name || !value_ptr || !value_buffer_size) {
     extended_error = X_E_INVALIDARG;
+  } else if (std::string target;
+             feature_name.value() == u"GameImageAssetUriRoot" &&
+             kernel_state()->file_system()->FindSymbolicLink(
+                 kTitleImageSymbolicLink, target)) {
+    // Title images come from the TitleImages: device rather than Xbox Live.
+    string_util::copy_and_swap_truncating(static_cast<char16_t*>(value_ptr),
+                                          kTitleImageUriRoot,
+                                          value_buffer_size);
+    extended_error = X_E_SUCCESS;
   }
 
   if (overlapped_ptr) {

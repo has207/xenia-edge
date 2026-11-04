@@ -36,7 +36,7 @@ PatchesPanel::PatchesPanel(wxWindow* parent, EmulatorWindow* emulator_window,
     : wxPanel(parent, wxID_ANY), emulator_window_(emulator_window) {
   std::filesystem::path storage_path;
   if (emulator_window_ && emulator_window_->emulator()) {
-    storage_path = emulator_window_->emulator()->storage_root() / "patches" /
+    storage_path = emulator_window_->emulator()->patches_path() /
                    xe::to_path(file.filename);
   }
 

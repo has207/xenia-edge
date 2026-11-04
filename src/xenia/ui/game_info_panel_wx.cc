@@ -778,7 +778,7 @@ void GameInfoPanel::BuildPatchesSection(wxWindow* parent, wxBoxSizer* sizer) {
   auto* emulator = emulator_window_ ? emulator_window_->emulator() : nullptr;
   std::filesystem::path patches_dir;
   if (emulator) {
-    patches_dir = emulator->storage_root() / "patches";
+    patches_dir = emulator->patches_path();
     for (auto& local :
          patcher::EnumerateLocalPatchesForTitle(patches_dir, key_.title_id)) {
       // A file named like a bundled one is its saved copy, not a new patch.
