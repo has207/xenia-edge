@@ -29,10 +29,10 @@ constexpr int kFillRadius = 4;
 
 }  // namespace
 
-GameGrid::GameGrid(wxWindow* parent, int card_size_px)
+GameGrid::GameGrid(wxWindow* parent, const wxSize& card_size)
     : wxScrolledCanvas(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                        wxVSCROLL | wxWANTS_CHARS | wxBORDER_NONE),
-      card_size_px_(card_size_px) {
+      card_size_(card_size) {
   SetBackgroundStyle(wxBG_STYLE_PAINT);
   SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX));
   // One card per wheel notch keeps a full row from flying past.
@@ -49,11 +49,11 @@ GameGrid::GameGrid(wxWindow* parent, int card_size_px)
   }
 }
 
-void GameGrid::SetCardSize(int card_size_px) {
-  if (card_size_px == card_size_px_) {
+void GameGrid::SetCardSize(const wxSize& card_size) {
+  if (card_size == card_size_) {
     return;
   }
-  card_size_px_ = card_size_px;
+  card_size_ = card_size;
   RecalculateMetrics();
   EllipsizeLabels();
   RelayoutAndRefresh();
@@ -71,9 +71,9 @@ void GameGrid::RecalculateMetrics() {
   dc.SetFont(GetFont());
   text_h_ = dc.GetCharHeight();
 
-  cell_w_ = card_size_px_ + FromDIP(kCellPadX);
+  cell_w_ = card_size_.x + FromDIP(kCellPadX);
   // Art, then two lines of label.
-  cell_h_ = card_size_px_ + text_h_ * 2 + FromDIP(kCellPadY);
+  cell_h_ = card_size_.y + text_h_ * 2 + FromDIP(kCellPadY);
 }
 
 void GameGrid::SetItems(std::vector<Item> items) {
@@ -108,7 +108,9 @@ void GameGrid::EllipsizeLabels() {
 
 void GameGrid::RelayoutAndRefresh() {
   const wxSize client = GetClientSize();
-  columns_ = std::max(1, (client.GetWidth() - 2 * margin_) / cell_w_);
+  const int width = client.GetWidth() - 2 * margin_;
+  columns_ = std::max(1, width / cell_w_);
+  column_pitch_ = std::max(cell_w_, width / columns_);
 
   const int rows = (static_cast<int>(items_.size()) + columns_ - 1) / columns_;
   const wxSize virtual_size(client.GetWidth(), 2 * margin_ + rows * cell_h_);
@@ -123,8 +125,9 @@ void GameGrid::RelayoutAndRefresh() {
 wxRect GameGrid::CellRect(int index) const {
   const int row = index / columns_;
   const int column = index % columns_;
-  return wxRect(margin_ + column * cell_w_, margin_ + row * cell_h_, cell_w_,
-                cell_h_);
+  return wxRect(
+      margin_ + column * column_pitch_ + (column_pitch_ - cell_w_) / 2,
+      margin_ + row * cell_h_, cell_w_, cell_h_);
 }
 
 wxRect GameGrid::ScrolledCellRect(int index) const {
@@ -138,13 +141,17 @@ int GameGrid::HitTest(const wxPoint& client_point) const {
   if (point.x < margin_ || point.y < margin_) {
     return -1;
   }
-  const int column = (point.x - margin_) / cell_w_;
+  const int column = (point.x - margin_) / column_pitch_;
   const int row = (point.y - margin_) / cell_h_;
   if (column >= columns_) {
     return -1;
   }
   const int index = row * columns_ + column;
-  return index < static_cast<int>(items_.size()) ? index : -1;
+  if (index >= static_cast<int>(items_.size()) ||
+      !CellRect(index).Contains(point)) {
+    return -1;
+  }
+  return index;
 }
 
 void GameGrid::SetSelection(int index, bool notify) {
@@ -251,7 +258,7 @@ void GameGrid::DrawCard(wxDC& dc, int index, const wxRect& cell) const {
           ? wxSystemSettings::GetColour(wxSYS_COLOUR_HIGHLIGHTTEXT)
           : wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOXTEXT));
 
-  wxRect text_rect(cell.x, cell.y + card_size_px_ + FromDIP(6), cell.width,
+  wxRect text_rect(cell.x, cell.y + card_size_.y + FromDIP(6), cell.width,
                    text_h_);
   dc.DrawLabel(label_text_[index], text_rect, wxALIGN_CENTER_HORIZONTAL);
   if (!item.sublabel.empty()) {

@@ -31,6 +31,11 @@ wxBitmapBundle DecodePngIcon(const std::vector<uint8_t>& png, int size_px,
 wxBitmapBundle WrapRgbaIcon(const std::vector<uint8_t>& rgba, int width,
                             int height, int size_px, double scale = 1.0);
 
+// Decode JPEG or PNG cover art with stb_image, since wxWidgets is built
+// without JPEG, and rescale it to `size`, or an empty bundle on failure.
+wxBitmapBundle DecodeCoverArt(const std::vector<uint8_t>& data,
+                              const wxSize& size, double scale = 1.0);
+
 // Flat square swatch with centered text, for titles that have no art. `text`
 // may hold one newline to split it over two lines.
 wxBitmapBundle MakeTextPlaceholder(const wxString& text, int size_px,

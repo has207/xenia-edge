@@ -2408,6 +2408,9 @@ void EmulatorWindow::DownloadCoverArt() {
           return progress.Update(int(done * 100 / total));
         });
   }
+  if (result.downloaded && game_list_panel_) {
+    game_list_panel_->Reload();
+  }
   if (result.cancelled) {
     return;
   }

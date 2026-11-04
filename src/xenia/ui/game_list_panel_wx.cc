@@ -50,10 +50,24 @@ namespace app {
 
 namespace {
 
-// Card art edge in logical DIPs at 96 DPI; the constructor converts to device
-// pixels via FromDIP() for the current monitor. Stored art is 64x64, so this
-// upscales.
+// Card art edge in logical DIPs at 96 DPI, which SetCardLayout converts to
+// device pixels for the current monitor. Stored art is 64x64 so this upscales.
 constexpr int kCardArtSize = 96;
+// Cards once a game has cover art, in the shape of the 219x300 covers.
+constexpr int kCoverCardWidth = 148;
+constexpr int kCoverCardHeight = 203;
+
+// `art` centered on a card of `size`.
+wxBitmap CenteredOnCard(const wxBitmap& art, const wxSize& size) {
+  wxBitmap card(size, 32);
+  wxMemoryDC dc(card);
+  dc.SetBackground(wxBrush(wxColour(40, 40, 40)));
+  dc.Clear();
+  dc.DrawBitmap(art, (size.x - art.GetWidth()) / 2,
+                (size.y - art.GetHeight()) / 2, true);
+  dc.SelectObject(wxNullBitmap);
+  return card;
+}
 
 // Arrows are glyphs, not prose, so they stay out of the catalog.
 wxString SortArrow(bool descending) {
@@ -130,20 +144,9 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
                    wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
   sort_dir_button_->SetToolTip(_("Reverse the sort order"));
 
-  // Card art is expressed in logical DIPs; the grid draws bitmaps at device
-  // resolution, so everything downstream of here builds them at scale 1.
-  icon_size_px_ = FromDIP(kCardArtSize);
-  not_played_placeholder_ =
-      ui::MakeTextPlaceholder(_("Not\nplayed"), icon_size_px_, 1.0)
-          .GetBitmap(wxSize(icon_size_px_, icon_size_px_));
-  const int ball_size_px = std::max(FromDIP(10), icon_size_px_ / 5);
-  for (size_t i = 0; i < compat_balls_.size(); ++i) {
-    compat_balls_[i] =
-        MakeCompatBall(static_cast<CompatState>(i), ball_size_px);
-  }
-
-  grid_ = new ui::GameGrid(list_side_, icon_size_px_);
-  grid_->SetPlaceholder(not_played_placeholder_);
+  grid_ =
+      new ui::GameGrid(list_side_, FromDIP(wxSize(kCardArtSize, kCardArtSize)));
+  SetCardLayout(false);
   grid_->SetMinSize(wxSize(0, 0));
   grid_->SetSelectionChangedCallback(
       [this](bool clicked) { OnSelectionChanged(clicked); });
@@ -283,6 +286,14 @@ void GameListPanel::Reload() {
     entries_.push_back(std::move(e));
   }
 
+  std::error_code ec;
+  const bool cover_cards = std::ranges::any_of(games, [&](const auto& g) {
+    return std::filesystem::exists(library->BoxArtPath(g.key()), ec);
+  });
+  if (cover_cards != cover_cards_) {
+    SetCardLayout(cover_cards);
+  }
+
   // Per-profile timestamps are cheap; icons are PNG decodes and dominate the
   // load. Apply timestamps now, render the list, then trickle icons in.
   LoadTimestampsFromProfiles();
@@ -403,25 +414,49 @@ wxBitmap GameListPanel::MakeCard(const Entry& entry) const {
     return wxBitmap();
   }
   // Scale 1: the image list addresses device pixels directly.
-  wxBitmapBundle art = ui::DecodePngIcon(
-      xe::filesystem::ReadAllBytes(library->IconPath(entry.key())),
-      icon_size_px_, 1.0);
+  wxBitmapBundle art;
+  if (cover_cards_) {
+    art = ui::DecodeCoverArt(
+        xe::filesystem::ReadAllBytes(library->BoxArtPath(entry.key())),
+        card_size_, 1.0);
+  }
+  if (!art.IsOk()) {
+    art = ui::DecodePngIcon(
+        xe::filesystem::ReadAllBytes(library->IconPath(entry.key())),
+        card_size_.x, 1.0);
+  }
+  wxBitmap card =
+      CenteredOnCard(art.IsOk() ? art.GetBitmap(art.GetDefaultSize())
+                                : not_played_placeholder_,
+                     card_size_);
 
-  wxBitmap card(icon_size_px_, icon_size_px_, 32);
   wxMemoryDC dc(card);
-  dc.SetBackground(wxBrush(wxColour(40, 40, 40)));
-  dc.Clear();
-  dc.DrawBitmap(art.IsOk() ? art.GetBitmap(wxSize(icon_size_px_, icon_size_px_))
-                           : not_played_placeholder_,
-                0, 0, true);
-
   const wxBitmap& ball =
       compat_balls_[static_cast<size_t>(GetEntryCompatState(entry))];
-  const int inset = std::max(1, icon_size_px_ / 32);
-  dc.DrawBitmap(ball, icon_size_px_ - ball.GetWidth() - inset,
-                icon_size_px_ - ball.GetHeight() - inset, true);
+  const int inset = std::max(1, card_size_.x / 32);
+  dc.DrawBitmap(ball, card_size_.x - ball.GetWidth() - inset,
+                card_size_.y - ball.GetHeight() - inset, true);
   dc.SelectObject(wxNullBitmap);
   return card;
+}
+
+void GameListPanel::SetCardLayout(bool cover_cards) {
+  cover_cards_ = cover_cards;
+  // Card art is expressed in logical DIPs. The grid draws bitmaps at device
+  // resolution so everything downstream of here builds them at scale 1.
+  card_size_ = FromDIP(cover_cards ? wxSize(kCoverCardWidth, kCoverCardHeight)
+                                   : wxSize(kCardArtSize, kCardArtSize));
+  not_played_placeholder_ = CenteredOnCard(
+      ui::MakeTextPlaceholder(_("Not\nplayed"), card_size_.x, 1.0)
+          .GetBitmap(wxSize(card_size_.x, card_size_.x)),
+      card_size_);
+  const int ball_size_px = std::max(FromDIP(10), card_size_.x / 5);
+  for (size_t i = 0; i < compat_balls_.size(); ++i) {
+    compat_balls_[i] =
+        MakeCompatBall(static_cast<CompatState>(i), ball_size_px);
+  }
+  grid_->SetCardSize(card_size_);
+  grid_->SetPlaceholder(not_played_placeholder_);
 }
 
 void GameListPanel::OnSearch(wxCommandEvent&) {

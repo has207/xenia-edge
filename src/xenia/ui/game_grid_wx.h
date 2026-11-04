@@ -40,10 +40,10 @@ class GameGrid : public wxScrolledCanvas {
     wxString tooltip;
   };
 
-  GameGrid(wxWindow* parent, int card_size_px);
+  GameGrid(wxWindow* parent, const wxSize& card_size);
 
-  // Art edge in device pixels. Drives the whole cell pitch.
-  void SetCardSize(int card_size_px);
+  // Art size in device pixels, which drives the whole cell pitch.
+  void SetCardSize(const wxSize& card_size);
   void SetPlaceholder(const wxBitmap& placeholder);
 
   // Replaces the contents. Selection is dropped; the caller restores it.
@@ -103,12 +103,14 @@ class GameGrid : public wxScrolledCanvas {
   // Ellipsized copies of the labels, parallel to items_.
   std::vector<wxString> label_text_;
 
-  int card_size_px_ = 0;
+  wxSize card_size_;
   int cell_w_ = 1;
   int cell_h_ = 1;
   int margin_ = 0;
   int text_h_ = 0;
   int columns_ = 1;
+  // Cell width plus an even share of the width the whole cells leave over.
+  int column_pitch_ = 1;
 
   int selection_ = -1;
   int hover_ = -1;
