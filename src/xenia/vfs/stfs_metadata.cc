@@ -23,7 +23,7 @@ std::string U16ToUtf8(const std::u16string& s) {
   if (s.empty()) {
     return {};
   }
-  return xe::to_utf8(s);
+  return xe::to_utf8_lossy(s);
 }
 
 }  // namespace
