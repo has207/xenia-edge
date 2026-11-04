@@ -1746,10 +1746,6 @@ msgstr "Zapisivanje sistemskih datoteka nije uspjelo."
 msgid "Install System Files"
 msgstr "Instalacija sistemskih datoteka"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "Instaliraj sistemske datoteke…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "Instaliranje sistemskih datoteka…"
@@ -1785,3 +1781,49 @@ msgstr "Ova datoteka nije ažuriranje sustava za USB."
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "Pokreni nadzornu ploču za Xbox"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "Preuzmi i instaliraj…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "Odaberi datoteku…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "Preuzimanje ažuriranja sustava…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "Sistemske datoteke već su instalirane. Želite li ih zamijeniti?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "Preuzmi naslovnice…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "Preuzimanje naslovnica"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "Nema naslovnica za preuzimanje."
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "Preuzimanje naslovnica…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "Preuzete naslovnice: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "Igre čiju naslovnicu nije bilo moguće preuzeti: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "Naslovnice koje nije bilo moguće spremiti: %d"

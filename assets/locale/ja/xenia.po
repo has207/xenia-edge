@@ -1750,10 +1750,6 @@ msgstr "システム ファイルの書き込みに失敗しました。"
 msgid "Install System Files"
 msgstr "システム ファイルのインストール"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "システム ファイルのインストール…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "システム ファイルをインストール中…"
@@ -1789,3 +1785,49 @@ msgstr "このファイルは USB システム アップデートではありま
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "ダッシュボードを起動"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "ダウンロードしてインストール…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "ファイルを選択…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "システム アップデートをダウンロード中…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "システム ファイルは既にインストールされています。置き換えますか？"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "カバー アートのダウンロード…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "カバー アートのダウンロード"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "ダウンロードするカバー アートはありません。"
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "カバー アートをダウンロード中…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "ダウンロードしたカバー: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "カバーをダウンロードできなかったゲーム: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "保存できなかったカバー: %d"

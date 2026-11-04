@@ -1748,10 +1748,6 @@ msgstr "Sistem dosyaları yazılamadı."
 msgid "Install System Files"
 msgstr "Sistem Dosyalarını Yükle"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "Sistem Dosyalarını Yükle…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "Sistem dosyaları yükleniyor…"
@@ -1787,3 +1783,49 @@ msgstr "Bu dosya bir USB sistem güncelleştirmesi değil."
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "Xbox Panosu'nu Başlat"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "İndir ve Yükle…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "Dosya Seç…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "Sistem güncelleştirmesi indiriliyor…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "Sistem dosyaları zaten yüklü. Bunları değiştirmek istiyor musunuz?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "Kapak Resimlerini İndir…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "Kapak Resimlerini İndir"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "İndirilecek kapak resmi yok."
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "Kapak resimleri indiriliyor…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "İndirilen kapaklar: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "Kapağı indirilemeyen oyunlar: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "Kaydedilemeyen kapaklar: %d"

@@ -1751,10 +1751,6 @@ msgstr "Falha ao gravar os arquivos de sistema."
 msgid "Install System Files"
 msgstr "Instalar arquivos de sistema"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "Instalar arquivos de sistema…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "Instalando os arquivos de sistema…"
@@ -1790,3 +1786,49 @@ msgstr "Este arquivo não é uma atualização do sistema por USB."
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "Iniciar Menu Xbox"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "Baixar e instalar…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "Selecionar arquivo…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "Baixando a atualização do sistema…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "Os arquivos de sistema já estão instalados. Deseja substituí-los?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "Baixar capas…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "Baixar capas"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "Não há capas para baixar."
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "Baixando capas…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "Capas baixadas: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "Jogos cuja capa não pôde ser baixada: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "Capas que não puderam ser salvas: %d"

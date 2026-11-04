@@ -1750,10 +1750,6 @@ msgstr "Impossibile scrivere i file di sistema."
 msgid "Install System Files"
 msgstr "Installa file di sistema"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "Installa file di sistema…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "Installazione dei file di sistema in corso…"
@@ -1789,3 +1785,49 @@ msgstr "Questo file non è un aggiornamento di sistema tramite USB."
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "Avvia dashboard"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "Scarica e installa…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "Seleziona file…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "Download dell'aggiornamento di sistema in corso…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "I file di sistema sono già installati. Vuoi sostituirli?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "Scarica copertine…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "Scarica copertine"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "Non ci sono copertine da scaricare."
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "Download delle copertine in corso…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "Copertine scaricate: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "Giochi di cui non è stato possibile scaricare la copertina: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "Copertine che non è stato possibile salvare: %d"

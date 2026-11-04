@@ -1750,10 +1750,6 @@ msgstr "Nabigong isulat ang mga system file."
 msgid "Install System Files"
 msgstr "Mag-install ng mga System File"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "Mag-install ng mga System File…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "Ini-install ang mga system file…"
@@ -1789,3 +1785,49 @@ msgstr "Hindi USB system update ang file na ito."
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "Patakbuhin ang Dashboard"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "I-download at I-install…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "Pumili ng File…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "Dina-download ang system update…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "Naka-install na ang mga system file. Gusto mo bang palitan ang mga ito?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "I-download ang Cover Art…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "I-download ang Cover Art"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "Walang cover art na ida-download."
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "Dina-download ang cover art…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "Mga na-download na cover: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "Mga larong hindi ma-download ang cover: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "Mga cover na hindi ma-save: %d"

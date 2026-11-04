@@ -1744,10 +1744,6 @@ msgstr "সিস্টেম ফাইলগুলি লেখা যায়
 msgid "Install System Files"
 msgstr "সিস্টেম ফাইল ইনস্টল করুন"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "সিস্টেম ফাইল ইনস্টল করুন…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "সিস্টেম ফাইলগুলি ইনস্টল করা হচ্ছে…"
@@ -1783,3 +1779,49 @@ msgstr "এই ফাইলটি USB সিস্টেম আপডেট ন�
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "ড্যাশবোর্ড চালু করুন"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "ডাউনলোড ও ইনস্টল করুন…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "ফাইল নির্বাচন করুন…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "সিস্টেম আপডেট ডাউনলোড করা হচ্ছে…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "সিস্টেম ফাইলগুলি ইতিমধ্যে ইনস্টল করা আছে। আপনি কি সেগুলি প্রতিস্থাপন করতে চান?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "কভার আর্ট ডাউনলোড করুন…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "কভার আর্ট ডাউনলোড করুন"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "ডাউনলোড করার মতো কোনো কভার আর্ট নেই।"
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "কভার আর্ট ডাউনলোড করা হচ্ছে…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "ডাউনলোড করা কভার: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "যেসব গেমের কভার ডাউনলোড করা যায়নি: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "যেসব কভার সংরক্ষণ করা যায়নি: %d"

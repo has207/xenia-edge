@@ -1741,10 +1741,6 @@ msgstr "เขียนไฟล์ระบบไม่สำเร็จ"
 msgid "Install System Files"
 msgstr "ติดตั้งไฟล์ระบบ"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "ติดตั้งไฟล์ระบบ…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "กำลังติดตั้งไฟล์ระบบ…"
@@ -1780,3 +1776,49 @@ msgstr "ไฟล์นี้ไม่ใช่การอัปเดตระ
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "เปิดแดชบอร์ด"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "ดาวน์โหลดและติดตั้ง…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "เลือกไฟล์…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "กำลังดาวน์โหลดการอัปเดตระบบ…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "ติดตั้งไฟล์ระบบไว้แล้ว ต้องการแทนที่หรือไม่?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "ดาวน์โหลดภาพปก…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "ดาวน์โหลดภาพปก"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "ไม่มีภาพปกให้ดาวน์โหลด"
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "กำลังดาวน์โหลดภาพปก…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "ภาพปกที่ดาวน์โหลดแล้ว: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "เกมที่ดาวน์โหลดภาพปกไม่ได้: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "ภาพปกที่บันทึกไม่ได้: %d"

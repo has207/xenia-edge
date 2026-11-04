@@ -1751,10 +1751,6 @@ msgstr "Αποτυχία εγγραφής των αρχείων συστήματ
 msgid "Install System Files"
 msgstr "Εγκατάσταση αρχείων συστήματος"
 
-#: src/xenia/app/emulator_window.cc:1127
-msgid "Install System Files..."
-msgstr "Εγκατάσταση αρχείων συστήματος…"
-
 #: src/xenia/app/emulator_window.cc:2297
 msgid "Installing the system files..."
 msgstr "Γίνεται εγκατάσταση αρχείων συστήματος…"
@@ -1790,3 +1786,49 @@ msgstr "Αυτό το αρχείο δεν είναι ενημέρωση συστ
 #: src/xenia/app/emulator_window.cc:1035
 msgid "Start Dashboard"
 msgstr "Εκκίνηση πίνακα εργαλείων Xbox"
+
+#: src/xenia/app/emulator_window.cc:1171
+msgid "Download && Install..."
+msgstr "Λήψη και εγκατάσταση…"
+
+#: src/xenia/app/emulator_window.cc:1174
+msgid "Select File..."
+msgstr "Επιλογή αρχείου…"
+
+#: src/xenia/app/emulator_window.cc:2455
+msgid "Downloading the system update..."
+msgstr "Γίνεται λήψη της ενημέρωσης συστήματος…"
+
+#: src/xenia/app/emulator_window.cc:2441
+msgid "System files are already installed. Do you want to replace them?"
+msgstr "Τα αρχεία συστήματος είναι ήδη εγκατεστημένα. Θέλετε να τα αντικαταστήσετε?"
+
+#: src/xenia/app/emulator_window.cc:1178
+msgid "Download Cover Art..."
+msgstr "Λήψη εξωφύλλων…"
+
+#: src/xenia/app/emulator_window.cc:2393
+#: src/xenia/app/emulator_window.cc:2402
+#: src/xenia/app/emulator_window.cc:2430
+msgid "Download Cover Art"
+msgstr "Λήψη εξωφύλλων"
+
+#: src/xenia/app/emulator_window.cc:2394
+msgid "There's no cover art to download."
+msgstr "Δεν υπάρχουν εξώφυλλα για λήψη."
+
+#: src/xenia/app/emulator_window.cc:2403
+msgid "Downloading cover art..."
+msgstr "Γίνεται λήψη εξωφύλλων…"
+
+#: src/xenia/app/emulator_window.cc:2418
+msgid "Covers downloaded: %d"
+msgstr "Εξώφυλλα που λήφθηκαν: %d"
+
+#: src/xenia/app/emulator_window.cc:2422
+msgid "Games whose cover couldn't be downloaded: %d"
+msgstr "Παιχνίδια των οποίων το εξώφυλλο δεν ήταν δυνατό να ληφθεί: %d"
+
+#: src/xenia/app/emulator_window.cc:2427
+msgid "Covers that couldn't be saved: %d"
+msgstr "Εξώφυλλα που δεν ήταν δυνατό να αποθηκευτούν: %d"
