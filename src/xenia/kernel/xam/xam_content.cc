@@ -555,13 +555,65 @@ dword_result_t XamContentCreateInternal_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentCreateInternal, kContent, kImplemented);
 
+// The HDD or disc device ID of the path as written, which is 0 for a symbolic
+// link like GAME: or any other path.
+static uint32_t StorageDeviceId(const std::string_view path) {
+  if (xe::utf8::starts_with_case(path, "\\Device\\Cdrom0")) {
+    return static_cast<uint32_t>(DummyDeviceId::ODD);
+  }
+  if (xe::utf8::starts_with_case(path, "\\Device\\Harddisk0\\Partition1")) {
+    return static_cast<uint32_t>(DummyDeviceId::HDD);
+  }
+  return 0;
+}
+
+// Describes the package opened from |entry|, with an empty type, name and title
+// when it has no header.
+static void WriteOpenedContentData(uint32_t user_index,
+                                   const std::string_view path,
+                                   vfs::Entry* entry,
+                                   XCONTENT_DATA_INTERNAL* data) {
+  std::unique_ptr<vfs::XContentContainerHeader> header;
+  vfs::File* file = nullptr;
+  if (entry->Open(vfs::FileAccess::kFileReadData, &file) == X_STATUS_SUCCESS) {
+    header = vfs::XContentContainerDevice::ReadContainerHeader(file);
+    file->Destroy();
+  }
+  if (header && !header->content_header.is_magic_valid()) {
+    header.reset();
+  }
+  XCONTENT_AGGREGATE_DATA opened = {};
+  if (header) {
+    opened = vfs::XContentContainerDevice::ContentDataFromHeader(*header);
+  }
+  data->device_id = StorageDeviceId(path);
+  data->content_type = opened.content_type;
+  data->set_display_name(opened.display_name());
+  data->set_file_name(path.substr(path.find_last_of('\\') + 1));
+  // A signed-out user still opens the package, with XUID 0.
+  uint64_t xuid = 0;
+  ContentXuid(user_index, xuid);
+  data->xuid = xuid;
+  data->title_id = opened.title_id;
+  if (header && opened.content_type == XContentType::kAvatarItem) {
+    const auto& asset = header->content_metadata.metadata_v2.avatar_asset_data;
+    auto& avatar =
+        *reinterpret_cast<XCONTENT_DATA_AVATAR_ASSET*>(data->padding);
+    avatar.subcategory = asset.sub_category;
+    avatar.colorizable = static_cast<int32_t>(asset.colorizable);
+    std::memcpy(avatar.asset_id, asset.asset_id, sizeof(avatar.asset_id));
+    avatar.skeleton_version_mask = asset.skeleton_version_mask;
+  }
+}
+
 // Mounts the content package stored in a file, such as a Kinect speech
-// database (GAME:\nuisp1033), under root_name. unknown is a value rather than
-// an output. Only bits 12-19 of it are used and callers pass 0.
-dword_result_t XamContentOpenFile_entry(
+// database (GAME:\nuisp1033) or a disc's NXEArt, under root_name and describes
+// it in content_data_ptr if given. unknown is a value rather than an output.
+// Only bits 12-19 of it are used and callers pass 0.
+dword_result_t XamContentOpenFileInternal_entry(
     dword_t user_index, lpstring_t root_name, lpstring_t path, dword_t flags,
-    dword_t unknown, lpdword_t license_mask_ptr,
-    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+    dword_t unknown, pointer_t<XCONTENT_DATA_INTERNAL> content_data_ptr,
+    lpdword_t license_mask_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   if (!root_name || !ValidRootName(root_name.value())) {
     return X_ERROR_INVALID_NAME;
   }
@@ -569,13 +621,19 @@ dword_result_t XamContentOpenFile_entry(
   if (license_mask_ptr) {
     *license_mask_ptr = 0;
   }
-  auto run = [path = path.value(), root_name = root_name.value(),
+  auto run = [user_index = uint32_t(user_index), path = path.value(),
+              root_name = root_name.value(),
+              content_data =
+                  static_cast<XCONTENT_DATA_INTERNAL*>(content_data_ptr),
               overlapped = bool(overlapped_ptr)](uint32_t& extended_error,
                                                  uint32_t& length) -> X_RESULT {
     X_RESULT result = X_ERROR_FILE_NOT_FOUND;
     if (auto entry = kernel_state()->file_system()->ResolvePath(path)) {
       result =
           kernel_state()->content_manager()->OpenContentFile(root_name, entry);
+      if (!result && content_data) {
+        WriteOpenedContentData(user_index, path, entry, content_data);
+      }
     }
     extended_error = X_HRESULT_FROM_WIN32(result);
     length = 0;
@@ -591,6 +649,16 @@ dword_result_t XamContentOpenFile_entry(
   }
   kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
   return X_ERROR_IO_PENDING;
+}
+DECLARE_XAM_EXPORT1(XamContentOpenFileInternal, kContent, kSketchy);
+
+dword_result_t XamContentOpenFile_entry(
+    dword_t user_index, lpstring_t root_name, lpstring_t path, dword_t flags,
+    dword_t unknown, lpdword_t license_mask_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  return XamContentOpenFileInternal_entry(user_index, root_name, path, flags,
+                                          unknown, nullptr, license_mask_ptr,
+                                          overlapped_ptr);
 }
 DECLARE_XAM_EXPORT1(XamContentOpenFile, kContent, kSketchy);
 
