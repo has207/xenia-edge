@@ -8,6 +8,7 @@
 */
 
 #include <algorithm>
+#include <cstring>
 #include <tuple>
 
 #include "xenia/base/logging.h"
@@ -696,7 +697,74 @@ static const uint8_t xe_console_obfuscation_key[16] = {
 
 // The keys the key numbered calls (XeKeysHmacSha, XeKeysAesCbc) can use, or
 // nullptr for one we don't have.
+// Title keys, which a title hands the hypervisor (XeKeysSetKey) to use
+// without keeping them.
+static uint8_t title_keys[TITLE_KEYS_LIMIT - TITLE_KEYS_BASE][16];
+static bool title_keys_set[TITLE_KEYS_LIMIT - TITLE_KEYS_BASE];
+
+// The hypervisor doesn't use a title key as handed over: it derives the key
+// it uses from it, in a way that isn't known. These are the ones known: the
+// keys Harmonix titles set for mogg versions 12-13, 14, 15 and 16 (Dance
+// Central 2 does), and the keys their moggs decrypt with, which later titles
+// and mogg tools carry in the clear.
+struct KnownTitleKey {
+  uint8_t set[16];
+  uint8_t used[16];
+};
+static constexpr KnownTitleKey kKnownTitleKeys[] = {
+    {{0x6D, 0x85, 0xA8, 0x99, 0x8B, 0x2D, 0x1C, 0x76, 0xFA, 0xDE, 0x68, 0xF2,
+      0xAF, 0x38, 0x02, 0xED},
+     {0x01, 0x22, 0x00, 0x38, 0xD2, 0x01, 0x78, 0x8B, 0xDD, 0xCD, 0xD0, 0xF0,
+      0xFE, 0x3E, 0x24, 0x7F}},
+    {{0xB2, 0x3E, 0x8D, 0xAC, 0x46, 0x49, 0x97, 0xDE, 0x21, 0xDB, 0x31, 0xC4,
+      0x33, 0x1B, 0x75, 0x6A},
+     {0x51, 0x73, 0xAD, 0xE5, 0xB3, 0x99, 0xB8, 0x61, 0x58, 0x1A, 0xF9, 0xB8,
+      0x1E, 0xA7, 0xBE, 0xBF}},
+    {{0xBB, 0x7C, 0x64, 0xB6, 0x4A, 0x6E, 0x19, 0xE9, 0xCC, 0x30, 0xBD, 0x5D,
+      0x0B, 0x20, 0x80, 0xB4},
+     {0xC6, 0x22, 0x94, 0x30, 0xD8, 0x3C, 0x84, 0x14, 0x08, 0x73, 0x7C, 0xF2,
+      0x23, 0xF6, 0xEB, 0x5A}},
+    {{0x1F, 0x55, 0x21, 0x65, 0x97, 0x2F, 0xE5, 0xAF, 0x27, 0xD2, 0xD4, 0xF4,
+      0x5E, 0x93, 0xD1, 0x9D},
+     {0x02, 0x1A, 0x83, 0xF3, 0x97, 0xE9, 0xD4, 0xB8, 0x06, 0x74, 0x14, 0x6B,
+      0x30, 0x4C, 0x00, 0x91}},
+};
+
+dword_result_t XeKeysSetKey_entry(word_t key_num, lpvoid_t key_buffer,
+                                  dword_t key_size) {
+  if (key_num < TITLE_KEYS_BASE || key_num >= TITLE_KEYS_LIMIT) {
+    XELOGW("XeKeysSetKey: key 0x{:X} isn't a title key", uint32_t(key_num));
+    return X_STATUS_ACCESS_DENIED;
+  }
+  if (!key_buffer || key_size != 16) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  const uint8_t* key = key_buffer.as<const uint8_t*>();
+  const uint8_t* used = key;
+  for (const KnownTitleKey& known : kKnownTitleKeys) {
+    if (std::memcmp(key, known.set, sizeof(known.set)) == 0) {
+      used = known.used;
+      break;
+    }
+  }
+  if (used == key) {
+    XELOGW(
+        "XeKeysSetKey: the hypervisor key for key 0x{:X} isn't known, so it's "
+        "used as given",
+        uint32_t(key_num));
+  }
+  const uint32_t slot = key_num - TITLE_KEYS_BASE;
+  std::memcpy(title_keys[slot], used, sizeof(title_keys[slot]));
+  title_keys_set[slot] = true;
+  return X_STATUS_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysSetKey, kNone, kImplemented);
+
 static const uint8_t* GetKeysKey(uint32_t key_num) {
+  if (key_num >= TITLE_KEYS_BASE && key_num < TITLE_KEYS_LIMIT) {
+    const uint32_t slot = key_num - TITLE_KEYS_BASE;
+    return title_keys_set[slot] ? title_keys[slot] : nullptr;
+  }
   switch (key_num) {
     case CONSOLE_OBFUSCATION_KEY:
       return xe_console_obfuscation_key;
