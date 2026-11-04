@@ -186,6 +186,8 @@ class GameLibrary {
   // Writes icon.png into the release's folder.
   bool SetIcon(const LibraryKey& key, std::span<const uint8_t> png);
   std::filesystem::path IconPath(const LibraryKey& key) const;
+  // boxart.jpg in the release's folder, its downloaded cover art.
+  std::filesystem::path BoxArtPath(const LibraryKey& key) const;
 
   // Removes a release's folder and drops it from the in-memory list.
   bool Remove(const LibraryKey& key);

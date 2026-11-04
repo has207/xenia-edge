@@ -45,6 +45,10 @@ int main(int argc, char** argv) {
     setenv("GDK_BACKEND", "x11", 1);
   }
 
+  // Downloads tell curl to leave signals alone, so a write to a socket the
+  // other end closed must fail rather than end the process.
+  signal(SIGPIPE, SIG_IGN);
+
   xe::ui::g_argc = argc;
   xe::ui::g_argv = argv;
 

@@ -11,7 +11,9 @@
 
 #include "xenia/app/discord/discord_presence.h"
 #include "xenia/app/game_compat_db.h"
+#include "xenia/app/game_title_db.h"
 #include "xenia/ui/advanced_settings_dialog_wx.h"
+#include "xenia/ui/cover_art_downloader.h"
 #include "xenia/ui/game_list_panel_wx.h"
 #include "xenia/ui/game_scan_progress_dialog_wx.h"
 #include "xenia/ui/install_progress_dialog_wx.h"
@@ -29,6 +31,7 @@
 #include <span>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 
 #include <wx/timer.h>
 
@@ -1170,6 +1173,9 @@ bool EmulatorWindow::Initialize() {
           MenuItem::Type::kString, _("Select File..."),
           std::bind(&EmulatorWindow::SelectSystemFiles, this)));
       tools_menu->AddChild(std::move(system_files_menu));
+      tools_menu->AddChild(WxMenuItem::Create(
+          MenuItem::Type::kString, _("Download Cover Art..."),
+          std::bind(&EmulatorWindow::DownloadCoverArt, this)));
     }
     tools_menu_ = tools_menu.get();
     main_menu->AddChild(std::move(tools_menu));
@@ -2353,6 +2359,72 @@ void EmulatorWindow::InstallContent() {
     }).detach();
   });
   dlg.ShowModal();
+}
+
+void EmulatorWindow::DownloadCoverArt() {
+  if (!game_library_) {
+    return;
+  }
+  // One download per game, saved into each of its releases without a cover.
+  std::vector<ui::CoverArtDownload> downloads;
+  std::unordered_map<uint32_t, size_t> by_game;
+  std::error_code ec;
+  for (const auto& entry : game_library_->entries()) {
+    const auto file = game_library_->BoxArtPath(entry.key());
+    if (entry.paths.empty() || std::filesystem::exists(file, ec)) {
+      continue;
+    }
+    const std::vector<uint32_t>* ids = GetTitleIdGroup(entry.title_id);
+    const uint32_t game = ids ? ids->front() : entry.title_id;
+    auto it = by_game.find(game);
+    if (it == by_game.end()) {
+      auto urls = GetBoxArtUrls(entry.title_id);
+      // A game the title database doesn't know has nowhere to get one from.
+      if (urls.empty()) {
+        continue;
+      }
+      it = by_game.emplace(game, downloads.size()).first;
+      downloads.push_back({std::move(urls), {}});
+    }
+    downloads[it->second].files.push_back(file);
+  }
+  if (downloads.empty()) {
+    ShowWindowMessage(window_.get(), _("Download Cover Art"),
+                      _("There's no cover art to download."),
+                      wxICON_INFORMATION);
+    return;
+  }
+
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  ui::CoverArtResult result;
+  {
+    wxProgressDialog progress(_("Download Cover Art"),
+                              _("Downloading cover art..."), 100,
+                              wx_window ? wx_window->frame() : nullptr,
+                              wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
+    result =
+        ui::DownloadCoverArt(downloads, [&progress](size_t done, size_t total) {
+          return progress.Update(int(done * 100 / total));
+        });
+  }
+  if (result.cancelled) {
+    return;
+  }
+  wxString message =
+      wxString::Format(_("Covers downloaded: %d"), int(result.downloaded));
+  if (result.not_downloaded) {
+    message += "\n";
+    message +=
+        wxString::Format(_("Games whose cover couldn't be downloaded: %d"),
+                         int(result.not_downloaded));
+  }
+  if (result.not_saved) {
+    message += "\n";
+    message += wxString::Format(_("Covers that couldn't be saved: %d"),
+                                int(result.not_saved));
+  }
+  ShowWindowMessage(window_.get(), _("Download Cover Art"), message,
+                    wxICON_INFORMATION);
 }
 
 bool EmulatorWindow::ConfirmReplaceSystemFiles() {

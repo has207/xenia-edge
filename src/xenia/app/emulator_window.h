@@ -212,6 +212,7 @@ class EmulatorWindow {
   bool ConfirmReplaceSystemFiles();
   // Whether the system files were installed.
   bool InstallSystemFiles(const std::filesystem::path& zip_path);
+  void DownloadCoverArt();
   void ShowContentDirectory();
   void CpuTimeScalarReset();
   void CpuTimeScalarSetHalf();

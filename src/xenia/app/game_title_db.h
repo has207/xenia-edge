@@ -34,6 +34,11 @@ const GameTitleInfo* GetGameTitleInfo(uint32_t title_id);
 // sibling id, e.g. compat state stored under a different release's id.
 const std::vector<uint32_t>* GetTitleIdGroup(uint32_t title_id);
 
+// Where the game's box art can be downloaded, best first: x360db's own copy on
+// its GitHub Pages site, then on GitHub, then the marketplace URL it was taken
+// from. Empty when the id is unknown.
+std::vector<std::string> GetBoxArtUrls(uint32_t title_id);
+
 }  // namespace app
 }  // namespace xe
 

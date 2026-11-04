@@ -69,6 +69,14 @@ static void SetRootCertificates(CURL* curl) {
     curl_easy_setopt(curl, CURLOPT_CAINFO, file);
   }
 }
+
+// Sets up a request's curl handle. Downloads run on several threads at once and
+// signals are process-wide, so curl mustn't use them for SIGPIPE or DNS
+// timeouts.
+static void ConfigureCurl(CURL* curl) {
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  SetRootCertificates(curl);
+}
 #endif
 
 HttpDownloader::HttpDownloader() {
@@ -98,7 +106,7 @@ bool HttpDownloader::DownloadToMemory(const std::string& url,
     return false;
   }
 #if XE_PLATFORM_LINUX
-  SetRootCertificates(reinterpret_cast<CURL*>(request.GetNativeHandle()));
+  ConfigureCurl(reinterpret_cast<CURL*>(request.GetNativeHandle()));
 #endif
   // Under curl the data timeout caps the whole transfer, not each read.
   request.SetTimeouts(15000, 60000);
@@ -151,7 +159,7 @@ DownloadResult DownloadFile(
     return DownloadResult::kFailed;
   }
 #if XE_PLATFORM_LINUX
-  SetRootCertificates(reinterpret_cast<CURL*>(request.GetNativeHandle()));
+  ConfigureCurl(reinterpret_cast<CURL*>(request.GetNativeHandle()));
 #endif
   // Only connecting is timed: under curl a data timeout caps the whole
   // transfer.

@@ -133,5 +133,27 @@ const std::vector<uint32_t>* GetTitleIdGroup(uint32_t title_id) {
   return &it->second->ids;
 }
 
+std::vector<std::string> GetBoxArtUrls(uint32_t title_id) {
+  const GameTitleInfo* info = GetGameTitleInfo(title_id);
+  const std::vector<uint32_t>* ids = GetTitleIdGroup(title_id);
+  if (!info || !ids) {
+    return {};
+  }
+  // x360db keeps the artwork under the game's primary id.
+  const uint32_t id = ids->front();
+  std::vector<std::string> urls = {
+      fmt::format("https://xenia-manager.github.io/x360db/titles/{:08X}/"
+                  "artwork/boxart.jpg",
+                  id),
+      fmt::format("https://raw.githubusercontent.com/xenia-manager/x360db/"
+                  "main/titles/{:08X}/artwork/boxart.jpg",
+                  id),
+  };
+  if (!info->boxart.empty()) {
+    urls.push_back(info->boxart);
+  }
+  return urls;
+}
+
 }  // namespace app
 }  // namespace xe

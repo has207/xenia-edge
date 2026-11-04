@@ -193,6 +193,10 @@ std::filesystem::path GameLibrary::IconPath(const LibraryKey& key) const {
   return EntryDir(key) / "icon.png";
 }
 
+std::filesystem::path GameLibrary::BoxArtPath(const LibraryKey& key) const {
+  return EntryDir(key) / "boxart.jpg";
+}
+
 LibraryEntry* GameLibrary::Find(const LibraryKey& key) {
   auto it = std::find_if(entries_.begin(), entries_.end(),
                          [&](const LibraryEntry& e) { return e.key() == key; });
