@@ -77,78 +77,49 @@ std::u16string to_utf16(const std::string_view source) {
   return utfcpp::utf8to16(source);
 }
 
+namespace {
+// Windows-1252 bytes 0x80-0x9F. The five it leaves undefined map to the C1
+// control of the same value, as Windows maps them.
+constexpr char32_t kWin1252C1[32] = {
+    0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+    0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+    0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+    0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+};
+}  // namespace
+
 std::string utf8_to_win1252(const std::string_view source) {
-#if XE_PLATFORM_WIN32
-  std::string input_str(source);
-  int srclen = static_cast<int>(input_str.size());
-
-  int wlen =
-      MultiByteToWideChar(CP_UTF8, 0, input_str.c_str(), srclen, NULL, 0);
-  if (!wlen) {
-    return "";
+  const std::string valid = utfcpp::replace_invalid(source);
+  std::string result;
+  result.reserve(valid.size());
+  for (auto it = valid.cbegin(); it != valid.cend();) {
+    const char32_t cp = utfcpp::unchecked::next(it);
+    char byte = '_';
+    if (cp < 0x80 || (cp >= 0xA0 && cp <= 0xFF)) {
+      byte = char(cp);
+    } else {
+      for (size_t i = 0; i < std::size(kWin1252C1); ++i) {
+        if (kWin1252C1[i] == cp) {
+          byte = char(0x80 + i);
+          break;
+        }
+      }
+    }
+    result.push_back(byte);
   }
-  std::vector<WCHAR> wbuf(wlen);
-  int result = MultiByteToWideChar(CP_UTF8, 0, input_str.c_str(), srclen,
-                                   wbuf.data(), wlen);
-  if (!result) {
-    return "";
-  }
-
-  int len = WideCharToMultiByte(1252, 0, wbuf.data(), wlen, NULL, 0, "_", NULL);
-  if (!len) {
-    return "";
-  }
-  std::vector<CHAR> buf(len);
-  result = WideCharToMultiByte(1252, 0, wbuf.data(), wlen, buf.data(), len, "_",
-                               NULL);
-  if (!result) {
-    return "";
-  }
-
-  std::string output_str(buf.begin(), buf.end());
-  return output_str;
-#else
-  // TODO: Use iconv on POSIX.
-  std::string output_str(source);
-  return output_str;
-#endif
+  return result;
 }
 
 std::string win1252_to_utf8(const std::string_view source) {
-#if XE_PLATFORM_WIN32
-  std::string input_str(source);
-  int srclen = static_cast<int>(input_str.size());
-
-  int wlen = MultiByteToWideChar(1252, 0, input_str.c_str(), srclen, NULL, 0);
-  if (!wlen) {
-    return "";
+  std::string result;
+  result.reserve(source.size());
+  for (const char c : source) {
+    const uint8_t byte = uint8_t(c);
+    const char32_t cp =
+        byte >= 0x80 && byte < 0xA0 ? kWin1252C1[byte - 0x80] : byte;
+    utfcpp::append(cp, result);
   }
-  std::vector<WCHAR> wbuf(wlen);
-  int result = MultiByteToWideChar(1252, 0, input_str.c_str(), srclen,
-                                   wbuf.data(), wlen);
-  if (!result) {
-    return "";
-  }
-
-  int len =
-      WideCharToMultiByte(CP_UTF8, 0, wbuf.data(), wlen, NULL, 0, "_", NULL);
-  if (!len) {
-    return "";
-  }
-  std::vector<CHAR> buf(len);
-  result = WideCharToMultiByte(CP_UTF8, 0, wbuf.data(), wlen, buf.data(), len,
-                               "_", NULL);
-  if (!result) {
-    return "";
-  }
-
-  std::string output_str(buf.begin(), buf.end());
-  return output_str;
-#else
-  // TODO: Use iconv on POSIX.
-  std::string output_str(source);
-  return output_str;
-#endif
+  return result;
 }
 
 }  // namespace xe

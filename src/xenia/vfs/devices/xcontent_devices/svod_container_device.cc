@@ -197,12 +197,6 @@ SvodContainerDevice::Result SvodContainerDevice::ReadEntry(
                   dir_entry.name_length);
   auto name = xe::win1252_to_utf8(ansi_name);
 
-  // Fallback to normal name if for whatever reason conversion from 1252 code
-  // page failed.
-  if (name.empty()) {
-    name = ansi_name;
-  }
-
   // Read the left node
   if (dir_entry.node_l) {
     auto node_result = ReadEntry(block, dir_entry.node_l, parent);
