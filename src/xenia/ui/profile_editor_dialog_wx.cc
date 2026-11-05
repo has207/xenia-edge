@@ -636,17 +636,14 @@ void ProfileEditorDialog::OnSave() {
   }
 
   if (current_data_.profile_icon != original_data_.profile_icon) {
-    // Drop both on-disk tiles and the cached image map first so a smaller
-    // replacement icon doesn't get masked by a stale larger tile (the
-    // toolbar prefers the 64-px file).
-    auto* fs = kernel_state->file_system();
-    fs->DeletePath(fmt::format("User_{:016X}:\\tile_64.png", xuid_));
-    fs->DeletePath(fmt::format("User_{:016X}:\\tile_32.png", xuid_));
+    // Every old picture goes first so a cleared one stays gone and a new one
+    // isn't hidden behind an old tile.
     if (profile) {
-      profile->ClearProfileIcon(XTileType::kGamerTile);
-      profile->ClearProfileIcon(XTileType::kGamerTileSmall);
-      profile->ClearProfileIcon(XTileType::kPersonalGamerTile);
-      profile->ClearProfileIcon(XTileType::kPersonalGamerTileSmall);
+      for (auto tile : {XTileType::kGamerTile, XTileType::kGamerTileSmall,
+                        XTileType::kPersonalGamerTile,
+                        XTileType::kPersonalGamerTileSmall}) {
+        profile->ClearProfileIcon(tile);
+      }
     }
     if (!current_data_.profile_icon.empty()) {
       xam_state->user_tracker()->UpdateUserIcon(

@@ -128,6 +128,14 @@ void UserProfile::AddMissingIconSize(XTileType large_type,
   }
 }
 
+void UserProfile::ClearProfileIcon(XTileType icon_type) {
+  profile_images_.erase(icon_type);
+  if (kTileFileNames.contains(icon_type)) {
+    kernel_state()->file_system()->DeletePath(
+        fmt::format("User_{:016X}:\\{}", xuid_, kTileFileNames.at(icon_type)));
+  }
+}
+
 void UserProfile::WriteProfileIcon(XTileType tile_type,
                                    std::span<const uint8_t> icon_data) {
   const std::string path =
