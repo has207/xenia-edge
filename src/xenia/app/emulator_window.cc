@@ -2521,7 +2521,7 @@ bool EmulatorWindow::InstallSystemFiles(const std::filesystem::path& zip_path) {
                               wx_window ? wx_window->frame() : nullptr,
                               wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_AUTO_HIDE);
     result = ui::InstallSystemFiles(
-        zip_path, emulator_->system_files_path(), emulator_->patches_path(),
+        zip_path, emulator_->system_files_path(),
         [&progress](size_t done, size_t total) {
           return progress.Update(int(done * 100 / total));
         });

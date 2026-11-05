@@ -56,8 +56,6 @@ xe_embed_binary_assets(xenia-ui
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
   xe_embed_binary_assets(xenia-ui
       "${PROJECT_SOURCE_DIR}/assets/system_font" system_font)
-  xe_embed_binary_assets(xenia-ui
-      "${PROJECT_SOURCE_DIR}/assets/system_patches" system_patches)
 endif()
 
 # Compile assets/locale/<lang>/xenia.po -> <lang>/xenia.mo at configure

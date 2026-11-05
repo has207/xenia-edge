@@ -38,7 +38,6 @@
 #include "xenia/xbox.h"
 
 #include "embedded_system_font.h"
-#include "embedded_system_patches.h"
 
 namespace xe {
 namespace ui {
@@ -133,17 +132,6 @@ bool WriteBaseFonts(const std::filesystem::path& flash_path) {
     }
   }
   return true;
-}
-
-// Writes the patch that gives the 17559 dashboard's My Games its box art,
-// under the name the game-patches files use.
-bool WriteDashboardPatch(const std::filesystem::path& patches_path) {
-  std::error_code ec;
-  std::filesystem::create_directories(patches_path, ec);
-  return xe::filesystem::WriteAllBytes(
-      patches_path / "FFFE07D1 - Xbox 360 Dashboard.patch.toml",
-      {embedded_system_patches::dashboard_17559_patch_toml_data,
-       embedded_system_patches::dashboard_17559_patch_toml_size});
 }
 
 // Copies the flash files out of the update's own package under the names
@@ -396,7 +384,6 @@ SystemUpdateDownload DownloadSystemUpdate(
 SystemFilesResult InstallSystemFiles(
     const std::filesystem::path& zip_path,
     const std::filesystem::path& system_path,
-    const std::filesystem::path& patches_path,
     const std::function<bool(size_t done, size_t total)>& progress) {
   const auto& folders = kInstalledFolders;
   const auto staging_path = system_path / "staging";
@@ -489,7 +476,7 @@ SystemFilesResult InstallSystemFiles(
   if (!has_flash) {
     return fail(SystemFilesResult::kNotSystemUpdate);
   }
-  if (!WriteBaseFonts(flash_path) || !WriteDashboardPatch(patches_path)) {
+  if (!WriteBaseFonts(flash_path)) {
     return fail(SystemFilesResult::kWriteFailed);
   }
 

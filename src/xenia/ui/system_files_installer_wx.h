@@ -56,14 +56,11 @@ enum class SystemFilesResult {
 // Installs the files of a USB system update zip in |system_path| as a console
 // holds them: flash, sysext (the system extended partition) and an empty
 // sysaux, replacing what is there. A flash font the update only patches is
-// filled in with one built from the bundled fonts. The dashboard's box art
-// patch is written into |patches_path| enabled, over any earlier copy.
-// |progress| gets the files done out of a total and cancels the install by
-// returning false.
+// filled in with one built from the bundled fonts. |progress| gets the files
+// done out of a total and cancels the install by returning false.
 SystemFilesResult InstallSystemFiles(
     const std::filesystem::path& zip_path,
     const std::filesystem::path& system_path,
-    const std::filesystem::path& patches_path,
     const std::function<bool(size_t done, size_t total)>& progress);
 
 // Whether InstallSystemFiles has installed files in |system_path|.
