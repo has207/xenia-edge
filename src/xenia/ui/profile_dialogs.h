@@ -51,6 +51,7 @@ class ProfileConfigDialog final : public ui::ImGuiGamepadDialog {
   void LoadProfileIcon(const uint64_t xuid);
 
   std::map<uint64_t, std::unique_ptr<ui::ImmediateTexture>> profile_icon_;
+  std::vector<std::unique_ptr<ui::ImmediateTexture>> released_icons_;
 
   uint64_t selected_xuid_ = 0;
   bool context_menu_open_ = false;
