@@ -1305,36 +1305,47 @@ dword_result_t GetCurrentThreadId_entry() {
 }
 DECLARE_XAM_EXPORT1(GetCurrentThreadId, kNone, kImplemented);
 
-qword_result_t XapiFormatTimeOut_entry(lpqword_t result,
-                                       dword_t dwMilliseconds) {
-  if (dwMilliseconds == -1) {
+// Returns timeout, or null for INFINITE.
+static uint64_t* XapiFormatTimeOut(uint64_t* timeout, uint32_t milliseconds) {
+  if (milliseconds == UINT32_MAX) {
+    return nullptr;
+  }
+  *timeout = static_cast<int64_t>(-10000) * milliseconds;
+  return timeout;
+}
+
+// Returns r3 as the caller passed it, upper half included.
+qword_result_t XapiFormatTimeOut_entry(lpqword_t result, dword_t dwMilliseconds,
+                                       const ppc_context_t& ctx) {
+  uint64_t timeout;
+  if (!XapiFormatTimeOut(&timeout, dwMilliseconds)) {
     return 0;
   }
-
-  *result = static_cast<int64_t>(-10000) * dwMilliseconds;
-  return result.host_address();
+  *result = timeout;
+  return ctx->r[3];
 }
 DECLARE_XAM_EXPORT1(XapiFormatTimeOut, kNone, kImplemented);
 
 dword_result_t WaitForSingleObjectEx_entry(dword_t hHandle,
                                            dword_t dwMilliseconds,
                                            dword_t bAlertable) {
-  // TODO(Gliniak): Figure it out to be less janky.
   uint64_t timeout;
-  uint64_t* timeout_ptr = reinterpret_cast<uint64_t*>(
-      static_cast<uint64_t>(XapiFormatTimeOut_entry(&timeout, dwMilliseconds)));
+  uint64_t* timeout_ptr = XapiFormatTimeOut(&timeout, dwMilliseconds);
+  // The kernel takes alertable as a BOOLEAN.
+  const uint8_t alertable = uint8_t(bAlertable);
 
   X_STATUS result =
-      xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, bAlertable, timeout_ptr);
+      xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, alertable, timeout_ptr);
 
   while (bAlertable && result == X_STATUS_ALERTED) {
     result =
-        xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, bAlertable, timeout_ptr);
+        xboxkrnl::NtWaitForSingleObjectEx(hHandle, 1, alertable, timeout_ptr);
   }
 
-  RtlSetLastNTError_entry(result);
-  result = -1;
-
+  if (int32_t(result) < 0) {
+    RtlSetLastNTError_entry(result);
+    return -1;
+  }
   return result;
 }
 DECLARE_XAM_EXPORT1(WaitForSingleObjectEx, kNone, kImplemented);
