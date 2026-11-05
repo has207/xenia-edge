@@ -109,13 +109,13 @@ void AutoreleasePoolTracker::Pop(void* pool, const char* location) {
           std::chrono::duration_cast<std::chrono::microseconds>(now).count();
       auto duration_us = timestamp - top.push_time;
 
-      pool_stack_.pop_back();
-      pool_depth_--;
-
       if (duration_us > 1000000) {
         XELOGW("[AutoreleasePool] Pool at '{}' was held for {}ms", top.location,
                duration_us / 1000);
       }
+
+      pool_stack_.pop_back();
+      pool_depth_--;
     }
   } else {
     XELOGE("[AutoreleasePool] Popping pool {:x} but stack is empty at {}",
