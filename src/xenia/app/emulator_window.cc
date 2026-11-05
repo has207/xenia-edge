@@ -1450,8 +1450,10 @@ bool EmulatorWindow::Initialize() {
       game_list_panel_ = new GameListPanel(frame, this);
       game_list_panel_->SetLaunchCallback(
           [this](const std::filesystem::path& path) { RunTitle(path); });
+      // Added hidden, since showing both center panes at once moves one off
+      // dock position 0 and wx then ignores Show() on it.
       aui->AddPane(game_list_panel_,
-                   wxAuiPaneInfo().Name("game_list").CenterPane());
+                   wxAuiPaneInfo().Name("game_list").CenterPane().Hide());
       aui->Update();
       wx_window->SetContentVisibilityCallback(
           [this]() { ApplyContentVisibility(); });
