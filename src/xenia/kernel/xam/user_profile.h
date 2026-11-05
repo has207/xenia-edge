@@ -179,16 +179,6 @@ class UserProfile {
   // Public accessor for dashboard GPD (for getting title paths)
   const GpdInfoProfile& dashboard_gpd() const { return dashboard_gpd_; }
 
-  // Public accessor for getting title icon from title GPD
-  std::vector<uint8_t> GetTitleIcon(uint32_t title_id) const {
-    const GpdInfo* gpd = GetGpd(title_id);
-    if (!gpd) {
-      return {};
-    }
-    auto icon_data = gpd->GetImage(kXdbfIdTitle);
-    return std::vector<uint8_t>(icon_data.begin(), icon_data.end());
-  }
-
   // Public accessor for getting achievement stats from title GPD
   struct TitleAchievementStats {
     uint32_t achievements_total = 0;

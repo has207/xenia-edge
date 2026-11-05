@@ -762,30 +762,20 @@ void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
     return;
   }
 
-  // Adopt the running title's icon if we have no art yet. The SPA writes it to
-  // the per-title GPD on boot, so a signed-in profile has it by now.
+  // Adopt the running title's icon if we have no art yet, the one from its SPA
+  // that the window shows.
   std::error_code ec;
   if (title_id == 0 ||
       std::filesystem::exists(game_library_->IconPath(*key), ec)) {
     return;
   }
-  auto* xam_state = emulator_->kernel_state()
-                        ? emulator_->kernel_state()->xam_state()
-                        : nullptr;
-  auto* pm = xam_state ? xam_state->profile_manager() : nullptr;
-  if (!pm) {
+  auto* game_info = emulator_->game_info_database();
+  if (!game_info || !game_info->IsValid()) {
     return;
   }
-  for (uint8_t slot = 0; slot < XUserMaxUserCount; ++slot) {
-    auto* profile = pm->GetProfile(slot);
-    if (!profile) {
-      continue;
-    }
-    auto icon = profile->GetTitleIcon(title_id);
-    if (!icon.empty()) {
-      game_library_->SetIcon(*key, icon);
-      break;
-    }
+  auto icon = game_info->GetIcon();
+  if (!icon.empty()) {
+    game_library_->SetIcon(*key, icon);
   }
 }
 
