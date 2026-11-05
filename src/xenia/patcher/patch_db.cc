@@ -102,7 +102,7 @@ PatchFileEntry PatchDB::ReadPatchFromString(
   ReadHashes(patch_file, hashes_node);
 
   auto patch_array = patch_toml_fields.get("patch");
-  if (!patch_array->is_array()) {
+  if (!patch_array || !patch_array->is_array()) {
     return patch_file;
   }
 
