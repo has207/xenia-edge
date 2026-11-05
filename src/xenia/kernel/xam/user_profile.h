@@ -240,6 +240,7 @@ class UserProfile {
 
   void LoadProfileGpds();
   void LoadProfileIcon(XTileType tile_type);
+  void AddMissingIconSize(XTileType large_type, XTileType small_type);
   void WriteProfileIcon(XTileType tile_type,
                         std::span<const uint8_t> icon_data);
   std::vector<uint8_t> LoadGpd(const uint32_t title_id);

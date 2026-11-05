@@ -13,6 +13,7 @@
 #include <algorithm>
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/stb/stb_image.h"
+#include "xenia/base/png_utils.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/user_data.h"
@@ -836,6 +837,17 @@ bool UserTracker::UpdateUserIcon(uint64_t xuid,
   }
 
   user->WriteProfileIcon(icon_type, icon_data);
+
+  // Both sizes are written, as titles can ask for either.
+  const bool large = icon_type == XTileType::kPersonalGamerTile;
+  const auto [other_width, other_height] =
+      large ? kProfileIconSizeSmall : kProfileIconSize;
+  const auto other = ResizePng(icon_data, other_width, other_height);
+  if (!other.empty()) {
+    user->WriteProfileIcon(large ? XTileType::kPersonalGamerTileSmall
+                                 : XTileType::kPersonalGamerTile,
+                           other);
+  }
   return true;
 }
 
