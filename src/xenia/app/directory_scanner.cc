@@ -157,7 +157,8 @@ std::string ResolveImportName(const DiscoveredGame& g) {
       return stfs_name;
     }
   }
-  // Otherwise prefer the x360db title, which also resolves alternative ids.
+  // Otherwise prefer the title database's name, which also resolves
+  // alternative ids.
   if (const GameTitleInfo* info = GetGameTitleInfo(g.title_id);
       info && !info->name.empty()) {
     return info->name;

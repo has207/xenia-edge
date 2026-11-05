@@ -228,5 +228,13 @@ xe_embed_compressed_bundle(xenia-app
     "${PROJECT_SOURCE_DIR}/build/data_repos/x360db/games.json"
     game_db)
 
+# Bake the original Xbox title database (games.json made from xemu-project/xdb
+# by tools/xdb-index.py). Regenerating it re-runs configure.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PROJECT_SOURCE_DIR}/assets/xdb/games.json")
+xe_embed_compressed_bundle(xenia-app
+    "${PROJECT_SOURCE_DIR}/assets/xdb/games.json"
+    xbox_db)
+
 target_include_directories(xenia-app PRIVATE
     "${PROJECT_SOURCE_DIR}/third_party/rapidjson/include")

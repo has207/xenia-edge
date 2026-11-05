@@ -115,8 +115,8 @@ CompatState GetCompatState(uint32_t title_id) {
     return it->second.state;
   }
   // No direct entry: the game may be tracked under a different release's id.
-  // Fall back to the most optimistic compat state among the x360db sibling
-  // ids of the same game.
+  // Fall back to the most optimistic compat state among the title database
+  // sibling ids of the same game.
   const std::vector<uint32_t>* group = GetTitleIdGroup(title_id);
   if (group) {
     CompatState best = CompatState::kUnknown;

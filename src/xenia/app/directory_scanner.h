@@ -72,9 +72,9 @@ inline const std::string& PreferredName(const DiscoveredGame& g) {
 }
 
 // Name to store/show when importing a game. Trusts STFS header titles; for
-// XEX/ISO/ZAR (or an STFS with no title) it resolves the name from the embedded
-// x360db database, matching the title id and its alternative ids. Falls back to
-// PreferredName when the database has no entry.
+// XEX/XBE/ISO/ZAR (or an STFS with no title) it resolves the name from the
+// embedded title database, matching the title id and its alternative ids.
+// Falls back to PreferredName when the database has no entry.
 std::string ResolveImportName(const DiscoveredGame& g);
 
 // Recursively scans a directory for launchable game files. Only default.xex

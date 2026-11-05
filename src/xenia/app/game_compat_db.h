@@ -47,7 +47,7 @@ CompatState GetCompatState(uint32_t title_id);
 CompatUrls GetCompatUrls(uint32_t title_id);
 
 // GitHub issue-search query fragment for a title. Returns the title id, or all
-// sibling ids (x360db alternative ids) OR'd in parentheses when present.
+// sibling ids (alternative ids) OR'd in parentheses when present.
 // URL-encoded for use after the "is:open " term.
 std::string CompatSearchQuery(uint32_t title_id);
 
