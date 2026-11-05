@@ -1334,6 +1334,15 @@ dword_result_t XamUserIsParentalControlled_entry(dword_t user_index) {
 }
 DECLARE_XAM_EXPORT1(XamUserIsParentalControlled, kUserProfiles, kImplemented);
 
+dword_result_t XamUserIsGuest_entry(dword_t user_index) {
+  if (user_index >= XUserMaxUserCount) {
+    return false;
+  }
+
+  return false;
+}
+DECLARE_XAM_EXPORT1(XamUserIsGuest, kUserProfiles, kStub);
+
 dword_result_t XamUserCreateStatsEnumerator_entry(
     dword_t title_id, dword_t type, qword_t pivot, dword_t num_rows,
     dword_t num_specs,
