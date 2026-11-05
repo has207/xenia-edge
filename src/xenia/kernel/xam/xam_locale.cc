@@ -700,7 +700,7 @@ dword_result_t XamGetLanguage_entry() {
 }
 DECLARE_XAM_EXPORT1(XamGetLanguage, kNone, kImplemented);
 
-dword_result_t XTLGetLanguageV2_entry() {
+XLanguage xeXTLGetLanguageV2() {
   auto desired_language =
       static_cast<XLanguage>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
           XCONFIG_USER_CATEGORY,
@@ -708,16 +708,20 @@ dword_result_t XTLGetLanguageV2_entry() {
 
   uint32_t region = xeXGetGameRegion();
   if (desired_language < XLanguage::kSwedish) {
-    return static_cast<uint32_t>(desired_language);
+    return desired_language;
   }
   if ((region & 0xff00) != 0x100) {
-    return static_cast<uint32_t>(XLanguage::kEnglish);
+    return XLanguage::kEnglish;
   }
   if (region == 0x101) {
-    return static_cast<uint32_t>(XLanguage::kJapanese);
+    return XLanguage::kJapanese;
   } else {
-    return static_cast<uint32_t>(XLanguage::kKorean);
+    return XLanguage::kKorean;
   }
+}
+
+dword_result_t XTLGetLanguageV2_entry() {
+  return static_cast<uint32_t>(xeXTLGetLanguageV2());
 }
 DECLARE_XAM_EXPORT1(XTLGetLanguageV2, kNone, kImplemented);
 
