@@ -26,6 +26,7 @@
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/system_manifest.h"
 #include "xenia/kernel/xam/title_image_device.h"
 #include "xenia/kernel/xam/xam.h"
 #include "xenia/kernel/xam/xam_content_device.h"
@@ -490,15 +491,19 @@ static std::string HexBytes(const std::vector<uint8_t>& data,
 
 static constexpr size_t kLaunchDataLogBytes = 64;
 
-dword_result_t XamLoaderSetLaunchData_entry(lpvoid_t data, dword_t size) {
+static void SetLaunchData(const void* data, uint32_t size) {
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
   auto& loader_data = xam->loader_data();
-  const uint32_t copy_size = std::min(size.value(), MAX_LAUNCH_DATA_SIZE);
+  const uint32_t copy_size = std::min(size, MAX_LAUNCH_DATA_SIZE);
   loader_data.launch_data_present = size ? true : false;
   loader_data.launch_data.resize(copy_size);
   std::memcpy(loader_data.launch_data.data(), data, copy_size);
-  XELOGI("XamLoaderSetLaunchData: size={} data={}", uint32_t(size),
+  XELOGI("XamLoaderSetLaunchData: size={} data={}", size,
          HexBytes(loader_data.launch_data, kLaunchDataLogBytes));
+}
+
+dword_result_t XamLoaderSetLaunchData_entry(lpvoid_t data, dword_t size) {
+  SetLaunchData(data, size);
   return 0;
 }
 DECLARE_XAM_EXPORT1(XamLoaderSetLaunchData, kNone, kSketchy);
@@ -819,6 +824,27 @@ void XamLoaderLaunchTitleEx_entry(lpstring_t raw_name_ptr,
               flags);
 }
 DECLARE_XAM_EXPORT1(XamLoaderLaunchTitleEx, kNone, kSketchy);
+
+// Launches a system extended partition file, which is how the dashboard starts
+// the Indie Player with an indie game in the launch data.
+X_HRESULT_result_t XdfLaunchNewImageFromCache_entry(lpstring_t name_ptr,
+                                                    lpvoid_t data_ptr,
+                                                    dword_t data_size,
+                                                    dword_t flags) {
+  if (!name_ptr || (data_ptr && !data_size)) {
+    return X_E_INVALIDARG;
+  }
+  const std::string name = name_ptr.value();
+  const std::string path = FindSystemExtFile(name);
+  if (path.empty() || !kernel_state()->file_system()->ResolvePath(path)) {
+    XELOGW("XdfLaunchNewImageFromCache: {} isn't in the system files", name);
+    return X_HRESULT_FROM_WIN32(X_ERROR_NOT_FOUND);
+  }
+  SetLaunchData(data_ptr, data_size);
+  LaunchTitle(path, {}, flags);
+  return X_E_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XdfLaunchNewImageFromCache, kNone, kImplemented);
 
 void XamLoaderTerminateTitle_entry() { kernel_state()->ExitToDashboard(); }
 DECLARE_XAM_EXPORT1(XamLoaderTerminateTitle, kNone, kSketchy);
