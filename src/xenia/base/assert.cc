@@ -24,6 +24,8 @@
 
 #if XE_PLATFORM_GNU_LINUX
 #include <dlfcn.h>
+
+#include "xenia/base/system.h"
 #endif
 
 namespace xe {
@@ -60,10 +62,7 @@ constexpr uint32_t kSDL_MessageBoxButtonEscapeKeyDefault = 0x00000002;
 
 // Equivalent of the MSVC debug CRT assertion dialog.
 AssertAction ShowAssertDialog(const std::string& message) {
-  void* libsdl = dlopen("libSDL3.so.0", RTLD_LAZY | RTLD_LOCAL);
-  if (!libsdl) {
-    libsdl = dlopen("libSDL3.so", RTLD_LAZY | RTLD_LOCAL);
-  }
+  void* libsdl = LoadSDL3Library();
   if (!libsdl) {
     return AssertAction::kIgnore;
   }

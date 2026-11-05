@@ -27,6 +27,8 @@
 namespace {
 using SDL_ShowSimpleMessageBox_fn = int (*)(uint32_t flags, const char* title,
                                             const char* message, void* window);
+using SDL_OpenURL_fn = bool (*)(const char* url);
+using SDL_GetError_fn = const char* (*)();
 constexpr uint32_t kSDL_MessageBoxError = 0x00000010;
 constexpr uint32_t kSDL_MessageBoxWarning = 0x00000020;
 constexpr uint32_t kSDL_MessageBoxInformation = 0x00000040;
@@ -34,24 +36,47 @@ constexpr uint32_t kSDL_MessageBoxInformation = 0x00000040;
 
 namespace xe {
 
-void LaunchWebBrowser(const std::string_view url) {
-  auto cmd = std::string("xdg-open ");
-  cmd.append(url);
-  system(cmd.c_str());
-}
-
-void LaunchFileExplorer(const std::filesystem::path& path) {
-  auto cmd = std::string("xdg-open \"");
-  cmd.append(path.string());
-  cmd.append("\"");
-  system(cmd.c_str());
-}
-
-void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
+void* LoadSDL3Library() {
+  // The versioned soname is what the runtime package installs. The unversioned
+  // one only comes with the development package.
   void* libsdl = dlopen("libSDL3.so.0", RTLD_LAZY | RTLD_LOCAL);
   if (!libsdl) {
     libsdl = dlopen("libSDL3.so", RTLD_LAZY | RTLD_LOCAL);
   }
+  return libsdl;
+}
+
+namespace {
+// Goes through the desktop portal or xdg-open, never a shell.
+void OpenUrl(const std::string& url) {
+  void* libsdl = LoadSDL3Library();
+  if (!libsdl) {
+    XELOGE("Failed to open {}: {}", xe::strip_pii(url), dlerror());
+    return;
+  }
+  auto pSDL_OpenURL =
+      reinterpret_cast<SDL_OpenURL_fn>(dlsym(libsdl, "SDL_OpenURL"));
+  auto pSDL_GetError =
+      reinterpret_cast<SDL_GetError_fn>(dlsym(libsdl, "SDL_GetError"));
+  if (!pSDL_OpenURL) {
+    XELOGE("Failed to open {}: SDL_OpenURL is unavailable", xe::strip_pii(url));
+  } else if (!pSDL_OpenURL(url.c_str())) {
+    XELOGE("Failed to open {}: {}", xe::strip_pii(url),
+           pSDL_GetError ? pSDL_GetError() : "unknown error");
+  }
+  dlclose(libsdl);
+}
+}  // namespace
+
+void LaunchWebBrowser(const std::string_view url) { OpenUrl(std::string(url)); }
+
+void LaunchFileExplorer(const std::filesystem::path& path) {
+  std::error_code ec;
+  OpenUrl(std::filesystem::absolute(path, ec).string());
+}
+
+void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
+  void* libsdl = LoadSDL3Library();
   assert_not_null(libsdl);
   if (libsdl) {
     auto pSDL_ShowSimpleMessageBox =
