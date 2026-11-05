@@ -1,0 +1,748 @@
+{
+ "corpus": "xapi",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-05",
+ "steps": [
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "0x0 ms",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000082030000",
+   "capture": {
+    "0x0 ms": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "0x0 ms",
+     "offset": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "0x1 ms",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000082030008",
+   "capture": {
+    "0x1 ms": "ffffffffffffd8f0"
+   },
+   "args": [
+    {
+     "pointer": "0x1 ms",
+     "offset": 8
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "0x3e8 ms",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000082030010",
+   "capture": {
+    "0x3e8 ms": "ffffffffff676980"
+   },
+   "args": [
+    {
+     "pointer": "0x3e8 ms",
+     "offset": 16
+    },
+    {
+     "value": 1000
+    }
+   ]
+  },
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "0x7fffffff ms",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000082030018",
+   "capture": {
+    "0x7fffffff ms": "ffffec7800002710"
+   },
+   "args": [
+    {
+     "pointer": "0x7fffffff ms",
+     "offset": 24
+    },
+    {
+     "value": 2147483647
+    }
+   ]
+  },
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "0x80000000 ms",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000082030020",
+   "capture": {
+    "0x80000000 ms": "ffffec7800000000"
+   },
+   "args": [
+    {
+     "pointer": "0x80000000 ms",
+     "offset": 32
+    },
+    {
+     "value": 2147483648
+    }
+   ]
+  },
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "0xfffffffe ms",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000082030028",
+   "capture": {
+    "0xfffffffe ms": "ffffd8f000004e20"
+   },
+   "args": [
+    {
+     "pointer": "0xfffffffe ms",
+     "offset": 40
+    },
+    {
+     "value": 4294967294
+    }
+   ]
+  },
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "0xffffffff ms",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000000000000",
+   "capture": {
+    "0xffffffff ms": "cdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "pointer": "0xffffffff ms",
+     "offset": 48
+    },
+    {
+     "value": 4294967295
+    }
+   ]
+  },
+  {
+   "scenario": "XapiFormatTimeOut",
+   "name": "null, INFINITE",
+   "export": "XapiFormatTimeOut",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4294967295
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "NtCreateEvent",
+   "export": "NtCreateEvent",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "poll unsignaled",
+   "export": "WaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "event"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "last error after poll unsignaled",
+   "export": "GetLastError",
+   "r3": "0000000000000005",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "NtSetEvent",
+   "export": "NtSetEvent",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "event"
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "poll signaled",
+   "export": "WaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "event"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "last error after poll signaled",
+   "export": "GetLastError",
+   "r3": "0000000000000005",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "WaitForSingleObject signaled",
+   "export": "WaitForSingleObject",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "event"
+    },
+    {
+     "value": 4294967295
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "last error after WaitForSingleObject signaled",
+   "export": "GetLastError",
+   "r3": "0000000000000005",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "event"
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "invalid handle",
+   "export": "WaitForSingleObjectEx",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 12245933
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx event",
+   "name": "last error after invalid handle",
+   "export": "GetLastError",
+   "r3": "0000000000000006",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "NtCreateTimer",
+   "export": "NtCreateTimer",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "NtSetTimerEx",
+   "export": "NtSetTimerEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "pointer": "due",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "wait 20 ms before it fires",
+   "export": "WaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "value": 20
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "last error after wait 20 ms before it fires",
+   "export": "GetLastError",
+   "r3": "0000000000000005",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "wait for it to fire",
+   "export": "WaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "value": 1000
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "last error after wait for it to fire",
+   "export": "GetLastError",
+   "r3": "0000000000000005",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx timer",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "NtCreateTimer",
+   "export": "NtCreateTimer",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "NtSetTimerEx",
+   "export": "NtSetTimerEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "pointer": "due",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "NtQueueApcThread",
+   "export": "NtQueueApcThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 4294967294
+    },
+    {
+     "recorder": "normal routine"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 3
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "alertable wait",
+   "export": "WaitForSingleObjectEx",
+   "r3": "00000000000000C0",
+   "capture": {
+    "normal routine": "0000000100000000000000000000000100000000000000020000000000000003"
+   },
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "value": 1000
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "last error after alertable wait",
+   "export": "GetLastError",
+   "r3": "0000000000000005",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "wait for the timer",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx user APC",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "NtCreateTimer",
+   "export": "NtCreateTimer",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "NtSetTimerEx",
+   "export": "NtSetTimerEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "pointer": "due",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "NtQueueApcThread",
+   "export": "NtQueueApcThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 4294967294
+    },
+    {
+     "recorder": "normal routine"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 3
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "set last error",
+   "export": "RtlSetLastNTError",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "value": 3221225506
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "wait with alertable 0x100",
+   "export": "WaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "capture": {
+    "normal routine": "0000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "variable": "timer"
+    },
+    {
+     "value": 1000
+    },
+    {
+     "value": 256
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "last error after wait with alertable 0x100",
+   "export": "GetLastError",
+   "r3": "0000000000000005",
+   "args": []
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "alertable sleep",
+   "export": "KeDelayExecutionThread",
+   "r3": "00000000000000C0",
+   "capture": {
+    "normal routine": "0000000100000000000000000000000100000000000000020000000000000003"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "interval",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "WaitForSingleObjectEx alertable 0x100",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "timer"
+    }
+   ]
+  }
+ ]
+}
