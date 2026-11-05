@@ -180,6 +180,18 @@ XContentContainerDevice::ReadContainerHeader(
   return header;
 }
 
+bool XContentContainerDevice::IsContainerFile(
+    const std::filesystem::path& host_path) {
+  FILE* host_file = xe::filesystem::OpenFile(host_path, "rb");
+  if (!host_file) {
+    return false;
+  }
+  XContentHeader header;
+  const bool read = fread(&header, sizeof(header), 1, host_file) == 1;
+  fclose(host_file);
+  return read && header.is_magic_valid();
+}
+
 std::unique_ptr<XContentContainerHeader>
 XContentContainerDevice::ReadContainerHeader(FILE* host_file) {
   std::unique_ptr<XContentContainerHeader> header =

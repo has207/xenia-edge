@@ -562,6 +562,11 @@ std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
       !std::filesystem::exists(package_path, ec)) {
     return nullptr;
   }
+  // A release played from a disc image or a bare executable has no package.
+  if (library && !std::filesystem::is_directory(package_path, ec) &&
+      !vfs::XContentContainerDevice::IsContainerFile(package_path)) {
+    return nullptr;
+  }
 
   auto global_lock = global_critical_region_.Acquire();
 

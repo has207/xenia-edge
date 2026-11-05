@@ -42,6 +42,9 @@ class XContentContainerDevice : public Device {
   static std::unique_ptr<XContentContainerHeader> ReadContainerHeader(
       const std::filesystem::path& file_path);
 
+  // Whether the file starts with an XContent package header.
+  static bool IsContainerFile(const std::filesystem::path& host_path);
+
   static std::unique_ptr<XContentContainerHeader> ReadContainerHeader(
       FILE* host_file);
 
