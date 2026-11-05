@@ -793,6 +793,17 @@ dword_result_t XamContentSetThumbnail_entry(
 }
 DECLARE_XAM_EXPORT1(XamContentSetThumbnail, kContent, kImplemented);
 
+// xam's three built-in images, such as the default content thumbnail. They
+// aren't shipped so a caller goes without, as for an image xam has no data for.
+dword_result_t XamGetDefaultImage_entry(dword_t image_id, lpdword_t image_ptr,
+                                        lpdword_t image_size_ptr) {
+  if (image_id >= 3) {
+    return X_E_INVALIDARG;
+  }
+  return 0x8000FFFF;  // E_UNEXPECTED
+}
+DECLARE_XAM_EXPORT1(XamGetDefaultImage, kContent, kStub);
+
 dword_result_t xeXamContentDelete(dword_t user_index, lpvoid_t content_data_ptr,
                                   dword_t content_data_size,
                                   pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
