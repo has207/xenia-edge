@@ -534,6 +534,43 @@ dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
 }
 DECLARE_XAM_EXPORT1(XamUserCheckPrivilege, kUserProfiles, kSketchy);
 
+constexpr uint32_t kNetworkStoragePrivilege = 0xD1;
+constexpr uint32_t kNetworkStoragePreference = 0x20;
+
+dword_result_t XamNetworkStorageUserHasPrivilege_entry(dword_t user_index) {
+  uint32_t has_privilege = 0;
+  if (user_index < XUserMaxUserCount) {
+    CheckUserPrivilege(user_index, kNetworkStoragePrivilege, &has_privilege);
+  } else if (user_index == XUserIndexAny) {
+    for (uint32_t i = 0; i < XUserMaxUserCount && !has_privilege; ++i) {
+      CheckUserPrivilege(i, kNetworkStoragePrivilege, &has_privilege);
+    }
+  }
+  return has_privilege;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageUserHasPrivilege, kUserProfiles,
+                    kImplemented);
+
+// Storage not yet on is turned on only while network storage reports itself
+// available. It never does here so the preference decides.
+dword_result_t XamNetworkStorageHasUserEnabledStorage_entry(
+    dword_t user_index) {
+  if (user_index >= XUserMaxUserCount) {
+    return false;
+  }
+  const uint32_t value_ptr = kernel_memory()->SystemHeapAlloc(4);
+  auto* value = kernel_memory()->TranslateVirtual<xe::be<uint32_t>*>(value_ptr);
+  *value = 0;
+  const uint32_t result = SendUserPreferenceRequest(
+      0x000B0082, user_index, kNetworkStoragePreference, value_ptr, 0);
+  const bool enabled =
+      result == X_ERROR_SUCCESS && (*value & kNetworkStoragePreference);
+  kernel_memory()->SystemHeapFree(value_ptr);
+  return enabled;
+}
+DECLARE_XAM_EXPORT1(XamNetworkStorageHasUserEnabledStorage, kUserProfiles,
+                    kImplemented);
+
 dword_result_t XamUserContentRestrictionGetFlags_entry(dword_t user_index,
                                                        lpdword_t out_flags) {
   if (user_index >= XUserMaxUserCount && user_index != XUserIndexAny) {
