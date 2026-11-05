@@ -10,11 +10,13 @@
 #ifndef XENIA_VFS_DEVICES_XCONTENT_DEVICES_SVOD_CONTAINER_DEVICE_H_
 #define XENIA_VFS_DEVICES_XCONTENT_DEVICES_SVOD_CONTAINER_DEVICE_H_
 
-#include <map>
+#include <array>
+#include <unordered_map>
 
 #include "xenia/vfs/devices/stfs_xbox.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/devices/xcontent_devices/svod_container_entry.h"
+#include "xenia/vfs/gdfx_util.h"
 
 namespace xe {
 namespace vfs {
@@ -52,6 +54,8 @@ class SvodContainerDevice : public XContentContainerDevice {
   Result Read() override;
   Result ReadEntry(uint32_t sector, uint32_t ordinal,
                    SvodContainerEntry* parent);
+  // Null when the read fails.
+  const uint8_t* ReadDirectoryBlock(size_t block);
   void BlockToOffset(size_t sector, size_t* address, size_t* file_index) const;
 
   Result SetLayout(xe::filesystem::FileHandle* header, size_t& magic_offset);
@@ -70,6 +74,10 @@ class SvodContainerDevice : public XContentContainerDevice {
   size_t svod_base_offset_;
   SvodLayoutType svod_layout_;
   MultiFileHandles files_;
+  // The directory blocks read so far while Read() walks the entries. Each is
+  // read whole, once, rather than with two reads per entry.
+  std::unordered_map<size_t, std::array<uint8_t, kGdfxSectorSize>>
+      directory_blocks_;
 };
 
 }  // namespace vfs

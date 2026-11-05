@@ -8,10 +8,32 @@
  */
 
 #include "xenia/vfs/devices/xcontent_devices/svod_container_entry.h"
+#include "xenia/base/logging.h"
 #include "xenia/vfs/devices/xcontent_devices/svod_container_file.h"
 
 namespace xe {
 namespace vfs {
+
+void MultiFileHandles::Add(std::filesystem::path path) {
+  fragments_.push_back({std::move(path), nullptr});
+}
+
+xe::filesystem::FileHandle* MultiFileHandles::Get(size_t index) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (index >= fragments_.size()) {
+    return nullptr;
+  }
+  auto& fragment = fragments_[index];
+  if (!fragment.handle) {
+    fragment.handle = xe::filesystem::FileHandle::OpenExisting(
+        fragment.path, xe::filesystem::FileAccess::kGenericRead);
+    if (!fragment.handle) {
+      XELOGE("Failed to open SVOD file {}.",
+             xe::strip_pii(xe::path_to_utf8(fragment.path)));
+    }
+  }
+  return fragment.handle.get();
+}
 
 SvodContainerEntry::SvodContainerEntry(Device* device, Entry* parent,
                                        const std::string_view path,
