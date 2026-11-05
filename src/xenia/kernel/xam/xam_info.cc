@@ -161,6 +161,26 @@ dword_result_t XamGetLiveHiveValueA_entry(
 }
 DECLARE_XAM_EXPORT1(XamGetLiveHiveValueA, kMisc, kStub);
 
+// Telemetry for Microsoft's servers. No report is made and the other calls skip
+// a null one.
+void XamWebInstrumentationCreateReport_entry(lpstring_t name,
+                                             lpdword_t report_ptr) {
+  if (report_ptr) {
+    *report_ptr = 0;
+  }
+}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationCreateReport, kMisc, kStub);
+
+void XamWebInstrumentationSetUserVar_entry(dword_t report, dword_t var,
+                                           lpvoid_t value) {}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationSetUserVar, kMisc, kStub);
+
+void XamWebInstrumentationSendReport_entry(dword_t report) {}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationSendReport, kMisc, kStub);
+
+void XamWebInstrumentationDestroyReport_entry(lpdword_t report_ptr) {}
+DECLARE_XAM_EXPORT1(XamWebInstrumentationDestroyReport, kMisc, kStub);
+
 dword_result_t XamQueryLiveHiveW_entry(
     lpu16string_t feature_name, lpu16string_t value_ptr,
     dword_t value_buffer_size, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
