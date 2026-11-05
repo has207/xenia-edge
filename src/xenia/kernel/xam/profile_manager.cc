@@ -315,41 +315,49 @@ bool ProfileManager::LoadAccount(const uint64_t xuid) {
   return true;
 }
 
-std::vector<uint8_t> ProfileManager::GetAccountIcon(const uint64_t xuid,
-                                                    const XTileType tile_type) {
+std::vector<uint8_t> ProfileManager::GetAccountIcon(const uint64_t xuid) {
+  static constexpr XTileType kIconTiles[] = {
+      XTileType::kPersonalGamerTile, XTileType::kGamerTile,
+      XTileType::kPersonalGamerTileSmall, XTileType::kGamerTileSmall};
+
   if (const auto profile = GetProfile(xuid); profile) {
-    const auto icon = profile->GetProfileIcon(tile_type);
-    return {icon.begin(), icon.end()};
-  }
-
-  if (!accounts_.contains(xuid) || !kTileFileNames.contains(tile_type)) {
+    for (const XTileType tile_type : kIconTiles) {
+      const auto icon = profile->GetProfileIcon(tile_type);
+      if (!icon.empty()) {
+        return {icon.begin(), icon.end()};
+      }
+    }
     return {};
   }
 
-  if (!MountProfile(xuid)) {
+  if (!accounts_.contains(xuid) || !MountProfile(xuid)) {
     return {};
   }
-
-  const std::string guest_path = fmt::format(kDefaultMountFormat, xuid) +
-                                 ":\\" + kTileFileNames.at(tile_type);
 
   std::vector<uint8_t> icon_data;
+  for (const XTileType tile_type : kIconTiles) {
+    const std::string guest_path = fmt::format(kDefaultMountFormat, xuid) +
+                                   ":\\" + kTileFileNames.at(tile_type);
 
-  xe::vfs::File* file = nullptr;
-  xe::vfs::FileAction action = {};
-  const X_STATUS status = kernel_state_->file_system()->OpenFile(
-      nullptr, guest_path, xe::vfs::FileDisposition::kOpen,
-      xe::vfs::FileAccess::kFileReadData, false, true, &file, &action);
-
-  if (XSUCCEEDED(status) && file && file->entry()) {
-    icon_data.resize(file->entry()->size());
-
-    size_t bytes_read = 0;
-    file->ReadSync(std::span<uint8_t>(icon_data.data(), icon_data.size()), 0,
-                   &bytes_read);
+    xe::vfs::File* file = nullptr;
+    xe::vfs::FileAction action = {};
+    const X_STATUS status = kernel_state_->file_system()->OpenFile(
+        nullptr, guest_path, xe::vfs::FileDisposition::kOpen,
+        xe::vfs::FileAccess::kFileReadData, false, true, &file, &action);
+    if (XFAILED(status) || !file) {
+      continue;
+    }
+    if (file->entry()) {
+      icon_data.resize(file->entry()->size());
+      size_t bytes_read = 0;
+      file->ReadSync(std::span<uint8_t>(icon_data.data(), icon_data.size()), 0,
+                     &bytes_read);
+      icon_data.resize(bytes_read);
+    }
     file->Destroy();
-
-    icon_data.resize(bytes_read);
+    if (!icon_data.empty()) {
+      break;
+    }
   }
 
   DismountProfile(xuid);

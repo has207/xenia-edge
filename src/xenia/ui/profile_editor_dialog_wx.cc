@@ -333,15 +333,7 @@ void ProfileEditorDialog::LoadProfileData() {
     load_string(UserSettingId::XPROFILE_GAMERCARD_USER_BIO,
                 original_data_.gamer_bio);
 
-    for (auto tile :
-         {XTileType::kPersonalGamerTile, XTileType::kGamerTile,
-          XTileType::kPersonalGamerTileSmall, XTileType::kGamerTileSmall}) {
-      auto data = profile->GetProfileIcon(tile);
-      if (!data.empty()) {
-        original_data_.profile_icon.assign(data.begin(), data.end());
-        break;
-      }
-    }
+    original_data_.profile_icon = pm->GetAccountIcon(xuid_);
   }
 
   current_data_ = original_data_;

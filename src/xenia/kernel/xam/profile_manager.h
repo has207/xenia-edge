@@ -116,8 +116,9 @@ class ProfileManager {
   }
   const X_XAMACCOUNTINFO* GetAccount(const uint64_t xuid);
 
-  std::vector<uint8_t> GetAccountIcon(const uint64_t xuid,
-                                      const XTileType tile_type);
+  // The profile's picture: its personal picture if it has one, else its gamer
+  // picture, each at 64 px before 32 px. Empty if it has none.
+  std::vector<uint8_t> GetAccountIcon(const uint64_t xuid);
 
   uint32_t GetAccountCount() const {
     return static_cast<uint32_t>(accounts_.size());

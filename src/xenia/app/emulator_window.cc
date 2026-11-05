@@ -3157,18 +3157,8 @@ void EmulatorWindow::RefreshProfileIcon() {
 
   wxBitmapBundle bundle;
   if (signed_in) {
-    // Try the 64-px tile first, fall back to the 32-px tile (decode_to_bundle
-    // upscales as needed) so a profile that only has a small icon still
-    // shows something instead of the default user art.
-    for (auto tile : {kernel::xam::XTileType::kPersonalGamerTile,
-                      kernel::xam::XTileType::kGamerTile,
-                      kernel::xam::XTileType::kPersonalGamerTileSmall,
-                      kernel::xam::XTileType::kGamerTileSmall}) {
-      bundle = decode_to_bundle(signed_in->GetProfileIcon(tile));
-      if (bundle.IsOk()) {
-        break;
-      }
-    }
+    // decode_to_bundle upscales a 32 px picture.
+    bundle = decode_to_bundle(pm->GetAccountIcon(signed_in->xuid()));
   }
   if (!bundle.IsOk()) {
     bundle = wx_toolbar_state_->profile_default_bundle;

@@ -55,8 +55,7 @@ void ProfileConfigDialog::LoadProfileIcon(const uint64_t xuid) {
     return;
   }
 
-  const auto profile_icon =
-      profile_manager->GetAccountIcon(xuid, kernel::xam::XTileType::kGamerTile);
+  const auto profile_icon = profile_manager->GetAccountIcon(xuid);
 
   if (auto& current_icon = profile_icon_[xuid]; current_icon) {
     released_icons_.push_back(std::move(current_icon));
