@@ -429,6 +429,8 @@ X_STATUS Emulator::Setup(
   XELOGI("{}: Initializing Kernel...", __func__);
   // Shared kernel state.
   kernel_state_ = std::make_unique<xe::kernel::KernelState>(this);
+  // Its profile manager signed in the configured profiles without notifying.
+  on_signin_changed();
 #define LOAD_KERNEL_MODULE(t) \
   static_cast<void>(kernel_state_->LoadKernelModule<kernel::t>())
   // HLE kernel modules.

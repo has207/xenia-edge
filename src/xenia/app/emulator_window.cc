@@ -835,6 +835,16 @@ void EmulatorWindow::OnEmulatorInitialized() {
               ApplyContentVisibility();
             });
       });
+  // Sign-in changes come from the title, the ImGui profiles menu and the wx
+  // menu alike. Deferred, since the ImGui menu signs in while it draws.
+  emulator_->on_signin_changed.AddListener([this]() {
+    app_context_.CallInUIThreadDeferred([this]() {
+      if (game_list_panel_ && !emulator_->is_title_open()) {
+        game_list_panel_->Reload();
+      }
+      RefreshProfileMenu();
+    });
+  });
   emulator_->on_relaunch_failed.AddListener([this]() {
     app_context_.CallInUIThread([this]() { OnLaunchFailed(); });
   });
@@ -2751,10 +2761,6 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
                     m->Login(this_xuid, this_slot);
                   }
                 }
-                if (game_list_panel_ && !emulator_->is_title_open()) {
-                  game_list_panel_->Reload();
-                }
-                RefreshProfileMenu();
               }));
         }
         entry->AddChild(std::move(login));
@@ -2772,10 +2778,6 @@ void EmulatorWindow::PopulateProfileMenu(ui::MenuItem* parent) {
                   }
                 }
               }
-              if (game_list_panel_ && !emulator_->is_title_open()) {
-                game_list_panel_->Reload();
-              }
-              RefreshProfileMenu();
             });
         auto* logout_ptr = logout.get();
         entry->AddChild(std::move(logout));

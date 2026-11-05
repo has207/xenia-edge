@@ -139,6 +139,8 @@ class ProfileManager {
 
  private:
   void UpdateConfig(const uint64_t xuid, const uint8_t slot);
+  // Tells titles and the host UI which slots are signed in now.
+  void NotifySignInChanged();
   bool CreateAccount(const uint64_t xuid, const std::string gamertag);
   bool CreateAccount(const uint64_t xuid, const X_XAMACCOUNTINFO* account);
   bool WriteAccount(const uint64_t xuid, const X_XAMACCOUNTINFO* account);

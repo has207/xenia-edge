@@ -113,28 +113,30 @@ ProfileManager::ProfileManager(KernelState* kernel_state,
     LoadAccount(account_xuid);
   }
 
+  // Nothing listens yet. The first title listener gets a sign-in change when
+  // it registers and the host UI one once the kernel is up.
   if (!cvars::logged_profile_slot_0_xuid.empty()) {
     Login(xe::string_util::from_string<uint64_t>(
               cvars::logged_profile_slot_0_xuid, true),
-          0);
+          0, false);
   }
 
   if (!cvars::logged_profile_slot_1_xuid.empty()) {
     Login(xe::string_util::from_string<uint64_t>(
               cvars::logged_profile_slot_1_xuid, true),
-          1);
+          1, false);
   }
 
   if (!cvars::logged_profile_slot_2_xuid.empty()) {
     Login(xe::string_util::from_string<uint64_t>(
               cvars::logged_profile_slot_2_xuid, true),
-          2);
+          2, false);
   }
 
   if (!cvars::logged_profile_slot_3_xuid.empty()) {
     Login(xe::string_util::from_string<uint64_t>(
               cvars::logged_profile_slot_3_xuid, true),
-          3);
+          3, false);
   }
 }
 
@@ -212,8 +214,7 @@ void ProfileManager::SyncProfilesWithConfig() {
   }
 
   // Send a single notification after all changes
-  kernel_state_->BroadcastNotification(kXNotificationSystemSignInChanged,
-                                       GetUsedUserSlots().to_ulong());
+  NotifySignInChanged();
 }
 
 UserProfile* ProfileManager::GetProfileLive(const uint64_t xuid) const {
@@ -445,10 +446,15 @@ void ProfileManager::Login(const uint64_t xuid, const uint8_t user_index,
   user_tracker_->AddUser(xuid);
 
   if (notify) {
-    kernel_state_->BroadcastNotification(kXNotificationSystemSignInChanged,
-                                         GetUsedUserSlots().to_ulong());
+    NotifySignInChanged();
   }
   UpdateConfig(xuid, assigned_user_slot);
+}
+
+void ProfileManager::NotifySignInChanged() {
+  kernel_state_->BroadcastNotification(kXNotificationSystemSignInChanged,
+                                       GetUsedUserSlots().to_ulong());
+  kernel_state_->emulator()->on_signin_changed();
 }
 
 void ProfileManager::Logout(const uint8_t user_index, bool notify) {
@@ -462,8 +468,7 @@ void ProfileManager::Logout(const uint8_t user_index, bool notify) {
   DismountProfile(profile->second->xuid());
   logged_profiles_.erase(profile);
   if (notify) {
-    kernel_state_->BroadcastNotification(kXNotificationSystemSignInChanged,
-                                         GetUsedUserSlots().to_ulong());
+    NotifySignInChanged();
   }
   UpdateConfig(0, user_index);
 }
@@ -474,8 +479,7 @@ void ProfileManager::LoginMultiple(
     Login(xuid, slot, false);
   }
 
-  kernel_state_->BroadcastNotification(kXNotificationSystemSignInChanged,
-                                       GetUsedUserSlots().to_ulong());
+  NotifySignInChanged();
 }
 
 std::vector<uint64_t> ProfileManager::FindProfiles() const {
@@ -709,8 +713,7 @@ bool ProfileManager::UpdateAccount(const uint64_t xuid,
     // Turning Live on or off moves the user between signed in locally and
     // signed in to Live.
     if (live_changed) {
-      kernel_state_->BroadcastNotification(kXNotificationSystemSignInChanged,
-                                           GetUsedUserSlots().to_ulong());
+      NotifySignInChanged();
     }
   }
   return true;

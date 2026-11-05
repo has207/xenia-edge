@@ -533,6 +533,8 @@ class Emulator {
   xe::Delegate<bool> on_shader_compilation;
   xe::Delegate<> on_patch_apply;
   xe::Delegate<> on_title_name_change;
+  // A user signed in or out, or moved between signed in locally and to Live.
+  xe::Delegate<> on_signin_changed;
   xe::Delegate<> on_terminate;
   xe::Delegate<> on_exit;
 
