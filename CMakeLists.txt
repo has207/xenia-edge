@@ -398,7 +398,6 @@ else()
     $<$<CONFIG:Release>:-O3>
     $<$<CONFIG:Release>:-finline-functions>
     $<$<CONFIG:Release>:-funroll-loops>
-    $<$<CONFIG:Release>:-fomit-frame-pointer>
     $<$<CONFIG:Release>:-g>
   )
   # ThinLTO. On Linux use lld (faster and what LLVM tests ThinLTO
