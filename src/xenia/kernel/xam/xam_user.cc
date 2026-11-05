@@ -1539,6 +1539,23 @@ dword_result_t XamUserLogon_entry(lpqword_t xuids_ptr, dword_t flags,
 }
 DECLARE_XAM_EXPORT1(XamUserLogon, kUserProfiles, kImplemented);
 
+// Completes after the sign-ins queued before it, as deferred requests run in
+// order. Without an overlapped it returns at once.
+dword_result_t XamUserFlushLogonQueue_entry(
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (overlapped_ptr) {
+    kernel_state()->CompleteOverlappedDeferredEx(
+        [](uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+          extended_error = 0;
+          length = 0;
+          return X_ERROR_SUCCESS;
+        },
+        overlapped_ptr.guest_address());
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamUserFlushLogonQueue, kUserProfiles, kImplemented);
+
 // The console's XamUserLogon puts each XUID in an otherwise empty profile
 // record and logs on with those as this does, so this takes a record per slot
 // and logs on the profiles they name the same way. The dashboard signs in the
