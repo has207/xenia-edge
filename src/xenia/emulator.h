@@ -99,7 +99,8 @@ class Emulator {
     return storage_root_ / "system";
   }
 
-  // Folder the patcher applies .patch.toml files from at launch.
+  // Folder of the user's .patch.toml files, including saved copies of bundled
+  // ones.
   std::filesystem::path patches_path() const {
     return storage_root_ / "patches";
   }

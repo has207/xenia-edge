@@ -9,8 +9,12 @@
 #include "xenia/patcher/patch_db.h"
 
 #include <algorithm>
+#include <map>
 #include <regex>
+#include <sstream>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "xenia/base/cvar.h"
 #include "xenia/base/embedded_bundle.h"
@@ -19,6 +23,7 @@
 #include "xenia/config.h"
 #include "xenia/memory.h"
 
+#include "embedded_bundle_edge_patches.h"
 #include "embedded_bundle_patches.h"
 
 DEFINE_bool(apply_patches, true, "Enables custom patching functionality",
@@ -56,23 +61,6 @@ PatchDB::PatchDB(std::filesystem::path patches_dir)
     : patches_dir_(std::move(patches_dir)) {}
 
 PatchDB::~PatchDB() {}
-
-void PatchDB::LoadPatches() {
-  loaded_patches_.clear();
-  if (!cvars::apply_patches) {
-    return;
-  }
-
-  ForEachPatchFileInDir(
-      patches_dir_, [this](std::string filename, std::string contents) {
-        PatchFileEntry loaded = ReadPatchFromString(filename, contents);
-        if (loaded.title_id != -1) {
-          loaded.filename = std::move(filename);
-          loaded_patches_.push_back(std::move(loaded));
-        }
-      });
-  XELOGI("PatchDB: Loaded patches for {} titles", loaded_patches_.size());
-}
 
 PatchFileEntry PatchDB::ReadPatchFromString(
     const std::string& filename, std::string_view toml_content) const {
@@ -228,15 +216,18 @@ bool PatchDB::ReadPatchData(std::vector<PatchDataEntry>& patch_data,
 std::vector<PatchFileEntry> PatchDB::GetTitlePatches(
     const uint32_t title_id, const std::optional<uint64_t> hash) {
   std::vector<PatchFileEntry> title_patches;
+  if (!cvars::apply_patches) {
+    return title_patches;
+  }
 
-  std::ranges::copy_if(
-      std::as_const(loaded_patches_), std::back_inserter(title_patches),
-      [=](const PatchFileEntry entry) {
-        bool hash_exist =
-            std::ranges::find(entry.hashes, hash) != entry.hashes.cend();
-
-        return entry.title_id == title_id && hash_exist;
-      });
+  for (auto& file : EnumeratePatchesForTitle(patches_dir_, title_id)) {
+    if (std::ranges::find(file.entry.hashes, hash) ==
+        file.entry.hashes.cend()) {
+      continue;
+    }
+    file.entry.filename = std::move(file.filename);
+    title_patches.push_back(std::move(file.entry));
+  }
 
   return title_patches;
 }
@@ -308,8 +299,51 @@ void PatchDB::ReadPatchHeader(PatchInfoEntry& patch_info,
 
 namespace {
 
-// Decompresses + parses the embedded bundle once and indexes by title_id.
-// The bundle is compiled in and immutable, so the cache lives forever.
+const std::regex kPatchHeaderRegex(R"(^\s*\[\[\s*patch\s*\]\]\s*(#[^\n]*)?$)");
+const std::regex kTableHeaderRegex(R"(^\s*\[)");
+const std::regex kEnabledRegex(
+    R"((^\s*is_enabled\s*=\s*)(true|false)([^\n]*)$)");
+
+// A patch file's lines before its first [[patch]], then each patch's lines.
+struct PatchFileText {
+  std::vector<std::string> header;
+  std::vector<std::vector<std::string>> patches;
+};
+
+PatchFileText SplitPatchFile(std::string_view text) {
+  PatchFileText file;
+  std::stringstream stream{std::string(text)};
+  std::string line;
+  while (std::getline(stream, line)) {
+    if (std::regex_match(line, kPatchHeaderRegex)) {
+      file.patches.emplace_back();
+    }
+    (file.patches.empty() ? file.header : file.patches.back())
+        .push_back(std::move(line));
+  }
+  return file;
+}
+
+// Sets is_enabled in the patch's own table, adding it when the patch has none.
+void SetPatchEnabled(std::vector<std::string>& patch, bool enabled) {
+  const std::string value = enabled ? "true" : "false";
+  for (size_t i = 1; i < patch.size(); ++i) {
+    if (std::regex_search(patch[i], kTableHeaderRegex)) {
+      break;
+    }
+    std::smatch match;
+    if (std::regex_match(patch[i], match, kEnabledRegex)) {
+      patch[i] = match[1].str() + value + match[3].str();
+      return;
+    }
+  }
+  const bool crlf = patch[0].ends_with('\r');
+  patch.insert(patch.begin() + 1,
+               "    is_enabled = " + value + (crlf ? "\r" : ""));
+}
+
+// Decompresses + parses the embedded bundles once and indexes by title_id.
+// The bundles are compiled in and immutable so the cache lives forever.
 struct BundledIndex {
   std::vector<PatchSourceFile> all;
   std::unordered_map<uint32_t, std::vector<size_t>> by_title;
@@ -318,28 +352,49 @@ struct BundledIndex {
 const BundledIndex& GetBundledIndex() {
   static const BundledIndex index = []() {
     BundledIndex idx;
-    EmbeddedBundle bundle(xe::embedded_bundle_patches::kBundleData,
-                          xe::embedded_bundle_patches::kBundleSize);
-    if (!bundle.ok()) {
-      XELOGE("BundledIndex: bundle decompress failed");
-      return idx;
-    }
     PatchDB scratch{std::filesystem::path()};
-    bundle.ForEach([&](std::string_view name, std::string_view data) {
-      std::string filename(name);
-      if (!filename.ends_with(".patch.toml")) {
-        return;
+    // game-patches goes first so an edge file of the same name merges into it
+    // with edge's patches winning.
+    using Bundle = std::pair<const unsigned char*, size_t>;
+    for (const auto& [bundle_data, bundle_size] :
+         {Bundle{xe::embedded_bundle_patches::kBundleData,
+                 xe::embedded_bundle_patches::kBundleSize},
+          Bundle{xe::embedded_bundle_edge_patches::kBundleData,
+                 xe::embedded_bundle_edge_patches::kBundleSize}}) {
+      EmbeddedBundle bundle(bundle_data, bundle_size);
+      if (!bundle.ok()) {
+        XELOGE("BundledIndex: bundle decompress failed");
+        continue;
       }
-      PatchFileEntry entry = scratch.ReadPatchFromString(filename, data);
-      if (entry.title_id == static_cast<uint32_t>(-1)) {
-        return;
-      }
-      PatchSourceFile file;
-      file.filename = std::move(filename);
-      file.toml_content = std::string(data);
-      file.entry = std::move(entry);
-      idx.all.push_back(std::move(file));
-    });
+      bundle.ForEach([&](std::string_view name, std::string_view data) {
+        std::string filename(name);
+        if (!filename.ends_with(".patch.toml")) {
+          return;
+        }
+        PatchFileEntry entry = scratch.ReadPatchFromString(filename, data);
+        if (entry.title_id == static_cast<uint32_t>(-1)) {
+          return;
+        }
+        auto same =
+            std::ranges::find(idx.all, filename, &PatchSourceFile::filename);
+        if (same != idx.all.end() && same->entry.title_id == entry.title_id) {
+          if (auto merged = MergePatchFiles(data, same->toml_content, false)) {
+            same->toml_content = std::move(*merged);
+          } else {
+            XELOGW("PatchDB: Bundled {} doesn't merge, using edge's", filename);
+            same->toml_content = std::string(data);
+          }
+          same->entry =
+              scratch.ReadPatchFromString(filename, same->toml_content);
+          return;
+        }
+        PatchSourceFile file;
+        file.filename = std::move(filename);
+        file.toml_content = std::string(data);
+        file.entry = std::move(entry);
+        idx.all.push_back(std::move(file));
+      });
+    }
     std::sort(idx.all.begin(), idx.all.end(),
               [](const PatchSourceFile& a, const PatchSourceFile& b) {
                 return a.filename < b.filename;
@@ -352,14 +407,9 @@ const BundledIndex& GetBundledIndex() {
   return index;
 }
 
-}  // namespace
-
 std::vector<PatchSourceFile> EnumerateBundledPatchesForTitle(
     uint32_t title_id) {
   std::vector<PatchSourceFile> out;
-  if (title_id == 0) {
-    return out;
-  }
   const auto& idx = GetBundledIndex();
   auto it = idx.by_title.find(title_id);
   if (it == idx.by_title.end()) {
@@ -375,9 +425,6 @@ std::vector<PatchSourceFile> EnumerateBundledPatchesForTitle(
 std::vector<PatchSourceFile> EnumerateLocalPatchesForTitle(
     const std::filesystem::path& patches_dir, uint32_t title_id) {
   std::vector<PatchSourceFile> out;
-  if (title_id == 0) {
-    return out;
-  }
   // The title id inside the file decides ownership, not the filename prefix.
   PatchDB scratch{std::filesystem::path()};
   ForEachPatchFileInDir(
@@ -397,6 +444,95 @@ std::vector<PatchSourceFile> EnumerateLocalPatchesForTitle(
               return a.filename < b.filename;
             });
   return out;
+}
+
+}  // namespace
+
+std::vector<PatchSourceFile> EnumeratePatchesForTitle(
+    const std::filesystem::path& patches_dir, uint32_t title_id) {
+  std::vector<PatchSourceFile> files =
+      EnumerateBundledPatchesForTitle(title_id);
+  const size_t bundled_count = files.size();
+  PatchDB scratch{std::filesystem::path()};
+  for (auto& local : EnumerateLocalPatchesForTitle(patches_dir, title_id)) {
+    const auto bundled_end = files.begin() + bundled_count;
+    auto bundled = std::find_if(files.begin(), bundled_end,
+                                [&local](const PatchSourceFile& file) {
+                                  return file.filename == local.filename;
+                                });
+    if (bundled == bundled_end) {
+      files.push_back(std::move(local));
+      continue;
+    }
+    auto merged =
+        MergePatchFiles(bundled->toml_content, local.toml_content, true);
+    if (!merged) {
+      XELOGW("PatchDB: {} doesn't merge with its bundled file, using it as is",
+             local.filename);
+      *bundled = std::move(local);
+      continue;
+    }
+    bundled->toml_content = std::move(*merged);
+    bundled->entry =
+        scratch.ReadPatchFromString(bundled->filename, bundled->toml_content);
+  }
+  return files;
+}
+
+std::optional<std::string> MergePatchFiles(std::string_view base,
+                                           std::string_view extra,
+                                           bool keep_extra_enabled) {
+  PatchDB scratch{std::filesystem::path()};
+  const PatchFileEntry base_entry =
+      scratch.ReadPatchFromString(std::string(), base);
+  const PatchFileEntry extra_entry =
+      scratch.ReadPatchFromString(std::string(), extra);
+  PatchFileText base_text = SplitPatchFile(base);
+  const PatchFileText extra_text = SplitPatchFile(extra);
+  // Pairing goes by the parsed patches so each has to be one [[patch]] block.
+  auto lines_up = [](const PatchFileEntry& entry, const PatchFileText& text) {
+    return entry.title_id != static_cast<uint32_t>(-1) &&
+           entry.patch_info.size() == text.patches.size();
+  };
+  if (!lines_up(base_entry, base_text) || !lines_up(extra_entry, extra_text)) {
+    return std::nullopt;
+  }
+
+  // The nth patch of a name pairs with the nth patch of that name in extra.
+  std::map<std::string, std::vector<size_t>> extra_by_name;
+  for (size_t i = 0; i < extra_entry.patch_info.size(); ++i) {
+    extra_by_name[extra_entry.patch_info[i].patch_name].push_back(i);
+  }
+  std::vector<bool> paired(extra_entry.patch_info.size());
+  std::map<std::string, size_t> seen;
+  std::vector<std::string> lines = std::move(base_text.header);
+  for (size_t i = 0; i < base_text.patches.size(); ++i) {
+    const PatchInfoEntry& patch = base_entry.patch_info[i];
+    auto& patch_lines = base_text.patches[i];
+    const size_t nth = seen[patch.patch_name]++;
+    if (auto it = extra_by_name.find(patch.patch_name);
+        it != extra_by_name.end() && nth < it->second.size()) {
+      const size_t j = it->second[nth];
+      paired[j] = true;
+      if (keep_extra_enabled) {
+        SetPatchEnabled(patch_lines, extra_entry.patch_info[j].is_enabled);
+      }
+    }
+    lines.insert(lines.end(), patch_lines.begin(), patch_lines.end());
+  }
+  for (size_t j = 0; j < extra_text.patches.size(); ++j) {
+    if (!paired[j]) {
+      lines.insert(lines.end(), extra_text.patches[j].begin(),
+                   extra_text.patches[j].end());
+    }
+  }
+
+  std::string merged;
+  for (const auto& line : lines) {
+    merged += line;
+    merged += '\n';
+  }
+  return merged;
 }
 
 std::string PatchDisplayName(const PatchSourceFile& file) {

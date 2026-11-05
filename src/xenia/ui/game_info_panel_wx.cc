@@ -774,24 +774,11 @@ void GameInfoPanel::BuildXboxOriginalContent(wxWindow* parent,
 }
 
 void GameInfoPanel::BuildPatchesSection(wxWindow* parent, wxBoxSizer* sizer) {
-  auto files = patcher::EnumerateBundledPatchesForTitle(key_.title_id);
   auto* emulator = emulator_window_ ? emulator_window_->emulator() : nullptr;
-  std::filesystem::path patches_dir;
-  if (emulator) {
-    patches_dir = emulator->patches_path();
-    for (auto& local :
-         patcher::EnumerateLocalPatchesForTitle(patches_dir, key_.title_id)) {
-      // A file named like a bundled one is its saved copy, not a new patch.
-      const bool is_saved_bundled =
-          std::any_of(files.begin(), files.end(),
-                      [&local](const patcher::PatchSourceFile& bundled) {
-                        return bundled.filename == local.filename;
-                      });
-      if (!is_saved_bundled) {
-        files.push_back(std::move(local));
-      }
-    }
-  }
+  const std::filesystem::path patches_dir =
+      emulator ? emulator->patches_path() : std::filesystem::path();
+  const auto files =
+      patcher::EnumeratePatchesForTitle(patches_dir, key_.title_id);
 
   AddSectionHeader(parent, sizer, _("Patches"), patches_dir);
   if (files.empty()) {

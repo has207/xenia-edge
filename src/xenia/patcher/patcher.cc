@@ -21,7 +21,6 @@ Patcher::Patcher(std::filesystem::path patches_dir) {
 
 void Patcher::ApplyPatchesForTitle(Memory* memory, const uint32_t title_id,
                                    const std::optional<uint64_t> hash) {
-  patch_db_->LoadPatches();
   const auto title_patches = patch_db_->GetTitlePatches(title_id, hash);
 
   for (const PatchFileEntry& patchFile : title_patches) {
