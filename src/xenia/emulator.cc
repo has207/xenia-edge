@@ -2271,12 +2271,17 @@ bool Emulator::ExceptionCallback(Exception* ex) {
       "Xenia has now paused itself.\n\n"
       "{}",
       crash_msg);
-  // Display a dialog telling the user the guest has crashed.
+  // Display a dialog telling the user the guest has crashed. Each crashed
+  // thread gets its own, and ImGui takes a window's title as its ID, so the
+  // thread's handle goes after "##", where ImGui doesn't show it.
   if (display_window_ && imgui_drawer_) {
-    display_window_->app_context().CallInUIThreadSynchronous([this,
-                                                              &crash_dlg]() {
-      xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_, "Uh-oh!", crash_dlg);
-    });
+    const std::string crash_title =
+        fmt::format("Uh-oh!##{:08X}", current_thread->handle());
+    display_window_->app_context().CallInUIThreadSynchronous(
+        [this, &crash_dlg, &crash_title]() {
+          xe::ui::ImGuiDialog::ShowMessageBox(imgui_drawer_, crash_title,
+                                              crash_dlg);
+        });
   }
 
   // Halt the crashed thread without unwinding the rest of the emulator. Host
