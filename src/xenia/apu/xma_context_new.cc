@@ -123,6 +123,8 @@ bool XmaContextNew::Work() {
   const XMA_CONTEXT_DATA initial_data = data;
 
   if (!data.output_buffer_valid) {
+    SetError(&data, kErrorOutputFull);
+    StoreContextMerged(data, initial_data, context_ptr);
     return true;
   }
 
@@ -181,6 +183,7 @@ bool XmaContextNew::Work() {
     XELOGAPU("XmaContext {}: No space for subframe decoding {}/{}!", id(),
              minimum_subframe_decode_count,
              remaining_subframe_blocks_in_output_buffer_);
+    SetError(&data, kErrorOutputSpace);
     StoreContextMerged(data, initial_data, context_ptr);
     return true;
   }
@@ -199,6 +202,7 @@ bool XmaContextNew::Work() {
     const uint32_t pre_decode_offset = data.input_buffer_read_offset;
     const uint8_t pre_remaining_subframes = current_frame_remaining_subframes_;
 
+    decode_stop_ = kDecodeStop::kNone;
     Decode(&data);
     Consume(&output_rb, &data);
     if (!current_frame_remaining_subframes_) {
@@ -211,11 +215,10 @@ bool XmaContextNew::Work() {
     // already cleared is_enabled_ and only XMAEnableContext sets it again.
     // Game polling for the remainder therefore never kicks and nothing
     // else can ever deliver it so keep draining until the frame is out.
-    if ((!data.IsAnyInputBufferValid() || data.error_status == 4) &&
+    if ((!data.IsAnyInputBufferValid() || decode_stop_ != kDecodeStop::kNone) &&
         current_frame_remaining_subframes_ == 0) {
-      XELOGAPU(
-          "XmaContext {}: Work loop exit - buffers_valid={} error_status={}",
-          id(), data.IsAnyInputBufferValid(), data.error_status);
+      XELOGAPU("XmaContext {}: Work loop exit - buffers_valid={} stop={}", id(),
+               data.IsAnyInputBufferValid(), static_cast<int>(decode_stop_));
       break;
     }
 
@@ -233,6 +236,21 @@ bool XmaContextNew::Work() {
           id(), pre_decode_offset);
       break;
     }
+  }
+
+  // The status says why decoding stopped.
+  const bool frame_done = !current_frame_remaining_subframes_;
+  if (frame_done && decode_stop_ == kDecodeStop::kWaitForBuffer) {
+    SetError(&data, kErrorWaitForBuffer);
+  } else if (frame_done && decode_stop_ == kDecodeStop::kParserError) {
+    // The parser status says why. The status is left as it was.
+  } else if (frame_done && !data.IsAnyInputBufferValid()) {
+    SetError(&data, kErrorNoInput);
+  } else if (remaining_subframe_blocks_in_output_buffer_ <
+             minimum_subframe_decode_count) {
+    SetError(&data, remaining_subframe_blocks_in_output_buffer_
+                        ? kErrorOutputSpace
+                        : kErrorOutputFull);
   }
 
   if (initial_data.IsAnyInputBufferValid()) {
@@ -398,7 +416,6 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   // No available data.
   if (!data->IsAnyInputBufferValid()) {
     XELOGAPU("XmaContext {}: Decode skipped - no valid input buffers", id());
-    // data->error_status = 4;
     return;
   }
 
@@ -528,13 +545,12 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
     const uint8_t* next_packet =
         GetNextPacket(data, next_packet_index, current_input_packet_count);
     if (!next_packet) {
-      // Next buffer not available yet.  We can't resolve the split header
-      // without it, so consume (swap) the current buffer and move on.
+      // Hold the buffer until the one the header continues in is valid.
       XELOGAPU(
-          "XmaContext {}: Split frame header at packet {}, next buffer "
-          "unavailable — swapping input buffer",
+          "XmaContext {}: Split frame header at packet {}, waiting for the "
+          "next buffer",
           id(), packet_index);
-      SwapInputBuffer(data);
+      decode_stop_ = kDecodeStop::kWaitForBuffer;
       return;
     }
     std::memcpy(input_buffer_.data(), packet + kBytesPerPacketHeader,
@@ -548,12 +564,10 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
     uint64_t frame_size = combined.Peek(kBitsPerFrameHeader);
     if (frame_size == xma::kMaxFrameLength) {
-      XELOGW(
-          "XmaContext {}: Split header resolved to kMaxFrameLength (0x7FFF), "
-          "setting error_status=4",
-          id());
-      // Matching split-body error handling below; correct error code unknown.
-      data->error_status = 4;
+      XELOGW("XmaContext {}: Split header resolved to kMaxFrameLength (0x7FFF)",
+             id());
+      SetParserError(data, kParserErrorNoFrame);
+      decode_stop_ = kDecodeStop::kParserError;
       return;
     }
     packet_info.current_frame_size_ = (uint32_t)frame_size;
@@ -579,10 +593,8 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
           GetNextPacket(data, next_packet_index, current_input_packet_count);
 
       if (!next_packet) {
-        // Error path
-        // Decoder probably should return error here
-        // Not sure what error code should be returned
-        data->error_status = 4;
+        // Hold the buffer until the one the frame continues in is valid.
+        decode_stop_ = kDecodeStop::kWaitForBuffer;
         return;
       }
       // Copy next packet to buffer
@@ -615,7 +627,18 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   PrepareDecoder(data->sample_rate, bool(data->is_stereo));
   PreparePacket(packet_info.current_frame_size_, padding_start);
-  if (DecodePacket(av_context_, av_packet_, av_frame_)) {
+  const kPacketResult result = DecodePacket(av_context_, av_packet_, av_frame_);
+  if (result == kPacketResult::kError) {
+    // The position stays on the frame, which fails again until the guest
+    // moves it. The flush lets the codec take a frame again after that.
+    SetParserError(data, kParserErrorBitstream);
+    FlushDecoder();
+    decode_stop_ = kDecodeStop::kParserError;
+    return;
+  }
+  if (result == kPacketResult::kFrame) {
+    data->parser_error_status = 0;
+    data->parser_error_set = 0;
     // dump_raw(av_frame_, id());
     ConvertFrame(reinterpret_cast<const uint8_t**>(&av_frame_->data),
                  bool(data->is_stereo), raw_frame_.data());
@@ -1016,29 +1039,40 @@ void XmaContextNew::PreparePacket(const uint32_t frame_size,
   xma_frame_[0] = ((frame_padding & 7) << 5) | ((padding_end & 7) << 2);
 }
 
-bool XmaContextNew::DecodePacket(AVCodecContext* av_context,
-                                 const AVPacket* av_packet, AVFrame* av_frame) {
+kPacketResult XmaContextNew::DecodePacket(AVCodecContext* av_context,
+                                          const AVPacket* av_packet,
+                                          AVFrame* av_frame) {
   auto ret = avcodec_send_packet(av_context, av_packet);
   if (ret < 0) {
     char errbuf[AV_ERROR_MAX_STRING_SIZE];
     av_strerror(ret, errbuf, sizeof(errbuf));
     XELOGE("XmaContext {}: Error sending packet for decoding: {} ({})", id(),
            errbuf, ret);
-    return false;
+    return kPacketResult::kError;
   }
   ret = avcodec_receive_frame(av_context, av_frame);
 
   if (ret == AVERROR(EAGAIN)) {
     // Codec needs more input before producing output (e.g. first frame warmup).
-    return false;
+    return kPacketResult::kNoFrame;
   }
   if (ret < 0) {
     char errbuf[AV_ERROR_MAX_STRING_SIZE];
     av_strerror(ret, errbuf, sizeof(errbuf));
     XELOGE("XmaContext {}: Error during decoding: {} ({})", id(), errbuf, ret);
-    return false;
+    return kPacketResult::kError;
   }
-  return true;
+  return kPacketResult::kFrame;
+}
+
+void XmaContextNew::SetError(XMA_CONTEXT_DATA* data, uint32_t status) {
+  data->error_status = status;
+  data->error_set = 1;
+}
+
+void XmaContextNew::SetParserError(XMA_CONTEXT_DATA* data, uint32_t status) {
+  data->parser_error_status = status;
+  data->parser_error_set = 1;
 }
 
 void XmaContextNew::StoreContextMerged(const XMA_CONTEXT_DATA& data,
@@ -1067,6 +1101,11 @@ void XmaContextNew::StoreContextMerged(const XMA_CONTEXT_DATA& data,
   // DWORD 2: decoder owns input_buffer_read_offset, error_status
   fresh.input_buffer_read_offset = data.input_buffer_read_offset;
   fresh.error_status = data.error_status;
+  fresh.error_set = data.error_set;
+
+  // DWORD 3: decoder owns parser_error_status
+  fresh.parser_error_status = data.parser_error_status;
+  fresh.parser_error_set = data.parser_error_set;
 
   // DWORD 4: decoder owns current_buffer
   fresh.current_buffer = data.current_buffer;
