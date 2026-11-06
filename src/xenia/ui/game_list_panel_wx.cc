@@ -152,6 +152,18 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
       [this](bool clicked) { OnSelectionChanged(clicked); });
   pane_open_timer_.Bind(wxEVT_TIMER,
                         [this](wxTimerEvent&) { RefreshInfoPane(); });
+  // Cards are made in idle time, which comes only once the window's messages
+  // are handled, so the window keeps answering them while a long list loads.
+  SetExtraStyle(GetExtraStyle() | wxWS_EX_PROCESS_IDLE);
+  Bind(wxEVT_IDLE, [this](wxIdleEvent& event) {
+    event.Skip();
+    if (icon_load_next_ < visible_indices_.size()) {
+      ProcessIconChunk();
+      if (icon_load_next_ < visible_indices_.size()) {
+        event.RequestMore();
+      }
+    }
+  });
   grid_->SetActivatedCallback([this](int index) { OnItemActivated(index); });
   grid_->SetContextMenuCallback(
       [this](int index, const wxPoint&) { OnItemContextMenu(index); });
@@ -374,26 +386,16 @@ void GameListPanel::LoadTimestampsFromProfiles() {
   }
 }
 
-void GameListPanel::StartIconLoad() {
-  ++icon_load_generation_;
-  if (visible_indices_.empty()) {
-    return;
-  }
-  int gen = icon_load_generation_;
-  CallAfter([this, gen]() { ProcessIconChunk(0, gen); });
-}
+void GameListPanel::StartIconLoad() { icon_load_next_ = 0; }
 
-void GameListPanel::ProcessIconChunk(size_t start, int gen) {
-  if (gen != icon_load_generation_) {
-    return;
-  }
-
+void GameListPanel::ProcessIconChunk() {
   // Tune so each chunk stays well under one frame (~16ms): a PNG decode +
   // rescale is a few ms, so 8 per chunk keeps the UI responsive. Walk visible
   // rows so the cards on screen resolve first.
   constexpr size_t kChunkSize = 8;
-  size_t end = std::min(start + kChunkSize, visible_indices_.size());
-  for (size_t r = start; r < end; ++r) {
+  const size_t end =
+      std::min(icon_load_next_ + kChunkSize, visible_indices_.size());
+  for (size_t r = icon_load_next_; r < end; ++r) {
     auto& entry = entries_[visible_indices_[r]];
     if (!entry.card.IsOk()) {
       entry.card = MakeCard(entry);
@@ -403,9 +405,7 @@ void GameListPanel::ProcessIconChunk(size_t start, int gen) {
     }
     grid_->SetItemCard(r, entry.card);
   }
-  if (end < visible_indices_.size()) {
-    CallAfter([this, end, gen]() { ProcessIconChunk(end, gen); });
-  }
+  icon_load_next_ = end;
 }
 
 wxBitmap GameListPanel::MakeCard(const Entry& entry) const {

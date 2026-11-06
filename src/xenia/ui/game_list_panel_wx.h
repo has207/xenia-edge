@@ -124,7 +124,7 @@ class GameListPanel : public wxPanel {
   void Repopulate();
   void LoadTimestampsFromProfiles();
   void StartIconLoad();
-  void ProcessIconChunk(size_t start, int gen);
+  void ProcessIconChunk();
   void UpdateSearchPlaceholder();
 
   EmulatorWindow* emulator_window_;
@@ -154,8 +154,9 @@ class GameListPanel : public wxPanel {
   std::vector<size_t> visible_indices_;
   LaunchCallback launch_cb_;
   std::string filter_lower_;
-  // Bumped on each Reload so in-flight icon-load chunks abort.
-  int icon_load_generation_ = 0;
+  // The visible row ProcessIconChunk makes the next card for, the row count
+  // once every card is made.
+  size_t icon_load_next_ = 0;
   // Card art size in device pixels for the panel's monitor.
   wxSize card_size_;
   bool cover_cards_ = false;
