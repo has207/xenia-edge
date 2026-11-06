@@ -21,6 +21,8 @@
 #include "xenia/base/string_util.h"
 #include "xenia/base/utf8.h"
 #include "xenia/emulator.h"
+#include "xenia/kernel/title_id_utils.h"
+#include "xenia/kernel/xam/indie_game.h"
 #include "xenia/vfs/iso_metadata.h"
 #include "xenia/vfs/stfs_metadata.h"
 #include "xenia/vfs/xbe_metadata.h"
@@ -117,10 +119,28 @@ GameFileInfo FromXbe(vfs::XbeMetadata m) {
   info.content_type = XContentType::kXboxTitle;
   return info;
 }
+
+GameFileInfo FromIndieGame(kernel::xam::IndieGame game) {
+  GameFileInfo info;
+  info.icon = std::move(game.icon);
+  info.title_name = game.name;
+  info.display_name = std::move(game.name);
+  info.content_type = XContentType::kMarketplaceContent;
+  return info;
+}
 }  // namespace
 
 std::optional<GameFileInfo> ReadGameFileInfo(
     const std::filesystem::path& path) {
+  // An indie game installed as a folder.
+  std::error_code ec;
+  if (std::filesystem::is_directory(path, ec)) {
+    auto game = kernel::xam::ReadIndieGame(path);
+    if (!game) {
+      return std::nullopt;
+    }
+    return FromIndieGame(std::move(*game));
+  }
   const auto extension =
       xe::utf8::lower_ascii(xe::path_to_utf8(path.extension()));
   if (extension == ".xbe") {
@@ -146,6 +166,15 @@ std::optional<GameFileInfo> ReadGameFileInfo(
                           m->disc_count};
     }
   } else if (auto m = vfs::ExtractStfsMetadata(path)) {
+    // An indie game installed as the package file itself.
+    if (m->content_type == uint32_t(XContentType::kMarketplaceContent) &&
+        m->title_id == kernel::kXN_2002) {
+      auto game = kernel::xam::ReadIndieGame(path);
+      if (!game) {
+        return std::nullopt;
+      }
+      return FromIndieGame(std::move(*game));
+    }
     // An Xbox Original package is listed as the game its executable names.
     if (m->content_type == uint32_t(XContentType::kXboxTitle)) {
       if (auto xbe = vfs::ExtractXbeMetadata(path)) {
@@ -677,7 +706,8 @@ bool GameLibrary::WriteEntryAtomic(const LibraryEntry& entry,
 }
 
 bool GameLibrary::Upsert(LibraryEntry entry) {
-  if (entry.title_id == kXeFuTitleId) {
+  // These are listed as the games they run.
+  if (entry.title_id == kXeFuTitleId || entry.title_id == kernel::kXN_2002) {
     return false;
   }
   NormalizeDefault(entry);

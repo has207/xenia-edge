@@ -20,6 +20,8 @@
 #include "xenia/app/game_title_db.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
+#include "xenia/kernel/title_id_utils.h"
+#include "xenia/kernel/xam/indie_game.h"
 #include "xenia/vfs/iso_metadata.h"
 #include "xenia/vfs/stfs_metadata.h"
 #include "xenia/vfs/xbe_metadata.h"
@@ -114,6 +116,29 @@ void ApplyXbe(DiscoveredGame& g, const vfs::XbeMetadata& m) {
   g.disc_count = 0;
   if (!m.icon_png.empty()) {
     SetIcon(g, m.icon_png);
+  }
+}
+
+// An indie game is what its GameInfo.xml says it is, not the XNA title
+// launcher's content it installs as.
+void ApplyIndieGame(DiscoveredGame& g, kernel::xam::IndieGame game) {
+  g.title_id = game.title_id;
+  g.title_id_hex = fmt::format("{:08X}", game.title_id);
+  g.media_id = 0;
+  g.disc_number = 0;
+  g.disc_count = 0;
+  g.title_name = game.name;
+  if (!game.name.empty()) {
+    g.display_name = std::move(game.name);
+  }
+  g.content_type_name = "Indie Game";
+  // The header's art is the launcher's.
+  g.icon_png.clear();
+  g.icon_rgba.clear();
+  g.icon_width = 0;
+  g.icon_height = 0;
+  if (!game.icon.empty()) {
+    SetIcon(g, std::move(game.icon));
   }
 }
 
@@ -523,6 +548,28 @@ void DirectoryScanner::ScanDirectory(const std::filesystem::path& dir) {
               phase2_hits++;
               continue;
             }
+          }
+          if (m->content_type == uint32_t(XContentType::kMarketplaceContent) &&
+              m->title_id == kernel::kXN_2002) {
+            if (auto game = kernel::xam::ReadIndieGame(path)) {
+              XELOGD(
+                  "DirectoryScanner:   indie stfs hit '{}' — title_id={:08X}, "
+                  "name='{}'",
+                  xe::strip_pii(xe::path_to_utf8(path)), game->title_id,
+                  game->name);
+              DiscoveredGame g = MakeFromStfs(path, *m);
+              ApplyIndieGame(g, std::move(*game));
+              RecordGame(std::move(g));
+              phase2_hits++;
+              continue;
+            }
+          }
+          // The XNA title launcher's content isn't a game of its own.
+          if (m->title_id == kernel::kXN_2002) {
+            XELOGD(
+                "DirectoryScanner:   stfs filtered '{}' — XNA title launcher",
+                xe::strip_pii(xe::path_to_utf8(path)));
+            continue;
           }
           if (!IsLaunchableContentType(m->content_type)) {
             XELOGD(

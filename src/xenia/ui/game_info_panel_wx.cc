@@ -50,7 +50,9 @@
 #include "xenia/base/system.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/xam/content_manager.h"
+#include "xenia/kernel/xam/indie_game.h"
 #include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/user_profile.h"
 #include "xenia/kernel/xam/xam_state.h"
@@ -168,24 +170,34 @@ wxString FormatLastPlayed(time_t timestamp) {
 std::vector<ContentItem> ListContentItems(kernel::xam::ContentManager* manager,
                                           const std::filesystem::path& root,
                                           uint64_t xuid, uint32_t title_id,
-                                          XContentType content_type) {
+                                          XContentType content_type,
+                                          std::string_view file_name_prefix) {
   std::vector<ContentItem> items;
   if (manager) {
     for (const auto& data :
          manager->ListContent(0, xuid, title_id, content_type)) {
+      if (!xe::utf8::starts_with_case(data.file_name(), file_name_prefix)) {
+        continue;
+      }
       const auto display_name = xe::to_utf8(data.display_name());
       ContentItem item;
       item.name = wxString::FromUTF8(display_name.empty() ? data.file_name()
                                                           : display_name);
-      item.size_bytes = PathSize(root / xe::to_path(data.file_name()));
+      item.path = root / xe::to_path(data.file_name());
+      item.size_bytes = PathSize(item.path);
       items.push_back(std::move(item));
     }
     return items;
   }
   for (const auto& info : xe::filesystem::ListFiles(root)) {
+    if (!xe::utf8::starts_with_case(xe::path_to_utf8(info.name),
+                                    file_name_prefix)) {
+      continue;
+    }
     ContentItem item;
     item.name = wxString::FromUTF8(xe::path_to_utf8(info.name));
-    item.size_bytes = PathSize(info.path / info.name);
+    item.path = info.path / info.name;
+    item.size_bytes = PathSize(item.path);
     items.push_back(std::move(item));
   }
   return items;
@@ -359,12 +371,33 @@ void GameInfoPanel::BuildPage(int page) {
         BuildXboxOriginalSaves(window, sizer);
         break;
       }
+      auto* profiles = profile_manager();
+      auto* primary = profiles ? profiles->GetProfile(uint8_t(0)) : nullptr;
+      const LibraryEntry* entry = Entry();
+      if (entry && entry->content_type == XContentType::kMarketplaceContent) {
+        // An indie game saves as the XNA title launcher's XNA content, under
+        // names that start with the game's virtual title id.
+        const auto game =
+            entry->paths.empty()
+                ? std::nullopt
+                : kernel::xam::ReadIndieGame(entry->default_path().path);
+        std::vector<ContentLocation> locations;
+        if (game && !game->virtual_title_id.empty()) {
+          if (primary) {
+            locations.push_back({XContentType::kXNA, primary->xuid(),
+                                 kernel::kXN_2002, game->virtual_title_id});
+          }
+          locations.push_back({XContentType::kXNA, 0, kernel::kXN_2002,
+                               game->virtual_title_id});
+        }
+        BuildContentSection(window, sizer, _("Saves (%zu)"),
+                            std::move(locations), wxString());
+        break;
+      }
       // Saves live under the signed-in profile. Some titles write into the
       // shared profile's save folder instead, and a few put install data
       // there, but the folder is a save location whatever lands in it, so it
       // is listed here rather than with installed content.
-      auto* profiles = profile_manager();
-      auto* primary = profiles ? profiles->GetProfile(uint8_t(0)) : nullptr;
       std::vector<ContentLocation> locations;
       if (primary) {
         locations.push_back({XContentType::kSavedGame, primary->xuid()});
@@ -474,9 +507,13 @@ void GameInfoPanel::BuildDetailsSection(wxWindow* parent, wxBoxSizer* sizer) {
   }
 }
 
-bool GameInfoPanel::IsOriginalXbox() const {
+const LibraryEntry* GameInfoPanel::Entry() const {
   auto* library = emulator_window_ ? emulator_window_->game_library() : nullptr;
-  const LibraryEntry* entry = library ? library->Find(key_) : nullptr;
+  return library ? library->Find(key_) : nullptr;
+}
+
+bool GameInfoPanel::IsOriginalXbox() const {
+  const LibraryEntry* entry = Entry();
   return entry && entry->content_type == XContentType::kXboxTitle;
 }
 
@@ -659,17 +696,32 @@ void GameInfoPanel::BuildContentSection(wxWindow* parent, wxBoxSizer* sizer,
   auto* profiles = profile_manager();
   std::filesystem::path root;
   std::vector<ContentItem> items;
+  auto title_of = [this](const ContentLocation& location) {
+    return location.title_id ? location.title_id : key_.title_id;
+  };
   if (note.empty() && profiles && !locations.empty()) {
-    root = profiles->GetProfileContentPath(
-        locations.front().xuid, key_.title_id, locations.front().content_type);
     for (const auto& location : locations) {
-      auto found = ListContentItems(
-          content_manager(),
-          profiles->GetProfileContentPath(location.xuid, key_.title_id,
-                                          location.content_type),
-          location.xuid, key_.title_id, location.content_type);
+      const auto path = profiles->GetProfileContentPath(
+          location.xuid, title_of(location), location.content_type);
+      auto found = ListContentItems(content_manager(), path, location.xuid,
+                                    title_of(location), location.content_type,
+                                    location.file_name_prefix);
+      // The folder opened is the first that holds any of them, or the one
+      // package a name filter leaves when it's a folder.
+      if (root.empty() && !found.empty()) {
+        std::error_code ec;
+        root = !location.file_name_prefix.empty() && found.size() == 1 &&
+                       std::filesystem::is_directory(found.front().path, ec)
+                   ? found.front().path
+                   : path;
+      }
       items.insert(items.end(), std::make_move_iterator(found.begin()),
                    std::make_move_iterator(found.end()));
+    }
+    if (root.empty()) {
+      root = profiles->GetProfileContentPath(locations.front().xuid,
+                                             title_of(locations.front()),
+                                             locations.front().content_type);
     }
   }
 

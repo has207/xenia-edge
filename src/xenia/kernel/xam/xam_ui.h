@@ -155,10 +155,6 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
                           std::function<void()> on_profile_change,
                           uint64_t* selected_xuid);
 
-// Picks an installed indie game, or reports that there are none.
-bool xeXamChooseIndieGame(std::string* file_name, uint32_t* device_id,
-                          std::string* display_name);
-
 }  // namespace xam
 }  // namespace kernel
 }  // namespace xe

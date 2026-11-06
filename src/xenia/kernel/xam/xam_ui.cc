@@ -26,9 +26,7 @@
 #include "xenia/hid/input_system.h"
 #include "xenia/kernel/guest_scheduler.h"
 #include "xenia/kernel/kernel_state.h"
-#include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/util/shim_utils.h"
-#include "xenia/kernel/xam/content_manager.h"
 #include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xam/xam_state.h"
@@ -40,7 +38,6 @@
 #include "xenia/ui/imgui_guest_notification.h"
 
 #include "xenia/kernel/xam/ui/create_profile_ui.h"
-#include "xenia/kernel/xam/ui/disc_swap_ui.h"
 #include "xenia/kernel/xam/ui/game_achievements_ui.h"
 #include "xenia/kernel/xam/ui/gamercard_ui.h"
 #include "xenia/kernel/xam/ui/passcode_ui.h"
@@ -1259,58 +1256,6 @@ dword_result_t XamShowEditProfileUI_entry(dword_t user_index) {
       close);
 }
 DECLARE_XAM_EXPORT1(XamShowEditProfileUI, kUserProfiles, kImplemented);
-
-bool xeXamChooseIndieGame(std::string* file_name, uint32_t* device_id,
-                          std::string* display_name) {
-  const Emulator* emulator = kernel_state()->emulator();
-  if (!emulator->display_window() || !emulator->imgui_drawer()) {
-    return false;
-  }
-
-  auto games = kernel_state()->content_manager()->ListContent(
-      static_cast<uint32_t>(DummyDeviceId::HDD), 0, kXN_2002,
-      XContentType::kMarketplaceContent);
-  std::sort(
-      games.begin(), games.end(),
-      [](const XCONTENT_AGGREGATE_DATA& a, const XCONTENT_AGGREGATE_DATA& b) {
-        return a.display_name() < b.display_name();
-      });
-  std::vector<ui::DiscSwapUI::DiscInfo> items;
-  for (const auto& game : games) {
-    const std::string name = xe::to_utf8(game.display_name());
-    items.push_back({name.empty() ? game.file_name() : name,
-                     xe::to_path(game.file_name())});
-  }
-
-  const bool none_installed = items.empty();
-  const std::string message =
-      none_installed ? "ERROR: No indie games are installed. Install one with "
-                       "Tools > Install Content, then try again."
-                     : std::string();
-  std::filesystem::path chosen;
-  auto close = [&chosen](ui::DiscSwapUI* dialog) -> X_RESULT {
-    if (dialog->result() == ui::DiscSwapResult::kSelected) {
-      chosen = dialog->selected_path();
-    }
-    return X_ERROR_SUCCESS;
-  };
-  kernel_state()->xam_state()->is_xam_dialog_present_.store(true);
-  xeXamDispatchDialog<ui::DiscSwapUI>(
-      new ui::DiscSwapUI(emulator->imgui_drawer(), emulator->input_system(),
-                         message, items, none_installed, "Indie Games",
-                         "Select a game to play:", /*allow_browse=*/false),
-      close, /*overlapped=*/0);
-
-  for (size_t i = 0; i < games.size(); ++i) {
-    if (!chosen.empty() && items[i].path == chosen) {
-      *file_name = games[i].file_name();
-      *device_id = games[i].device_id;
-      *display_name = items[i].label;
-      return true;
-    }
-  }
-  return false;
-}
 
 // UI
 dword_result_t XamShowNuiTroubleshooterUI_entry(dword_t user_index,

@@ -33,7 +33,6 @@
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xam/xam_state.h"
-#include "xenia/kernel/xam/xam_ui.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_error.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_modules.h"
@@ -508,24 +507,6 @@ dword_result_t XamLoaderSetLaunchData_entry(lpvoid_t data, dword_t size) {
 }
 DECLARE_XAM_EXPORT1(XamLoaderSetLaunchData, kNone, kSketchy);
 
-// Stands in for the dashboard, which names the game in launch data.
-static void ChooseIndieGameLaunchData(XamModule::LoaderData& loader_data) {
-  std::string file_name;
-  uint32_t device_id = 0;
-  std::string display_name;
-  if (!xeXamChooseIndieGame(&file_name, &device_id, &display_name)) {
-    return;
-  }
-  auto& data = loader_data.launch_data;
-  data.assign(0x34, 0);
-  xe::store_and_swap<uint32_t>(data.data(), 0xCAFEBABE);
-  std::memcpy(data.data() + 4, file_name.data(),
-              std::min<size_t>(file_name.size(), 0x2A));
-  xe::store_and_swap<uint32_t>(data.data() + 0x30, device_id);
-  loader_data.launch_data_present = true;
-  kernel_state()->emulator()->SetTitleName(display_name);
-}
-
 dword_result_t XamLoaderGetLaunchDataSize_entry(lpdword_t size_ptr) {
   if (!size_ptr) {
     return X_ERROR_INVALID_PARAMETER;
@@ -533,10 +514,6 @@ dword_result_t XamLoaderGetLaunchDataSize_entry(lpdword_t size_ptr) {
 
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
   auto& loader_data = xam->loader_data();
-  if (loader_data.launch_data.empty() &&
-      kernel_state()->title_id() == kXN_2002) {
-    ChooseIndieGameLaunchData(loader_data);
-  }
   if (loader_data.launch_data.empty()) {
     *size_ptr = 0;
     XELOGI("XamLoaderGetLaunchDataSize: none");

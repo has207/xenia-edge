@@ -21,15 +21,12 @@ namespace ui {
 DiscSwapUI::DiscSwapUI(xe::ui::ImGuiDrawer* imgui_drawer,
                        xe::hid::InputSystem* input_system,
                        const std::string& message,
-                       const std::vector<DiscInfo>& discs, bool show_error,
-                       std::string title, std::string list_prompt,
-                       bool allow_browse)
+                       const std::vector<DiscInfo>& discs, bool show_error)
     : XamGamepadDialog(imgui_drawer, input_system),
-      title_(std::move(title)),
-      list_prompt_(std::move(list_prompt)),
       show_error_(show_error),
-      allow_browse_(allow_browse),
       discs_(discs) {
+  title_ = "Select Disc";
+
   // Parse error message if present
   if (show_error) {
     size_t error_pos = message.find("ERROR:");
@@ -113,12 +110,8 @@ void DiscSwapUI::OnDraw(ImGuiIO& io) {
 
     // Show disc count info and list
     if (!discs_.empty()) {
-      if (list_prompt_.empty()) {
-        ImGui::Text("This game has %zu discs. Select which disc to load:",
-                    discs_.size());
-      } else {
-        ImGui::TextWrapped("%s", list_prompt_.c_str());
-      }
+      ImGui::Text("This game has %zu discs. Select which disc to load:",
+                  discs_.size());
       ImGui::Spacing();
 
       // Disc list - top level selectables for proper gamepad navigation
@@ -165,36 +158,27 @@ void DiscSwapUI::OnDraw(ImGuiIO& io) {
     }
 
     // Buttons
-    float browse_end_x = 0.0f;
-    if (allow_browse_) {
-      if (ImGui::Button("Browse...")) {
-        result_ = DiscSwapResult::kBrowse;
-        ImGui::CloseCurrentPopup();
-        Close();
-      }
-      browse_end_x = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
+    if (ImGui::Button("Browse...")) {
+      result_ = DiscSwapResult::kBrowse;
+      ImGui::CloseCurrentPopup();
+      Close();
     }
-
-    // With nothing to choose, the dialog is only a message to acknowledge.
-    const char* cancel_label =
-        discs_.empty() && !allow_browse_ ? "OK" : "Cancel";
 
     // Push Cancel to the right edge, unless Browse already reaches it
     const ImGuiStyle& style = ImGui::GetStyle();
+    float browse_end_x = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
     float content_end_x =
         ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
     float cancel_width =
-        ImGui::CalcTextSize(cancel_label).x + style.FramePadding.x * 2.0f;
+        ImGui::CalcTextSize("Cancel").x + style.FramePadding.x * 2.0f;
     float cancel_x = content_end_x - cancel_width;
-    if (!allow_browse_) {
-      ImGui::SetCursorPosX(cancel_x);
-    } else if (cancel_x > browse_end_x + style.ItemSpacing.x) {
+    if (cancel_x > browse_end_x + style.ItemSpacing.x) {
       ImGui::SameLine(cancel_x);
     } else {
       ImGui::SameLine();
     }
 
-    if (ImGui::Button(cancel_label)) {
+    if (ImGui::Button("Cancel")) {
       result_ = DiscSwapResult::kCancelled;
       ImGui::CloseCurrentPopup();
       Close();

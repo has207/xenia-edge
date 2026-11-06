@@ -276,6 +276,16 @@ class ContentManager {
   // The game library path of the release a ListLibraryContent record names.
   std::optional<std::filesystem::path> LibraryContentPath(
       const XCONTENT_AGGREGATE_DATA& data) const;
+  // Where indie games are installed, as the XNA title launcher's content.
+  std::filesystem::path IndieGamesPath() const;
+  // The package of the indie game the launcher's launch data names by
+  // |file_name|.
+  std::filesystem::path IndieGamePackagePath(std::string_view file_name) const;
+  // The name a release of the game library is opened under as content.
+  static std::string LibraryContentFileName(uint32_t title_id,
+                                            uint32_t version);
+  // Whether a package can be opened by |name|, which FATX has to allow.
+  static bool IsValidPackageFileName(std::string_view name);
 
   std::vector<XCONTENT_AGGREGATE_DATA> ListContentODD(
       const uint32_t device_id, const uint64_t xuid, const uint32_t title_id,

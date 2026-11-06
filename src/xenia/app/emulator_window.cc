@@ -134,7 +134,10 @@
 #include "xenia/gpu/command_processor.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/hid/input_system.h"
+#include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
+#include "xenia/kernel/xam/content_manager.h"
+#include "xenia/kernel/xam/indie_game.h"
 #include "xenia/kernel/xam/profile_manager.h"
 #include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_state.h"
@@ -665,14 +668,30 @@ void EmulatorWindow::ShutdownGraphicsSystemPresenterPainting() {
 
 void EmulatorWindow::PublishLibraryTitles() {
   std::vector<Emulator::LibraryTitle> titles;
+  const auto indie_games_path =
+      emulator_->kernel_state()->content_manager()->IndieGamesPath();
   for (const auto& entry : game_library_->entries()) {
     if (entry.paths.empty()) {
       continue;
     }
-    titles.push_back(
-        {entry.title_id, entry.version, entry.name, entry.default_path().path,
-         game_library_->IconPath(entry.key()),
-         game_library_->BoxArtPath(entry.key()), entry.content_type});
+    auto path = entry.default_path().path;
+    // The dashboard lists an installed indie package itself so a game also
+    // added from elsewhere goes by the installed copy.
+    if (entry.content_type == XContentType::kMarketplaceContent &&
+        entry.paths.size() > 1) {
+      for (const auto& other : entry.paths) {
+        std::error_code ec;
+        if (std::filesystem::equivalent(other.path.parent_path(),
+                                        indie_games_path, ec)) {
+          path = other.path;
+          break;
+        }
+      }
+    }
+    titles.push_back({entry.title_id, entry.version, entry.name,
+                      std::move(path), game_library_->IconPath(entry.key()),
+                      game_library_->BoxArtPath(entry.key()),
+                      entry.content_type});
   }
   emulator_->SetLibraryTitles(std::move(titles));
 }
@@ -683,6 +702,7 @@ void EmulatorWindow::InitializeGameLibrary() {
   game_library_ = std::make_unique<GameLibrary>(library_root);
   game_library_->set_changed_callback([this]() { PublishLibraryTitles(); });
   game_library_->Load();
+  AddInstalledIndieGamesToLibrary();
 
   // The files are read off the UI thread, and each result is recorded back on
   // it so the library is only ever changed from there.
@@ -752,6 +772,15 @@ void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
     }
     return;
   }
+  // The XNA title launcher runs an indie game, which is listed as itself from
+  // its package. The launcher can't run without one so it isn't listed.
+  if (title_id == kernel::kXN_2002) {
+    if (const auto& game = emulator_->indie_game()) {
+      RecordLaunchedDisc(game->title_id, game->name, game->package_path);
+      SetIndieGameIcon(*game);
+    }
+    return;
+  }
   // The disc's path belongs to the disc's own title, not the package's.
   if (!emulator_->last_launch_package().empty()) {
     return;
@@ -776,6 +805,58 @@ void EmulatorWindow::AddLaunchedTitleToLibrary(uint32_t title_id,
   auto icon = game_info->GetIcon();
   if (!icon.empty()) {
     game_library_->SetIcon(*key, icon);
+  }
+}
+
+bool EmulatorWindow::AddInstalledIndieGamesToLibrary() {
+  bool changed = false;
+  while (const auto* launcher = game_library_->FindByTitle(kernel::kXN_2002)) {
+    if (!game_library_->Remove(launcher->key())) {
+      break;
+    }
+    changed = true;
+  }
+  // A listed package isn't read again, which for one kept as the package file
+  // means mounting it.
+  std::set<std::filesystem::path> listed;
+  for (const auto& entry : game_library_->entries()) {
+    if (entry.content_type == XContentType::kMarketplaceContent) {
+      for (const auto& path : entry.paths) {
+        listed.insert(path.path);
+      }
+    }
+  }
+  const auto root =
+      emulator_->kernel_state()->content_manager()->IndieGamesPath();
+  for (const auto& package : xe::filesystem::ListFiles(root)) {
+    const auto path = package.path / package.name;
+    if (listed.contains(path)) {
+      continue;
+    }
+    const auto game = kernel::xam::ReadIndieGame(path);
+    if (!game ||
+        game_library_->FindByPath(game->title_id, game->package_path)) {
+      continue;
+    }
+    if (game_library_->AddDisc(game->title_id, game->name,
+                               game->package_path)) {
+      SetIndieGameIcon(*game);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+void EmulatorWindow::SetIndieGameIcon(const kernel::xam::IndieGame& game) {
+  const auto* entry =
+      game_library_->FindByPath(game.title_id, game.package_path);
+  std::error_code ec;
+  if (!entry ||
+      std::filesystem::exists(game_library_->IconPath(entry->key()), ec)) {
+    return;
+  }
+  if (!game.icon.empty()) {
+    game_library_->SetIcon(entry->key(), game.icon);
   }
 }
 
@@ -2355,10 +2436,19 @@ void EmulatorWindow::InstallContent() {
                                 emulator_->content_root(),
                                 content_installation_status);
   dlg.StartWhenShown([this, content_installation_status] {
-    std::thread([this, content_installation_status] {
+    std::thread([this, content_installation_status, alive = library_fill_alive_,
+                 app_context = &app_context_] {
       for (auto& entry : *content_installation_status) {
         emulator_->InstallContentPackage(entry.path_, entry);
       }
+      // The dialog can close before the packages are in place.
+      app_context->CallInUIThread([this, alive]() {
+        if (alive->load(std::memory_order_relaxed) && game_library_ &&
+            AddInstalledIndieGamesToLibrary() && game_list_panel_ &&
+            !emulator_->is_title_open()) {
+          game_list_panel_->Reload();
+        }
+      });
     }).detach();
   });
   dlg.ShowModal();

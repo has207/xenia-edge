@@ -34,8 +34,8 @@ struct GameFileInfo {
   uint32_t version = 0;
   uint8_t disc_number = 0;
   uint8_t disc_count = 0;
-  // Title art the file carries. Only STFS containers embed one, so this is
-  // empty for ISO, XEX and ZAR, which is also why the names below are.
+  // Title art the file carries. ISO, XEX and ZAR files embed none, which is
+  // also why the names below are empty for them.
   std::vector<uint8_t> icon;
   // What the package calls itself. `title_name` is the game it belongs to,
   // which an expansion shares with its base game. `display_name` is the

@@ -19,6 +19,7 @@
 #include "xenia/app/game_library.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/command_processor.h"
+#include "xenia/kernel/xam/indie_game.h"
 #include "xenia/ui/imgui_audio_dialog.h"
 #include "xenia/ui/imgui_confirm_dialog.h"
 #include "xenia/ui/imgui_context_menu.h"
@@ -191,6 +192,11 @@ class EmulatorWindow {
   // Registers a just-launched title in the library so games opened outside the
   // import flow still appear in the list.
   void AddLaunchedTitleToLibrary(uint32_t title_id, const std::string& name);
+  // Lists each installed indie game the library doesn't have yet and drops the
+  // XNA title launcher's entries, returning whether the library changed.
+  bool AddInstalledIndieGamesToLibrary();
+  // Gives an indie game's release its package's icon when it has none.
+  void SetIndieGameIcon(const kernel::xam::IndieGame& game);
   // Records the disc a title was launched from as its release's default and
   // stamps the release as played. Empty when the library declined the disc.
   std::optional<LibraryKey> RecordLaunchedDisc(
@@ -267,8 +273,8 @@ class EmulatorWindow {
 
   GameListPanel* game_list_panel_ = nullptr;
   std::unique_ptr<GameLibrary> game_library_;
-  // Cleared when this window goes, which drops what the library fill thread
-  // still has queued for it.
+  // Cleared when this window goes, which drops what library threads still have
+  // queued for it.
   std::shared_ptr<std::atomic<bool>> library_fill_alive_ =
       std::make_shared<std::atomic<bool>>(true);
   std::unique_ptr<WxToolbarState> wx_toolbar_state_;

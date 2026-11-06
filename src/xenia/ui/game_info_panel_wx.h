@@ -53,12 +53,17 @@ class EmulatorWindow;
 struct ContentLocation {
   XContentType content_type = XContentType::kInvalid;
   uint64_t xuid = 0;
+  // The release's own title when zero.
+  uint32_t title_id = 0;
+  // Only the packages whose names start with it, every one when empty.
+  std::string file_name_prefix;
 };
 
 // One row of a content section.
 struct ContentItem {
   wxString name;
   uint64_t size_bytes = 0;
+  std::filesystem::path path;
 };
 
 // Everything known about one title: art, name and play progress in a header,
@@ -116,6 +121,8 @@ class GameInfoPanel : public wxPanel {
   void BuildHeader(wxWindow* parent, wxBoxSizer* sizer);
   void BuildDetailsSection(wxWindow* parent, wxBoxSizer* sizer);
   void BuildCompatSection(wxWindow* parent, wxBoxSizer* sizer);
+  // The release in the library, null when it has none.
+  const LibraryEntry* Entry() const;
   // Whether the release is an original Xbox game, which XeFu runs.
   bool IsOriginalXbox() const;
   void BuildDiscsSection(wxWindow* parent, wxBoxSizer* sizer);

@@ -23,6 +23,7 @@
 #include "xenia/base/string_buffer.h"
 #include "xenia/base/system.h"
 #include "xenia/emulator.h"
+#include "xenia/kernel/xam/indie_game.h"
 #include "xenia/ui/config_helpers.h"
 #include "xenia/vfs/iso_metadata.h"
 #include "xenia/vfs/stfs_metadata.h"
@@ -311,7 +312,10 @@ uint32_t LoadGameConfigForFile(const std::filesystem::path& game_path) {
 
   uint32_t title_id = 0;
 
-  if (ext == ".iso") {
+  // An installed indie game is configured as itself.
+  if (auto game = xe::kernel::xam::ReadIndieGame(game_path)) {
+    title_id = game->title_id;
+  } else if (ext == ".iso") {
     if (auto metadata = xe::vfs::ExtractIsoMetadata(game_path)) {
       title_id = metadata->title_id;
     } else if (auto xbe = xe::vfs::ExtractXbeMetadata(game_path)) {

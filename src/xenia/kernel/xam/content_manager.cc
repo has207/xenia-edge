@@ -20,6 +20,7 @@
 #include "xenia/base/string.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/xam/user_profile.h"
 #include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xam/xam_state.h"
@@ -191,6 +192,11 @@ static X_RESULT CheckFileName(const std::string_view name) {
   return X_ERROR_SUCCESS;
 }
 
+bool ContentManager::IsValidPackageFileName(std::string_view name) {
+  return name == xe::string_util::trim(std::string(name)) &&
+         CheckFileName(name) == X_ERROR_SUCCESS;
+}
+
 // The name a package is stored under and the XUID it's stored for.
 static X_RESULT ResolveStoredPackageName(const uint64_t xuid,
                                          const XCONTENT_AGGREGATE_DATA& data,
@@ -224,9 +230,10 @@ static bool IsDiscContent(const XCONTENT_AGGREGATE_DATA& data) {
 // per release, named after it.
 static constexpr std::string_view kLibraryFileNamePrefix = "XLIB";
 
-static std::string LibraryFileName(const Emulator::LibraryTitle& title) {
-  return fmt::format("{}{:08X}{:08X}", kLibraryFileNamePrefix, title.title_id,
-                     title.version);
+std::string ContentManager::LibraryContentFileName(uint32_t title_id,
+                                                   uint32_t version) {
+  return fmt::format("{}{:08X}{:08X}", kLibraryFileNamePrefix, title_id,
+                     version);
 }
 
 static std::optional<Emulator::LibraryTitle> FindLibraryTitle(
@@ -248,8 +255,22 @@ static std::optional<Emulator::LibraryTitle> FindLibraryTitle(
   };
   const auto title_id = parse_hex(kLibraryFileNamePrefix.size());
   const auto version = parse_hex(kLibraryFileNamePrefix.size() + 8);
+  if (!title_id || !version) {
+    return std::nullopt;
+  }
+  // An indie game launched from outside the XNA title launcher's content.
+  if (const auto& game = emulator->indie_package();
+      game && game->title_id == *title_id && *version == 0) {
+    return Emulator::LibraryTitle{game->title_id,
+                                  0,
+                                  game->name,
+                                  game->package_path,
+                                  {},
+                                  {},
+                                  XContentType::kMarketplaceContent};
+  }
   const auto titles = emulator->LibraryTitles();
-  if (!title_id || !version || !titles) {
+  if (!titles) {
     return std::nullopt;
   }
   for (const auto& title : *titles) {
@@ -778,8 +799,9 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name,
       return X_ERROR_FILE_NOT_FOUND;
     }
 
-    // A game library release mounted from its own header has its license.
-    if (!library) {
+    // A game library release mounted from its own header has its license, and
+    // an extracted package has it in its header file.
+    if (!library || std::filesystem::is_directory(package_path, ec)) {
       package->LoadPackageLicenseMask(PackageHeaderPath(package_path));
     }
   }
@@ -926,6 +948,7 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListLibraryContent()
   if (!titles) {
     return content;
   }
+  const auto indie_games_path = IndieGamesPath();
   for (const auto& title : *titles) {
     // A release without a name, like a loose executable, isn't listed.
     if (title.name.empty()) {
@@ -935,8 +958,18 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListLibraryContent()
     data.device_id = static_cast<uint32_t>(DummyDeviceId::HDD);
     data.content_type = LibraryContentType(title);
     data.set_display_name(xe::to_utf16(title.name));
-    data.set_file_name(LibraryFileName(title));
+    data.set_file_name(LibraryContentFileName(title.title_id, title.version));
     data.title_id = title.title_id;
+    // An indie game is the XNA title launcher's content, which the dashboard
+    // lists itself where indie games are installed.
+    if (title.content_type == XContentType::kMarketplaceContent) {
+      std::error_code ec;
+      if (std::filesystem::equivalent(title.path.parent_path(),
+                                      indie_games_path, ec)) {
+        continue;
+      }
+      data.title_id = kXN_2002;
+    }
     content.push_back(data);
   }
   return content;
@@ -948,6 +981,23 @@ std::optional<std::filesystem::path> ContentManager::LibraryContentPath(
     return std::move(title->path);
   }
   return std::nullopt;
+}
+
+std::filesystem::path ContentManager::IndieGamesPath() const {
+  return ResolvePackageRoot(0, kXN_2002, XContentType::kMarketplaceContent);
+}
+
+std::filesystem::path ContentManager::IndieGamePackagePath(
+    std::string_view file_name) const {
+  XCONTENT_AGGREGATE_DATA data{};
+  data.device_id = static_cast<uint32_t>(DummyDeviceId::HDD);
+  data.content_type = XContentType::kMarketplaceContent;
+  data.title_id = kXN_2002;
+  data.set_file_name(file_name);
+  if (auto title = FindLibraryTitle(kernel_state_->emulator(), data)) {
+    return std::move(title->path);
+  }
+  return xe::filesystem::FindChildIgnoringCase(IndieGamesPath(), file_name);
 }
 
 X_RESULT ContentManager::ResolveReadPath(const uint64_t xuid,
@@ -1016,9 +1066,14 @@ X_RESULT ContentManager::GetContentMetadata(const uint64_t xuid,
   }
   if (title && (!header || !header->content_header.is_magic_valid())) {
     // A disc image or executable has only what the game library knows.
-    header = MakeContentHeader(LibraryContentType(*title), title->title_id,
-                               xe::to_utf16(title->name),
-                               xe::filesystem::ReadAllBytes(title->icon_path));
+    // An indie game is the XNA title launcher's content.
+    header = MakeContentHeader(
+        LibraryContentType(*title),
+        title->content_type == XContentType::kMarketplaceContent
+            ? kXN_2002
+            : title->title_id,
+        xe::to_utf16(title->name),
+        xe::filesystem::ReadAllBytes(title->icon_path));
   } else if (!header || !header->content_header.is_magic_valid()) {
     // A header file with only the package's content data gives its type,
     // title and name.
