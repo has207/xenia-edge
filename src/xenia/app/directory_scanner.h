@@ -59,22 +59,7 @@ struct DiscoveredGame {
   std::vector<uint8_t> icon_png;
 };
 
-// title_name (clean STFS header field) → display_name (often disc-suffixed)
-// → module_name (XEX/ISO/ZAR). May be empty if none are set.
-inline const std::string& PreferredName(const DiscoveredGame& g) {
-  if (!g.title_name.empty()) {
-    return g.title_name;
-  }
-  if (!g.display_name.empty()) {
-    return g.display_name;
-  }
-  return g.module_name;
-}
-
-// Name to store/show when importing a game. Trusts STFS header titles; for
-// XEX/XBE/ISO/ZAR (or an STFS with no title) it resolves the name from the
-// embedded title database, matching the title id and its alternative ids.
-// Falls back to PreferredName when the database has no entry.
+// The name importing a game gives its release, which NameNewRelease picks.
 std::string ResolveImportName(const DiscoveredGame& g);
 
 // Recursively scans a directory for launchable game files. Only default.xex

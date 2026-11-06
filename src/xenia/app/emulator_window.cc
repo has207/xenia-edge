@@ -21,6 +21,7 @@
 #include "xenia/ui/quick_settings_dialog_wx.h"
 #include "xenia/ui/system_files_installer_wx.h"
 #include "xenia/ui/windowed_app_wx.h"
+#include "xenia/ui/wx_locale.h"
 
 #include <algorithm>
 #include <array>
@@ -700,6 +701,8 @@ void EmulatorWindow::InitializeGameLibrary() {
   const auto library_root = emulator_->storage_root() / "library";
 
   game_library_ = std::make_unique<GameLibrary>(library_root);
+  game_library_->set_language(
+      XLanguageFromLocaleCode(ui::GetActiveLocaleCanonicalName()));
   game_library_->set_changed_callback([this]() { PublishLibraryTitles(); });
   game_library_->Load();
   AddInstalledIndieGamesToLibrary();
@@ -2082,10 +2085,9 @@ void EmulatorWindow::FileAddGames() {
         continue;
       }
       const auto& primary = group.front().game;
-      const std::string name = ResolveImportName(primary);
       bool changed = false;
       for (const auto& pi : group) {
-        changed |= library->AddDisc(primary.title_id, name, pi.game.path);
+        changed |= library->AddDisc(primary.title_id, {}, pi.game.path);
       }
       if (!changed) {
         continue;

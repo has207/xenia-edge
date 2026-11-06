@@ -290,7 +290,6 @@ void GameScanProgressDialog::StartFinalization() {
       group_index[key] = rows.size();
     }
     FinalRow r;
-    r.sort_key = ToLowerAsciiCopy(app::ResolveImportName(g));
     r.sources.push_back(std::move(g));
     rows.push_back(std::move(r));
   }
@@ -307,6 +306,8 @@ void GameScanProgressDialog::StartFinalization() {
                   return a.path < b.path;
                 });
     }
+    // The row is labeled with its first source.
+    r.sort_key = ToLowerAsciiCopy(app::ResolveImportName(r.sources.front()));
   }
 
   for (auto& r : rows) {

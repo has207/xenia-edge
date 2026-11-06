@@ -45,7 +45,17 @@ struct GameFileInfo {
   // A disc image or bare XEX has no type of its own, so it counts as a title.
   XContentType content_type = XContentType::kXbox360Title;
 };
-std::optional<GameFileInfo> ReadGameFileInfo(const std::filesystem::path& path);
+// Reads package titles in |language|.
+std::optional<GameFileInfo> ReadGameFileInfo(const std::filesystem::path& path,
+                                             XLanguage language);
+
+// The name a release takes when the library first records it, best first: a
+// 360 package's or indie game's own title, the title database's, |hint|, an
+// original Xbox executable's title, |sibling|, then the file's name, or its
+// folder's for a file named default.
+std::string NameNewRelease(uint32_t title_id, const GameFileInfo* info,
+                           std::string_view hint, std::string_view sibling,
+                           const std::filesystem::path& path);
 
 // "major.minor.build.qfe", the form used for release folder names and for
 // showing a version to the user.
@@ -123,6 +133,7 @@ class GameLibrary {
   struct MissingFields {
     LibraryKey key;
     std::vector<std::filesystem::path> paths;
+    XLanguage language = XLanguage::kEnglish;
   };
   // Filling these reads game files, which is slow enough to belong off the UI
   // thread. Only ReadMissingFields() is safe to call from another thread.
@@ -139,6 +150,9 @@ class GameLibrary {
   const std::vector<std::string>& split_titles() const { return split_titles_; }
 
   const std::vector<LibraryEntry>& entries() const { return entries_; }
+
+  // The language package titles are read in.
+  void set_language(XLanguage language) { language_ = language; }
 
   // Called after each change to entries(), on the thread that made it.
   void set_changed_callback(std::function<void()> callback) {
@@ -162,10 +176,11 @@ class GameLibrary {
   // Normalizes the default-path marker before writing.
   bool Upsert(LibraryEntry entry);
 
-  // Records `path` as a disc of the release it belongs to (creating it with
-  // `name` if absent), deduped, and persists. Which release that is comes
-  // from the file's own version. False on a dup, title_id 0, or empty path.
-  bool AddDisc(uint32_t title_id, const std::string& name,
+  // Records `path` as a disc of the release it belongs to (creating it, named
+  // by NameNewRelease from `hint`, if absent), deduped, and persists. Which
+  // release that is comes from the file's own version. False on a dup,
+  // title_id 0, or empty path.
+  bool AddDisc(uint32_t title_id, const std::string& hint,
                const std::filesystem::path& path);
 
   // Promotes `path` to the release's default (double-click launch) disc and
@@ -242,6 +257,7 @@ class GameLibrary {
   std::vector<LibraryEntry> entries_;
   std::vector<std::string> split_titles_;
   std::function<void()> changed_callback_;
+  XLanguage language_ = XLanguage::kEnglish;
 };
 
 }  // namespace app

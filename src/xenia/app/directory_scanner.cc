@@ -17,7 +17,7 @@
 
 #include "third_party/fmt/include/fmt/format.h"
 #include "third_party/stb/stb_image.h"
-#include "xenia/app/game_title_db.h"
+#include "xenia/app/game_library.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/title_id_utils.h"
@@ -111,6 +111,7 @@ void ApplyXbe(DiscoveredGame& g, const vfs::XbeMetadata& m) {
   g.title_id_hex = fmt::format("{:08X}", m.title_id);
   g.media_id = 0;
   g.title_name = m.title_name;
+  g.content_type = uint32_t(XContentType::kXboxTitle);
   g.version = vfs::XexVersion::FromValue(m.version).ToString();
   g.disc_number = static_cast<uint8_t>(m.disc_number);
   g.disc_count = 0;
@@ -175,20 +176,15 @@ DiscoveredGame MakeFromStfs(const std::filesystem::path& path,
 }  // namespace
 
 std::string ResolveImportName(const DiscoveredGame& g) {
-  // STFS header title is authoritative.
-  if (g.format == "stfs") {
-    const std::string& stfs_name = PreferredName(g);
-    if (!stfs_name.empty()) {
-      return stfs_name;
-    }
+  // A disc image or bare executable has no type of its own and keeps the
+  // title type GameFileInfo starts with.
+  GameFileInfo info;
+  if (g.content_type) {
+    info.content_type = XContentType(g.content_type);
   }
-  // Otherwise prefer the title database's name, which also resolves
-  // alternative ids.
-  if (const GameTitleInfo* info = GetGameTitleInfo(g.title_id);
-      info && !info->name.empty()) {
-    return info->name;
-  }
-  return PreferredName(g);
+  info.title_name = g.title_name;
+  info.display_name = g.display_name;
+  return NameNewRelease(g.title_id, &info, {}, {}, g.path);
 }
 
 DirectoryScanner::DirectoryScanner() = default;
