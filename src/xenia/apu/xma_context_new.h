@@ -49,6 +49,14 @@ struct kPacketHandle {
   bool is_valid_ = false;
 };
 
+// Where decoding goes once the frame being output is done.
+struct kPendingAdvance {
+  bool pending_ = false;
+  bool loop_jump_ = false;
+  uint32_t offset_ = 0;
+  uint32_t buffers_consumed_ = 0;
+};
+
 struct kNextFrame {
   // Bit offset in the buffer the frame is in.
   uint32_t offset_ = 0;
@@ -116,6 +124,14 @@ class XmaContextNew : public XmaContext {
                const XMA_CONTEXT_DATA* const XE_RESTRICT data);
 
   void UpdateLoopStatus(XMA_CONTEXT_DATA* data);
+  // Moves decoding on to the next frame, or loop_start for a loop jump, once
+  // the frame being output is done. Until then the position stays inside it.
+  void AdvanceAfterFrame(XMA_CONTEXT_DATA* data, uint32_t offset,
+                         uint32_t buffers_consumed, bool loop_jump);
+  void ApplyAdvance(XMA_CONTEXT_DATA* data);
+  // Leaves the read offset and decode_subframe at the position inside a frame
+  // that is part way out, and keeps them to tell a later seek.
+  void WritePosition(XMA_CONTEXT_DATA* data);
   int PrepareDecoder(int sample_rate, bool is_two_channel);
   void PreparePacket(const uint32_t frame_size, const uint32_t frame_padding);
 
@@ -145,6 +161,12 @@ class XmaContextNew : public XmaContext {
   // When true, the next decoded frame should skip leading subframes per
   // loop_subframe_skip (loop start adjustment).
   bool loop_start_skip_pending_ = false;
+
+  kPendingAdvance advance_;
+  // The position WritePosition() left in the context.
+  uint32_t held_offset_ = 0;
+  uint32_t held_subframe_ = 0;
+  uint32_t held_buffer_ = 0;
 };
 
 }  // namespace apu

@@ -126,6 +126,18 @@ bool XmaContextNew::Work() {
     return true;
   }
 
+  // A frame part way out is held between kicks. If the guest moved its
+  // position, decoding starts again from where the position now points.
+  if (current_frame_remaining_subframes_ &&
+      (data.input_buffer_read_offset != held_offset_ ||
+       data.decode_subframe != held_subframe_ ||
+       data.current_buffer != held_buffer_)) {
+    XELOGAPU("XmaContext {}: Position moved, dropping the held frame", id());
+    current_frame_remaining_subframes_ = 0;
+    loop_frame_output_limit_ = 0;
+    advance_ = {};
+  }
+
   RingBuffer output_rb = PrepareOutputRingBuffer(&data);
 
   if (data.IsConsumeOnlyContext()) {
@@ -136,12 +148,16 @@ bool XmaContextNew::Work() {
     }
     XELOGAPU("XmaContext {}: Consume-only context, draining subframes", id());
     Consume(&output_rb, &data);
+    if (!current_frame_remaining_subframes_) {
+      ApplyAdvance(&data);
+    }
     data.output_buffer_write_offset =
         output_rb.write_offset() / kOutputBytesPerBlock;
 
     if (output_rb.empty()) {
       data.output_buffer_valid = false;
     }
+    WritePosition(&data);
     StoreContextMerged(data, initial_data, context_ptr);
     return true;
   }
@@ -184,6 +200,9 @@ bool XmaContextNew::Work() {
 
     Decode(&data);
     Consume(&output_rb, &data);
+    if (!current_frame_remaining_subframes_) {
+      ApplyAdvance(&data);
+    }
 
     // Don't abandon a partially consumed frame. Consume() hands over at most
     // subframe_decode_count blocks per pass so the pass that exhausts the
@@ -238,6 +257,7 @@ bool XmaContextNew::Work() {
   XELOGAPU("XmaContext {}: Read Output: {} Write Output: {}", id(),
            data.output_buffer_read_offset, data.output_buffer_write_offset);
 
+  WritePosition(&data);
   StoreContextMerged(data, initial_data, context_ptr);
   return true;
 }
@@ -267,6 +287,7 @@ void XmaContextNew::ClearLocked(XMA_CONTEXT_DATA* data) {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  advance_ = {};
   FlushDecoder();
 }
 
@@ -633,7 +654,7 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   }
 
   if (is_loop_end_frame) {
-    UpdateLoopStatus(data);
+    AdvanceAfterFrame(data, 0, 0, true);
     return;
   }
 
@@ -646,8 +667,8 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
              (int32_t)packet_info.current_frame_, packet_info.frame_count_,
              next_frame_offset);
 
-    data->input_buffer_read_offset =
-        (packet_index * kBitsPerPacket) + next_frame_offset;
+    AdvanceAfterFrame(data, (packet_index * kBitsPerPacket) + next_frame_offset,
+                      0, false);
     return;
   }
 
@@ -663,12 +684,54 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   const kNextFrame next =
       FindNextFrame(data, next_packet_index, current_input_packet_count);
-  for (uint32_t i = 0; i < next.buffers_consumed_; ++i) {
+  XELOGAPU("XmaContext {}: Next frame at {} after {} buffers", id(),
+           next.offset_, next.buffers_consumed_);
+  AdvanceAfterFrame(data, next.offset_, next.buffers_consumed_, false);
+}
+
+void XmaContextNew::AdvanceAfterFrame(XMA_CONTEXT_DATA* data, uint32_t offset,
+                                      uint32_t buffers_consumed,
+                                      bool loop_jump) {
+  advance_.pending_ = true;
+  advance_.loop_jump_ = loop_jump;
+  advance_.offset_ = offset;
+  advance_.buffers_consumed_ = buffers_consumed;
+  if (!current_frame_remaining_subframes_) {
+    ApplyAdvance(data);
+  }
+}
+
+void XmaContextNew::ApplyAdvance(XMA_CONTEXT_DATA* data) {
+  if (!advance_.pending_) {
+    return;
+  }
+  const kPendingAdvance advance = advance_;
+  advance_ = {};
+  // The next frame starts at its first subframe.
+  data->decode_subframe = 0;
+  if (advance.loop_jump_) {
+    UpdateLoopStatus(data);
+    return;
+  }
+  for (uint32_t i = 0; i < advance.buffers_consumed_; ++i) {
     SwapInputBuffer(data);
   }
-  XELOGAPU("XmaContext {}: Next frame at {} in buffer {}", id(), next.offset_,
-           data->current_buffer);
-  data->input_buffer_read_offset = next.offset_;
+  data->input_buffer_read_offset = advance.offset_;
+}
+
+void XmaContextNew::WritePosition(XMA_CONTEXT_DATA* data) {
+  // Output resumes at the next subframe of the frame, counting any it
+  // skipped. A finished frame leaves decode_subframe alone: 0, or a seek that
+  // hasn't been decoded yet.
+  if (current_frame_remaining_subframes_) {
+    const uint8_t frame_blocks = (kBytesPerFrameChannel / kOutputBytesPerBlock)
+                                 << data->is_stereo;
+    data->decode_subframe =
+        (frame_blocks - current_frame_remaining_subframes_) >> data->is_stereo;
+  }
+  held_offset_ = data->input_buffer_read_offset;
+  held_subframe_ = data->decode_subframe;
+  held_buffer_ = data->current_buffer;
 }
 
 //  Frame & Packet searching methods
@@ -991,13 +1054,11 @@ void XmaContextNew::StoreContextMerged(const XMA_CONTEXT_DATA& data,
     fresh.input_buffer_1_valid = 0;
   }
 
-  // DWORD 1: decoder conditionally clears output_buffer_valid and clears
-  // decode_subframe once it has started there
+  // DWORD 1: decoder owns decode_subframe, conditionally clears
+  // output_buffer_valid
+  fresh.decode_subframe = data.decode_subframe;
   if (initial_data.output_buffer_valid && !data.output_buffer_valid) {
     fresh.output_buffer_valid = 0;
-  }
-  if (initial_data.decode_subframe && !data.decode_subframe) {
-    fresh.decode_subframe = 0;
   }
 
   // DWORD 2: decoder owns input_buffer_read_offset, error_status
