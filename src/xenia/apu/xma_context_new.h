@@ -49,6 +49,14 @@ struct kPacketHandle {
   bool is_valid_ = false;
 };
 
+struct kNextFrame {
+  // Bit offset in the buffer the frame is in.
+  uint32_t offset_ = 0;
+  // Input buffers finished on the way: the current one, then the other one
+  // when the stream has no frame start left in it either.
+  uint32_t buffers_consumed_ = 0;
+};
+
 static constexpr int kIdToSampleRate[4] = {24000, 32000, 44100, 48000};
 
 class XmaContextNew : public XmaContext {
@@ -88,18 +96,14 @@ class XmaContextNew : public XmaContext {
                                uint32_t next_packet_index,
                                uint32_t current_input_packet_count);
 
-  // Single-buffer version of GetNextPacketReadOffset: scans `buffer`
-  // from start_packet_index for the first packet whose frame_offset
-  // header is valid (<= kMaxFrameSizeinBits).
-  // Returns the bit offset of that frame in the buffer,
-  // Or kBitsPerPacketHeader when no valid frame is found.
-  const uint32_t GetNextPacketReadOffset(uint8_t* buffer,
-                                         uint32_t next_packet_index,
-                                         uint32_t current_input_packet_count);
-
-  const uint32_t GetNextPacketReadOffset(XMA_CONTEXT_DATA* data,
-                                         uint32_t next_packet_index,
-                                         uint32_t current_input_packet_count);
+  // The stream's next frame start from packet next_packet_index of the
+  // current buffer on, following packet skip counts. Indices past the end of
+  // the current buffer continue in the other one, so a multi-stream context
+  // keeps its stream's packet across the boundary. When that buffer isn't
+  // valid yet the offset is the start of the stream's packet in it. Each
+  // consumed buffer is swapped out by the caller.
+  kNextFrame FindNextFrame(XMA_CONTEXT_DATA* data, uint32_t next_packet_index,
+                           uint32_t current_input_packet_count);
 
   // Returns currently used buffer
   uint8_t* GetCurrentInputBuffer(XMA_CONTEXT_DATA* data);

@@ -473,14 +473,12 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   if (skip_count == 0xFF) {
     XELOGAPU("XmaContext {}: Full packet skip (0xFF) at packet {}/{}", id(),
              packet_index, current_input_packet_count);
-    const uint32_t next_packet_index_skip = packet_index + 1;
-    uint32_t next_input_offset = GetNextPacketReadOffset(
-        data, next_packet_index_skip, current_input_packet_count);
-    if (next_packet_index_skip >= current_input_packet_count ||
-        next_input_offset == kBitsPerPacketHeader) {
+    const kNextFrame next =
+        FindNextFrame(data, packet_index + 1, current_input_packet_count);
+    for (uint32_t i = 0; i < next.buffers_consumed_; ++i) {
       SwapInputBuffer(data);
     }
-    data->input_buffer_read_offset = next_input_offset;
+    data->input_buffer_read_offset = next.offset_;
     return;
   }
 
@@ -656,37 +654,14 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
         id(), packet_index, next_packet_index);
   }
 
-  uint32_t next_input_offset = GetNextPacketReadOffset(
-      data, next_packet_index, current_input_packet_count);
-
-  if (next_packet_index >= current_input_packet_count ||
-      next_input_offset == kBitsPerPacketHeader) {
+  const kNextFrame next =
+      FindNextFrame(data, next_packet_index, current_input_packet_count);
+  for (uint32_t i = 0; i < next.buffers_consumed_; ++i) {
     SwapInputBuffer(data);
   }
-
-  if (next_input_offset == kBitsPerPacketHeader) {
-    // We're at start of next buffer
-    // If it have any frame in this packet decoder should go to first frame in
-    // packet If it doesn't have any frame then it should immediatelly go to
-    // next packet
-    if (data->IsAnyInputBufferValid()) {
-      next_input_offset = xma::GetPacketFrameOffset(
-          memory()->TranslatePhysical(data->GetCurrentInputBufferAddress()));
-
-      if (next_input_offset > kMaxFrameSizeinBits) {
-        XELOGAPU(
-            "XmaContext {}: Next buffer contains no frames in packet! Frame "
-            "offset: {}",
-            id(), next_input_offset);
-        SwapInputBuffer(data);
-        return;
-      }
-      XELOGAPU("XmaContext {}: Next buffer first frame starts at: {}", id(),
-               next_input_offset);
-    }
-  }
-  data->input_buffer_read_offset = next_input_offset;
-  return;
+  XELOGAPU("XmaContext {}: Next frame at {} in buffer {}", id(), next.offset_,
+           data->current_buffer);
+  data->input_buffer_read_offset = next.offset_;
 }
 
 //  Frame & Packet searching methods
@@ -772,53 +747,44 @@ const uint8_t* XmaContextNew::GetNextPacket(
          packet_handle.packet_index_ * kBytesPerPacket;
 }
 
-const uint32_t XmaContextNew::GetNextPacketReadOffset(
-    uint8_t* buffer, uint32_t next_packet_index,
-    uint32_t current_input_packet_count) {
-  // Scan forward for the next packet that contains a new frame.
-  while (next_packet_index < current_input_packet_count) {
-    uint8_t* next_packet = buffer + (next_packet_index * kBytesPerPacket);
-    const uint32_t packet_frame_offset = xma::GetPacketFrameOffset(next_packet);
-
-    if (packet_frame_offset <= kMaxFrameSizeinBits) {
-      const uint32_t new_input_buffer_offset =
-          (next_packet_index * kBitsPerPacket) + packet_frame_offset;
-
-      XELOGAPU("XmaContext {}: new offset: {} packet_offset: {} packet: {}/{}",
-               id(), new_input_buffer_offset, packet_frame_offset,
-               next_packet_index, current_input_packet_count);
-      return new_input_buffer_offset;
+kNextFrame XmaContextNew::FindNextFrame(XMA_CONTEXT_DATA* data,
+                                        uint32_t next_packet_index,
+                                        uint32_t current_input_packet_count) {
+  kNextFrame result;
+  uint32_t buffer_index = data->current_buffer;
+  uint32_t packet_index = next_packet_index;
+  uint32_t packet_count = current_input_packet_count;
+  while (true) {
+    if (packet_index >= packet_count) {
+      if (++result.buffers_consumed_ == 2) {
+        result.offset_ = kBitsPerPacketHeader;
+        return result;
+      }
+      buffer_index ^= 1;
+      packet_index -= packet_count;
+      packet_count = data->GetInputBufferPacketCount(buffer_index);
+      if (!data->IsInputBufferValid(buffer_index) ||
+          !data->GetInputBufferAddress(buffer_index)) {
+        result.offset_ = packet_index * kBitsPerPacket + kBitsPerPacketHeader;
+        return result;
+      }
+      continue;
     }
 
-    // No frame *starts* in this packet, it is entirely the continuation of
-    // a frame split across the packet boundary.  Follow this packet's own
-    // skip count to the next packet of the same sub-stream.
-    const uint8_t next_skip = xma::GetPacketSkipCount(next_packet);
-    if (next_skip == 0xFF) {
-      break;
+    const uint8_t* packet =
+        memory()->TranslatePhysical(data->GetInputBufferAddress(buffer_index)) +
+        packet_index * kBytesPerPacket;
+    const uint32_t frame_offset = xma::GetPacketFrameOffset(packet);
+    if (frame_offset <= kMaxFrameSizeinBits) {
+      result.offset_ = packet_index * kBitsPerPacket + frame_offset;
+      return result;
     }
-    next_packet_index += next_skip + 1;
+
+    // No frame starts in this packet, only the tail of one split across the
+    // packet boundary. Follow its skip count to the stream's next packet.
+    const uint8_t skip = xma::GetPacketSkipCount(packet);
+    packet_index = skip == 0xFF ? packet_count : packet_index + skip + 1;
   }
-
-  return kBitsPerPacketHeader;
-}
-
-const uint32_t XmaContextNew::GetNextPacketReadOffset(
-    XMA_CONTEXT_DATA* data, uint32_t next_packet_index,
-    uint32_t current_input_packet_count) {
-  kPacketHandle packet_handle =
-      GetPacketHandle(data, data->current_buffer, next_packet_index,
-                      current_input_packet_count);
-  if (!packet_handle.is_valid_) {
-    return kBitsPerPacketHeader;
-  }
-
-  const uint32_t next_buffer_address =
-      data->GetInputBufferAddress(packet_handle.buffer_index_);
-  return GetNextPacketReadOffset(
-      memory()->TranslatePhysical(next_buffer_address),
-      packet_handle.packet_index_,
-      data->GetInputBufferPacketCount(packet_handle.buffer_index_));
 }
 
 const uint32_t XmaContextNew::GetAmountOfBitsToRead(
