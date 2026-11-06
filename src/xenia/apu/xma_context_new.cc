@@ -163,15 +163,16 @@ bool XmaContextNew::Work() {
   }
 
   // Minimum free blocks needed before attempting a decode.
-  // Use the number of subframes Consume() will actually write per iteration
-  // (= subframe_decode_count, clamped to 1).  Using a full-frame worth of
-  // space (the old formula) was far too restrictive: games like TGM Ace use
-  // subframe_decode_count=2 on a small ring buffer and never had 8 free
-  // blocks available, causing the decoder to permanently stall.
+  // Use the number of blocks Consume() will actually write per iteration
+  // (= subframe_decode_count subframes, clamped to 1, of two blocks each in
+  // stereo).  Using a full-frame worth of space (the old formula) was far too
+  // restrictive: games like TGM Ace use subframe_decode_count=2 on a small
+  // ring buffer and never had 8 free blocks available, causing the decoder to
+  // permanently stall.
   const uint32_t effective_sdc =
       std::max(static_cast<uint32_t>(1), data.subframe_decode_count);
   const int32_t minimum_subframe_decode_count =
-      static_cast<int32_t>(effective_sdc);
+      static_cast<int32_t>(effective_sdc << data.is_stereo);
 
   // We don't have enough space to even make one pass
   // Waiting for decoder to return more space.
@@ -356,8 +357,10 @@ void XmaContextNew::Consume(RingBuffer* XE_RESTRICT output_rb,
   // and an infinite loop in Work().  Treat 0 as 1 (minimum progress).
   const uint8_t effective_sdc =
       std::max(static_cast<uint32_t>(1), data->subframe_decode_count);
-  int8_t subframes_to_write = std::min(
-      (int8_t)current_frame_remaining_subframes_, (int8_t)effective_sdc);
+  // A pass writes whole subframes, two blocks each in stereo.
+  int8_t subframes_to_write =
+      std::min((int8_t)current_frame_remaining_subframes_,
+               (int8_t)(effective_sdc << data->is_stereo));
 
   // Clamp to loop end limit if active.
   if (loop_frame_output_limit_ > 0) {
