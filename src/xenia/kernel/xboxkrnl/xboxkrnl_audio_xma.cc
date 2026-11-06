@@ -158,6 +158,10 @@ dword_result_t XMAInitializeContext_entry(
     return X_E_FALSE;
   }
 
+  // Reset the decoder's state for the context first: the Clear also resets
+  // the read offset, which comes from the init struct.
+  StoreXmaContextIndexedRegister(kernel_state(), 0x1A80, context_ptr);
+
   std::memset(context_ptr, 0, sizeof(XMA_CONTEXT_DATA));
 
   XMA_CONTEXT_DATA context(context_ptr);
@@ -172,9 +176,17 @@ dword_result_t XMAInitializeContext_entry(
   context.output_buffer_ptr = output_buffer_physical_address;
   context.output_buffer_block_count = context_init->output_buffer_block_count;
 
-  // context.work_buffer = context_init->work_buffer;  // ?
+  uint32_t work_buffer_guest_ptr = context_init->work_buffer;
+  if (work_buffer_guest_ptr) {
+    uint32_t work_buffer_physical_address =
+        kernel_memory()->GetPhysicalAddress(work_buffer_guest_ptr);
+    if (work_buffer_physical_address != UINT32_MAX) {
+      context.work_buffer_ptr = work_buffer_physical_address;
+    }
+  }
   context.subframe_decode_count = context_init->subframe_decode_count;
-  context.is_stereo = context_init->channel_count >= 1;
+  // Channel count is 0-based: only bit 0 is used.
+  context.is_stereo = context_init->channel_count & 1;
   context.sample_rate = context_init->sample_rate;
 
   context.loop_start = context_init->loop_data.loop_start;
@@ -184,8 +196,6 @@ dword_result_t XMAInitializeContext_entry(
   context.loop_subframe_skip = context_init->loop_data.loop_subframe_skip;
 
   context.Store(context_ptr);
-
-  StoreXmaContextIndexedRegister(kernel_state(), 0x1A80, context_ptr);
 
   return 0;
 }
