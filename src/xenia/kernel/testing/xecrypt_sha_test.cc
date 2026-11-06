@@ -208,17 +208,16 @@ TEST_CASE("XeCryptSha256Update_streams_across_blocks", "[crypt]") {
                              "046d39ccc7112cd0"));
 }
 
-TEST_CASE("XeCryptSha256Final_copies_digest_to_buffer", "[crypt]") {
+TEST_CASE("XeCryptSha256Final_leaves_digest_in_state", "[crypt]") {
   XECRYPT_SHA256_STATE state;
   XeCryptSha256Init(&state);
   XeCryptSha256Update(&state, Bytes("abc"), 3);
-  const XECRYPT_SHA256_STATE before = state;
   Digest256 digest;
   XeCryptSha256Final(&state, digest.data(),
                      static_cast<uint32_t>(digest.size()));
 
   REQUIRE(state.count == 3);
-  REQUIRE(std::memcmp(state.state, before.state, sizeof(state.state)) == 0);
+  REQUIRE(std::memcmp(state.state, digest.data(), digest.size()) == 0);
   REQUIRE(std::memcmp(state.buffer, digest.data(), digest.size()) == 0);
 }
 
@@ -262,14 +261,13 @@ TEST_CASE("XeCryptSha512Update_streams_across_blocks", "[crypt]") {
           "de0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b"));
 }
 
-TEST_CASE("XeCryptSha512Final_copies_digest_to_buffer", "[crypt]") {
+TEST_CASE("XeCryptSha512Final_leaves_digest_in_state", "[crypt]") {
   XECRYPT_SHA512_STATE state;
   XeCryptSha512Init(&state);
   XeCryptSha512Update(&state, Bytes("abc"), 3);
-  const XECRYPT_SHA512_STATE before = state;
   const Digest512 digest = Final512(state);
 
   REQUIRE(state.count == 3);
-  REQUIRE(std::memcmp(state.state, before.state, sizeof(state.state)) == 0);
+  REQUIRE(std::memcmp(state.state, digest.data(), digest.size()) == 0);
   REQUIRE(std::memcmp(state.buffer, digest.data(), digest.size()) == 0);
 }

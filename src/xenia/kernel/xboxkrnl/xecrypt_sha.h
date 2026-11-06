@@ -14,9 +14,11 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
+#include "xenia/base/memory.h"
 
 #include "third_party/mbedtls/include/mbedtls/sha1.h"
 #include "third_party/mbedtls/include/mbedtls/sha256.h"
@@ -168,6 +170,12 @@ inline void XeCryptSha256Final(XECRYPT_SHA256_STATE* state, uint8_t* out,
   if (out_size) {
     std::memcpy(out, digest, std::min<uint32_t>(out_size, sizeof(digest)));
   }
+  // The state ends as the final hash, which, its words being big-endian, is
+  // the digest: titles that pass no output read it there, such as Fable: The
+  // Journey (4D530A1A) checking its Kinect gesture databases.
+  for (size_t i = 0; i < std::size(state->state); ++i) {
+    state->state[i] = xe::load_and_swap<uint32_t>(digest + i * 4);
+  }
   std::memcpy(state->buffer, digest, sizeof(digest));
 }
 
@@ -228,6 +236,10 @@ inline void XeCryptSha512Final(XECRYPT_SHA512_STATE* state, uint8_t* out,
   mbedtls_sha512_finish(&context, digest);
   if (out_size) {
     std::memcpy(out, digest, std::min<uint32_t>(out_size, sizeof(digest)));
+  }
+  // As for SHA-256, the state ends as the final hash.
+  for (size_t i = 0; i < std::size(state->state); ++i) {
+    state->state[i] = xe::load_and_swap<uint64_t>(digest + i * 8);
   }
   std::memcpy(state->buffer, digest, sizeof(digest));
 }
