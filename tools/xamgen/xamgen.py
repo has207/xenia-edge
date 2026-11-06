@@ -487,6 +487,12 @@ class Variable:
         self.index = index
         self.name = name
 
+    @property
+    def address(self):
+        """The guest address of the value's low word, for an export that
+        reads it from memory."""
+        return CONTROL + C_VARIABLES + 8 * self.index + 4
+
 
 class Recorder:
     """A callback whose `log` holds its call count and then `args`

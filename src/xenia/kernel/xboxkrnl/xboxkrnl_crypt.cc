@@ -482,6 +482,20 @@ void XeCryptMd5Final_entry(pointer_t<XECRYPT_MD5_STATE> md5_state,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptMd5Final, kNone, kImplemented);
 
+// Copies forward a dword at a time so an overlapping destination reads back
+// what was just stored.
+void XeCryptBnDw_Copy_entry(lpdword_t source, lpdword_t dest, dword_t count) {
+  if (source.guest_address() == dest.guest_address()) {
+    return;
+  }
+  const xe::be<uint32_t>* src = source;
+  xe::be<uint32_t>* dst = dest;
+  for (uint32_t i = 0; i < count; ++i) {
+    dst[i] = src[i];
+  }
+}
+DECLARE_XBOXKRNL_EXPORT1(XeCryptBnDw_Copy, kNone, kImplemented);
+
 // Byteswaps each 8 bytes
 void XeCryptBnQw_SwapDwQwLeBe_entry(pointer_t<uint64_t> qw_inp,
                                     pointer_t<uint64_t> qw_out, dword_t size) {
