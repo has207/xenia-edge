@@ -253,18 +253,8 @@ bool XmaContextNew::Work() {
                         : kErrorOutputFull);
   }
 
-  if (initial_data.IsAnyInputBufferValid()) {
-    data.output_buffer_write_offset =
-        output_rb.write_offset() / kOutputBytesPerBlock;
-
-  } else {
-    // NFS: Carbon and NFS: MW use write_offset as a stall detector
-    // make sure that they are equal if we're starved on input.
-    if (data.output_buffer_write_offset != data.output_buffer_read_offset) {
-      data.output_buffer_write_offset = data.output_buffer_read_offset;
-      data.output_buffer_valid = 0;
-    }
-  }
+  data.output_buffer_write_offset =
+      output_rb.write_offset() / kOutputBytesPerBlock;
 
   // Signal the game that the output buffer is full
   if (remaining_subframe_blocks_in_output_buffer_ == 0 && output_rb.empty()) {
@@ -432,6 +422,11 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
                id());
       return;
     }
+    const uint32_t first_frame_offset =
+        xma::GetPacketFrameOffset(GetCurrentInputBuffer(data));
+    if (first_frame_offset <= kMaxFrameSizeinBits) {
+      data->input_buffer_read_offset = first_frame_offset;
+    }
   }
 
   uint8_t* current_input_buffer = GetCurrentInputBuffer(data);
@@ -459,14 +454,12 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
       static_cast<void*>(current_input_buffer), data->output_buffer_ptr,
       data->output_buffer_block_count);
 
-  // Games like Dirt 2 can kick the decoder with read offset 0 (pointing into
-  // the packet header) before filling in a valid offset. Clamp to the first
-  // valid data position to avoid rejecting the packet entirely.
+  // No frame starts in a packet header.
   if (data->input_buffer_read_offset < kBitsPerPacketHeader) {
-    XELOGW(
-        "XmaContext {}: Read offset {} is inside packet header, clamping to {}",
-        id(), data->input_buffer_read_offset, kBitsPerPacketHeader);
-    data->input_buffer_read_offset = kBitsPerPacketHeader;
+    XELOGAPU("XmaContext {}: Read offset {} is inside the packet header", id(),
+             data->input_buffer_read_offset);
+    StopOnParserError(data, kParserErrorNoFrame);
+    return;
   }
 
   const uint32_t current_input_size = GetCurrentInputBufferSize(data);
@@ -484,22 +477,9 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   uint8_t* packet = current_input_buffer + (packet_index * kBytesPerPacket);
   const uint32_t packet_first_frame_offset = xma::GetPacketFrameOffset(packet);
-  uint32_t relative_offset = data->input_buffer_read_offset % kBitsPerPacket;
+  const uint32_t relative_offset =
+      data->input_buffer_read_offset % kBitsPerPacket;
 
-  // If the read offset is before the first frame in this packet we're in the
-  // tail of a split frame from the previous packet.  We don't have the
-  // beginning of that frame so skip ahead to the first complete frame.
-  // This also guards against games that kick the decoder with an offset
-  // pointing into the packet header (e.g. Dirt 2).
-  if (relative_offset < packet_first_frame_offset) {
-    XELOGAPU(
-        "XmaContext {}: Skipping split frame tail in packet {} "
-        "(offset {} -> first frame {})",
-        id(), packet_index, relative_offset, packet_first_frame_offset);
-    data->input_buffer_read_offset =
-        (packet_index * kBitsPerPacket) + packet_first_frame_offset;
-    relative_offset = packet_first_frame_offset;
-  }
   const uint8_t skip_count = xma::GetPacketSkipCount(packet);
 
   // Full packet skip — no new frames begin in this packet (XMA2: 0xFF,
@@ -517,19 +497,21 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
     return;
   }
 
-  kPacketInfo packet_info = GetPacketInfo(packet, relative_offset);
+  // Before the packet's first frame is the tail of a frame from the previous
+  // packet. No frame starts there.
+  if (relative_offset < packet_first_frame_offset) {
+    XELOGAPU("XmaContext {}: Read offset {} is in a split frame tail", id(),
+             data->input_buffer_read_offset);
+    StopOnParserError(data, kParserErrorNoFrame);
+    return;
+  }
 
-  // Games can write loop_start one bit short of the frame boundary.
-  if (loop_start_skip_pending_ &&
-      packet_info.current_frame_offset_ != relative_offset) {
-    XELOGAPU(
-        "XmaContext {}: loop_start {} is not a frame boundary in packet {}, "
-        "resolving to {}",
-        id(), relative_offset, packet_index, packet_info.current_frame_offset_);
-    relative_offset = packet_info.current_frame_offset_;
-    data->input_buffer_read_offset =
-        (packet_index * kBitsPerPacket) + relative_offset;
-    packet_info = GetPacketInfo(packet, relative_offset);
+  kPacketInfo packet_info = GetPacketInfo(packet, relative_offset);
+  if (!packet_info.frame_found_) {
+    XELOGAPU("XmaContext {}: No frame starts at read offset {}", id(),
+             data->input_buffer_read_offset);
+    StopOnParserError(data, kParserErrorNoFrame);
+    return;
   }
 
   const uint32_t packet_to_skip = skip_count + 1;
@@ -566,8 +548,7 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
     if (frame_size == xma::kMaxFrameLength) {
       XELOGW("XmaContext {}: Split header resolved to kMaxFrameLength (0x7FFF)",
              id());
-      SetParserError(data, kParserErrorNoFrame);
-      decode_stop_ = kDecodeStop::kParserError;
+      StopOnParserError(data, kParserErrorNoFrame);
       return;
     }
     packet_info.current_frame_size_ = (uint32_t)frame_size;
@@ -631,9 +612,8 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   if (result == kPacketResult::kError) {
     // The position stays on the frame, which fails again until the guest
     // moves it. The flush lets the codec take a frame again after that.
-    SetParserError(data, kParserErrorBitstream);
+    StopOnParserError(data, kParserErrorBitstream);
     FlushDecoder();
-    decode_stop_ = kDecodeStop::kParserError;
     return;
   }
   if (result == kPacketResult::kFrame) {
@@ -899,32 +879,19 @@ uint8_t* XmaContextNew::GetCurrentInputBuffer(XMA_CONTEXT_DATA* data) {
 const kPacketInfo XmaContextNew::GetPacketInfo(uint8_t* packet,
                                                uint32_t frame_offset) {
   kPacketInfo packet_info = {};
-  packet_info.current_frame_offset_ = frame_offset;
 
   const uint32_t first_frame_offset = xma::GetPacketFrameOffset(packet);
   BitStream stream(packet, kBitsPerPacket);
   stream.SetOffset(first_frame_offset);
 
-  // Report the first frame starting at or after frame_offset.
-  bool resolved = false;
   auto consider_frame = [&](uint32_t offset, uint32_t size) {
-    if (!resolved && offset >= frame_offset) {
-      resolved = true;
-      packet_info.current_frame_offset_ = offset;
-    }
     if (offset != frame_offset) {
       return;
     }
+    packet_info.frame_found_ = true;
     packet_info.current_frame_ = packet_info.frame_count_;
     packet_info.current_frame_size_ = size;
   };
-
-  // Handling of splitted frame
-  if (frame_offset < first_frame_offset) {
-    packet_info.current_frame_ = 0;
-    packet_info.current_frame_size_ = first_frame_offset - frame_offset;
-    resolved = true;
-  }
 
   while (true) {
     if (stream.BitsRemaining() < kBitsPerFrameHeader) {
@@ -1070,9 +1037,10 @@ void XmaContextNew::SetError(XMA_CONTEXT_DATA* data, uint32_t status) {
   data->error_set = 1;
 }
 
-void XmaContextNew::SetParserError(XMA_CONTEXT_DATA* data, uint32_t status) {
+void XmaContextNew::StopOnParserError(XMA_CONTEXT_DATA* data, uint32_t status) {
   data->parser_error_status = status;
   data->parser_error_set = 1;
+  decode_stop_ = kDecodeStop::kParserError;
 }
 
 void XmaContextNew::StoreContextMerged(const XMA_CONTEXT_DATA& data,

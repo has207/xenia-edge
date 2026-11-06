@@ -35,8 +35,8 @@ struct kPacketInfo {
   uint8_t frame_count_;
   uint8_t current_frame_;
   uint32_t current_frame_size_;
-  // First frame starting at or after the requested offset.
-  uint32_t current_frame_offset_;
+  // A frame starts at the requested offset.
+  bool frame_found_;
 
   const bool isLastFrameInPacket() const {
     return frame_count_ == 0 || current_frame_ == frame_count_ - 1;
@@ -160,7 +160,9 @@ class XmaContextNew : public XmaContext {
   kPacketResult DecodePacket(AVCodecContext* av_context,
                              const AVPacket* av_packet, AVFrame* av_frame);
   static void SetError(XMA_CONTEXT_DATA* data, uint32_t status);
-  static void SetParserError(XMA_CONTEXT_DATA* data, uint32_t status);
+  // Sets the parser status and stops decoding with the position left where
+  // it is.
+  void StopOnParserError(XMA_CONTEXT_DATA* data, uint32_t status);
 
   // Re-reads context from guest memory and merges only decoder-owned fields,
   // preserving any game modifications made during decoding.
