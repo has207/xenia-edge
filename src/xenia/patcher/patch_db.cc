@@ -460,7 +460,14 @@ std::vector<PatchSourceFile> EnumeratePatchesForTitle(
                                 [&local](const PatchSourceFile& file) {
                                   return file.filename == local.filename;
                                 });
-    if (bundled == bundled_end) {
+    // Only merge files for the same executable.
+    const bool same_executables =
+        bundled != bundled_end &&
+        std::ranges::any_of(local.entry.hashes, [&bundled](uint64_t hash) {
+          return std::ranges::find(bundled->entry.hashes, hash) !=
+                 bundled->entry.hashes.cend();
+        });
+    if (!same_executables) {
       files.push_back(std::move(local));
       continue;
     }
