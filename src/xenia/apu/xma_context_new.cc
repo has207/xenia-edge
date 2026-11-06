@@ -288,8 +288,6 @@ void XmaContextNew::Release() {
 
   set_is_allocated(false);
   FlushDecoder();
-  auto context_ptr = memory()->TranslateVirtual(guest_ptr());
-  std::memset(context_ptr, 0, sizeof(XMA_CONTEXT_DATA));  // Zero it.
 }
 
 int XmaContextNew::GetSampleRate(int id) {

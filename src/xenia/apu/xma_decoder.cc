@@ -267,6 +267,8 @@ uint32_t XmaDecoder::AllocateContext() {
   XmaContext& context = *contexts_[index];
   assert_false(context.is_allocated());
   context.set_is_allocated(true);
+  std::memset(memory()->TranslateVirtual(context.guest_ptr()), 0,
+              sizeof(XMA_CONTEXT_DATA));
   return context.guest_ptr();
 }
 
