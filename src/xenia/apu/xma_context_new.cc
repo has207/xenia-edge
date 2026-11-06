@@ -409,15 +409,13 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   input_buffer_.fill(0);
 
-  // Detect if we're about to decode the loop end frame (before
-  // UpdateLoopStatus may reset the offset).
+  // The frame at loop_end is decoded and cut to loop_subframe_end, then the
+  // decoder jumps to loop_start.
   bool is_loop_end_frame = false;
   if (data->loop_count > 0) {
     const uint32_t loop_end = std::max(kBitsPerPacketHeader, data->loop_end);
     is_loop_end_frame = (data->input_buffer_read_offset == loop_end);
   }
-
-  UpdateLoopStatus(data);
 
   if (!data->output_buffer_block_count) {
     XELOGE("XmaContext {}: Error - Received 0 for output_buffer_block_count!",
@@ -623,19 +621,24 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
       loop_frame_output_limit_ = 0;
     }
 
-    // Loop start: skip leading subframes per loop_subframe_skip.
-    // Reducing remaining shifts the read offset forward in Consume().
+    // Loop start: skip leading subframes per loop_subframe_skip, all of the
+    // frame from 4 on. Reducing remaining shifts the read offset forward in
+    // Consume().
     if (loop_start_skip_pending_) {
       const uint8_t skip = data->loop_subframe_skip << data->is_stereo;
-      if (skip < current_frame_remaining_subframes_) {
-        XELOGAPU(
-            "XmaContext {}: Loop start - skipping {} leading subframes "
-            "(loop_subframe_skip={})",
-            id(), skip, data->loop_subframe_skip);
-        current_frame_remaining_subframes_ -= skip;
-      }
+      XELOGAPU(
+          "XmaContext {}: Loop start - skipping {} leading subframes "
+          "(loop_subframe_skip={})",
+          id(), skip, data->loop_subframe_skip);
+      current_frame_remaining_subframes_ -=
+          std::min(skip, current_frame_remaining_subframes_);
       loop_start_skip_pending_ = false;
     }
+  }
+
+  if (is_loop_end_frame) {
+    UpdateLoopStatus(data);
+    return;
   }
 
   // Compute where to go next.
