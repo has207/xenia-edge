@@ -66,15 +66,12 @@ struct XMA_CONTEXT_DATA {
   uint32_t unk_dword_1_a : 3;                 // +14bit
   uint32_t loop_subframe_skip : 3;            // +17bit, XMASetLoopData
   uint32_t subframe_decode_count : 4;         // +20bit
-  uint32_t output_buffer_padding : 3;  // +24bit, extra output buffer blocks
-                                       // reserved per decoded frame
-                                       // NOTE(has207): this is pure guess
-                                       // but that's how we're using it
-                                       // currently
-  uint32_t sample_rate : 2;            // +27bit enum of sample rates
-  uint32_t is_stereo : 1;              // +29bit
-  uint32_t unk_dword_1_c : 1;          // +30bit
-  uint32_t output_buffer_valid : 1;    // +31bit, XMAIsOutputBufferValid
+  uint32_t decode_subframe : 3;      // +24bit, subframe of the frame at
+                                     // input_buffer_read_offset to decode from
+  uint32_t sample_rate : 2;          // +27bit enum of sample rates
+  uint32_t is_stereo : 1;            // +29bit
+  uint32_t unk_dword_1_c : 1;        // +30bit
+  uint32_t output_buffer_valid : 1;  // +31bit, XMAIsOutputBufferValid
 
   // DWORD 2
   uint32_t input_buffer_read_offset : 26;  // XMAGetInputBufferReadOffset
