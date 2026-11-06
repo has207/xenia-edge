@@ -268,6 +268,15 @@ void XmaContextNew::ClearLocked(XMA_CONTEXT_DATA* data) {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  FlushDecoder();
+}
+
+void XmaContextNew::FlushDecoder() {
+  // The next frame starts a new stream, which must not get the previous
+  // stream's overlap.
+  if (av_context_ && avcodec_is_open(av_context_)) {
+    avcodec_flush_buffers(av_context_);
+  }
 }
 
 void XmaContextNew::Disable() { set_is_enabled(false); }
@@ -278,6 +287,7 @@ void XmaContextNew::Release() {
   assert_true(is_allocated());
 
   set_is_allocated(false);
+  FlushDecoder();
   auto context_ptr = memory()->TranslateVirtual(guest_ptr());
   std::memset(context_ptr, 0, sizeof(XMA_CONTEXT_DATA));  // Zero it.
 }
