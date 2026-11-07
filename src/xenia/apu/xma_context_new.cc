@@ -136,7 +136,6 @@ bool XmaContextNew::Work() {
        data.current_buffer != held_buffer_)) {
     XELOGAPU("XmaContext {}: Position moved, dropping the held frame", id());
     current_frame_remaining_subframes_ = 0;
-    loop_frame_output_limit_ = 0;
     advance_ = {};
   }
 
@@ -164,32 +163,18 @@ bool XmaContextNew::Work() {
     return true;
   }
 
-  // Minimum free blocks needed before attempting a decode.
-  // Use the number of blocks Consume() will actually write per iteration
-  // (= subframe_decode_count subframes, clamped to 1, of two blocks each in
-  // stereo).  Using a full-frame worth of space (the old formula) was far too
-  // restrictive: games like TGM Ace use subframe_decode_count=2 on a small
-  // ring buffer and never had 8 free blocks available, causing the decoder to
-  // permanently stall.
-  const uint32_t effective_sdc =
-      std::max(static_cast<uint32_t>(1), data.subframe_decode_count);
-  const int32_t minimum_subframe_decode_count =
-      static_cast<int32_t>(effective_sdc << data.is_stereo);
-
-  // We don't have enough space to even make one pass
-  // Waiting for decoder to return more space.
-  if (minimum_subframe_decode_count >
+  // A pass only starts when there is room for it.
+  if (static_cast<int32_t>(GetPassBlocks(&data)) >
       remaining_subframe_blocks_in_output_buffer_) {
     XELOGAPU("XmaContext {}: No space for subframe decoding {}/{}!", id(),
-             minimum_subframe_decode_count,
-             remaining_subframe_blocks_in_output_buffer_);
+             GetPassBlocks(&data), remaining_subframe_blocks_in_output_buffer_);
     SetError(&data, kErrorOutputSpace);
     StoreContextMerged(data, initial_data, context_ptr);
     return true;
   }
 
   while (remaining_subframe_blocks_in_output_buffer_ >=
-         minimum_subframe_decode_count) {
+         static_cast<int32_t>(GetPassBlocks(&data))) {
     XELOGAPU(
         "XmaContext {}: Write Count: {}, Capacity: {} - {} {} Subframes: {} "
         "Decode subframe: {}",
@@ -243,11 +228,11 @@ bool XmaContextNew::Work() {
   if (frame_done && decode_stop_ == kDecodeStop::kWaitForBuffer) {
     SetError(&data, kErrorWaitForBuffer);
   } else if (frame_done && decode_stop_ == kDecodeStop::kParserError) {
-    // The parser status says why. The status is left as it was.
+    // The parser status says why.
   } else if (frame_done && !data.IsAnyInputBufferValid()) {
     SetError(&data, kErrorNoInput);
   } else if (remaining_subframe_blocks_in_output_buffer_ <
-             minimum_subframe_decode_count) {
+             static_cast<int32_t>(GetPassBlocks(&data))) {
     SetError(&data, remaining_subframe_blocks_in_output_buffer_
                         ? kErrorOutputSpace
                         : kErrorOutputFull);
@@ -294,8 +279,6 @@ void XmaContextNew::ClearLocked(XMA_CONTEXT_DATA* data) {
   data->output_buffer_write_offset = 0;
 
   current_frame_remaining_subframes_ = 0;
-  loop_frame_output_limit_ = 0;
-  loop_start_skip_pending_ = false;
   advance_ = {};
   FlushDecoder();
 }
@@ -342,50 +325,17 @@ void XmaContextNew::Consume(RingBuffer* XE_RESTRICT output_rb,
     return;
   }
 
-  // Check if the loop end truncation limit has been reached.
-  // Total subframes for this frame minus remaining gives how many have already
-  // been consumed.  If that reaches the limit, discard the rest.
-  if (loop_frame_output_limit_ > 0) {
-    const uint8_t total_subframes =
-        (kBytesPerFrameChannel / kOutputBytesPerBlock) << data->is_stereo;
-    const uint8_t consumed =
-        total_subframes - current_frame_remaining_subframes_;
-    if (consumed >= loop_frame_output_limit_) {
-      XELOGAPU(
-          "XmaContext {}: Loop end truncation: discarding {} remaining "
-          "subframes (limit {})",
-          id(), current_frame_remaining_subframes_, loop_frame_output_limit_);
-      current_frame_remaining_subframes_ = 0;
-      loop_frame_output_limit_ = 0;
-      return;
-    }
-  }
-
   // Guard against subframe_decode_count == 0 which would cause zero progress
   // and an infinite loop in Work().  Treat 0 as 1 (minimum progress).
   const uint8_t effective_sdc =
       std::max(static_cast<uint32_t>(1), data->subframe_decode_count);
   // A pass writes whole subframes, two blocks each in stereo.
-  int8_t subframes_to_write =
+  const int8_t subframes_to_write =
       std::min((int8_t)current_frame_remaining_subframes_,
                (int8_t)(effective_sdc << data->is_stereo));
 
-  // Clamp to loop end limit if active.
-  if (loop_frame_output_limit_ > 0) {
-    const uint8_t total_subframes =
-        (kBytesPerFrameChannel / kOutputBytesPerBlock) << data->is_stereo;
-    const uint8_t consumed =
-        total_subframes - current_frame_remaining_subframes_;
-    const int8_t remaining_until_limit =
-        (int8_t)(loop_frame_output_limit_ - consumed);
-    if (subframes_to_write > remaining_until_limit) {
-      subframes_to_write = remaining_until_limit;
-    }
-  }
-
   const int8_t raw_frame_read_offset =
-      ((kBytesPerFrameChannel / kOutputBytesPerBlock) << data->is_stereo) -
-      current_frame_remaining_subframes_;
+      current_frame_end_block_ - current_frame_remaining_subframes_;
 
   output_rb->Write(
       raw_frame_.data() + (kOutputBytesPerBlock * raw_frame_read_offset),
@@ -433,13 +383,13 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
 
   input_buffer_.fill(0);
 
-  // The frame at loop_end is decoded and cut to loop_subframe_end, then the
-  // decoder jumps to loop_start.
-  bool is_loop_end_frame = false;
-  if (data->loop_count > 0) {
-    const uint32_t loop_end = std::max(kBitsPerPacketHeader, data->loop_end);
-    is_loop_end_frame = (data->input_buffer_read_offset == loop_end);
-  }
+  // The frame at loop_end is cut after loop_subframe_end, then decoding
+  // jumps to loop_start. Starting past loop_subframe_end plays it to its end
+  // and decoding goes on from there, even into padding.
+  const bool at_loop_end = data->loop_count > 0 &&
+                           data->input_buffer_read_offset ==
+                               std::max(kBitsPerPacketHeader, data->loop_end);
+  const bool is_loop_end_frame = IsLoopEndFrame(data);
 
   if (!data->output_buffer_block_count) {
     XELOGE("XmaContext {}: Error - Received 0 for output_buffer_block_count!",
@@ -506,16 +456,30 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
     return;
   }
 
+  const uint32_t packet_to_skip = skip_count + 1;
+  const uint32_t next_packet_index = packet_index + packet_to_skip;
+
   kPacketInfo packet_info = GetPacketInfo(packet, relative_offset);
   if (!packet_info.frame_found_) {
+    // Padding after a packet's last frame reads as a frame running into the
+    // next packet, so it fails only once that packet is there.
+    BitStream header(packet, kBitsPerPacket);
+    header.SetOffset(relative_offset);
+    if (header.BitsRemaining() >= kBitsPerFrameHeader &&
+        header.Peek(kBitsPerFrameHeader) == xma::kMaxFrameLength &&
+        !GetNextPacket(data, next_packet_index, current_input_packet_count)) {
+      XELOGAPU(
+          "XmaContext {}: Read offset {} is in padding, waiting for the "
+          "next buffer",
+          id(), data->input_buffer_read_offset);
+      decode_stop_ = kDecodeStop::kWaitForBuffer;
+      return;
+    }
     XELOGAPU("XmaContext {}: No frame starts at read offset {}", id(),
              data->input_buffer_read_offset);
     StopOnParserError(data, kParserErrorNoFrame);
     return;
   }
-
-  const uint32_t packet_to_skip = skip_count + 1;
-  const uint32_t next_packet_index = packet_index + packet_to_skip;
 
   // Frame header split across packet boundary — combine packets to read
   // the full 15-bit header and resolve the real frame size.
@@ -625,45 +589,30 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
     // dump_raw(av_frame_, id());
     ConvertFrame(reinterpret_cast<const uint8_t**>(&av_frame_->data),
                  bool(data->is_stereo), raw_frame_.data());
-    current_frame_remaining_subframes_ = 4 << data->is_stereo;
-
-    // Loop end: limit output to subframes 0..loop_subframe_end.
-    if (is_loop_end_frame) {
-      loop_frame_output_limit_ = (data->loop_subframe_end + 1)
-                                 << data->is_stereo;
-      XELOGAPU(
-          "XmaContext {}: Loop end frame - limiting output to {} subframes "
-          "(loop_subframe_end={})",
-          id(), loop_frame_output_limit_, data->loop_subframe_end);
-    } else {
-      loop_frame_output_limit_ = 0;
-    }
-
-    // Loop start: skip leading subframes per loop_subframe_skip, all of the
-    // frame from 4 on. Reducing remaining shifts the read offset forward in
-    // Consume().
-    if (loop_start_skip_pending_) {
-      const uint8_t skip = data->loop_subframe_skip << data->is_stereo;
-      XELOGAPU(
-          "XmaContext {}: Loop start - skipping {} leading subframes "
-          "(loop_subframe_skip={})",
-          id(), skip, data->loop_subframe_skip);
-      current_frame_remaining_subframes_ -=
-          std::min(skip, current_frame_remaining_subframes_);
-      loop_start_skip_pending_ = false;
-    }
-
-    // A decode position inside the frame starts it that many subframes in.
-    if (data->decode_subframe) {
-      const uint8_t skip = data->decode_subframe << data->is_stereo;
-      current_frame_remaining_subframes_ -=
-          std::min(skip, current_frame_remaining_subframes_);
-      data->decode_subframe = 0;
-    }
+    // Output runs from the decode position's subframe to the end of the
+    // frame, or to loop_subframe_end on a loop end frame. A position of 4 or
+    // more skips the frame.
+    const uint32_t end_subframe =
+        is_loop_end_frame ? data->loop_subframe_end + 1u : 4u;
+    const uint32_t first_subframe =
+        std::min<uint32_t>(data->decode_subframe, end_subframe);
+    current_frame_end_block_ =
+        static_cast<uint8_t>(end_subframe << data->is_stereo);
+    current_frame_remaining_subframes_ = static_cast<uint8_t>(
+        (end_subframe - first_subframe) << data->is_stereo);
+    data->decode_subframe = 0;
   }
 
   if (is_loop_end_frame) {
     AdvanceAfterFrame(data, 0, 0, true);
+    return;
+  }
+
+  if (at_loop_end &&
+      relative_offset + packet_info.current_frame_size_ <= kBitsPerPacket) {
+    AdvanceAfterFrame(
+        data, data->input_buffer_read_offset + packet_info.current_frame_size_,
+        0, false);
     return;
   }
 
@@ -733,10 +682,9 @@ void XmaContextNew::WritePosition(XMA_CONTEXT_DATA* data) {
   // skipped. A finished frame leaves decode_subframe alone: 0, or a seek that
   // hasn't been decoded yet.
   if (current_frame_remaining_subframes_) {
-    const uint8_t frame_blocks = (kBytesPerFrameChannel / kOutputBytesPerBlock)
-                                 << data->is_stereo;
     data->decode_subframe =
-        (frame_blocks - current_frame_remaining_subframes_) >> data->is_stereo;
+        (current_frame_end_block_ - current_frame_remaining_subframes_) >>
+        data->is_stereo;
   }
   held_offset_ = data->input_buffer_read_offset;
   held_subframe_ = data->decode_subframe;
@@ -761,12 +709,32 @@ void XmaContextNew::UpdateLoopStatus(XMA_CONTEXT_DATA* data) {
     return;
   }
 
+  // Decoding goes on at loop_start from subframe loop_subframe_skip.
   data->input_buffer_read_offset = loop_start;
-  loop_start_skip_pending_ = true;
+  data->decode_subframe = data->loop_subframe_skip;
 
   if (data->loop_count != 255) {
     data->loop_count--;
   }
+}
+
+bool XmaContextNew::IsLoopEndFrame(const XMA_CONTEXT_DATA* data) {
+  return data->loop_count > 0 &&
+         data->input_buffer_read_offset ==
+             std::max(kBitsPerPacketHeader, data->loop_end) &&
+         data->decode_subframe <= data->loop_subframe_end;
+}
+
+uint32_t XmaContextNew::GetPassBlocks(const XMA_CONTEXT_DATA* data) const {
+  const uint32_t subframe =
+      current_frame_remaining_subframes_
+          ? static_cast<uint32_t>(current_frame_end_block_ -
+                                  current_frame_remaining_subframes_) >>
+                data->is_stereo
+          : data->decode_subframe;
+  const uint32_t sdc =
+      std::max(static_cast<uint32_t>(1), data->subframe_decode_count);
+  return std::min(sdc, subframe < 4 ? 4 - subframe : 0) << data->is_stereo;
 }
 
 kPacketHandle XmaContextNew::GetPacketHandle(
@@ -1045,6 +1013,8 @@ void XmaContextNew::SetError(XMA_CONTEXT_DATA* data, uint32_t status) {
 void XmaContextNew::StopOnParserError(XMA_CONTEXT_DATA* data, uint32_t status) {
   data->parser_error_status = status;
   data->parser_error_set = 1;
+  data->error_status = 0;
+  data->error_set = 0;
   decode_stop_ = kDecodeStop::kParserError;
 }
 

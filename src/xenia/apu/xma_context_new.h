@@ -144,6 +144,12 @@ class XmaContextNew : public XmaContext {
                const XMA_CONTEXT_DATA* const XE_RESTRICT data);
 
   void UpdateLoopStatus(XMA_CONTEXT_DATA* data);
+  // The frame at the position is cut after loop_subframe_end and jumps to
+  // loop_start, unless decoding starts past loop_subframe_end.
+  static bool IsLoopEndFrame(const XMA_CONTEXT_DATA* data);
+  // Room the next pass needs: subframe_decode_count subframes, or the rest of
+  // the frame if that is less. A loop end cut doesn't shrink it.
+  uint32_t GetPassBlocks(const XMA_CONTEXT_DATA* data) const;
   // Moves decoding on to the next frame, or loop_start for a loop jump, once
   // the frame being output is done. Until then the position stays inside it.
   void AdvanceAfterFrame(XMA_CONTEXT_DATA* data, uint32_t offset,
@@ -163,8 +169,8 @@ class XmaContextNew : public XmaContext {
   kPacketResult DecodePacket(AVCodecContext* av_context,
                              const AVPacket* av_packet, AVFrame* av_frame);
   static void SetError(XMA_CONTEXT_DATA* data, uint32_t status);
-  // Sets the parser status and stops decoding with the position left where
-  // it is.
+  // Sets the parser status, clears the error status and stops decoding with
+  // the position left where it is.
   void StopOnParserError(XMA_CONTEXT_DATA* data, uint32_t status);
 
   // Re-reads context from guest memory and merges only decoder-owned fields,
@@ -180,14 +186,9 @@ class XmaContextNew : public XmaContext {
 
   int32_t remaining_subframe_blocks_in_output_buffer_ = 0;
   uint8_t current_frame_remaining_subframes_ = 0;
-
-  // Loop subframe precision state.
-  // Maximum subframe blocks to output from the current frame (loop end
-  // truncation).  0 means no limit.
-  uint8_t loop_frame_output_limit_ = 0;
-  // When true, the next decoded frame should skip leading subframes per
-  // loop_subframe_skip (loop start adjustment).
-  bool loop_start_skip_pending_ = false;
+  // The block after the last one the frame being output writes: the end of
+  // the frame, or of loop_subframe_end on a loop end frame.
+  uint8_t current_frame_end_block_ = 0;
 
   kPendingAdvance advance_;
   kDecodeStop decode_stop_ = kDecodeStop::kNone;
