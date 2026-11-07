@@ -174,7 +174,7 @@ bool XmaContextNew::Work() {
   }
 
   // Frames left in the pass being written. A pass only starts when there is
-  // room for all of it, and a loop jump ends it.
+  // room for all of it, and ends early where the advance says.
   uint32_t pass_frames = 0;
   while (true) {
     if (!pass_frames &&
@@ -198,9 +198,9 @@ bool XmaContextNew::Work() {
     Decode(&data);
     Consume(&output_rb, &data);
     if (!current_frame_remaining_subframes_) {
-      const bool loop_jump = advance_.loop_jump_;
+      const bool ends_pass = advance_.ends_pass_;
       ApplyAdvance(&data);
-      pass_frames = loop_jump ? 0 : pass_frames - 1;
+      pass_frames = ends_pass ? 0 : pass_frames - 1;
     } else {
       pass_frames = 0;
     }
@@ -651,21 +651,27 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   }
 
   const uint32_t packet_bits_left = kBitsPerPacket - relative_offset;
-  const kNextFrame next =
-      FindNextFrame(data, next_packet_index, current_input_packet_count,
-                    packet_info.current_frame_size_ > packet_bits_left
-                        ? packet_info.current_frame_size_ - packet_bits_left
-                        : 0);
+  const uint32_t split_tail_bits =
+      packet_info.current_frame_size_ > packet_bits_left
+          ? packet_info.current_frame_size_ - packet_bits_left
+          : 0;
+  const kNextFrame next = FindNextFrame(
+      data, next_packet_index, current_input_packet_count, split_tail_bits);
   XELOGAPU("XmaContext {}: Next frame at {} after {} buffers", id(),
            next.offset_, next.buffers_consumed_);
-  AdvanceAfterFrame(data, next.offset_, next.buffers_consumed_, false);
+  // A frame split into the other buffer leaves its buffer part way through.
+  const bool split_into_other_buffer =
+      split_tail_bits && next_packet_index >= current_input_packet_count;
+  AdvanceAfterFrame(data, next.offset_, next.buffers_consumed_, false,
+                    next.buffers_consumed_ && !split_into_other_buffer);
 }
 
 void XmaContextNew::AdvanceAfterFrame(XMA_CONTEXT_DATA* data, uint32_t offset,
-                                      uint32_t buffers_consumed,
-                                      bool loop_jump) {
+                                      uint32_t buffers_consumed, bool loop_jump,
+                                      bool ends_pass) {
   advance_.pending_ = true;
   advance_.loop_jump_ = loop_jump;
+  advance_.ends_pass_ = loop_jump || ends_pass;
   advance_.offset_ = offset;
   advance_.buffers_consumed_ = buffers_consumed;
   if (!current_frame_remaining_subframes_) {

@@ -64,6 +64,8 @@ enum class kPacketResult { kFrame, kNoFrame, kError };
 struct kPendingAdvance {
   bool pending_ = false;
   bool loop_jump_ = false;
+  // The pass being written stops here.
+  bool ends_pass_ = false;
   uint32_t offset_ = 0;
   uint32_t buffers_consumed_ = 0;
 };
@@ -157,8 +159,10 @@ class XmaContextNew : public XmaContext {
                          uint32_t* frames = nullptr) const;
   // Moves decoding on to the next frame, or loop_start for a loop jump, once
   // the frame being output is done. Until then the position stays inside it.
+  // A loop jump ends the pass, and so does leaving a buffer between frames.
   void AdvanceAfterFrame(XMA_CONTEXT_DATA* data, uint32_t offset,
-                         uint32_t buffers_consumed, bool loop_jump);
+                         uint32_t buffers_consumed, bool loop_jump,
+                         bool ends_pass = false);
   void ApplyAdvance(XMA_CONTEXT_DATA* data);
   // Leaves the read offset and decode_subframe at the position inside a frame
   // that is part way out, and keeps them to tell a later seek.
