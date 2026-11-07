@@ -718,11 +718,20 @@ dword_result_t NtQueryFullAttributesFile_entry(
   // Resolve the file using the virtual file system. The host lookup can block
   // on a slow drive.
   vfs::Entry* entry = nullptr;
+  X_STATUS missing_status = X_STATUS_OBJECT_NAME_NOT_FOUND;
   kernel_state()->RunBlockingIo(
       [&]() {
-        entry = kernel_state()->file_system()->ResolvePath(target_path);
+        auto file_system = kernel_state()->file_system();
+        entry = file_system->ResolvePath(target_path);
         if (entry) {
           entry->update();
+          return;
+        }
+        // A missing directory or link before the last component is a missing
+        // path.
+        auto base_path = xe::utf8::find_base_guest_path(target_path);
+        if (!base_path.empty() && !file_system->ResolvePath(base_path)) {
+          missing_status = X_STATUS_OBJECT_PATH_NOT_FOUND;
         }
       },
       GuestScheduler::BlockingCallClass::kConcurrent);
@@ -739,7 +748,7 @@ dword_result_t NtQueryFullAttributesFile_entry(
     return X_STATUS_SUCCESS;
   }
 
-  return X_STATUS_NO_SUCH_FILE;
+  return missing_status;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtQueryFullAttributesFile, kFileSystem, kImplemented);
 
