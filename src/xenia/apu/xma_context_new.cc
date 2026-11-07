@@ -192,7 +192,9 @@ bool XmaContextNew::Work() {
         data.decode_subframe);
 
     const uint32_t pre_decode_offset = data.input_buffer_read_offset;
-    const uint8_t pre_remaining_subframes = current_frame_remaining_subframes_;
+    const uint32_t pre_decode_subframe = data.decode_subframe;
+    const uint32_t pre_buffer = data.current_buffer;
+    const int32_t pre_free_blocks = remaining_subframe_blocks_in_output_buffer_;
 
     decode_stop_ = kDecodeStop::kNone;
     Decode(&data);
@@ -218,14 +220,13 @@ bool XmaContextNew::Work() {
       break;
     }
 
-    // If Decode didn't advance the read offset and produced no new frame,
-    // we can't make progress. Break to avoid spinning.
-    // Only check when there were no pending subframes — if we entered this
-    // iteration with subframes remaining, Decode() intentionally skipped
-    // (offset unchanged) while Consume() drained the frame.
-    if (pre_remaining_subframes == 0 &&
+    // Nothing written and the position where it was means decoding can't go
+    // on. A loop jump back to the frame it came from writes and moves the
+    // position's subframe, so it isn't a stall.
+    if (remaining_subframe_blocks_in_output_buffer_ == pre_free_blocks &&
         data.input_buffer_read_offset == pre_decode_offset &&
-        current_frame_remaining_subframes_ == 0) {
+        data.decode_subframe == pre_decode_subframe &&
+        data.current_buffer == pre_buffer) {
       XELOGAPU(
           "XmaContext {}: Decode stalled at offset {} (no progress), "
           "waiting for next buffer",
