@@ -397,9 +397,8 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   // The frame at loop_end is cut after loop_subframe_end, then decoding
   // jumps to loop_start. Starting past loop_subframe_end plays it to its end
   // and decoding goes on from there, even into padding.
-  const bool at_loop_end = data->loop_count > 0 &&
-                           data->input_buffer_read_offset ==
-                               std::max(kBitsPerPacketHeader, data->loop_end);
+  const bool at_loop_end =
+      data->loop_count > 0 && data->input_buffer_read_offset == data->loop_end;
   const bool is_loop_end_frame = IsLoopEndFrame(data);
 
   if (!data->output_buffer_block_count) {
@@ -713,19 +712,17 @@ void XmaContextNew::UpdateLoopStatus(XMA_CONTEXT_DATA* data) {
     return;
   }
 
-  const uint32_t loop_start = std::max(kBitsPerPacketHeader, data->loop_start);
-  const uint32_t loop_end = std::max(kBitsPerPacketHeader, data->loop_end);
-
   XELOGAPU("XmaContext {}: Looped Data: {} < {} (Start: {}) Remaining: {}",
            id(), data->input_buffer_read_offset, data->loop_end,
            data->loop_start, data->loop_count);
 
-  if (data->input_buffer_read_offset != loop_end) {
+  if (data->input_buffer_read_offset != data->loop_end) {
     return;
   }
 
-  // Decoding goes on at loop_start from subframe loop_subframe_skip.
-  data->input_buffer_read_offset = loop_start;
+  // Decoding goes on at loop_start from subframe loop_subframe_skip. A
+  // loop_start of 0 stops on the packet header.
+  data->input_buffer_read_offset = data->loop_start;
   data->decode_subframe = data->loop_subframe_skip;
 
   if (data->loop_count != 255) {
@@ -734,9 +731,9 @@ void XmaContextNew::UpdateLoopStatus(XMA_CONTEXT_DATA* data) {
 }
 
 bool XmaContextNew::IsLoopEndFrame(const XMA_CONTEXT_DATA* data) {
+  // A loop_end of 0 is never a frame's offset, so it never loops.
   return data->loop_count > 0 &&
-         data->input_buffer_read_offset ==
-             std::max(kBitsPerPacketHeader, data->loop_end) &&
+         data->input_buffer_read_offset == data->loop_end &&
          data->decode_subframe <= data->loop_subframe_end;
 }
 
