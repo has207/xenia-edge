@@ -687,9 +687,21 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
     }
   }
 
-  auto fn = thread_state->processor()->ResolveFunction(
-      static_cast<uint32_t>(target_address));
-  assert_not_null(fn);
+  auto processor = thread_state->processor();
+  auto fn = processor->ResolveFunction(static_cast<uint32_t>(target_address));
+  if (!fn || !fn->is_guest()) {
+    // No code there, so the call faults on the instruction fetch, which the
+    // guest can handle by continuing elsewhere.
+    auto hook = processor->code_fault_hook();
+    const uint32_t resume_address =
+        hook ? hook(guest_context, static_cast<uint32_t>(target_address)) : 0;
+    fn = resume_address ? processor->ResolveFunction(resume_address) : nullptr;
+    if (!fn || !fn->is_guest()) {
+      XELOGE("No guest code at {:08X} for a call",
+             static_cast<uint32_t>(target_address));
+      return 0;
+    }
+  }
   auto x64_fn = static_cast<X64Function*>(fn);
   uint64_t addr = reinterpret_cast<uint64_t>(x64_fn->machine_code());
 

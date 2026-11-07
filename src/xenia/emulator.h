@@ -546,6 +546,9 @@ class Emulator {
 
   void WaitUntilExit();
 
+  // Logs a guest crash dump and tells the user, pausing first with --debug.
+  void ReportGuestCrash(const std::string& crash_msg);
+
  public:
   xe::Delegate<uint32_t, const std::string_view> on_launch;
   // A relaunch's title failed to start.

@@ -8,6 +8,8 @@
  */
 
 #include <cstring>
+#include <mutex>
+#include <unordered_map>
 
 #include "xenia/base/debugging.h"
 #include "xenia/base/logging.h"
@@ -17,6 +19,7 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
 #include "xenia/kernel/xthread.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -260,12 +263,66 @@ static std::string DescribeGuestFuncInfo(uint32_t func_info_ptr) {
   return text;
 }
 
-// Locates the .pdata of the module holding address, trimming its zero padding.
+// The exception directory of the image at base: the .pdata entries, as the
+// kernel's RtlLookupFunctionEntry finds them through XexPcToFileHeader and
+// RtlImageDirectoryEntryToData. Images such as the CLR's native images keep it
+// in another section than .pdata. The PE headers are little-endian.
+static const xe::be<uint32_t>* GetExceptionDirectory(uint32_t base,
+                                                     uint32_t* out_size) {
+  constexpr uint32_t kExceptionDirectory = 3;
+  if (!IsGuestRangeReadable(base, 0x40)) {
+    return nullptr;
+  }
+  const auto* image = kernel_memory()->TranslateVirtual<const uint8_t*>(base);
+  if (xe::load<uint16_t>(image) != 0x5A4D) {  // MZ
+    return nullptr;
+  }
+  const uint32_t nt = base + xe::load<uint32_t>(image + 0x3C);
+  // Signature, file header, then the PE32 optional header, whose data
+  // directories follow its count at 0x5C.
+  const uint32_t optional = nt + 0x18;
+  if (!IsGuestRangeReadable(nt, 0x18 + 0x60 + (kExceptionDirectory + 1) * 8)) {
+    return nullptr;
+  }
+  const auto* header = kernel_memory()->TranslateVirtual<const uint8_t*>(nt);
+  if (xe::load<uint32_t>(header) != 0x4550 ||  // PE
+      xe::load<uint16_t>(header + 0x18) != 0x10B ||
+      xe::load<uint32_t>(header + 0x18 + 0x5C) <= kExceptionDirectory) {
+    return nullptr;
+  }
+  const auto* directory = kernel_memory()->TranslateVirtual<const uint8_t*>(
+      optional + 0x60 + kExceptionDirectory * 8);
+  const uint32_t address = xe::load<uint32_t>(directory);
+  const uint32_t size = xe::load<uint32_t>(directory + 4);
+  if (!address || !size || !IsGuestRangeReadable(base + address, size)) {
+    return nullptr;
+  }
+  *out_size = size;
+  return kernel_memory()->TranslateVirtual<const xe::be<uint32_t>*>(base +
+                                                                    address);
+}
+
+// Locates the .pdata of the module holding address: its exception directory,
+// else its .pdata section with the zero padding trimmed. out_base, when given,
+// gets the entries' guest address. The kernel also searches a second table
+// the loader entry points to, at 0x44; xenia leaves that field 0.
 static const xe::be<uint32_t>* GetGuestPdata(uint32_t address,
-                                             uint32_t* out_count) {
+                                             uint32_t* out_count,
+                                             uint32_t* out_base = nullptr) {
   auto* xex = dynamic_cast<xe::cpu::XexModule*>(
       kernel_state()->processor()->LookupModule(address));
-  auto* section = xex ? xex->GetPESection(".pdata") : nullptr;
+  if (!xex) {
+    return nullptr;
+  }
+  uint32_t size = 0;
+  if (const auto* entries = GetExceptionDirectory(xex->base_address(), &size)) {
+    *out_count = size / 8;
+    if (out_base) {
+      *out_base = kernel_memory()->HostToGuestVirtual(entries);
+    }
+    return entries;
+  }
+  auto* section = xex->GetPESection(".pdata");
   if (!section || !IsGuestRangeReadable(section->address, section->raw_size)) {
     return nullptr;
   }
@@ -276,14 +333,20 @@ static const xe::be<uint32_t>* GetGuestPdata(uint32_t address,
     ++count;
   }
   *out_count = count;
+  if (out_base) {
+    *out_base = section->address;
+  }
   return entries;
 }
 
 // Finds the .pdata entry covering address. Entries are sorted by start.
+// out_entry, when given, gets the guest address of the entry itself.
 static bool LookupGuestRuntimeFunction(uint32_t address, uint32_t* out_start,
-                                       uint32_t* out_packed) {
+                                       uint32_t* out_packed,
+                                       uint32_t* out_entry = nullptr) {
   uint32_t count = 0;
-  const auto* entries = GetGuestPdata(address, &count);
+  uint32_t base = 0;
+  const auto* entries = GetGuestPdata(address, &count, &base);
   if (!entries || !count) {
     return false;
   }
@@ -309,6 +372,9 @@ static bool LookupGuestRuntimeFunction(uint32_t address, uint32_t* out_start,
   }
   *out_start = start;
   *out_packed = packed;
+  if (out_entry) {
+    *out_entry = base + (low - 1) * 8;
+  }
   return true;
 }
 
@@ -406,21 +472,29 @@ static std::string GetGuestPointerDump(uint32_t sp, uint32_t word_count) {
 // One frame of the guest call chain.
 // pc is where the frame resumes, always a return address, so it is looked up
 // at pc - 1. A call ending a noreturn function returns onto the next function.
+// The frame a load or store faulted in is the exception: its pc is the faulting
+// instruction itself.
 struct GuestFrame {
   uint32_t pc;
   uint32_t sp;
   uint32_t entry_sp;
   uint32_t function;
   uint32_t packed;
+  bool faulting;
 };
 
-// Walks the back chain. False means it ran out of readable stack, leaving the
-// last frame with no entry_sp and no way to unwind through it.
-static bool WalkGuestFrames(PPCContext* context,
-                            std::vector<GuestFrame>* out_frames) {
-  uint32_t sp = static_cast<uint32_t>(context->r[1]);
-  uint32_t pc = static_cast<uint32_t>(context->lr);
-  for (int i = 0; i < 24; ++i) {
+// The address a frame's .pdata entry is looked up at.
+static uint32_t GuestFrameLookupAddress(const GuestFrame& frame) {
+  return frame.faulting || !frame.pc ? frame.pc : frame.pc - 1;
+}
+
+// Walks the back chain from a frame on sp that resumes at pc. False means it
+// ran out of readable stack, leaving the last frame with no entry_sp and no way
+// to unwind through it.
+static bool WalkGuestFramesFrom(uint32_t sp, uint32_t pc,
+                                std::vector<GuestFrame>* out_frames,
+                                int max_frames) {
+  for (int i = 0; i < max_frames; ++i) {
     GuestFrame frame = {};
     frame.pc = pc;
     frame.sp = sp;
@@ -441,6 +515,15 @@ static bool WalkGuestFrames(PPCContext* context,
     sp = caller_sp;
   }
   return true;
+}
+
+// Walks the back chain from the context's sp and lr.
+static bool WalkGuestFrames(PPCContext* context,
+                            std::vector<GuestFrame>* out_frames,
+                            int max_frames = 24) {
+  return WalkGuestFramesFrom(static_cast<uint32_t>(context->r[1]),
+                             static_cast<uint32_t>(context->lr), out_frames,
+                             max_frames);
 }
 
 // Undoes one frame's prolog, reloading the registers it saved on entry.
@@ -853,6 +936,242 @@ void HandleCppException(pointer_t<X_EXCEPTION_RECORD> record,
   if (dispatch) {
     ApplyCppDispatch(context, plan);
   }
+}
+
+// Guest EXCEPTION_RECORD: code, flags, chained record, address, parameter
+// count, then 15 information words.
+constexpr uint32_t kExceptionRecordSize = 0x50;
+// Guest DISPATCHER_CONTEXT, as the kernel's RtlDispatchException fills it:
+// control pc, function entry, establisher frame, context record.
+constexpr uint32_t kDispatcherContextSize = 0x10;
+// What a language handler returns.
+constexpr uint32_t kExceptionContinueExecution = 0;
+constexpr uint32_t kExceptionContinueSearch = 1;
+// Frames searched for a handler, which can sit under a deep recursion.
+constexpr int kDispatchFrames = 128;
+// What a guest call returns to host code with when it has no caller.
+constexpr uint32_t kHostReturnAddress = 0xBCBCBCBC;
+// Faults in handlers dispatched in turn, each with records of its own. The
+// kernel has no such limit; it reports a fault in a handler as a nested
+// exception through RtlpExecuteHandlerForException's own handler. This only
+// keeps a fault that recurs in its handler from overflowing the host stack.
+constexpr int kDispatchNesting = 4;
+
+// The dispatches each guest thread is in. Guest threads share host threads as
+// fibers, and a handler that waits lets another run, so it's kept per guest
+// thread rather than per host thread.
+static std::mutex dispatch_depth_mutex;
+static std::unordered_map<cpu::ThreadState*, int> dispatch_depth;
+
+static int EnterDispatch(cpu::ThreadState* thread_state) {
+  std::lock_guard<std::mutex> lock(dispatch_depth_mutex);
+  return dispatch_depth[thread_state]++;
+}
+
+static void LeaveDispatch(cpu::ThreadState* thread_state) {
+  std::lock_guard<std::mutex> lock(dispatch_depth_mutex);
+  if (!--dispatch_depth[thread_state]) {
+    dispatch_depth.erase(thread_state);
+  }
+}
+
+// The stack the thread runs on, as RtlGetStackLimits reports it.
+static void GetStackLimits(PPCContext* context, uint32_t* out_end,
+                           uint32_t* out_base) {
+  auto kpcr = context->TranslateVirtualGPR<X_KPCR*>(context->r[13]);
+  if (kpcr->use_alternative_stack) {
+    *out_base = kpcr->alt_stack_base_ptr;
+    *out_end = kpcr->alt_stack_end_ptr;
+  } else {
+    *out_base = kpcr->stack_base_ptr;
+    *out_end = kpcr->stack_end_ptr;
+  }
+}
+
+// Delivers an access violation at the instruction |iar| to the guest's
+// frame-based handlers, searching |frames| as RtlDispatchException does. The
+// handlers run on |handler_sp|, returning to |handler_return|. Returns the
+// address a handler continued at, with the context loaded from its CONTEXT
+// record, or 0 if none did, with the context as it was.
+static uint32_t DispatchAccessViolation(PPCContext* context,
+                                        const std::vector<GuestFrame>& frames,
+                                        uint32_t iar, uint32_t handler_sp,
+                                        uint32_t handler_return, bool is_store,
+                                        uint32_t address, const char* fault) {
+  auto* thread_state = context->thread_state;
+  // A handler that walks the stack, as the CLR's does, unwinds through real
+  // frames, so the records can't go on the stack and go in the system heap
+  // instead. On the console the walk passes RtlpExecuteHandlerForException and
+  // the kernel's dispatch frames first, which have no guest code here.
+  const uint32_t records_size =
+      kContextSize + kExceptionRecordSize + kDispatcherContextSize;
+  const uint32_t context_record =
+      kernel_memory()->SystemHeapAlloc(records_size, 16);
+  if (!context_record) {
+    XELOGE("{} at {:08X}: no memory for the records", fault, address);
+    return 0;
+  }
+  const uint32_t exception_record = context_record + kContextSize;
+  const uint32_t dispatcher_context = exception_record + kExceptionRecordSize;
+
+  auto* context_bytes =
+      kernel_memory()->TranslateVirtual<uint8_t*>(context_record);
+  StoreContextRecord(context_bytes, context, iar,
+                     static_cast<uint32_t>(context->lr));
+  // The registers the access was made with, put back if nothing handles it.
+  const std::vector<uint8_t> faulting(context_bytes,
+                                      context_bytes + kContextSize);
+
+  // The record the kernel's storage fault handler builds (the trap dispatch at
+  // 80076BA0 in 17559): no flags or chained record, the faulting instruction's
+  // address, and two parameters, whether it was a store (from the DSISR) and
+  // the data address (the DAR). Fetching an instruction is no store, and its
+  // address is both.
+  auto* record = kernel_memory()->TranslateVirtual<uint8_t*>(exception_record);
+  std::memset(record, 0, kExceptionRecordSize);
+  xe::store_and_swap<uint32_t>(record + 0x0, X_STATUS_ACCESS_VIOLATION);
+  xe::store_and_swap<uint32_t>(record + 0xC, iar);
+  xe::store_and_swap<uint32_t>(record + 0x10, 2);
+  xe::store_and_swap<uint32_t>(record + 0x14, is_store ? 1 : 0);
+  xe::store_and_swap<uint32_t>(record + 0x18, address);
+
+  uint32_t stack_end = 0;
+  uint32_t stack_base = 0;
+  GetStackLimits(context, &stack_end, &stack_base);
+
+  uint32_t resume_address = 0;
+  size_t frame_count = frames.size();
+  if (EnterDispatch(thread_state) >= kDispatchNesting) {
+    frame_count = 0;
+  }
+  for (size_t i = 0; i < frame_count; ++i) {
+    const GuestFrame& frame = frames[i];
+    // The establisher frame is the sp the function was entered on, which
+    // RtlVirtualUnwind reports once it undoes the prolog's stwu (80087638 in
+    // 17559); a function that makes no frame keeps the sp it runs on. The
+    // C++ frame handler finds a catch funclet's parent frame from it.
+    const uint32_t establisher = frame.entry_sp ? frame.entry_sp : frame.sp;
+    // As RtlDispatchException: a frame outside the stack ends the search.
+    if (establisher < stack_end || establisher > stack_base ||
+        (establisher & 7)) {
+      break;
+    }
+    // A frame has a handler when both of its entry's top bits are set; the
+    // handler and its data sit in the two words ahead of its prolog.
+    if (!frame.function || (frame.packed >> 30) != 3 ||
+        !IsGuestRangeReadable(frame.function - 8, 8)) {
+      continue;
+    }
+    const uint32_t handler = ReadGuestWord(frame.function - 8);
+    auto* handler_function =
+        handler ? kernel_state()->processor()->ResolveFunction(handler)
+                : nullptr;
+    if (!handler_function) {
+      continue;
+    }
+    uint32_t start = 0;
+    uint32_t packed = 0;
+    uint32_t function_entry = 0;
+    LookupGuestRuntimeFunction(GuestFrameLookupAddress(frame), &start, &packed,
+                               &function_entry);
+    auto* dispatcher =
+        kernel_memory()->TranslateVirtual<uint8_t*>(dispatcher_context);
+    xe::store_and_swap<uint32_t>(dispatcher + 0x0, frame.pc);
+    xe::store_and_swap<uint32_t>(dispatcher + 0x4, function_entry);
+    xe::store_and_swap<uint32_t>(dispatcher + 0x8, establisher);
+    xe::store_and_swap<uint32_t>(dispatcher + 0xC, context_record);
+
+    context->r[1] = handler_sp;
+    context->r[3] = exception_record;
+    context->r[4] = establisher;
+    context->r[5] = context_record;
+    context->r[6] = dispatcher_context;
+    context->lr = handler_return;
+    if (!handler_function->Call(thread_state, handler_return)) {
+      XELOGE("{} at {:08X}: the handler at {:08X} didn't run", fault, address,
+             handler);
+      break;
+    }
+    const uint32_t disposition = static_cast<uint32_t>(context->r[3]);
+    if (disposition == kExceptionContinueExecution) {
+      resume_address = LoadContextRecord(context_bytes, context);
+      XELOGD("{} at {:08X}: the handler at {:08X} of frame #{} continued at "
+             "{:08X}",
+             fault, address, handler, i, resume_address);
+      break;
+    }
+    if (disposition != kExceptionContinueSearch) {
+      XELOGE("{} at {:08X}: the handler at {:08X} returned {}, which isn't "
+             "supported",
+             fault, address, handler, disposition);
+      break;
+    }
+  }
+  LeaveDispatch(thread_state);
+
+  if (!resume_address) {
+    LoadContextRecord(faulting.data(), context);
+    XELOGE("{} at {:08X} by {:08X}: no handler in {} frames continued it",
+           fault, address, iar, frames.size());
+  }
+  kernel_memory()->SystemHeapFree(context_record);
+  return resume_address;
+}
+
+uint32_t DispatchCodeFetchFault(PPCContext* context, uint32_t address) {
+  if (!context->thread_state) {
+    return 0;
+  }
+  // The call never ran, so lr holds its return address and r1 the caller's
+  // stack pointer, which is where the search starts.
+  std::vector<GuestFrame> frames;
+  WalkGuestFrames(context, &frames, kDispatchFrames);
+  // The handlers run as if the faulting call had called them: on the caller's
+  // stack pointer and returning to the call's return address.
+  const uint32_t return_address = static_cast<uint32_t>(context->lr);
+  return DispatchAccessViolation(
+      context, frames, address, static_cast<uint32_t>(context->r[1]),
+      return_address ? return_address : kHostReturnAddress, false, address,
+      "Code fetch fault");
+}
+
+uint32_t DispatchDataFault(PPCContext* context, uint32_t pc, bool is_store,
+                           uint32_t address) {
+  if (!context->thread_state) {
+    return 0;
+  }
+  // The search starts at the function the access is in, at the access, as the
+  // kernel hands RtlDispatchException the trap's context. Once its prolog has
+  // made the frame, the back chain names its caller; before that, as in a leaf
+  // function that makes none, lr still holds the return address and r1 is the
+  // caller's.
+  const uint32_t sp = static_cast<uint32_t>(context->r[1]);
+  GuestFrame frame = {};
+  frame.pc = pc;
+  frame.sp = sp;
+  frame.faulting = true;
+  LookupGuestRuntimeFunction(pc, &frame.function, &frame.packed);
+  const uint32_t prolog_length = frame.packed & 0xFF;
+  const bool framed = frame.function && prolog_length &&
+                      (pc - frame.function) / 4 >= prolog_length;
+  std::vector<GuestFrame> frames;
+  if (framed && IsGuestRangeReadable(sp, 4) &&
+      ReadGuestWord(sp) > sp &&
+      IsGuestRangeReadable(ReadGuestWord(sp) - 8, 4)) {
+    frame.entry_sp = ReadGuestWord(sp);
+    frames.push_back(frame);
+    WalkGuestFramesFrom(frame.entry_sp, ReadGuestWord(frame.entry_sp - 8),
+                        &frames, kDispatchFrames - 1);
+  } else {
+    frame.entry_sp = sp;
+    frames.push_back(frame);
+    WalkGuestFramesFrom(sp, static_cast<uint32_t>(context->lr), &frames,
+                        kDispatchFrames - 1);
+  }
+  // The handlers run below the faulting frame, as if the access had called
+  // them, so a handler that walks the stack finds the faulting function first.
+  return DispatchAccessViolation(context, frames, pc, sp, pc + 4, is_store,
+                                 address, "Data fault");
 }
 
 void RtlRaiseException_entry(pointer_t<X_EXCEPTION_RECORD> record,
