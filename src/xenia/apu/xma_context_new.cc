@@ -651,8 +651,12 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
         id(), packet_index, next_packet_index);
   }
 
+  const uint32_t packet_bits_left = kBitsPerPacket - relative_offset;
   const kNextFrame next =
-      FindNextFrame(data, next_packet_index, current_input_packet_count);
+      FindNextFrame(data, next_packet_index, current_input_packet_count,
+                    packet_info.current_frame_size_ > packet_bits_left
+                        ? packet_info.current_frame_size_ - packet_bits_left
+                        : 0);
   XELOGAPU("XmaContext {}: Next frame at {} after {} buffers", id(),
            next.offset_, next.buffers_consumed_);
   AdvanceAfterFrame(data, next.offset_, next.buffers_consumed_, false);
@@ -813,7 +817,8 @@ const uint8_t* XmaContextNew::GetNextPacket(
 
 kNextFrame XmaContextNew::FindNextFrame(XMA_CONTEXT_DATA* data,
                                         uint32_t next_packet_index,
-                                        uint32_t current_input_packet_count) {
+                                        uint32_t current_input_packet_count,
+                                        uint32_t split_tail_bits) {
   kNextFrame result;
   uint32_t buffer_index = data->current_buffer;
   uint32_t packet_index = next_packet_index;
@@ -840,9 +845,12 @@ kNextFrame XmaContextNew::FindNextFrame(XMA_CONTEXT_DATA* data,
         packet_index * kBytesPerPacket;
     const uint32_t frame_offset = xma::GetPacketFrameOffset(packet);
     if (frame_offset <= kMaxFrameSizeinBits) {
-      result.offset_ = packet_index * kBitsPerPacket + frame_offset;
+      result.offset_ = packet_index * kBitsPerPacket +
+                       (split_tail_bits ? kBitsPerPacketHeader + split_tail_bits
+                                        : frame_offset);
       return result;
     }
+    split_tail_bits = 0;
 
     // No frame starts in this packet, only the tail of one split across the
     // packet boundary. Follow its skip count to the stream's next packet.
