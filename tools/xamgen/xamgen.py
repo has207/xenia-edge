@@ -9,7 +9,7 @@ first eight into r3-r10, the rest into the stack slots from r1 + 0x50), calls
 the export through its import thunk, keeps r3, optionally waits for an
 XOVERLAPPED in the arena to stop pending, copies the arena ranges the step
 captures and saves r3, or the word or doubleword at an arena offset, into
-variables later steps can pass.
+variables later steps can pass, as they are or plus a delta.
 
 A recorder is a routine a step passes where the system takes a callback, such
 as an APC's kernel routine. Each call counts itself in the recorder's arena
@@ -185,7 +185,8 @@ def executor(asm, thunk):
     a.b('patch')
     a.label('patches_done')
 
-    # Arguments: tag, high word, low word, into doubleword slots.
+    # Arguments: tag, high word, low word, into doubleword slots. A variable's
+    # high word is the delta added to its value's low word.
     a.li(3, 0)
     for i in range(MAX_ARGS):
         a.std(3, C_ARGS + 8 * i, 31)
@@ -209,10 +210,12 @@ def executor(asm, thunk):
     a.li(4, 0)
     a.b('arg_store')
     a.label('arg_variable')
+    a.mr(7, 4)
     a.slwi(5, 5, 3)
     a.add(5, 27, 5)
     a.lwz(4, 0, 5)
     a.lwz(5, 4, 5)
+    a.add(5, 5, 7)
     a.label('arg_store')
     a.stw(4, 0, 6)
     a.stw(5, 4, 6)
@@ -483,9 +486,14 @@ class Pointer:
 
 
 class Variable:
-    def __init__(self, index, name):
+    def __init__(self, index, name, delta=0):
         self.index = index
         self.name = name
+        self.delta = delta
+
+    def __add__(self, delta):
+        """The value plus `delta` in its low word, as a call argument."""
+        return Variable(self.index, self.name, self.delta + delta)
 
     @property
     def address(self):
@@ -610,6 +618,8 @@ def describe(value):
     if isinstance(value, Pointer):
         return {'pointer': value.name, 'offset': value.offset}
     if isinstance(value, Variable):
+        if value.delta:
+            return {'variable': value.name, 'delta': value.delta}
         return {'variable': value.name}
     if isinstance(value, Recorder):
         return {'recorder': value.log.name}
@@ -655,7 +665,8 @@ def compile_corpus(corpus, imports):
                 if isinstance(arg, Pointer):
                     record += struct.pack('>III', TAG_ARENA, 0, arg.offset)
                 elif isinstance(arg, Variable):
-                    record += struct.pack('>III', TAG_VARIABLE, 0, arg.index)
+                    record += struct.pack('>III', TAG_VARIABLE,
+                                          arg.delta & 0xFFFFFFFF, arg.index)
                 elif isinstance(arg, Recorder):
                     record += struct.pack('>III', TAG_IMMEDIATE, 0,
                                           arg.address)
