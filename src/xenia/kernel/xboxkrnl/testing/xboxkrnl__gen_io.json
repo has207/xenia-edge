@@ -1,6 +1,6 @@
 {
  "corpus": "io",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-28",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-08",
  "steps": [
   {
    "scenario": "tree",
@@ -2778,6 +2778,432 @@
    "args": [
     {
      "variable": "source"
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "ObDeleteSymbolicLink",
+   "export": "ObDeleteSymbolicLink",
+   "args": [
+    {
+     "pointer": "link name",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtOpenSymbolicLinkObject",
+   "export": "NtOpenSymbolicLinkObject",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "link handle",
+     "offset": 32
+    },
+    {
+     "pointer": "attributes",
+     "offset": 64
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtQuerySymbolicLinkObject",
+   "export": "NtQuerySymbolicLinkObject",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "link"
+    },
+    {
+     "pointer": "target",
+     "offset": 336
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "link"
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "ObCreateSymbolicLink",
+   "export": "ObCreateSymbolicLink",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "link name",
+     "offset": 24
+    },
+    {
+     "pointer": "target",
+     "offset": 336
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "attributes of \\??\\game:\\krnlgen\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "network open information+0x30": "0000008000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 432
+    },
+    {
+     "pointer": "network open information",
+     "offset": 344
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "attributes of \\System??\\game:\\krnlgen\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "network open information+0x30": "0000008000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 544
+    },
+    {
+     "pointer": "network open information",
+     "offset": 448
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "attributes of \\System??\\xgsys:\\krnlgen\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "network open information+0x30": "0000008000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 656
+    },
+    {
+     "pointer": "network open information",
+     "offset": 560
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "attributes of \\sYSTEM??\\XGSYS:\\krnlgen\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "network open information+0x30": "0000008000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 768
+    },
+    {
+     "pointer": "network open information",
+     "offset": 672
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "attributes of \\??\\xgsys:\\krnlgen\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "FFFFFFFFC000003A",
+   "capture": {
+    "network open information+0x30": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 872
+    },
+    {
+     "pointer": "network open information",
+     "offset": 784
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "attributes of xgsys:\\krnlgen\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "FFFFFFFFC000003A",
+   "capture": {
+    "network open information+0x30": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 976
+    },
+    {
+     "pointer": "network open information",
+     "offset": 888
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 992
+    },
+    {
+     "value": 2148532224
+    },
+    {
+     "pointer": "attributes",
+     "offset": 1048
+    },
+    {
+     "pointer": "iosb",
+     "offset": 1000
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 1064
+    },
+    {
+     "value": 1074855936
+    },
+    {
+     "pointer": "attributes",
+     "offset": 1112
+    },
+    {
+     "pointer": "iosb",
+     "offset": 1072
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 128
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 5
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "rename under \\System??",
+   "export": "NtSetInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "set iosb[:0x4]": "00000000"
+   },
+   "args": [
+    {
+     "variable": "source"
+    },
+    {
+     "pointer": "set iosb",
+     "offset": 1160
+    },
+    {
+     "pointer": "information",
+     "offset": 1168
+    },
+    {
+     "value": 16
+    },
+    {
+     "value": 10
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "IoCreateFile",
+   "export": "IoCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000004"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 1184
+    },
+    {
+     "value": 2148532224
+    },
+    {
+     "pointer": "attributes",
+     "offset": 1232
+    },
+    {
+     "pointer": "iosb",
+     "offset": 1192
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 32
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "rename back",
+   "export": "NtSetInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "set iosb[:0x4]": "00000000"
+   },
+   "args": [
+    {
+     "variable": "source"
+    },
+    {
+     "pointer": "set iosb",
+     "offset": 1272
+    },
+    {
+     "pointer": "information",
+     "offset": 1280
+    },
+    {
+     "value": 16
+    },
+    {
+     "value": 10
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "source"
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "ObDeleteSymbolicLink",
+   "export": "ObDeleteSymbolicLink",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "link name",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "System?? names",
+   "name": "attributes of \\System??\\xgsys:\\krnlgen\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "FFFFFFFFC000003A",
+   "capture": {
+    "network open information+0x30": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 1392
+    },
+    {
+     "pointer": "network open information",
+     "offset": 1296
     }
    ]
   },

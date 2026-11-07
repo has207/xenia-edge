@@ -1,8 +1,9 @@
 """File corpus: a plain open, opens of a path's target directory, which open
 the directory holding the last component and say whether that exists, failed
 opens, a file's basic information, times set on a file, a write past the end
-of a sized file, an overwritten file sized again and a rename to a \\?? path
-and back. Everything is under game:\\krnlgen, which the first scenario makes.
+of a sized file, an overwritten file sized again, a rename to a \\?? path
+and back, and names under \\System?? next to \\??. Everything is under
+game:\\krnlgen, which the first scenario makes.
 
 The target directory's handle is checked through its attributes. A failed
 open's handle is captured instead of closed. Basic information is captured
@@ -45,6 +46,7 @@ NETWORK_OPEN_INFORMATION_SIZE = 0x38
 
 ROOT = 'game:\\krnlgen'
 FILE = ROOT + '\\file'
+SYSTEM_LINK = '\\System??\\xgsys:'
 
 
 def filetime(year, month, day, hour, minute, second, ticks):
@@ -63,24 +65,29 @@ REWRITE_TIME = filetime(2024, 6, 7, 8, 9, 13, 4567891)
 EVEN_WRITE_TIME = filetime(2025, 7, 8, 9, 10, 12, 1)
 
 
-def attributes(s, path):
-    """OBJECT_ATTRIBUTES naming `path` under \\??."""
-    text = s.string(path, 'path')
-    name = s.alloc(8, 'name', struct.pack('>HHI', len(path), len(path) + 1,
-                                          text.address))
+def ansi(s, text, name):
+    """An ANSI_STRING holding `text`."""
+    data = s.string(text, name)
+    return s.alloc(8, name, struct.pack('>HHI', len(text), len(text) + 1,
+                                        data.address))
+
+
+def attributes(s, path, root=DOS_DEVICES):
+    """OBJECT_ATTRIBUTES naming `path` under `root`, \\?? by default."""
     return s.alloc(0xC, 'attributes', struct.pack(
-        '>III', DOS_DEVICES, name.address, OBJ_CASE_INSENSITIVE))
+        '>III', root, ansi(s, path, 'name').address, OBJ_CASE_INSENSITIVE))
 
 
 def create(s, path, access, file_attributes, disposition, create_options,
            options=None, capture_status=True, capture_handle=False,
-           variable='handle'):
+           variable='handle', root=DOS_DEVICES):
     """NtCreateFile, or IoCreateFile with `options`. Returns the handle's
     Variable."""
     handle_out = s.alloc(4, 'handle')
     iosb = s.alloc(8, 'iosb')
-    args = [handle_out, access, attributes(s, path), iosb, 0, file_attributes,
-            FILE_SHARE_READ_WRITE, disposition, create_options]
+    args = [handle_out, access, attributes(s, path, root), iosb, 0,
+            file_attributes, FILE_SHARE_READ_WRITE, disposition,
+            create_options]
     export = 'NtCreateFile'
     if options is not None:
         export = 'IoCreateFile'
@@ -108,6 +115,14 @@ def query_attributes(s, handle, times=False, end_of_file=False):
     s.call('NtQueryInformationFile', handle, iosb, info,
            NETWORK_OPEN_INFORMATION_SIZE, FILE_NETWORK_OPEN_INFORMATION,
            capture=[iosb, part])
+
+
+def query_full_attributes(s, path, root=0):
+    """NtQueryFullAttributesFile, capturing the attributes."""
+    info = s.alloc(NETWORK_OPEN_INFORMATION_SIZE, 'network open information',
+                   fill=0)
+    s.call('NtQueryFullAttributesFile', attributes(s, path, root), info,
+           capture=[info + 0x30], name=f'attributes of {path}')
 
 
 def query_basic(s, handle, length=BASIC_INFORMATION_SIZE):
@@ -358,6 +373,48 @@ def build(corpus):
         exists(s, ROOT + '\\to')
         exists(s, ROOT + '\\from')
     s.call('NtClose', source)
+
+    # Full names in \\?? and \\System??, the DOS devices directories of
+    # titles and of the system, and a link made in \\System?? to game:'s
+    # target. That link outlives the title, so it's deleted first in case an
+    # earlier run stopped short, and again at the end.
+    s = corpus.scenario('System?? names')
+    link_name = ansi(s, SYSTEM_LINK, 'link name')
+    s.call('ObDeleteSymbolicLink', link_name, void=True)
+    handle_out = s.alloc(4, 'link handle')
+    link = s.variable('link')
+    s.call('NtOpenSymbolicLinkObject', handle_out,
+           attributes(s, '\\??\\game:', 0), store=[(link, handle_out)])
+    target_text = s.alloc(0x100, 'target text', fill=0)
+    target = s.alloc(8, 'target', struct.pack('>HHI', 0, target_text.size,
+                                              target_text.address))
+    s.call('NtQuerySymbolicLinkObject', link, target)
+    s.call('NtClose', link)
+    s.call('ObCreateSymbolicLink', link_name, target)
+    for root, path in (
+            (0, '\\??\\' + FILE),
+            (0, '\\System??\\' + FILE),
+            (0, SYSTEM_LINK + '\\krnlgen\\file'),
+            (0, '\\sYSTEM??\\XGSYS:\\krnlgen\\file'),
+            (0, '\\??\\xgsys:\\krnlgen\\file'),
+            (DOS_DEVICES, 'xgsys:\\krnlgen\\file')):
+        query_full_attributes(s, path, root)
+    handle = create(s, SYSTEM_LINK + '\\krnlgen\\file',
+                    GENERIC_READ | SYNCHRONIZE, 0, FILE_OPEN,
+                    FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+                    root=0)
+    s.call('NtClose', handle)
+    source = create(s, ROOT + '\\from', GENERIC_WRITE | DELETE | SYNCHRONIZE,
+                    FILE_ATTRIBUTE_NORMAL, FILE_OVERWRITE_IF,
+                    FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+                    capture_status=False, variable='source')
+    rename(s, source, 0, SYSTEM_LINK + '\\krnlgen\\to',
+           'rename under \\System??')
+    exists(s, ROOT + '\\to')
+    rename(s, source, DOS_DEVICES, ROOT + '\\from', 'rename back')
+    s.call('NtClose', source)
+    s.call('ObDeleteSymbolicLink', link_name)
+    query_full_attributes(s, SYSTEM_LINK + '\\krnlgen\\file')
 
     # The size is checked before anything is read, so nothing is mounted.
     s = corpus.scenario('StfsCreateDevice wrong size')
