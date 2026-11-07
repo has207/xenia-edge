@@ -3208,6 +3208,82 @@
    ]
   },
   {
+   "scenario": "full attributes of missing names",
+   "name": "attributes of game:\\krnlgen\\missing",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "00000000C0000034",
+   "capture": {
+    "network open information+0x30": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 88
+    },
+    {
+     "pointer": "network open information",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "full attributes of missing names",
+   "name": "attributes of game:\\krnlgen\\missing\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "00000000C000003A",
+   "capture": {
+    "network open information+0x30": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 200
+    },
+    {
+     "pointer": "network open information",
+     "offset": 104
+    }
+   ]
+  },
+  {
+   "scenario": "full attributes of missing names",
+   "name": "attributes of xgnone:\\file",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "FFFFFFFFC000003A",
+   "capture": {
+    "network open information+0x30": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 296
+    },
+    {
+     "pointer": "network open information",
+     "offset": 216
+    }
+   ]
+  },
+  {
+   "scenario": "full attributes of missing names",
+   "name": "attributes of xgnone:",
+   "export": "NtQueryFullAttributesFile",
+   "r3": "FFFFFFFFC0000034",
+   "capture": {
+    "network open information+0x30": "0000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "attributes",
+     "offset": 384
+    },
+    {
+     "pointer": "network open information",
+     "offset": 312
+    }
+   ]
+  },
+  {
    "scenario": "StfsCreateDevice wrong size",
    "name": "StfsCreateDevice",
    "export": "StfsCreateDevice",

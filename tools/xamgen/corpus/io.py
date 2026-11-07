@@ -416,6 +416,11 @@ def build(corpus):
     s.call('ObDeleteSymbolicLink', link_name)
     query_full_attributes(s, SYSTEM_LINK + '\\krnlgen\\file')
 
+    s = corpus.scenario('full attributes of missing names')
+    for path in (ROOT + '\\missing', ROOT + '\\missing\\file',
+                 'xgnone:\\file', 'xgnone:'):
+        query_full_attributes(s, path, DOS_DEVICES)
+
     # The size is checked before anything is read, so nothing is mounted.
     s = corpus.scenario('StfsCreateDevice wrong size')
     params = s.alloc(0x58, 'parameters', fill=0)
