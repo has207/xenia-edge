@@ -159,6 +159,7 @@ DEFINE_string(gpu, "vulkan", "Graphics system. Use: " GPU_OPTIONS, "GPU");
 #endif
 
 DECLARE_bool(allow_plugins);
+DECLARE_bool(in_process_title_relaunch);
 
 DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
 
@@ -1878,6 +1879,17 @@ void Emulator::RelaunchTitle(const std::string& host_path,
   XELOGI("RelaunchTitle: relaunch complete");
 }
 
+bool Emulator::CanRelaunchInProcess() {
+  if (!cvars::in_process_title_relaunch) {
+    return false;
+  }
+#if XE_PLATFORM_WIN32
+  return true;
+#else
+  return kernel::GuestScheduler::enabled();
+#endif
+}
+
 void Emulator::ResetTitle() {
   // Drops relaunches requested before the reset.
   ++relaunch_requests_;
@@ -2187,12 +2199,28 @@ bool Emulator::ExceptionCallbackThunk(Exception* ex, void* data) {
   }
 }
 
+// Exits a fiber that faults during an in-process relaunch as if terminated, so
+// the scheduler's shutdown reclaims it. Sleeping would hold its dispatch
+// thread, which that shutdown waits for.
+[[noreturn]] static void ExitFiberDuringRelaunchThunk() {
+  auto* self = kernel::XThread::GetCurrentFiberThread();
+  // The fault may have landed inside a wait poll, which never unwinds.
+  kernel::XObject::AbandonCooperativeWait(self);
+  self->Terminate(0);
+  // Not reached: a fiber terminating itself yields to the scheduler for good.
+  while (true) {
+    self->kernel_state()->guest_scheduler()->YieldToScheduler();
+  }
+}
+
 bool Emulator::ExceptionCallback(Exception* ex) {
   // In-process relaunch/reset frees state under still-running guest threads;
   // their faults are expected, so park them instead of crashing. The teardown
   // thread isn't a guest thread, so its own faults still surface.
   if (relaunching_ && kernel::XThread::IsInThread()) {
-    DivertToThunk(ex, &HaltDuringRelaunchThunk);
+    DivertToThunk(ex, kernel::XThread::GetCurrentFiberThread()
+                          ? &ExitFiberDuringRelaunchThunk
+                          : &HaltDuringRelaunchThunk);
     return true;
   }
 

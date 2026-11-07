@@ -620,12 +620,8 @@ static void StartTitle(XamModule::LoaderData& loader_data,
       "launch_path={}",
       xe::strip_pii(xe::path_to_utf8(host_path)), package_path, launch_path);
 
-  // Handle title launch in-process via full Shutdown/Setup cycle. Disabled
-  // on macOS — pthread_cancel there doesn't run C++ destructors, so
-  // force-terminated guest threads leak locks and deadlock teardown; spawn a
-  // fresh process instead.
-#if !XE_PLATFORM_MAC
-  if (cvars::in_process_title_relaunch) {
+  // Handle title launch in-process via full Shutdown/Setup cycle.
+  if (Emulator::CanRelaunchInProcess()) {
     auto emulator = kernel_state()->emulator();
 
     XELOGI("XamLoaderLaunchTitle: in-process relaunch to '{}'",
@@ -654,7 +650,6 @@ static void StartTitle(XamModule::LoaderData& loader_data,
       xe::threading::NanoSleep(int64_t(1'000'000'000));
     }
   }
-#endif  // !XE_PLATFORM_MAC
 
   const std::string launch_data_hex =
       HexBytes(loader_data.launch_data, loader_data.launch_data.size());
