@@ -147,9 +147,11 @@ class XmaContextNew : public XmaContext {
   // The frame at the position is cut after loop_subframe_end and jumps to
   // loop_start, unless decoding starts past loop_subframe_end.
   static bool IsLoopEndFrame(const XMA_CONTEXT_DATA* data);
-  // Room the next pass needs: subframe_decode_count subframes, or the rest of
-  // the frame if that is less. A loop end cut doesn't shrink it.
-  uint32_t GetPassBlocks(const XMA_CONTEXT_DATA* data) const;
+  // Room the next pass needs and the frames it covers: the rest of the frame
+  // and the next frame if they fit in subframe_decode_count subframes, else
+  // that many subframes of the frame. A loop end cut doesn't shrink it.
+  uint32_t GetPassBlocks(const XMA_CONTEXT_DATA* data,
+                         uint32_t* frames = nullptr) const;
   // Moves decoding on to the next frame, or loop_start for a loop jump, once
   // the frame being output is done. Until then the position stays inside it.
   void AdvanceAfterFrame(XMA_CONTEXT_DATA* data, uint32_t offset,

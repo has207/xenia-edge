@@ -173,8 +173,15 @@ bool XmaContextNew::Work() {
     return true;
   }
 
-  while (remaining_subframe_blocks_in_output_buffer_ >=
-         static_cast<int32_t>(GetPassBlocks(&data))) {
+  // Frames left in the pass being written. A pass only starts when there is
+  // room for all of it, and a loop jump ends it.
+  uint32_t pass_frames = 0;
+  while (true) {
+    if (!pass_frames &&
+        static_cast<int32_t>(GetPassBlocks(&data, &pass_frames)) >
+            remaining_subframe_blocks_in_output_buffer_) {
+      break;
+    }
     XELOGAPU(
         "XmaContext {}: Write Count: {}, Capacity: {} - {} {} Subframes: {} "
         "Decode subframe: {}",
@@ -191,7 +198,11 @@ bool XmaContextNew::Work() {
     Decode(&data);
     Consume(&output_rb, &data);
     if (!current_frame_remaining_subframes_) {
+      const bool loop_jump = advance_.loop_jump_;
       ApplyAdvance(&data);
+      pass_frames = loop_jump ? 0 : pass_frames - 1;
+    } else {
+      pass_frames = 0;
     }
 
     // Don't abandon a partially consumed frame. Consume() hands over at most
@@ -725,16 +736,22 @@ bool XmaContextNew::IsLoopEndFrame(const XMA_CONTEXT_DATA* data) {
          data->decode_subframe <= data->loop_subframe_end;
 }
 
-uint32_t XmaContextNew::GetPassBlocks(const XMA_CONTEXT_DATA* data) const {
+uint32_t XmaContextNew::GetPassBlocks(const XMA_CONTEXT_DATA* data,
+                                      uint32_t* frames) const {
   const uint32_t subframe =
       current_frame_remaining_subframes_
           ? static_cast<uint32_t>(current_frame_end_block_ -
                                   current_frame_remaining_subframes_) >>
                 data->is_stereo
           : data->decode_subframe;
+  const uint32_t rest = subframe < 4 ? 4 - subframe : 0;
   const uint32_t sdc =
       std::max(static_cast<uint32_t>(1), data->subframe_decode_count);
-  return std::min(sdc, subframe < 4 ? 4 - subframe : 0) << data->is_stereo;
+  const uint32_t next = rest <= sdc && sdc - rest >= 4 ? 1 : 0;
+  if (frames) {
+    *frames = 1 + next;
+  }
+  return (rest > sdc ? sdc : rest + 4 * next) << data->is_stereo;
 }
 
 kPacketHandle XmaContextNew::GetPacketHandle(
