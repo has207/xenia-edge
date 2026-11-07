@@ -2051,6 +2051,9 @@ void A64Backend::DeinitializeBackendContext(void* ctx) {
 
 void A64Backend::InvalidateDynamicCalls(uint32_t start, uint32_t end) {
   auto global_lock = global_critical_region_.Acquire();
+  // Code with an indirection slot is reached through the slot, not the
+  // per-thread cache below, so the slot goes back to the resolve thunk.
+  code_cache()->ResetIndirectionRange(start, end);
   // A range with fewer instructions than the cache has slots only checks the
   // slots those hash to.
   const bool targeted = end - start < kA64DynamicCallCacheSize * 4;
