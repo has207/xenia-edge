@@ -33,7 +33,8 @@ uint32_t xeObCreateObject(X_OBJECT_TYPE* object_factory,
                           uint32_t object_size_sans_headers,
                           uint32_t* out_object, cpu::ppc::PPCContext* context);
 // Drops a leading \??\, the DOS devices directory the ObDosDevices root also
-// names, so \??\game:\file is game:\file.
+// names, or \System??\ in any case, so both \??\game:\file and
+// \System??\game:\file are game:\file.
 void xeObStripDosDevicesPrefix(std::string& path);
 // Canonical link name without the \??\ or \System??\ object directory.
 std::string xeObSymbolicLinkName(std::string_view name);
