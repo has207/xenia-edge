@@ -321,6 +321,10 @@ class EmulatorWindow {
   // Reapply the "render visible iff title open or fullscreen, game list
   // otherwise" invariant. Called on every relevant state change.
   void ApplyContentVisibility();
+  // Whether xenia may activate its window or move the focus into it on its
+  // own: never while hidden (headless), and unattended only while it already
+  // has the focus, as nobody asked for it.
+  bool MayTakeFocus() const;
   // Shows the game list, windowed at the default size, after a title stops or
   // fails to launch.
   void RestoreListWindow();

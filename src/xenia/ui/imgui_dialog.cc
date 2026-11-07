@@ -10,7 +10,11 @@
 #include "xenia/ui/imgui_dialog.h"
 
 #include "third_party/imgui/imgui.h"
+#include <typeinfo>
+
 #include "xenia/base/assert.h"
+#include "xenia/base/cvar.h"
+#include "xenia/base/logging.h"
 #include "xenia/ui/imgui_drawer.h"
 
 namespace xe {
@@ -33,6 +37,29 @@ ImGuiDialog::~ImGuiDialog() {
 
 void ImGuiDialog::Then(xe::threading::Fence* fence) {
   waiting_fences_.push_back(fence);
+  if (xe::IsUnattended()) {
+    DismissUnattended();
+  }
+}
+
+void ImGuiDialog::DismissUnattended() {
+  LogShown();
+  OnUnattendedDismiss();
+  XELOGI("Unattended: dismissed {}", GetLogTitle());
+  Destroy();
+}
+
+std::string ImGuiDialog::GetLogTitle() const {
+  // MSVC names it "class xe::...", which is clear enough for a log.
+  return typeid(*this).name();
+}
+
+void ImGuiDialog::LogShown() {
+  if (has_been_logged_) {
+    return;
+  }
+  has_been_logged_ = true;
+  LogUIElement("dialog", GetLogTitle(), GetLogText());
 }
 
 void ImGuiDialog::Close() { has_close_pending_ = true; }
@@ -45,6 +72,7 @@ bool ImGuiDialog::ShouldCloseFromGamepad() const {
 }
 
 void ImGuiDialog::Draw() {
+  LogShown();
   // Draw UI.
   if (!has_close_pending_) {
     OnDraw(GetIO());
@@ -57,6 +85,12 @@ void ImGuiDialog::Draw() {
 }
 
 void ImGuiDialog::Destroy() {
+  if (has_been_logged_) {
+    std::string result = GetLogResult();
+    if (!result.empty()) {
+      XELOGI("UI dialog closed: {}: {}", GetLogTitle(), result);
+    }
+  }
   OnClose();
   delete this;
 }
@@ -68,6 +102,9 @@ class MessageBoxDialog final : public ImGuiDialog {
       : ImGuiDialog(imgui_drawer),
         title_(std::move(title)),
         body_(std::move(body)) {}
+
+  std::string GetLogTitle() const override { return title_; }
+  std::string GetLogText() const override { return body_; }
 
   void OnDraw(ImGuiIO& io) override {
     if (!has_opened_) {
@@ -98,7 +135,18 @@ class MessageBoxDialog final : public ImGuiDialog {
 
 ImGuiDialog* ImGuiDialog::ShowMessageBox(ImGuiDrawer* imgui_drawer,
                                          std::string title, std::string body) {
-  return new MessageBoxDialog(imgui_drawer, std::move(title), std::move(body));
+  auto* dialog =
+      new MessageBoxDialog(imgui_drawer, std::move(title), std::move(body));
+  if (xe::IsUnattended()) {
+    // After the current UI thread task, so a caller's Then() can still use the
+    // dialog; that dismisses it first, and then there's nothing left to do.
+    imgui_drawer->PostDeferredCallback([imgui_drawer, dialog]() {
+      if (imgui_drawer->HasDialog(dialog)) {
+        dialog->DismissUnattended();
+      }
+    });
+  }
+  return dialog;
 }
 
 }  // namespace ui

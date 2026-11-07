@@ -532,6 +532,12 @@ std::vector<std::unique_ptr<hid::InputDriver>> EmulatorApp::CreateInputDrivers(
 }
 
 bool EmulatorApp::OnInitialize() {
+  // Unattended, there's no game list to pick a title from.
+  if (xe::IsUnattended() && cvars::target.empty()) {
+    XELOGE("Unattended runs need a target");
+    xe::ExitUnattended(EXIT_FAILURE, "no target");
+  }
+
   Profiler::Initialize();
   Profiler::ThreadEnter("Main");
 
@@ -629,6 +635,12 @@ bool EmulatorApp::OnInitialize() {
 }
 
 void EmulatorApp::OnDestroy() {
+  // Title exits and crashes end an unattended run before this; anything else
+  // quitting is a failure to run it.
+  if (xe::IsUnattended()) {
+    xe::ExitUnattended(EXIT_FAILURE, "emulator quit");
+  }
+
   ShutdownEmulatorThreadFromUIThread();
 
   if (cvars::discord) {
@@ -699,7 +711,7 @@ void EmulatorApp::EmulatorThread() {
   }
 
   emulator_->on_launch.AddListener([&](auto title_id, const auto& game_title) {
-    if (cvars::discord) {
+    if (cvars::discord && !xe::IsUnattended()) {
       discord::DiscordPresence::Initialize();
       discord::DiscordPresence::PlayingTitle(
           game_title.empty() ? "Unknown Title" : std::string(game_title));
@@ -837,6 +849,9 @@ void EmulatorApp::EmulatorThread() {
   while (!emulator_thread_quit_requested_.load(std::memory_order_relaxed)) {
     xe::threading::Wait(emulator_thread_event_.get(), false);
     emulator_->WaitUntilExit();
+    if (xe::IsUnattended()) {
+      xe::ExitUnattended(EXIT_SUCCESS, "title exited");
+    }
   }
 }
 

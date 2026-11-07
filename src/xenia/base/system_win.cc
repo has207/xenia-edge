@@ -8,6 +8,7 @@
  */
 
 #include <map>
+#include "xenia/base/logging.h"
 #include "xenia/base/platform_win.h"
 #include "xenia/base/string.h"
 #include "xenia/base/system.h"
@@ -27,6 +28,9 @@ void LaunchFileExplorer(const std::filesystem::path& url) {
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type,
                           const std::string_view message) {
+  if (!LogSimpleMessageBox(type, message)) {
+    return;
+  }
   const wchar_t* title;
   std::u16string wide_message = xe::to_utf16(message);
   DWORD type_flags = MB_OK | MB_APPLMODAL | MB_SETFOREGROUND;

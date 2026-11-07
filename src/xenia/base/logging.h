@@ -86,6 +86,25 @@ void FlushLog();
 // on itself to log.
 bool IsLogWriterThread();
 
+// Logs a message box, dialog or notification as it's shown, so the log has
+// what the user was asked or told, whether or not anyone saw it (unattended).
+void LogUIElement(const std::string_view kind, const std::string_view title,
+                  const std::string_view text);
+
+// Logs a ShowSimpleMessageBox box, and returns whether it should still be
+// shown, which it isn't when unattended.
+enum class SimpleMessageBoxType;
+bool LogSimpleMessageBox(SimpleMessageBoxType type,
+                         const std::string_view message);
+
+// Whether nobody is there to answer the UI: unattended, or headless, which is
+// unattended without the window.
+bool IsUnattended();
+
+// When unattended, states why the run is over and ends the process with
+// exit_code, as nobody is there to close it.
+[[noreturn]] void ExitUnattended(int exit_code, const std::string_view reason);
+
 // The result of path_to_utf8, in filesystem.h.
 class Utf8Path;
 
