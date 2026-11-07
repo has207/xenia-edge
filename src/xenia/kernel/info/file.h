@@ -110,7 +110,8 @@ struct X_FILE_ALLOCATION_INFORMATION {
 static_assert_size(X_FILE_ALLOCATION_INFORMATION, 8);
 
 struct X_FILE_XCTD_COMPRESSION_INFORMATION {
-  be<uint32_t> unknown;
+  // Bit 0: the file is XCTD compressed.
+  be<uint32_t> flags;
 };
 static_assert_size(X_FILE_XCTD_COMPRESSION_INFORMATION, 4);
 
