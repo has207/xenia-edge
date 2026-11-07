@@ -153,7 +153,10 @@ class XmaContextNew : public XmaContext {
   // that is part way out, and keeps them to tell a later seek.
   void WritePosition(XMA_CONTEXT_DATA* data);
   int PrepareDecoder(int sample_rate, bool is_two_channel);
-  void PreparePacket(const uint32_t frame_size, const uint32_t frame_padding);
+  // A cut frame stops before its last subframe, so the next frame overlaps
+  // the one before it.
+  void PreparePacket(const uint32_t frame_size, const uint32_t frame_padding,
+                     const bool cut_frame);
 
   RingBuffer PrepareOutputRingBuffer(XMA_CONTEXT_DATA* data);
 

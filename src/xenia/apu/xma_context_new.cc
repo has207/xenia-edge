@@ -607,7 +607,10 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   raw_frame_.fill(0);
 
   PrepareDecoder(data->sample_rate, bool(data->is_stereo));
-  PreparePacket(packet_info.current_frame_size_, padding_start);
+  // A loop end frame cut before its last subframe leaves the loop start to
+  // overlap the frame before it.
+  PreparePacket(packet_info.current_frame_size_, padding_start,
+                is_loop_end_frame && data->loop_subframe_end < 3);
   const kPacketResult result = DecodePacket(av_context_, av_packet_, av_frame_);
   if (result == kPacketResult::kError) {
     // The position stays on the frame, which fails again until the guest
@@ -995,7 +998,8 @@ int XmaContextNew::PrepareDecoder(int sample_rate, bool is_two_channel) {
 }
 
 void XmaContextNew::PreparePacket(const uint32_t frame_size,
-                                  const uint32_t frame_padding) {
+                                  const uint32_t frame_padding,
+                                  const bool cut_frame) {
   av_packet_->data = xma_frame_.data();
   av_packet_->size =
       static_cast<int>(1 + ((frame_padding + frame_size) / 8) +
@@ -1003,7 +1007,8 @@ void XmaContextNew::PreparePacket(const uint32_t frame_size,
 
   auto padding_end = av_packet_->size * 8 - (8 + frame_padding + frame_size);
   assert_true(padding_end < 8);
-  xma_frame_[0] = ((frame_padding & 7) << 5) | ((padding_end & 7) << 2);
+  xma_frame_[0] = ((frame_padding & 7) << 5) | ((padding_end & 7) << 2) |
+                  (cut_frame ? 1 : 0);
 }
 
 kPacketResult XmaContextNew::DecodePacket(AVCodecContext* av_context,
