@@ -1,0 +1,1342 @@
+{
+ "corpus": "mm",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-08",
+ "steps": [
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "reserve",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "commit",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "4 KB region"
+    },
+    {
+     "value": 12288
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "point at the decommit",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "4 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "decommit",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 16384
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "point at the region",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "4 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "commit again",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "page 0 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region"
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "page 1 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region",
+     "delta": 4096
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "page 2 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region",
+     "delta": 8192
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the first decommitted",
+   "name": "release",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "reserve",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "commit",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "4 KB region"
+    },
+    {
+     "value": 12288
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "point at the decommit",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "4 KB region",
+     "delta": 4096
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "decommit",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 16384
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "point at the region",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "4 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "commit again",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "page 0 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region"
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "page 1 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region",
+     "delta": 4096
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "page 2 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region",
+     "delta": 8192
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the middle decommitted",
+   "name": "release",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "reserve",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "commit",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "4 KB region"
+    },
+    {
+     "value": 12288
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "point at the decommit",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "4 KB region",
+     "delta": 4096
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "decommit",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 16384
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "point at the region",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "4 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "commit again",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "page 0 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region"
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "page 1 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region",
+     "delta": 4096
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "page 2 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "4 KB region",
+     "delta": 8192
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 4 KB pages with the last two decommitted",
+   "name": "release",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "reserve",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "commit",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "64 KB region"
+    },
+    {
+     "value": 196608
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "point at the decommit",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "64 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "decommit",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 16384
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "point at the region",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "64 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "commit again",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "page 0 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region"
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "page 1 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region",
+     "delta": 65536
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "page 2 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region",
+     "delta": 131072
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the first decommitted",
+   "name": "release",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "reserve",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "commit",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "64 KB region"
+    },
+    {
+     "value": 196608
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "point at the decommit",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "64 KB region",
+     "delta": 65536
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "decommit",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 16384
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "point at the region",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "64 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "commit again",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "page 0 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region"
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "page 1 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region",
+     "delta": 65536
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "page 2 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region",
+     "delta": 131072
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the middle decommitted",
+   "name": "release",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "reserve",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "commit",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "64 KB region"
+    },
+    {
+     "value": 196608
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "point at the decommit",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "64 KB region",
+     "delta": 65536
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "decommit",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 16384
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "point at the region",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "64 KB region"
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "commit again",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "page 0 kept",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region"
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "page 1 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region",
+     "delta": 65536
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "page 2 zeroed",
+   "export": "RtlCompareMemoryUlong",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "64 KB region",
+     "delta": 131072
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "recommit 64 KB pages with the last two decommitted",
+   "name": "release",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  }
+ ]
+}
