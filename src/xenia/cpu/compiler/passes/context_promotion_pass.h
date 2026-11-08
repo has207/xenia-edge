@@ -52,6 +52,11 @@ class ContextPromotionPass : public CompilerPass {
   void TrackValue(uint32_t offset, uint32_t size, hir::Value* value);
   void InvalidateTrackedRange(uint32_t offset, uint32_t size);
 
+  // Bytes overwritten before being read; stops at the first volatile instr.
+  void ComputeKillSet(hir::Block* block, llvm::BitVector& kill);
+  // Intersection of ComputeKillSet over the successors; empty without any.
+  void ComputeOutgoingKillSet(hir::Block* block, llvm::BitVector& out);
+
  private:
   // Indexed by base byte offset into the context: the tracked SSA value
   // whose range starts there, and that range's size in bytes.
@@ -62,6 +67,9 @@ class ContextPromotionPass : public CompilerPass {
   std::vector<uint32_t> context_value_base_;
   // Byte-granular: bit b is set iff some tracked value's range covers b.
   llvm::BitVector context_validity_;
+  llvm::BitVector context_kill_;
+  llvm::BitVector context_kill_scratch_;
+  llvm::BitVector context_kill_read_;
 };
 
 }  // namespace passes
