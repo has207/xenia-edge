@@ -255,19 +255,21 @@ jobs:
         run: python3 -m pip install --upgrade meson mako pyyaml packaging
 
       - name: Install Metal Toolchain
-        # Apple's MobileAsset catalog fetch is flaky; retry with backoff.
+        # Apple's MobileAsset catalog fetch is flaky; retry with backoff. A
+        # download can also report success and leave `metal` missing.
         run: |
           for attempt in 1 2 3 4 5; do
-            if sudo xcodebuild -downloadComponent MetalToolchain; then
+            if sudo xcodebuild -downloadComponent MetalToolchain &&
+                xcrun -sdk macosx metal --version; then
               exit 0
             fi
             if [ $attempt -lt 5 ]; then
               delay=$((attempt * 30))
-              echo "::warning::MetalToolchain download attempt $attempt failed; retrying in ${delay}s"
+              echo "::warning::MetalToolchain install attempt $attempt failed; retrying in ${delay}s"
               sleep $delay
             fi
           done
-          echo "::error::MetalToolchain download failed after 5 attempts"
+          echo "::error::MetalToolchain install failed after 5 attempts"
           exit 1
 
       - name: Setup sccache
