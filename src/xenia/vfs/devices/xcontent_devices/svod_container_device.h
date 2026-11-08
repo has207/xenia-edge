@@ -31,6 +31,8 @@ class SvodContainerDevice : public XContentContainerDevice {
 
   bool supports_concurrent_io() const override { return true; }
 
+  bool is_gdfx() const override { return true; }
+
   uint32_t component_name_max_length() const override { return 255; }
 
   uint32_t total_allocation_units() const override {

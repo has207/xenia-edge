@@ -60,6 +60,9 @@ class Device {
   // an async handle. FATX and GDFX complete a buffered transfer inline.
   virtual bool queues_all_requests() const { return false; }
 
+  // True when the files come from a disc's GDFX file system.
+  virtual bool is_gdfx() const { return name() == "GDFX"; }
+
   virtual void Dump(StringBuffer* string_buffer) = 0;
   virtual Entry* ResolvePath(const std::string_view path) = 0;
 
