@@ -27,7 +27,7 @@ test_mcrfs_3:
   mffs f2
   mtfsb0 31
   blr
-  #_ REGISTER_OUT f2 0x0000000000000001
+  #_ REGISTER_OUT f2 0xFFF8000000000001
   #_ REGISTER_OUT cr 0x00000001
 
 # UX, ZX and XX are cleared, FR and FI stay.
@@ -39,5 +39,5 @@ test_mcrfs_4:
   mcrfs 5, 3
   mffs f2
   blr
-  #_ REGISTER_OUT f2 0x0000000000060000
+  #_ REGISTER_OUT f2 0xFFF8000000060000
   #_ REGISTER_OUT cr 0x000006E0
