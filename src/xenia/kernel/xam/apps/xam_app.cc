@@ -102,34 +102,18 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
         return X_E_INVALIDARG;
       }
 
-      // Content packages are mounted from the HDD content store.
-      const bool is_content_package = target.starts_with("\\Device\\Content\\");
-
-      // Only apply this check to XContent packages
-      if (!is_content_package && !target.starts_with("\\Device\\Package_")) {
+      // Only XContent packages are volumes with a device type.
+      if (!target.starts_with("\\Device\\Content\\") &&
+          !target.starts_with("\\Device\\Package_")) {
         return X_E_INVALIDARG;
       }
 
+      // The answer is where the package lives, not the deployment type. A
+      // disc rip installed to the HDD runs as a disc title from an HDD volume.
       xe::be<DeviceType>* device_type_ptr =
           memory_->TranslateVirtual<xe::be<DeviceType>*>(
               static_cast<uint32_t>(data->device_type_ptr.get()));
-
-      if (is_content_package) {
-        *device_type_ptr = DeviceType::HDD;
-      } else {
-        switch (kernel_state_->deployment_type_) {
-          case XDeploymentType::kDownload:
-          case XDeploymentType::kInstalledToHDD: {
-            *device_type_ptr = DeviceType::HDD;
-          } break;
-          case XDeploymentType::kOpticalDisc: {
-            *device_type_ptr = DeviceType::ODD;
-          } break;
-          default: {
-            *device_type_ptr = DeviceType::Invalid;
-          } break;
-        }
-      }
+      *device_type_ptr = DeviceType::HDD;
 
       XELOGD("XContentQueryVolumeDeviceType('{}', {:08X}, {:08X}, {:08X})",
              data->root_name,
