@@ -385,35 +385,34 @@ dword_result_t XMAEnableContext_entry(lpvoid_t context_ptr) {
 DECLARE_XBOXKRNL_EXPORT2(XMAEnableContext, kAudio, kImplemented,
                          kHighFrequency);
 
-dword_result_t XMADisableContext_entry(lpvoid_t context_ptr, dword_t wait) {
-  X_HRESULT result = X_E_SUCCESS;
-  StoreXmaContextIndexedRegister(kernel_state(), 0x1A40, context_ptr);
+// Waits until the decoder isn't working on the context.
+void BlockWhileContextInUse(uint32_t context_ptr) {
   auto* decoder = kernel_state()->emulator()->audio_system()->xma_decoder();
-  if (wait && XThread::GetCurrentFiberThread()) {
-    // Retry the non-blocking form, since taking the decoder lock would stall
-    // every guest thread sharing this dispatch thread.
-    while (!decoder->BlockOnContext(context_ptr, true)) {
-      GuestScheduler::SpinYield(std::chrono::milliseconds(1));
-    }
-  } else if (!decoder->BlockOnContext(context_ptr, !wait)) {
-    result = X_E_FALSE;
+  if (!XThread::GetCurrentFiberThread()) {
+    decoder->BlockOnContext(context_ptr, false);
+    return;
   }
-  return result;
+  // Retry the non-blocking form, since taking the decoder lock would stall
+  // every guest thread sharing this dispatch thread.
+  while (!decoder->BlockOnContext(context_ptr, true)) {
+    GuestScheduler::SpinYield(std::chrono::milliseconds(1));
+  }
+}
+
+dword_result_t XMADisableContext_entry(lpvoid_t context_ptr, dword_t wait) {
+  StoreXmaContextIndexedRegister(kernel_state(), 0x1A40, context_ptr);
+  if (wait) {
+    BlockWhileContextInUse(context_ptr);
+    return X_E_SUCCESS;
+  }
+  auto* decoder = kernel_state()->emulator()->audio_system()->xma_decoder();
+  return decoder->BlockOnContext(context_ptr, true) ? X_E_SUCCESS : X_E_FALSE;
 }
 DECLARE_XBOXKRNL_EXPORT2(XMADisableContext, kAudio, kImplemented,
                          kHighFrequency);
 
 dword_result_t XMABlockWhileInUse_entry(lpvoid_t context_ptr) {
-  do {
-    XMA_CONTEXT_DATA context(context_ptr);
-    if (!context.input_buffer_0_valid && !context.input_buffer_1_valid) {
-      break;
-    }
-    if (!context.work_buffer_ptr) {
-      break;
-    }
-    GuestScheduler::SpinYield(std::chrono::milliseconds(1));
-  } while (true);
+  BlockWhileContextInUse(context_ptr);
   return 0;
 }
 DECLARE_XBOXKRNL_EXPORT2(XMABlockWhileInUse, kAudio, kImplemented,
