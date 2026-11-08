@@ -445,10 +445,13 @@ int InstrEmit_fcmpu(PPCHIRBuilder& f, const InstrData& i) {
 
 // Floating-point status and control register (A
 
+static Value* UpdateFPSCRSummaryBits(PPCHIRBuilder& f, Value* fpscr);
+
 int InstrEmit_mcrfs(PPCHIRBuilder& f, const InstrData& i) {
   // mcrfs CRFD, CRFS
   // CR[4*CRFD:4*CRFD+3] <- FPSCR[4*CRFS:4*CRFS+3]
-  // The exception bits of FPSCR[4*CRFS:4*CRFS+3] other than FEX and VX <- 0
+  // The exception bits of FPSCR[4*CRFS:4*CRFS+3] other than FEX and VX <- 0,
+  // then FEX and VX follow the bits left.
 
   uint32_t crfd = i.X.RT >> 2;  // Destination CR field
   uint32_t crfs = i.X.RA >> 2;  // Source FPSCR field
@@ -468,7 +471,8 @@ int InstrEmit_mcrfs(PPCHIRBuilder& f, const InstrData& i) {
   // FI, FPRF and RN stay.
   uint32_t clear = (0xF << shift) & 0x9FF80700;
   if (clear) {
-    f.StoreFPSCR(f.And(fpscr, f.LoadConstantUint32(~clear)));
+    f.StoreFPSCR(
+        UpdateFPSCRSummaryBits(f, f.And(fpscr, f.LoadConstantUint32(~clear))));
   }
 
   return 0;
