@@ -66,6 +66,13 @@ Digest Final(XECRYPT_SHA_STATE& state) {
   return digest;
 }
 
+Digest256 Final256(XECRYPT_SHA256_STATE& state) {
+  Digest256 digest;
+  XeCryptSha256Final(&state, digest.data(),
+                     static_cast<uint32_t>(digest.size()));
+  return digest;
+}
+
 Digest512 Final512(XECRYPT_SHA512_STATE& state) {
   Digest512 digest;
   XeCryptSha512Final(&state, digest.data(),
@@ -208,18 +215,46 @@ TEST_CASE("XeCryptSha256Update_streams_across_blocks", "[crypt]") {
                              "046d39ccc7112cd0"));
 }
 
-TEST_CASE("XeCryptSha256Final_copies_digest_to_buffer", "[crypt]") {
+TEST_CASE("XeCryptSha256Final_keeps_count_and_last_block", "[crypt]") {
   XECRYPT_SHA256_STATE state;
   XeCryptSha256Init(&state);
   XeCryptSha256Update(&state, Bytes("abc"), 3);
-  const XECRYPT_SHA256_STATE before = state;
-  Digest256 digest;
-  XeCryptSha256Final(&state, digest.data(),
-                     static_cast<uint32_t>(digest.size()));
+  const Digest256 digest = Final256(state);
 
   REQUIRE(state.count == 3);
-  REQUIRE(std::memcmp(state.state, before.state, sizeof(state.state)) == 0);
-  REQUIRE(std::memcmp(state.buffer, digest.data(), digest.size()) == 0);
+  REQUIRE(std::memcmp(state.state, digest.data(), digest.size()) == 0);
+  std::array<uint8_t, 64> block{'a', 'b', 'c', 0x80};
+  block[63] = 0x18;
+  REQUIRE(std::memcmp(state.buffer, block.data(), block.size()) == 0);
+}
+
+TEST_CASE("XeCryptSha256Final_twice_after_two_padding_blocks", "[crypt]") {
+  std::array<uint8_t, 60> message;
+  std::iota(message.begin(), message.end(), uint8_t(0));
+  XECRYPT_SHA256_STATE state;
+  XeCryptSha256Init(&state);
+  XeCryptSha256Update(&state, message.data(), 60);
+
+  REQUIRE(Final256(state) ==
+          FromHex<Digest256>("0ddde28e40838ef6f9853e887f597d6adb5f40eb35d5763c"
+                             "52e1e64d8ba3bfff"));
+  std::array<uint8_t, 64> block{};
+  block[62] = 0x01;
+  block[63] = 0xE0;
+  REQUIRE(std::memcmp(state.buffer, block.data(), block.size()) == 0);
+  REQUIRE(Final256(state) ==
+          FromHex<Digest256>("56d5bab74ce5b454ff76f74a82adcd6f8f6874b1a6176be3"
+                             "bfb7b193b83ced8b"));
+}
+
+TEST_CASE("XeCryptSha256Final_32bit_bit_count", "[crypt]") {
+  XECRYPT_SHA256_STATE state;
+  XeCryptSha256Init(&state);
+  XeCryptSha256Update(&state, Bytes("abc"), 3);
+  state.count = 0x20000003;
+  REQUIRE(Final256(state) ==
+          FromHex<Digest256>("ba7816bf8f01cfea414140de5dae2223b00361a396177a9c"
+                             "b410ff61f20015ad"));
 }
 
 TEST_CASE("XeCryptSha512_known_answers", "[crypt]") {
@@ -262,14 +297,50 @@ TEST_CASE("XeCryptSha512Update_streams_across_blocks", "[crypt]") {
           "de0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b"));
 }
 
-TEST_CASE("XeCryptSha512Final_copies_digest_to_buffer", "[crypt]") {
+TEST_CASE("XeCryptSha512Final_keeps_count_and_last_block", "[crypt]") {
   XECRYPT_SHA512_STATE state;
   XeCryptSha512Init(&state);
   XeCryptSha512Update(&state, Bytes("abc"), 3);
-  const XECRYPT_SHA512_STATE before = state;
   const Digest512 digest = Final512(state);
 
   REQUIRE(state.count == 3);
-  REQUIRE(std::memcmp(state.state, before.state, sizeof(state.state)) == 0);
-  REQUIRE(std::memcmp(state.buffer, digest.data(), digest.size()) == 0);
+  REQUIRE(std::memcmp(state.state, digest.data(), digest.size()) == 0);
+  std::array<uint8_t, 128> block{'a', 'b', 'c', 0x80};
+  block[127] = 0x18;
+  REQUIRE(std::memcmp(state.buffer, block.data(), block.size()) == 0);
+}
+
+TEST_CASE("XeCryptSha512Final_twice_after_two_padding_blocks", "[crypt]") {
+  std::array<uint8_t, 120> message;
+  std::iota(message.begin(), message.end(), uint8_t(0));
+  XECRYPT_SHA512_STATE state;
+  XeCryptSha512Init(&state);
+  XeCryptSha512Update(&state, message.data(), 120);
+
+  REQUIRE(
+      Final512(state) ==
+      FromHex<Digest512>(
+          "9636708964c5ff6600510319e07bf3fcfcb1f4058fec278efb677964ba1e140c"
+          "1632505452f802e99bcf09da3d456dc3868d149a0788a730e49d239ce7415145"));
+  std::array<uint8_t, 128> block{};
+  block[126] = 0x03;
+  block[127] = 0xC0;
+  REQUIRE(std::memcmp(state.buffer, block.data(), block.size()) == 0);
+  REQUIRE(
+      Final512(state) ==
+      FromHex<Digest512>(
+          "3616db3dd45ead59fa4da8d1523d5a92c650380baa4094018d9ee7dc833a93c2"
+          "85a7c36b1aca5a9bc8097c210bc0a8afe3e7c60dfaa2fc1541dfa4165df8e4ff"));
+}
+
+TEST_CASE("XeCryptSha512Final_32bit_bit_count", "[crypt]") {
+  XECRYPT_SHA512_STATE state;
+  XeCryptSha512Init(&state);
+  XeCryptSha512Update(&state, Bytes("abc"), 3);
+  state.count = 0x20000003;
+  REQUIRE(
+      Final512(state) ==
+      FromHex<Digest512>(
+          "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a"
+          "2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"));
 }
