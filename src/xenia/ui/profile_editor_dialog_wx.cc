@@ -617,6 +617,8 @@ void ProfileEditorDialog::OnSave() {
   auto account = account_original;
   std::u16string gamertag =
       xe::to_utf16(gamertag_edit_->GetValue().utf8_string());
+  // Clear the old gamertag so a shorter one leaves no stale tail.
+  std::ranges::fill(account.gamertag, u'\0');
   string_util::copy_and_swap_truncating(account.gamertag, gamertag,
                                         std::size(account.gamertag));
   account.SetLanguage(static_cast<XLanguage>(
