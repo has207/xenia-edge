@@ -197,12 +197,15 @@ bool XmaContextNew::Work() {
     const int32_t pre_free_blocks = remaining_subframe_blocks_in_output_buffer_;
 
     decode_stop_ = kDecodeStop::kNone;
+    frame_skipped_ = false;
     Decode(&data);
     Consume(&output_rb, &data);
     if (!current_frame_remaining_subframes_) {
       const bool ends_pass = advance_.ends_pass_;
       ApplyAdvance(&data);
-      pass_frames = ends_pass ? 0 : pass_frames - 1;
+      if (!frame_skipped_) {
+        pass_frames = ends_pass ? 0 : pass_frames - 1;
+      }
     } else {
       pass_frames = 0;
     }
@@ -611,6 +614,7 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
         static_cast<uint8_t>(end_subframe << data->is_stereo);
     current_frame_remaining_subframes_ = static_cast<uint8_t>(
         (end_subframe - first_subframe) << data->is_stereo);
+    frame_skipped_ = !current_frame_remaining_subframes_;
     data->decode_subframe = 0;
   }
 
@@ -752,7 +756,7 @@ uint32_t XmaContextNew::GetPassBlocks(const XMA_CONTEXT_DATA* data,
                                   current_frame_remaining_subframes_) >>
                 data->is_stereo
           : data->decode_subframe;
-  const uint32_t rest = subframe < 4 ? 4 - subframe : 0;
+  const uint32_t rest = subframe < 4 ? 4 - subframe : 4;
   const uint32_t sdc =
       std::max(static_cast<uint32_t>(1), data->subframe_decode_count);
   const uint32_t next = rest <= sdc && sdc - rest >= 4 ? 1 : 0;

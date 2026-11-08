@@ -154,7 +154,8 @@ class XmaContextNew : public XmaContext {
   static bool IsLoopEndFrame(const XMA_CONTEXT_DATA* data);
   // Room the next pass needs and the frames it covers: the rest of the frame
   // and the next frame if they fit in subframe_decode_count subframes, else
-  // that many subframes of the frame. A loop end cut doesn't shrink it.
+  // that many subframes of the frame. A loop end cut doesn't shrink it. A
+  // position past the frame's last subframe skips the frame outside the pass.
   uint32_t GetPassBlocks(const XMA_CONTEXT_DATA* data,
                          uint32_t* frames = nullptr) const;
   // Moves decoding on to the next frame, or loop_start for a loop jump, once
@@ -198,6 +199,8 @@ class XmaContextNew : public XmaContext {
   // The block after the last one the frame being output writes: the end of
   // the frame, or of loop_subframe_end on a loop end frame.
   uint8_t current_frame_end_block_ = 0;
+  // The frame just decoded is skipped whole and takes no part in a pass.
+  bool frame_skipped_ = false;
 
   kPendingAdvance advance_;
   kDecodeStop decode_stop_ = kDecodeStop::kNone;
