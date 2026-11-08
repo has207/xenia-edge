@@ -500,6 +500,22 @@ def git_submodule_update():
             ])
 
 
+def download_github_release_asset(repo, tag, name, path):
+    """Downloads a release asset through the GitHub API, which redirects to a
+    freshly signed URL. GitHub's CDN can keep serving a cached error for the
+    plain release download URL for hours."""
+    with urllib.request.urlopen(
+            f"https://api.github.com/repos/{repo}/releases/tags/{tag}") as r:
+        assets = jsonloads(r.read())["assets"]
+    asset = next((a for a in assets if a["name"] == name), None)
+    if asset is None:
+        raise OSError(f"{name} is not in release {tag} of {repo}")
+    request = urllib.request.Request(
+        asset["url"], headers={"Accept": "application/octet-stream"})
+    with urllib.request.urlopen(request) as r, open(path, "wb") as f:
+        f.write(r.read())
+
+
 def fetch_data_repos():
     """Fetches data repositories (game-patches, game-compat, controller db)
     into build/data_repos/.
@@ -579,9 +595,11 @@ def fetch_data_repos():
     else:
         print_warning("vendored master.json not found at " + vendored_master)
 
+    compat_repo = "xenia-canary/game-compatibility"
+    compat_tag = "game-compatibility"
     compat_url = (
-        "https://github.com/xenia-canary/game-compatibility/releases/download/"
-        "game-compatibility/compatibility_data.json"
+        f"https://github.com/{compat_repo}/releases/download/{compat_tag}/"
+        "compatibility_data.json"
     )
     compat_url_parsed = urlparse(compat_url)
     compat_path = os.path.join(compat_dir, "compatibility_data.json")
@@ -594,7 +612,13 @@ def fetch_data_repos():
         for attempt in range(1, max_attempts + 1):
             tmp_path = compat_path + ".tmp"
             try:
-                urllib.request.urlretrieve(compat_url, tmp_path)
+                try:
+                    urllib.request.urlretrieve(compat_url, tmp_path)
+                except urllib.error.HTTPError as e:
+                    print(f"  - {e}, downloading through the GitHub API...")
+                    download_github_release_asset(compat_repo, compat_tag,
+                                                  "compatibility_data.json",
+                                                  tmp_path)
                 os.replace(tmp_path, compat_path)
                 break
             except (urllib.error.URLError, OSError) as e:
