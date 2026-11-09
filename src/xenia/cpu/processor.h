@@ -172,6 +172,10 @@ class Processor {
   Module* LookupModule(uint32_t address);
   Function* LookupFunction(Module* module, uint32_t address);
   Function* ResolveFunction(uint32_t address);
+  // Resolves the function a guest call to *address runs. With no guest code
+  // there the fetch faults and the code fault hook can continue the call
+  // elsewhere, leaving *address where it did. Null if the hook didn't.
+  Function* ResolveCallTarget(ppc::PPCContext* context, uint32_t* address);
   // |expand| appends more addresses to resolve from each resolved function.
   size_t ResolveFunctionsInParallel(
       std::vector<uint32_t> addresses,

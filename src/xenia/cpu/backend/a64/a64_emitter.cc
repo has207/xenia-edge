@@ -975,12 +975,36 @@ void A64Emitter::CallIndirect(const hir::Instr* instr, int reg_index) {
           });
       b(HS, resolve_natively);
     }
+    // Without dynamic code, a target the table doesn't cover goes to the
+    // resolve thunk, since its slot would be read from outside the table.
+    // Returns, the most common sites, aren't checked.
+    Label* slot_ready = nullptr;
+    if (!processor()->dynamic_code_enabled() &&
+        !(instr->flags & hir::CALL_POSSIBLE_RETURN)) {
+      // The table covers the addresses whose top three bits are 100.
+      static_assert(A64CodeCache::indirection_guest_base() == 0x80000000 &&
+                    A64CodeCache::indirection_guest_size() == 0x1FFFFFFF);
+      slot_ready = &NewCachedLabel();
+      eor(w14, w16, 0x80000000);
+      tst(w14, 0xE0000000);
+      const uint64_t resolve_thunk =
+          reinterpret_cast<uint64_t>(backend()->resolve_function_thunk());
+      Label& uncovered =
+          AddToTail([slot_ready, resolve_thunk](A64Emitter& e, Label&) {
+            e.mov(e.x9, resolve_thunk);
+            e.b(*slot_ready);
+          });
+      b(NE, uncovered);
+    }
     if (!code_cache_->encoded_indirection()) {
       // Fast path: table mapped at host VA == guest addr; slot holds raw
       // 32-bit host target.
       ldr(w9, ptr(x16, static_cast<uint32_t>(0)));
     } else {
       EmitEncodedIndirectionLookup();
+    }
+    if (slot_ready) {
+      L(*slot_ready);
     }
     if (target_ready) {
       L(*target_ready);

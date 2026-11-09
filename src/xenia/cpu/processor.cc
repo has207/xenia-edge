@@ -725,6 +725,21 @@ uint32_t Processor::SweptCodeEnd(uint32_t address) {
   return address + uint32_t(range->second - key);
 }
 
+Function* Processor::ResolveCallTarget(ppc::PPCContext* context,
+                                       uint32_t* address) {
+  Function* function = ResolveFunction(*address);
+  while (!function || !function->is_guest()) {
+    const CodeFaultHook hook = code_fault_hook();
+    const uint32_t resume_address = hook ? hook(context, *address) : 0;
+    if (!resume_address) {
+      return nullptr;
+    }
+    *address = resume_address;
+    function = ResolveFunction(*address);
+  }
+  return function;
+}
+
 Function* Processor::ResolveFunction(uint32_t address) {
   Entry* entry;
   Entry::Status status = entry_table_.GetOrCreate(address, &entry);

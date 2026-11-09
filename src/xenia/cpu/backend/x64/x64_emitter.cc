@@ -687,20 +687,12 @@ uint64_t ResolveFunction(void* raw_context, uint64_t target_address) {
     }
   }
 
-  auto processor = thread_state->processor();
   uint32_t address = static_cast<uint32_t>(target_address);
-  auto fn = processor->ResolveFunction(address);
-  while (!fn || !fn->is_guest()) {
-    // No code there, so the call faults on the instruction fetch, which the
-    // guest can handle by continuing elsewhere.
-    auto hook = processor->code_fault_hook();
-    const uint32_t resume_address = hook ? hook(guest_context, address) : 0;
-    if (!resume_address) {
-      XELOGE("No guest code at {:08X} for a call", address);
-      return 0;
-    }
-    address = resume_address;
-    fn = processor->ResolveFunction(address);
+  auto fn =
+      thread_state->processor()->ResolveCallTarget(guest_context, &address);
+  if (!fn) {
+    XELOGE("No guest code at {:08X} for a call", address);
+    return 0;
   }
   auto x64_fn = static_cast<X64Function*>(fn);
   uint64_t addr = reinterpret_cast<uint64_t>(x64_fn->machine_code());
@@ -855,30 +847,18 @@ static uint64_t ResolveDynamicFunction(void* raw_context,
     }
   }
   const uint64_t sweep_count = guest_context->processor->code_sweep_count();
-  auto function = guest_context->processor->ResolveFunction(
-      static_cast<uint32_t>(target_address));
-  bool redirected = false;
-  if (!function || !function->is_guest()) {
-    // The guest can handle the fetch fault and continue the call elsewhere.
-    if (auto hook = guest_context->processor->code_fault_hook()) {
-      if (const uint32_t resume_address =
-              hook(guest_context, static_cast<uint32_t>(target_address))) {
-        target_address = resume_address;
-        function = guest_context->processor->ResolveFunction(resume_address);
-        redirected = true;
-      }
-    }
-  }
-  if (!function || !function->is_guest()) {
-    XELOGE("No guest code at {:08X} for a dynamic call",
-           static_cast<uint32_t>(target_address));
+  uint32_t address = static_cast<uint32_t>(target_address);
+  auto function =
+      guest_context->processor->ResolveCallTarget(guest_context, &address);
+  if (!function) {
+    XELOGE("No guest code at {:08X} for a dynamic call", address);
     return 0;
   }
   const uint64_t host_address = reinterpret_cast<uint64_t>(
       static_cast<X64Function*>(function)->machine_code());
   // A redirect isn't cached, since the checks above were for the original
   // target.
-  if (redirected) {
+  if (address != static_cast<uint32_t>(target_address)) {
     return host_address;
   }
   auto backend = static_cast<X64Backend*>(guest_context->processor->backend());
