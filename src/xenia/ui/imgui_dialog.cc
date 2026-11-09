@@ -9,6 +9,7 @@
 
 #include "xenia/ui/imgui_dialog.h"
 
+#include "third_party/fmt/include/fmt/format.h"
 #include "third_party/imgui/imgui.h"
 #include "xenia/base/assert.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -66,11 +67,16 @@ class MessageBoxDialog final : public ImGuiDialog {
   MessageBoxDialog(ImGuiDrawer* imgui_drawer, std::string title,
                    std::string body)
       : ImGuiDialog(imgui_drawer),
-        title_(std::move(title)),
+        title_(fmt::format("{}###{}", title, GetWindowId())),
         body_(std::move(body)) {}
 
   void OnDraw(ImGuiIO& io) override {
     if (!has_opened_) {
+      // Wait for any open popup, which opening this one would close.
+      if (ImGui::IsPopupOpen(
+              "", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+        return;
+      }
       ImGui::OpenPopup(title_.c_str());
       has_opened_ = true;
     }
