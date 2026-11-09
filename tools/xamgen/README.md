@@ -17,6 +17,14 @@ Where an export takes a callback, a step passes a recorder, which logs the
 arguments it's called with into the arena for a capture. A step marked `void`
 calls an export that returns nothing, so its r3 isn't compared.
 
+A step can also call a routine, guest code the corpus writes with
+`tools/xex/ppcasm.py`. A routine can declare functions with .pdata entries,
+which go in the image's exception directory, so the kernel finds them and their
+exception handlers. A corpus whose steps fault on purpose sets
+`corpus.unwatched`: XBDM with a notification session open keeps raising a
+first-chance exception instead of dispatching it, so `run.py console` runs it
+without one and polls the executor's done word instead.
+
 ```
 python3 tools/xamgen/xamgen.py build tools/xamgen/corpus/content.py OUT
 python3 tools/xamgen/run.py console OUT

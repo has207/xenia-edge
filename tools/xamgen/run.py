@@ -14,8 +14,10 @@ the executor writes beside it and its DbgPrint line in the log, then kills it
 XEX to Hdd:\\oracle\\ over XBDM with XeCLI's rgh (RGH or on PATH), launches it,
 watches XBDM's debug output until the executor unloads or faults and fetches
 the results file. On a fault it reads the executor's progress word to name the
-step and launches Aurora again. Both decode the results to
-OUTDIR/<where>_results.json.
+step and launches Aurora again. An unwatched corpus runs with no notification
+session: console polls the executor's done word and writes its exit word, and
+names the step the same way if it isn't done in time. Both decode the results
+to OUTDIR/<where>_results.json.
 
 Comparisons normalize first: the XUID and gamertag the corpus's identity
 scenario reads become <X0> and <NAME0>, and a wait only records whether the
@@ -249,6 +251,75 @@ def run_console(outdir, timeout):
     code, out = rgh('launch', '--xex', xex)
     if code:
         sys.exit(f'console: launch failed\n{out}')
+    if meta.get('unwatched'):
+        wait_unwatched(meta, timeout)
+    else:
+        watch(meta, outdir, timeout)
+    for _ in range(30):
+        code, out = rgh('title')
+        if 'Aurora' in out:
+            break
+        time.sleep(1)
+    copy = os.path.join(outdir, 'console_results.bin')
+    code, out = rgh('fs', 'get', '--path', results, '--out',
+                    host_path(copy, rgh_exe()))
+    if code:
+        sys.exit(f'console: no results file\n{out}')
+    return decode_into(outdir, 'console', copy)
+
+
+def peek_u32(address):
+    """The console's word at `address`, or None if XBDM can't read it."""
+    code, out = rgh('mem', 'peek', '--addr', f'{address:#x}', '--type', 'u32')
+    values = [t for t in out.split()
+              if re.fullmatch(r'0x[0-9A-Fa-f]+|\d+', t)]
+    return int(values[-1], 0) if not code and values else None
+
+
+def fail_at_progress(meta, what):
+    """Names the step the executor's progress word is at, goes back to Aurora
+    and exits."""
+    progress = peek_u32(meta['control'] + xamgen.C_PROGRESS)
+    rgh('launch', '--xex', AURORA)
+    run = [s for s in meta['steps'] if not s.get('faults')]
+    if progress is not None and progress >= len(run):
+        sys.exit(f'console: {what}\nafter the last step, writing the '
+                 f'results or exiting')
+    step = run[progress] if progress is not None else None
+    sys.exit(f'console: {what}\nprogress {progress}: '
+             f'{step["scenario"] + " / " + step["name"] if step else "?"}'
+             f'\nmark it faults=True and rebuild')
+
+
+def wait_unwatched(meta, timeout):
+    """Polls the executor's done word, then writes the exit word. A fault no
+    handler takes stops the title, so the progress word names the step when
+    the executor isn't done in time."""
+    control = meta['control']
+    deadline = time.time() + timeout
+    started = False
+    while time.time() < deadline:
+        code, out = rgh('title')
+        if 'xamgen.xex' not in out.lower():
+            if started:
+                sys.exit('console: the title ended before it was done')
+            time.sleep(0.5)
+            continue
+        started = True
+        if peek_u32(control + xamgen.C_DONE) == meta['done_magic']:
+            status = peek_u32(control + xamgen.C_FILE_STATUS)
+            rgh('mem', 'poke', '--addr', f'{control + meta["exit_offset"]:#x}',
+                '--type', 'u32', '--value', f'{meta["exit_magic"]:#x}')
+            if status != 0:
+                sys.exit(f'console: no results file, status {status}')
+            print('console: done')
+            return
+        time.sleep(0.5)
+    fail_at_progress(meta, f'not done after {timeout} s')
+
+
+def watch(meta, outdir, timeout):
+    """Watches XBDM's notifications until the executor unloads or faults."""
     watch_log = os.path.join(outdir, 'console_watch.jsonl')
     if os.path.exists(watch_log):
         os.remove(watch_log)
@@ -276,38 +347,12 @@ def run_console(outdir, timeout):
         watcher.terminate()
         watcher.wait()
     if fault:
-        code, out = rgh('mem', 'peek', '--addr',
-                        f'{meta["control"] + xamgen.C_PROGRESS:#x}', '--type',
-                        'u32')
-        run = [s for s in meta['steps'] if not s.get('faults')]
-        progress = None
-        for token in out.split():
-            if token.startswith('0x'):
-                progress = int(token, 16)
-        rgh('launch', '--xex', AURORA)
-        if progress is not None and progress >= len(run):
-            sys.exit(f'console: {fault}\nafter the last step, writing the '
-                     f'results or exiting')
-        step = run[progress] if progress is not None else None
-        sys.exit(f'console: {fault}\nprogress {progress}: '
-                 f'{step["scenario"] + " / " + step["name"] if step else "?"}'
-                 f'\nmark it faults=True and rebuild')
+        fail_at_progress(meta, fault)
     # Only this run's summary ties the results file to it.
     written = re.search(r'results file ([0-9A-Fa-f]{8})', summary or '')
     if not written or int(written.group(1), 16):
         sys.exit(f'console: no results from this run, summary {summary!r}')
     print(f'console: {summary}')
-    for _ in range(30):
-        code, out = rgh('title')
-        if 'Aurora' in out:
-            break
-        time.sleep(1)
-    copy = os.path.join(outdir, 'console_results.bin')
-    code, out = rgh('fs', 'get', '--path', results, '--out',
-                    host_path(copy, rgh_exe()))
-    if code:
-        sys.exit(f'console: no results file\n{out}')
-    return decode_into(outdir, 'console', copy)
 
 
 def identities(results):

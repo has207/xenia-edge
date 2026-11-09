@@ -17,13 +17,19 @@ log and, for the first calls it has room for, logs r3 onward, then returns its
 result, 0 by default. Its address can also be written into the arena, for a
 structure the system calls through.
 
+A routine is guest code the corpus writes, which a step calls in place of an
+export. It can declare functions with .pdata entries, which the build puts in
+the image's exception directory, for the kernel's unwinder to find them and
+their exception handlers.
+
 When the steps are done it writes the results to cache:\\xamgen.bin, or to
 game:\\xamgen.bin where cache: isn't mounted (a console title without a utility
 drive). It prints a summary with DbgPrint and stores DONE_MAGIC. Once the file
 is written it ends after a second, otherwise it waits until the host writes
 EXIT_MAGIC to the exit word or 30 s pass, so XBDM can read the results from
-memory. It ends the title with XamLoaderTerminateTitle, which takes a console
-back to its dashboard.
+memory. The executor of an unwatched corpus always waits for the host. It
+ends the title with XamLoaderTerminateTitle, which takes a console back to its
+dashboard.
 
     python3 tools/xamgen/xamgen.py build CORPUS.py OUTDIR
     python3 tools/xamgen/xamgen.py decode OUTDIR/xamgen.json RESULTS.bin
@@ -85,6 +91,8 @@ C_ARGS = 0x100
 C_VARIABLES = 0x200
 C_FORMAT = 0x400
 C_STEP_FORMAT = 0x440
+# The routines' function entries, the exception directory.
+C_PDATA = 0x1000
 
 CACHE_PATH = b'cache:\\xamgen.bin'
 GAME_PATH = b'game:\\xamgen.bin'
@@ -119,8 +127,10 @@ def load_exports():
 
 # Executor.
 
-def executor(asm, thunk):
-    """Emits the executor. `thunk(name)` gives an import thunk address."""
+def executor(asm, thunk, wait_for_host):
+    """Emits the executor. `thunk(name)` gives an import thunk address.
+    With `wait_for_host` it waits for EXIT_MAGIC even once the results file
+    is written."""
     a = asm
     a.stwu(1, -0x200, 1)
     a.load32(31, CONTROL)
@@ -357,10 +367,11 @@ def executor(asm, thunk):
 
     # A second once the file is written, else up to 30 s for XBDM.
     a.load32(19, EXIT_MAGIC)
-    a.lwz(3, C_FILE_STATUS, 31)
-    a.li(21, 10)
-    a.cmpwi(3, 0)
-    a.beq('exit_wait')
+    if not wait_for_host:
+        a.lwz(3, C_FILE_STATUS, 31)
+        a.li(21, 10)
+        a.cmpwi(3, 0)
+        a.beq('exit_wait')
     a.li(21, 300)
     a.label('exit_wait')
     a.lwz(3, C_EXIT, 31)
@@ -446,7 +457,31 @@ def recorder_routine(asm, recorder, index):
     a.blr()
 
 
-def control_page():
+def function_entries(asm, routines):
+    """The routines' .pdata entries, sorted by start: start address, then
+    prolog length, length in instructions and the 32-bit flag, with the top
+    bit set for a function with an exception handler."""
+    entries = []
+    for routine in routines:
+        for begin, prolog_end, end, handler in routine.functions:
+            start = asm.label_address(begin)
+            prolog = (asm.label_address(prolog_end) - start) // 4
+            length = (asm.label_address(end) - start) // 4
+            if not 0 <= prolog <= 0xFF or not prolog <= length < 1 << 22:
+                raise ValueError(f'{routine.name}: bad function {begin}')
+            entries.append((start, 0x40000000 | (handler << 31) |
+                            (length << 8) | prolog))
+    entries.sort()
+    for (start, packed), (next_start, _) in zip(entries, entries[1:]):
+        if start + 4 * ((packed >> 8) & 0x3FFFFF) > next_start:
+            raise ValueError(f'functions at {start:08X} and {next_start:08X} '
+                             f'overlap')
+    if C_PDATA + 8 * len(entries) > PAGE_SIZE:
+        raise ValueError('too many functions')
+    return b''.join(struct.pack('>II', *entry) for entry in entries)
+
+
+def control_page(pdata):
     page = bytearray(C_STEP_FORMAT + len(STEP_FORMAT))
     struct.pack_into('>q', page, C_FIRST_SLEEP, -3000 * 10000)
     struct.pack_into('>q', page, C_POLL_SLEEP, -10 * 10000)
@@ -458,6 +493,8 @@ def control_page():
         page[offset:offset + len(path)] = path
     page[C_FORMAT:C_FORMAT + len(FORMAT)] = FORMAT
     page[C_STEP_FORMAT:] = STEP_FORMAT
+    if pdata:
+        page += bytes(C_PDATA - len(page)) + pdata
     return bytes(page)
 
 
@@ -515,6 +552,32 @@ class Recorder:
         self.address = None
 
 
+class Routine:
+    """Guest code a step calls like an export. `emit(asm, routine, thunk)`
+    writes it after the executor, placing `entry` where calls start, naming
+    its labels with label() and declaring its functions with function().
+    `thunk(name)` gives an export's import thunk."""
+
+    def __init__(self, name, prefix, emit):
+        self.name = name
+        self.prefix = prefix
+        self.emit = emit
+        self.entry = self.label('entry')
+        self.functions = []
+        self.address = None
+
+    def label(self, name):
+        """The assembler label `name` of this routine."""
+        return f'{self.prefix}.{name}'
+
+    def function(self, begin, prolog_end, end, handler=False):
+        """Declares a .pdata entry for the function from label `begin` to
+        `end`, its prolog ending at `prolog_end`. A function with a `handler`
+        keeps its handler and the handler's data in the two words before
+        `begin`."""
+        self.functions.append((begin, prolog_end, end, handler))
+
+
 class Scenario:
     def __init__(self, corpus, name, fill, console_only):
         self.corpus = corpus
@@ -526,6 +589,7 @@ class Scenario:
         self.pending = []
         self.steps = []
         self.recorders = []
+        self.routines = []
 
     def alloc(self, size, name, data=None, fill=None):
         """Lays out `size` bytes, 8-aligned, holding `data` and then `fill`
@@ -571,18 +635,28 @@ class Scenario:
         self.recorders.append(recorder)
         return recorder
 
+    def routine(self, name, emit):
+        """A Routine of this scenario, which `emit` writes."""
+        routine = Routine(name, f'routine{self.corpus.routine_count}', emit)
+        self.corpus.routine_count += 1
+        self.routines.append(routine)
+        return routine
+
     def call(self, export, *args, name=None, wait=None, capture=(),
              store=(), faults=False, void=False):
-        """Calls `export` with `args`: ints, Pointers, Variables or
-        Recorders. `wait` is an XOVERLAPPED Pointer, `capture` the Pointers
+        """Calls `export`, an export's name or a Routine, with `args`: ints,
+        Pointers, Variables or Recorders. `wait` is an XOVERLAPPED Pointer,
+        `capture` the Pointers
         to record and `store` (Variable, 'r3' or Pointer) pairs, an 8-byte
         Pointer saving a doubleword and any other its first word. A step that
         `faults` on a console is recorded as such and never run. A `void`
         export's r3 is whatever it left there, so it isn't recorded."""
         if len(args) > MAX_ARGS:
             raise ValueError(f'{export}: too many arguments')
+        if name is None:
+            name = export.name if isinstance(export, Routine) else export
         self.steps.append({
-            'export': export, 'args': list(args), 'name': name or export,
+            'export': export, 'args': list(args), 'name': name,
             'wait': wait, 'capture': list(capture), 'store': list(store),
             'patches': self.pending, 'faults': faults, 'void': void})
         if not faults:
@@ -598,6 +672,11 @@ class Corpus:
         self.scenarios = []
         self.variables = {}
         self.exports = load_exports()
+        self.routine_count = 0
+        # A console runs an unwatched corpus with no XBDM notification
+        # session, since XBDM with one open raises a first-chance exception
+        # again and again instead of dispatching it to the title's handlers.
+        self.unwatched = False
 
     def scenario(self, name, fill=0xCD, console_only=None):
         """`console_only` says why Xenia mustn't run the scenario, such as a
@@ -636,20 +715,24 @@ def compile_corpus(corpus, imports):
     for scenario in corpus.scenarios:
         first = True
         for step in scenario.steps:
-            export = step['export']
-            if export not in corpus.exports:
-                raise ValueError(f'unknown export {export}')
+            target = step['export']
+            if isinstance(target, Routine):
+                export = target.name
+            elif target in corpus.exports:
+                export = target
+            else:
+                raise ValueError(f'unknown export {target}')
             description = {
                 'scenario': scenario.name, 'name': step['name'],
                 'export': export, 'args': [describe(a) for a in step['args']]}
             if step['faults']:
                 steps.append(dict(description, faults=True))
                 continue
-            if export not in thunk_index:
-                library, ordinal = corpus.exports[export]
-                thunk_index[export] = len(thunks)
-                thunks.append(imports.function(library, ordinal))
-            record = bytearray(struct.pack('>I', thunk_index[export]))
+            if target not in thunk_index:
+                thunk_index[target] = len(thunks)
+                thunks.append(target.address if isinstance(target, Routine)
+                              else imports.function(*corpus.exports[target]))
+            record = bytearray(struct.pack('>I', thunk_index[target]))
             patches = list(step['patches'])
             if first:
                 patches.insert(0, (0, bytes(scenario.initial)))
@@ -706,13 +789,19 @@ def build(corpus, outdir):
     def thunk(name):
         return imports.function(*exports[name])
 
-    executor(asm, thunk)
+    executor(asm, thunk, corpus.unwatched)
     recorders = [r for s in corpus.scenarios for r in s.recorders]
     for index, recorder in enumerate(recorders):
         recorder_routine(asm, recorder, index)
+    routines = [r for s in corpus.scenarios for r in s.routines]
+    for routine in routines:
+        routine.emit(asm, routine, thunk)
     text = asm.code()
     if CODE_BASE + len(text) > IMPORTS_BASE:
         raise ValueError('executor runs into the import records')
+    for routine in routines:
+        routine.address = asm.label_address(routine.entry)
+    pdata = function_entries(asm, routines)
     thunks, blob, results_size, steps = compile_corpus(corpus, imports)
     if len(imports.data()) > CONTROL - IMPORTS_BASE:
         raise ValueError('too many imports')
@@ -729,15 +818,19 @@ def build(corpus, outdir):
     corpus_data = header + blob
 
     pages = [(xexbuild.SECTION_CODE, code),
-             (xexbuild.SECTION_DATA, control_page()),
+             (xexbuild.SECTION_DATA, control_page(pdata)),
              (xexbuild.SECTION_DATA, b'')]
     for start in range(0, len(corpus_data), PAGE_SIZE):
         pages.append((xexbuild.SECTION_DATA,
                       corpus_data[start:start + PAGE_SIZE]))
     for _ in range((results_size + PAGE_SIZE - 1) // PAGE_SIZE):
         pages.append((xexbuild.SECTION_DATA, b''))
+    directories = {}
+    if pdata:
+        directories[xexbuild.PE_EXCEPTION_DIRECTORY] = (CONTROL + C_PDATA,
+                                                        len(pdata))
     xex = xexbuild.build(LOAD_ADDRESS, CODE_BASE, pages, title_id=corpus.title_id,
-                         imports=imports)
+                         imports=imports, directories=directories)
     run = sum(1 for step in steps if not step.get('faults'))
     os.makedirs(outdir, exist_ok=True)
     with open(os.path.join(outdir, 'xamgen.xex'), 'wb') as f:
@@ -746,7 +839,8 @@ def build(corpus, outdir):
             'version': VERSION, 'control': CONTROL,
             'results': results, 'results_size': results_size,
             'done_magic': DONE_MAGIC, 'exit_offset': C_EXIT,
-            'exit_magic': EXIT_MAGIC, 'steps': steps,
+            'exit_magic': EXIT_MAGIC, 'unwatched': corpus.unwatched,
+            'steps': steps,
             'console_only': [f'{s.name}: {s.console_only}'
                              for s in corpus.scenarios
                              if s.console_only is not None]}

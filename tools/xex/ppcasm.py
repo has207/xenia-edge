@@ -2,7 +2,8 @@
 """A tiny big-endian PPC assembler for test titles.
 
 Instructions are methods named after their mnemonics. Branches take label
-names that place() binds, forward or backward, and code() resolves them.
+names that place() binds, forward or backward, and code() resolves them, as
+it does a label's absolute address in a data word or a lis/ori pair.
 
     asm = Assembler(0x82010000)
     asm.li(3, 0)
@@ -45,12 +46,23 @@ class Assembler:
     def word(self, value):
         self.words.append(value & 0xFFFFFFFF)
 
+    def label_address(self, name):
+        if name not in self.labels:
+            raise ValueError(f'label {name} never placed')
+        return self.base + 4 * self.labels[name]
+
     def code(self):
         for index, name, kind in self.fixups:
             if name not in self.labels:
                 raise ValueError(f'label {name} never placed')
             offset = 4 * (self.labels[name] - index)
-            if kind == 'b':
+            if kind == 'abs':
+                self.words[index] = self.label_address(name)
+            elif kind in ('hi', 'lo'):
+                address = self.label_address(name)
+                self.words[index] |= (address >> 16 if kind == 'hi'
+                                      else address & 0xFFFF)
+            elif kind == 'b':
                 if not -0x2000000 <= offset < 0x2000000:
                     raise ValueError('branch out of range')
                 self.words[index] |= offset & 0x3FFFFFC
@@ -71,6 +83,7 @@ class Assembler:
     def li(self, rt, imm): self.addi(rt, 0, imm)
     def lis(self, rt, imm): self.addis(rt, 0, imm)
     def ori(self, ra, rs, imm): self._dform(24, rs, ra, imm, UNSIGNED)
+    def andi_(self, ra, rs, imm): self._dform(28, rs, ra, imm, UNSIGNED)
     def lwz(self, rt, d, ra): self._dform(32, rt, ra, d)
     def lbz(self, rt, d, ra): self._dform(34, rt, ra, d)
     def stw(self, rs, d, ra): self._dform(36, rs, ra, d)
@@ -114,6 +127,7 @@ class Assembler:
     def mtctr(self, rs): self.word(0x7C0903A6 | (rs << 21))
     def mflr(self, rt): self.word(0x7C0802A6 | (rt << 21))
     def mtlr(self, rs): self.word(0x7C0803A6 | (rs << 21))
+    def bctr(self): self.word(0x4E800420)
     def bctrl(self): self.word(0x4E800421)
     def blr(self): self.word(0x4E800020)
     def nop(self): self.word(0x60000000)
@@ -122,6 +136,10 @@ class Assembler:
     def b(self, label):
         self.fixups.append((len(self.words), label, 'b'))
         self.word(0x48000000)
+
+    def bl(self, label):
+        self.fixups.append((len(self.words), label, 'b'))
+        self.word(0x48000001)
 
     def _bc(self, bo, bi, label):
         self.fixups.append((len(self.words), label, 'bc'))
@@ -144,3 +162,15 @@ class Assembler:
         self.load32(12, target)
         self.mtctr(12)
         self.bctrl()
+
+    def load_address(self, rt, label):
+        """Loads the absolute address of `label`."""
+        self.fixups.append((len(self.words), label, 'hi'))
+        self.lis(rt, 0)
+        self.fixups.append((len(self.words), label, 'lo'))
+        self.ori(rt, rt, 0)
+
+    def address_word(self, label):
+        """A data word holding the absolute address of `label`."""
+        self.fixups.append((len(self.words), label, 'abs'))
+        self.word(0)
