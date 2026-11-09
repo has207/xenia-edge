@@ -2131,15 +2131,18 @@ void EmulatorWindow::FileAddGames() {
 }
 
 void EmulatorWindow::FileClose() {
-  if (!emulator_->is_title_open()) {
+  // Another click on the toolbar or menu, which stay live under ImGui dialogs,
+  // mustn't open a second confirmation.
+  if (!emulator_->is_title_open() || stop_title_dialog_) {
     return;
   }
   // Render the confirmation through ImGui so it stacks correctly with any
   // open ImGui dialogs and doesn't deadlock the render panel's paint loop.
-  new ui::ImGuiConfirmDialog(
+  stop_title_dialog_ = new ui::ImGuiConfirmDialog(
       imgui_drawer(), "Stop title",
       "Really stop title? Unsaved progress will be lost.",
       [this](bool confirmed) {
+        stop_title_dialog_ = nullptr;
         if (confirmed) {
           StopTitleAndReturnToList();
         }
@@ -4201,6 +4204,8 @@ void EmulatorWindow::ClearDialogs() {
     audio_dialog_->CloseDialog();
     audio_dialog_ = nullptr;
   }
+  // Destroyed below without running its callback.
+  stop_title_dialog_ = nullptr;
 
   imgui_drawer_.get()->ClearDialogs();
   emulator_->kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
