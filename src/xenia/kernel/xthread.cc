@@ -566,6 +566,15 @@ X_STATUS XThread::Create() {
 X_STATUS XThread::Exit(int exit_code) {
   // This may only be called on the thread itself.
   assert_true(XThread::GetCurrentThread() == this);
+  // The thread's pending requests complete before it exits, checked every
+  // 100 ms. None is cancelled as STFS ignores cancellation and nothing here
+  // models a request waiting on a busy drive. Shutdown drops queued requests.
+  while (posted_io_.load(std::memory_order_acquire) &&
+         !kernel_state()->guest_scheduler()->shutting_down()) {
+    uint64_t interval = uint64_t(-1000000);
+    xboxkrnl::KeDelayExecutionThread(0, false, &interval,
+                                     thread_state_->context());
+  }
   // TODO(chrispy): not sure if this order is correct, should it come after
   // apcs?
   auto kthread = guest_object<X_KTHREAD>();

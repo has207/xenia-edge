@@ -251,6 +251,7 @@ X_STATUS XFile::ReadInternal(uint32_t buffer_guest_address,
 }
 
 void XFile::PostIo(XThread* thread, std::function<void(bool cancelled)> fn) {
+  thread->AddPostedIo();
   {
     std::lock_guard<std::mutex> lock(posted_lock_);
     posted_.emplace_back(thread, std::move(fn));
@@ -272,6 +273,7 @@ void XFile::RunPostedIo() {
     posted_running_thread_ = thread;
     lock.unlock();
     fn(false);
+    thread->RemovePostedIo();
     lock.lock();
     posted_running_thread_ = nullptr;
   }
@@ -293,6 +295,7 @@ void XFile::CancelPostedIo(XThread* thread) {
   }
   for (auto& fn : cancelled) {
     fn(true);
+    thread->RemovePostedIo();
   }
 }
 

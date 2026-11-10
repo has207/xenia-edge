@@ -451,6 +451,11 @@ class XThread : public XObject, public cpu::Thread {
   X_STATUS Exit(int exit_code);
   X_STATUS Terminate(int exit_code);
 
+  // Counts the requests this thread issued that pend on an I/O worker, which
+  // its exit waits for.
+  void AddPostedIo() { posted_io_.fetch_add(1, std::memory_order_relaxed); }
+  void RemovePostedIo() { posted_io_.fetch_sub(1, std::memory_order_release); }
+
   virtual void Execute();
 
   virtual void Reenter(uint32_t address);
@@ -844,6 +849,7 @@ class XThread : public XObject, public cpu::Thread {
   SchedulerLinks scheduler_links_;
   // Set by the first ReclaimExited so both terminal paths reclaim once.
   std::atomic<bool> self_reference_dropped_{false};
+  std::atomic<uint32_t> posted_io_{0};
   // Owned by XObject::Enter/LeaveCooperativeWait.
   std::atomic<XObject*> cooperative_wait_object_{nullptr};
   // Signaled when a fiber-backed thread exits, so waits on the thread object
