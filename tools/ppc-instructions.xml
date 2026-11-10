@@ -150,7 +150,6 @@
     <in field="L" />
     <in field="RA" />
     <in field="SIMM" />
-    <out field="RD" />
     <out field="CRFD" />
     <disasm>cmpi [CRFD], [L], [RA], [SIMM]</disasm>
   </insn>
@@ -1047,6 +1046,7 @@
     <disasm>rldicr[Rc] [RA], [RS], [SH], [ME]</disasm>
   </insn>
   <insn mnem="rldimix"      opcode="7800000C" form="MD"       group="i" desc="Rotate Left Doubleword Immediate then Mask Insert">
+    <in field="RA" />
     <in field="RS" />
     <in field="SH" />
     <in field="MB" />
@@ -1055,6 +1055,7 @@
     <disasm>rldimi[Rc] [RA], [RS], [SH], [MB]</disasm>
   </insn>
   <insn mnem="rlwimix"      opcode="50000000" form="M"        group="i" desc="Rotate Left Word Immediate then Mask Insert">
+    <in field="RA" />
     <in field="RS" />
     <in field="SH" />
     <in field="MB" />
@@ -1989,8 +1990,8 @@
   </insn>
   <insn mnem="vmaddfp128"   opcode="140000D0" form="VX128"    group="v" desc="Vector128 Multiply Add Floating Point">
     <in field="VA" />
-    <in field="VC" />
     <in field="VB" />
+    <in field="VD" />
     <out field="VD" />
     <disasm>vmaddfp128 [VD], [VA], [VB], [VD]</disasm>
   </insn>
@@ -2917,11 +2918,13 @@
     <disasm>vcuxwfp128 [VD], [VB], [UIMM]</disasm>
   </insn>
   <insn mnem="vpkd3d128"    opcode="18000610" form="VX128_4"  group="v" desc="Vector128 Pack D3Dtype, Rotate Left Immediate and Mask Insert">
+    <in field="VD" />
     <in field="VB" />
     <out field="VD" />
     <!-- TODO(benvanik): arg types -->
   </insn>
   <insn mnem="vrlimi128"    opcode="18000710" form="VX128_4"  group="v" desc="Vector128 Rotate Left Immediate and Mask Insert">
+    <in field="VD" />
     <in field="VB" />
     <out field="VD" />
     <disasm>vrlimi128 [VD], [VB], [IMM], [z]</disasm>
