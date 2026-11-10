@@ -244,13 +244,14 @@ bool XmaContextNew::Work() {
     SetError(&data, kErrorWaitForBuffer);
   } else if (frame_done && decode_stop_ == kDecodeStop::kParserError) {
     // The parser status says why.
+  } else if (!remaining_subframe_blocks_in_output_buffer_) {
+    // A full ring is reported over input that ran dry with it.
+    SetError(&data, kErrorOutputFull);
   } else if (frame_done && !data.IsAnyInputBufferValid()) {
     SetError(&data, kErrorNoInput);
   } else if (remaining_subframe_blocks_in_output_buffer_ <
              static_cast<int32_t>(GetPassBlocks(&data))) {
-    SetError(&data, remaining_subframe_blocks_in_output_buffer_
-                        ? kErrorOutputSpace
-                        : kErrorOutputFull);
+    SetError(&data, kErrorOutputSpace);
   }
 
   data.output_buffer_write_offset =
@@ -462,8 +463,10 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
   }
 
   // Before the packet's first frame is the tail of a frame from the previous
-  // packet. No frame starts there.
-  if (relative_offset < packet_first_frame_offset) {
+  // packet. No frame starts there. A header without a frame start in the
+  // packet doesn't mark one.
+  if (packet_first_frame_offset < kBitsPerPacket &&
+      relative_offset < packet_first_frame_offset) {
     XELOGAPU("XmaContext {}: Read offset {} is in a split frame tail", id(),
              data->input_buffer_read_offset);
     StopOnParserError(data, kParserErrorNoFrame);
@@ -661,7 +664,8 @@ void XmaContextNew::Decode(XMA_CONTEXT_DATA* data) {
           ? packet_info.current_frame_size_ - packet_bits_left
           : 0;
   const kNextFrame next = FindNextFrame(
-      data, next_packet_index, current_input_packet_count, split_tail_bits);
+      data, next_packet_index, current_input_packet_count, split_tail_bits,
+      packet_info.current_frame_size_ == packet_bits_left);
   XELOGAPU("XmaContext {}: Next frame at {} after {} buffers", id(),
            next.offset_, next.buffers_consumed_);
   // A frame split into the other buffer leaves its buffer part way through.
@@ -826,7 +830,8 @@ const uint8_t* XmaContextNew::GetNextPacket(
 kNextFrame XmaContextNew::FindNextFrame(XMA_CONTEXT_DATA* data,
                                         uint32_t next_packet_index,
                                         uint32_t current_input_packet_count,
-                                        uint32_t split_tail_bits) {
+                                        uint32_t split_tail_bits,
+                                        bool ends_on_packet_end) {
   kNextFrame result;
   uint32_t buffer_index = data->current_buffer;
   uint32_t packet_index = next_packet_index;
@@ -846,6 +851,13 @@ kNextFrame XmaContextNew::FindNextFrame(XMA_CONTEXT_DATA* data,
         return result;
       }
       continue;
+    }
+
+    // The next frame starts right after the header, whatever it says. EA's
+    // XMA1 headers say no frame starts there.
+    if (ends_on_packet_end) {
+      result.offset_ = packet_index * kBitsPerPacket + kBitsPerPacketHeader;
+      return result;
     }
 
     const uint8_t* packet =
@@ -884,7 +896,12 @@ const kPacketInfo XmaContextNew::GetPacketInfo(uint8_t* packet,
                                                uint32_t frame_offset) {
   kPacketInfo packet_info = {};
 
-  const uint32_t first_frame_offset = xma::GetPacketFrameOffset(packet);
+  // With no frame start in the packet by its header, frames run from the
+  // read offset.
+  uint32_t first_frame_offset = xma::GetPacketFrameOffset(packet);
+  if (first_frame_offset >= kBitsPerPacket) {
+    first_frame_offset = frame_offset;
+  }
   BitStream stream(packet, kBitsPerPacket);
   stream.SetOffset(first_frame_offset);
 

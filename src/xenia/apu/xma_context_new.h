@@ -134,10 +134,13 @@ class XmaContextNew : public XmaContext {
   // valid yet the offset is the start of the stream's packet in it. Each
   // consumed buffer is swapped out by the caller. A frame split into the
   // first packet by split_tail_bits is followed by the frame at its end, if
-  // that packet holds a frame start.
+  // that packet holds a frame start. A frame that ended on its packet's last
+  // bit is followed by the first packet's first frame bit, whatever that
+  // packet's header says.
   kNextFrame FindNextFrame(XMA_CONTEXT_DATA* data, uint32_t next_packet_index,
                            uint32_t current_input_packet_count,
-                           uint32_t split_tail_bits = 0);
+                           uint32_t split_tail_bits = 0,
+                           bool ends_on_packet_end = false);
 
   // Returns currently used buffer
   uint8_t* GetCurrentInputBuffer(XMA_CONTEXT_DATA* data);
