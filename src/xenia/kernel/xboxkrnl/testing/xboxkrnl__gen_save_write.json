@@ -1,0 +1,230 @@
+{
+ "corpus": "save_write",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-10",
+ "steps": [
+  {
+   "scenario": "thread exit",
+   "name": "delete leftover",
+   "export": "XamContentDelete",
+   "r3": "0000000000000003",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "cd 'xgsave'",
+     "offset": 51200
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "create save",
+   "export": "XamContentCreateEx",
+   "r3": "0000000000000000",
+   "capture": {
+    "disposition": "00000001",
+    "license": "00000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "root xgsave",
+     "offset": 51528
+    },
+    {
+     "pointer": "cd 'xgsave'",
+     "offset": 51200
+    },
+    {
+     "value": 50
+    },
+    {
+     "pointer": "disposition",
+     "offset": 51512
+    },
+    {
+     "pointer": "license",
+     "offset": 51520
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "open",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "open iosb": "0000000000000002"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 51584
+    },
+    {
+     "value": 1074790528
+    },
+    {
+     "pointer": "attributes",
+     "offset": 51568
+    },
+    {
+     "pointer": "open iosb",
+     "offset": 51592
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 5
+    },
+    {
+     "value": 72
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "create writer",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "writer handle",
+     "offset": 51632
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "writer"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "wait for writer exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "capture": {
+    "write iosb": "000000000000c800"
+   },
+   "args": [
+    {
+     "variable": "writer"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 51640
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "exit steps",
+   "export": "steps since write",
+   "r3": "0000000000000000",
+   "capture": {
+    "writer log[:0xc]": "00000103cdcdcdcdcdcdcdcd",
+    "exit steps": "00000001"
+   },
+   "args": [
+    {
+     "pointer": "exit steps",
+     "offset": 51648
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "close writer",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "writer"
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "close file",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "close save",
+   "export": "XamContentClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "root xgsave",
+     "offset": 51528
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "thread exit",
+   "name": "delete save",
+   "export": "XamContentDelete",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "cd 'xgsave'",
+     "offset": 51200
+    },
+    {
+     "value": 0
+    }
+   ]
+  }
+ ]
+}

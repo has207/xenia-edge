@@ -645,9 +645,9 @@ class Scenario:
     def call(self, export, *args, name=None, wait=None, capture=(),
              store=(), faults=False, void=False):
         """Calls `export`, an export's name or a Routine, with `args`: ints,
-        Pointers, Variables or Recorders. `wait` is an XOVERLAPPED Pointer,
-        `capture` the Pointers
-        to record and `store` (Variable, 'r3' or Pointer) pairs, an 8-byte
+        Pointers, Variables, Recorders or Routines, the last two by address.
+        `wait` is an XOVERLAPPED Pointer, `capture` the Pointers to record and
+        `store` (Variable, 'r3' or Pointer) pairs, an 8-byte
         Pointer saving a doubleword and any other its first word. A step that
         `faults` on a console is recorded as such and never run. A `void`
         export's r3 is whatever it left there, so it isn't recorded."""
@@ -702,6 +702,8 @@ def describe(value):
         return {'variable': value.name}
     if isinstance(value, Recorder):
         return {'recorder': value.log.name}
+    if isinstance(value, Routine):
+        return {'routine': value.name}
     return {'value': value & 0xFFFFFFFFFFFFFFFF}
 
 
@@ -750,7 +752,7 @@ def compile_corpus(corpus, imports):
                 elif isinstance(arg, Variable):
                     record += struct.pack('>III', TAG_VARIABLE,
                                           arg.delta & 0xFFFFFFFF, arg.index)
-                elif isinstance(arg, Recorder):
+                elif isinstance(arg, (Recorder, Routine)):
                     record += struct.pack('>III', TAG_IMMEDIATE, 0,
                                           arg.address)
                 else:

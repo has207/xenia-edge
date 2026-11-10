@@ -124,6 +124,7 @@ class Assembler:
 
     def clrrwi(self, ra, rs, n): self.rlwinm(ra, rs, 0, 0, 31 - n)
 
+    def mftb(self, rt): self.word(0x7C0C42E6 | (rt << 21))
     def mtctr(self, rs): self.word(0x7C0903A6 | (rs << 21))
     def mflr(self, rt): self.word(0x7C0802A6 | (rt << 21))
     def mtlr(self, rs): self.word(0x7C0803A6 | (rs << 21))
