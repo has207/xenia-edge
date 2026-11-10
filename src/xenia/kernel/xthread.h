@@ -613,14 +613,10 @@ class XThread : public XObject, public cpu::Thread {
   // continued the thread elsewhere instead of returning stays here until the
   // next dispatch on the thread finds it gone.
   struct ExceptionDispatch {
-    // Where the handlers run and return to, on the back chain of whatever a
-    // handler runs.
+    // Where the handlers run, below the trap frame, and return to, which
+    // unwinding a handler's frame leads to.
     uint32_t handler_sp;
     uint32_t handler_return;
-    // A load or store at handler_return - 4 made with this lr, else a call
-    // that returns to handler_return.
-    bool data_fault;
-    uint32_t fault_lr;
     // Its CONTEXT, EXCEPTION_RECORD and DISPATCHER_CONTEXT in the system heap.
     uint32_t records;
   };

@@ -471,49 +471,13 @@ static std::string GetGuestPointerDump(uint32_t sp, uint32_t word_count) {
 // One frame of the guest call chain.
 // pc is where the frame resumes, always a return address, so it is looked up
 // at pc - 1. A call ending a noreturn function returns onto the next function.
-// The frame a load or store faulted in is the exception: its pc is the faulting
-// instruction itself.
 struct GuestFrame {
   uint32_t pc;
   uint32_t sp;
   uint32_t entry_sp;
   uint32_t function;
   uint32_t packed;
-  bool faulting;
 };
-
-// Fills the frame on sp that resumes at pc and gets the pc its caller resumes
-// at on its entry_sp. A faulting function whose prolog hasn't made its frame,
-// as a leaf that makes none, still runs on its entry sp and returns to lr.
-// False means it ran out of readable stack, leaving the frame with no entry_sp
-// and no way to unwind through it.
-static bool StepGuestFrame(uint32_t pc, uint32_t sp, bool faulting, uint32_t lr,
-                           GuestFrame* out_frame, uint32_t* out_caller_pc) {
-  GuestFrame& frame = *out_frame;
-  frame = {};
-  frame.pc = pc;
-  frame.sp = sp;
-  frame.faulting = faulting;
-  LookupGuestRuntimeFunction(faulting || !pc ? pc : pc - 1, &frame.function,
-                             &frame.packed);
-  const uint32_t prolog_length = frame.packed & 0xFF;
-  if (faulting && (!frame.function || !prolog_length ||
-                   (pc - frame.function) / 4 < prolog_length)) {
-    frame.entry_sp = sp;
-    *out_caller_pc = lr;
-    return true;
-  }
-  if (!IsGuestRangeReadable(sp, 4)) {
-    return false;
-  }
-  const uint32_t caller_sp = ReadGuestWord(sp);
-  if (caller_sp <= sp || !IsGuestRangeReadable(caller_sp - 8, 4)) {
-    return false;
-  }
-  frame.entry_sp = caller_sp;
-  *out_caller_pc = ReadGuestWord(caller_sp - 8);
-  return true;
-}
 
 // Walks the back chain. False means it ran out of readable stack, leaving the
 // last frame with no entry_sp and no way to unwind through it.
@@ -523,12 +487,23 @@ static bool WalkGuestFrames(PPCContext* context,
   uint32_t pc = static_cast<uint32_t>(context->lr);
   for (int i = 0; i < 24; ++i) {
     GuestFrame frame = {};
-    const bool more = StepGuestFrame(pc, sp, false, 0, &frame, &pc);
-    out_frames->push_back(frame);
-    if (!more) {
+    frame.pc = pc;
+    frame.sp = sp;
+    LookupGuestRuntimeFunction(pc ? pc - 1 : pc, &frame.function,
+                               &frame.packed);
+    if (!IsGuestRangeReadable(sp, 4)) {
+      out_frames->push_back(frame);
       return false;
     }
-    sp = frame.entry_sp;
+    const uint32_t caller_sp = ReadGuestWord(sp);
+    if (caller_sp <= sp || !IsGuestRangeReadable(caller_sp - 8, 4)) {
+      out_frames->push_back(frame);
+      return false;
+    }
+    frame.entry_sp = caller_sp;
+    out_frames->push_back(frame);
+    pc = ReadGuestWord(caller_sp - 8);
+    sp = caller_sp;
   }
   return true;
 }
@@ -972,305 +947,12 @@ constexpr uint32_t kHostReturnAddress = 0xBCBCBCBC;
 // Faults in handlers dispatched in turn. The kernel has no such limit, this
 // keeps a fault that recurs in its handler from overflowing the host stack.
 constexpr size_t kDispatchNesting = 4;
+// The kernel builds its trap frame this far below the sp a fault is taken
+// at (80076064 in 17559). The handlers run below it, which leaves what a
+// function keeps below its sp as it was.
+constexpr uint32_t kTrapFrameSize = 0x700;
 
 using ExceptionDispatch = XThread::ExceptionDispatch;
-
-// The first frame a dispatch searches.
-static bool FirstDispatchFrame(const ExceptionDispatch& dispatch,
-                               GuestFrame* frame, uint32_t* caller_pc) {
-  if (dispatch.data_fault) {
-    return StepGuestFrame(dispatch.handler_return - 4, dispatch.handler_sp,
-                          true, dispatch.fault_lr, frame, caller_pc);
-  }
-  return StepGuestFrame(dispatch.handler_return, dispatch.handler_sp, false, 0,
-                        frame, caller_pc);
-}
-
-// Steps through the frames a dispatch searches one at a time, which leaves
-// nothing to free when a handler doesn't return. The frame an outer dispatch's
-// handler returns to is where that dispatch searched from, and the walk goes on
-// as it did.
-struct DispatchWalk {
-  const std::vector<ExceptionDispatch>* outer;
-  // Outer dispatches the walk can still meet, innermost last.
-  size_t unmet;
-  GuestFrame frame;
-  uint32_t caller_pc;
-  bool more;
-  // One more than the index of the outer dispatch the frame is, else 0.
-  size_t met;
-  int count;
-};
-
-static void MeetOuterDispatch(DispatchWalk* walk) {
-  walk->met = 0;
-  if (walk->frame.faulting) {
-    return;
-  }
-  for (size_t i = walk->unmet; i-- > 0;) {
-    const ExceptionDispatch& outer = (*walk->outer)[i];
-    if (walk->frame.pc == outer.handler_return &&
-        walk->frame.sp == outer.handler_sp) {
-      walk->unmet = i;
-      walk->met = i + 1;
-      walk->more = FirstDispatchFrame(outer, &walk->frame, &walk->caller_pc);
-      return;
-    }
-  }
-}
-
-static void StartDispatchWalk(DispatchWalk* walk,
-                              const std::vector<ExceptionDispatch>& outer,
-                              size_t outer_count,
-                              const ExceptionDispatch& dispatch) {
-  walk->outer = &outer;
-  walk->unmet = outer_count;
-  walk->count = 1;
-  // The first frame made the access, so no outer dispatch is waiting in it.
-  walk->more = FirstDispatchFrame(dispatch, &walk->frame, &walk->caller_pc);
-  walk->met = 0;
-}
-
-static bool NextDispatchFrame(DispatchWalk* walk) {
-  if (!walk->more || walk->count >= kDispatchFrames) {
-    return false;
-  }
-  walk->more = StepGuestFrame(walk->caller_pc, walk->frame.entry_sp, false, 0,
-                              &walk->frame, &walk->caller_pc);
-  ++walk->count;
-  MeetOuterDispatch(walk);
-  return true;
-}
-
-// Drops the dispatches the thread has left, with their records. A walk that
-// gets past the frame a handler returns to without meeting it shows that
-// handler isn't running anymore.
-static void DropLeftDispatches(std::vector<ExceptionDispatch>* dispatches,
-                               const ExceptionDispatch& dispatch) {
-  if (dispatches->empty()) {
-    return;
-  }
-  DispatchWalk walk = {};
-  StartDispatchWalk(&walk, *dispatches, dispatches->size(), dispatch);
-  uint32_t reached_sp = 0;
-  do {
-    reached_sp = walk.frame.sp;
-  } while (!walk.met && NextDispatchFrame(&walk));
-  size_t live = walk.met;
-  if (!live) {
-    live = dispatches->size();
-    while (live && (*dispatches)[live - 1].handler_sp <= reached_sp) {
-      --live;
-    }
-  }
-  for (size_t i = live; i < dispatches->size(); ++i) {
-    kernel_memory()->SystemHeapFree((*dispatches)[i].records);
-  }
-  dispatches->resize(live);
-}
-
-// Delivers an access violation at the instruction iar to the guest's
-// frame-based handlers, searching the frames from the dispatch's first as
-// RtlDispatchException does. Returns the address a handler continued at, with
-// the context loaded from its CONTEXT record, or 0 if none did, with the
-// context as it was.
-static uint32_t DispatchAccessViolation(PPCContext* context,
-                                        ExceptionDispatch dispatch,
-                                        uint32_t iar, bool is_store,
-                                        uint32_t address, const char* fault) {
-  auto* thread = XThread::GetCurrentThread();
-  auto* thread_state = context->thread_state;
-  if (!thread || !thread_state) {
-    return 0;
-  }
-  auto& dispatches = thread->exception_dispatches();
-  DropLeftDispatches(&dispatches, dispatch);
-  if (dispatches.size() >= kDispatchNesting) {
-    XELOGE("{} at {:08X}: already in {} handlers", fault, address,
-           dispatches.size());
-    return 0;
-  }
-
-  // A handler that walks the stack, as the CLR's does, unwinds through real
-  // frames, so the records can't go on the stack and go in the system heap
-  // instead. On the console the walk passes RtlpExecuteHandlerForException and
-  // the kernel's dispatch frames first, which have no guest code here.
-  dispatch.records = kernel_memory()->SystemHeapAlloc(kRecordsSize, 16);
-  if (!dispatch.records) {
-    XELOGE("{} at {:08X}: no memory for the records", fault, address);
-    return 0;
-  }
-  const uint32_t context_record = dispatch.records;
-  const uint32_t exception_record = dispatch.records + kRecordsException;
-  const uint32_t dispatcher_context = dispatch.records + kRecordsDispatcher;
-  auto* records = kernel_memory()->TranslateVirtual<uint8_t*>(dispatch.records);
-  StoreContextRecord(records, context, iar, static_cast<uint32_t>(context->lr));
-  std::memcpy(records + kRecordsFaulting, records, kContextSize);
-
-  // The record the kernel's storage fault handler builds (the trap dispatch at
-  // 80076BA0 in 17559): no flags or chained record, the faulting instruction's
-  // address, and two parameters, whether it was a store (from the DSISR) and
-  // the data address (the DAR). Fetching an instruction is no store, and its
-  // address is both.
-  auto* record = records + kRecordsException;
-  std::memset(record, 0, kExceptionRecordSize);
-  xe::store_and_swap<uint32_t>(record + 0x0, X_STATUS_ACCESS_VIOLATION);
-  xe::store_and_swap<uint32_t>(record + 0xC, iar);
-  xe::store_and_swap<uint32_t>(record + 0x10, 2);
-  xe::store_and_swap<uint32_t>(record + 0x14, is_store ? 1 : 0);
-  xe::store_and_swap<uint32_t>(record + 0x18, address);
-
-  const size_t index = dispatches.size();
-  dispatches.push_back(dispatch);
-
-  uint32_t stack_end = 0;
-  uint32_t stack_base = 0;
-  xeRtlGetStackLimits(context, &stack_end, &stack_base);
-
-  uint32_t resume_address = 0;
-  uint32_t flags = 0;
-  uint32_t nested_frame = 0;
-  DispatchWalk walk = {};
-  StartDispatchWalk(&walk, dispatches, index, dispatch);
-  do {
-    const GuestFrame& frame = walk.frame;
-    // The establisher frame is the sp the function was entered on, which
-    // RtlVirtualUnwind reports once it undoes the prolog's stwu (80087638 in
-    // 17559), and the C++ frame handler finds a catch funclet's parent frame
-    // from it.
-    const uint32_t establisher = frame.entry_sp ? frame.entry_sp : frame.sp;
-    // As RtlDispatchException: a frame outside the stack ends the search.
-    if (establisher < stack_end || establisher > stack_base ||
-        (establisher & 7)) {
-      break;
-    }
-    if (walk.met) {
-      // A fault in an outer dispatch's handler is nested in that dispatch's
-      // frames.
-      flags |= kExceptionNestedCall;
-      nested_frame = std::max(
-          nested_frame,
-          ReadGuestWord(dispatches[walk.met - 1].records + kRecordsDispatcher +
-                        kDispatcherEstablisherFrame));
-    }
-    // A caller is suspended at its call. A frame has a handler when both of
-    // its entry's top bits are set, from the end of its prolog, and the handler
-    // and its data sit in the two words ahead of the function.
-    const uint32_t control_pc = frame.faulting ? frame.pc : frame.pc - 4;
-    if (!frame.function || (frame.packed >> 30) != 3 ||
-        control_pc - frame.function < (frame.packed & 0xFF) * 4 ||
-        !IsGuestRangeReadable(frame.function - 8, 8)) {
-      continue;
-    }
-    const uint32_t handler = ReadGuestWord(frame.function - 8);
-    auto* handler_function =
-        handler ? kernel_state()->processor()->ResolveFunction(handler)
-                : nullptr;
-    if (!handler_function) {
-      continue;
-    }
-    uint32_t start = 0;
-    uint32_t packed = 0;
-    uint32_t function_entry = 0;
-    LookupGuestRuntimeFunction(control_pc, &start, &packed, &function_entry);
-    auto* dispatcher = records + kRecordsDispatcher;
-    xe::store_and_swap<uint32_t>(dispatcher + 0x0, control_pc);
-    xe::store_and_swap<uint32_t>(dispatcher + 0x4, function_entry);
-    xe::store_and_swap<uint32_t>(dispatcher + kDispatcherEstablisherFrame,
-                                 establisher);
-    xe::store_and_swap<uint32_t>(dispatcher + 0xC, context_record);
-    xe::store_and_swap<uint32_t>(record + 0x4, flags);
-
-    context->r[1] = dispatch.handler_sp;
-    context->r[3] = exception_record;
-    context->r[4] = establisher;
-    context->r[5] = context_record;
-    context->r[6] = dispatcher_context;
-    context->lr = dispatch.handler_return;
-    if (!handler_function->Call(thread_state, dispatch.handler_return)) {
-      XELOGE("{} at {:08X}: the handler at {:08X} didn't run", fault, address,
-             handler);
-      break;
-    }
-    if (index >= dispatches.size() ||
-        dispatches[index].records != dispatch.records) {
-      XELOGE("{} at {:08X}: dropped while the handler at {:08X} ran", fault,
-             address, handler);
-      return 0;
-    }
-    if (nested_frame == establisher) {
-      flags &= ~kExceptionNestedCall;
-      nested_frame = 0;
-    }
-    const uint32_t disposition = static_cast<uint32_t>(context->r[3]);
-    if (disposition == kExceptionContinueExecution) {
-      resume_address = LoadContextRecord(records, context);
-      XELOGD(
-          "{} at {:08X}: the handler at {:08X} of frame #{} continued at "
-          "{:08X}",
-          fault, address, handler, walk.count - 1, resume_address);
-      break;
-    }
-    if (disposition == kExceptionNestedException) {
-      flags |= kExceptionNestedCall;
-      nested_frame =
-          std::max(nested_frame, xe::load_and_swap<uint32_t>(
-                                     dispatcher + kDispatcherEstablisherFrame));
-    } else if (disposition != kExceptionContinueSearch) {
-      XELOGE(
-          "{} at {:08X}: the handler at {:08X} returned {}, which isn't "
-          "supported",
-          fault, address, handler, disposition);
-      break;
-    }
-  } while (NextDispatchFrame(&walk));
-
-  if (!resume_address) {
-    LoadContextRecord(records + kRecordsFaulting, context);
-    XELOGE("{} at {:08X} by {:08X}: no handler in {} frames continued it",
-           fault, address, iar, walk.count);
-  }
-  for (size_t i = index; i < dispatches.size(); ++i) {
-    kernel_memory()->SystemHeapFree(dispatches[i].records);
-  }
-  dispatches.resize(index);
-  return resume_address;
-}
-
-uint32_t DispatchCodeFetchFault(PPCContext* context, uint32_t address) {
-  if (!XThread::IsInThread()) {
-    return 0;
-  }
-  // The call never ran, so lr holds its return address and r1 the caller's
-  // stack pointer. The handlers run as if the faulting call had called them.
-  ExceptionDispatch dispatch = {};
-  dispatch.handler_sp = static_cast<uint32_t>(context->r[1]);
-  const uint32_t return_address = static_cast<uint32_t>(context->lr);
-  dispatch.handler_return =
-      return_address ? return_address : kHostReturnAddress;
-  const uint32_t resume_address = DispatchAccessViolation(
-      context, dispatch, address, false, address, "Code fetch fault");
-  if (!resume_address) {
-    kernel_state()->emulator()->HaltCrashedGuestThread(
-        address, fmt::format("Access Violation: fetch at 0x{:08X}", address));
-  }
-  return resume_address;
-}
-
-uint32_t DispatchDataFault(PPCContext* context, uint32_t pc, bool is_store,
-                           uint32_t address) {
-  // The search starts at the function the access is in, at the access, as the
-  // kernel hands RtlDispatchException the trap's context. The handlers run
-  // below the faulting frame, as if the access had called them, so a handler
-  // that walks the stack finds the faulting function first.
-  ExceptionDispatch dispatch = {};
-  dispatch.handler_sp = static_cast<uint32_t>(context->r[1]);
-  dispatch.handler_return = pc + 4;
-  dispatch.data_fault = true;
-  dispatch.fault_lr = static_cast<uint32_t>(context->lr);
-  return DispatchAccessViolation(context, dispatch, pc, is_store, address,
-                                 "Data fault");
-}
 
 // A guest CONTEXT record's fields, as the kernel's unwinder reads and writes
 // them.
@@ -1620,6 +1302,346 @@ static bool VirtualUnwind(uint32_t control_pc, bool has_entry, uint32_t begin,
   return true;
 }
 
+// The innermost of the first count dispatches that called a handler on sp to
+// return to pc + 4, which is where unwinding the handler's frame leads, else
+// count.
+static size_t FindDispatchReturnedTo(
+    const std::vector<ExceptionDispatch>& dispatches, size_t count, uint32_t pc,
+    uint32_t sp) {
+  for (size_t i = count; i-- > 0;) {
+    if (pc + 4 == dispatches[i].handler_return &&
+        sp == dispatches[i].handler_sp) {
+      return i;
+    }
+  }
+  return count;
+}
+
+// Steps through the frames a dispatch searches one at a time, as
+// RtlDispatchException does: each is looked up at its control pc and unwound
+// in a copy of the CONTEXT, which gives its establisher frame and its caller's
+// control pc. A frame unwinding to an outer dispatch's handler call goes on
+// from the registers that dispatch's fault was taken with, where the kernel's
+// frames down to its trap frame would lead. Nothing is left to free when a
+// handler doesn't return.
+struct DispatchWalk {
+  const std::vector<ExceptionDispatch>* outer;
+  // Outer dispatches the walk can still meet, innermost last.
+  size_t unmet;
+  uint32_t stack_base;
+  uint8_t context[kContextSize];
+  // The frame: where it's suspended, its sp, its .pdata entry, whether its
+  // prolog has run, its establisher frame and its caller's control pc.
+  uint32_t control_pc;
+  uint32_t sp;
+  bool has_entry;
+  uint32_t function_entry;
+  uint32_t begin;
+  uint32_t packed;
+  bool in_function;
+  uint32_t establisher;
+  uint32_t next_pc;
+  // False when it has no caller.
+  bool more;
+  // One more than the index of the outer dispatch the frame was met through,
+  // else 0.
+  size_t met;
+  int count;
+};
+
+// Looks up and unwinds the frame at control_pc. False if that read past
+// readable memory.
+static bool UnwindDispatchFrame(DispatchWalk* walk) {
+  walk->sp = uint32_t(ContextView{walk->context}.gpr(1));
+  walk->function_entry = 0;
+  walk->begin = 0;
+  walk->packed = 0;
+  walk->in_function = false;
+  walk->establisher = walk->sp;
+  walk->more = false;
+  walk->has_entry = LookupGuestRuntimeFunction(
+      walk->control_pc, &walk->begin, &walk->packed, &walk->function_entry);
+  if (!VirtualUnwind(walk->control_pc, walk->has_entry, walk->begin,
+                     walk->packed, walk->context, &walk->in_function,
+                     &walk->establisher, &walk->next_pc)) {
+    return false;
+  }
+  // With no entry the caller is found from lr, which stays as it was.
+  walk->more = walk->has_entry || walk->next_pc != walk->control_pc;
+  return true;
+}
+
+// Starts at the frame the fault was taken in, from its CONTEXT.
+static bool StartDispatchWalk(DispatchWalk* walk,
+                              const std::vector<ExceptionDispatch>& outer,
+                              size_t outer_count, const uint8_t* context,
+                              uint32_t stack_base) {
+  walk->outer = &outer;
+  walk->unmet = outer_count;
+  walk->stack_base = stack_base;
+  std::memcpy(walk->context, context, kContextSize);
+  walk->control_pc = ContextView{walk->context}.iar();
+  walk->met = 0;
+  walk->count = 1;
+  return UnwindDispatchFrame(walk);
+}
+
+// Moves on to the frame's caller. False once the stack is unwound, or where
+// the walk can't go on.
+static bool NextDispatchFrame(DispatchWalk* walk) {
+  ContextView c{walk->context};
+  if (!walk->more || walk->count >= kDispatchFrames ||
+      uint32_t(c.gpr(1)) >= walk->stack_base) {
+    return false;
+  }
+  walk->control_pc = walk->next_pc;
+  walk->met = 0;
+  const size_t i = FindDispatchReturnedTo(*walk->outer, walk->unmet,
+                                          walk->control_pc, uint32_t(c.gpr(1)));
+  if (i < walk->unmet) {
+    walk->unmet = i;
+    walk->met = i + 1;
+    std::memcpy(walk->context,
+                kernel_memory()->TranslateVirtual<uint8_t*>(
+                    (*walk->outer)[i].records + kRecordsFaulting),
+                kContextSize);
+    walk->control_pc = c.iar();
+  }
+  ++walk->count;
+  return UnwindDispatchFrame(walk);
+}
+
+// Drops the dispatches the thread has left, with their records. A walk from
+// the fault that gets past the sp a handler was called on without meeting it
+// shows that handler isn't running anymore.
+static void DropLeftDispatches(std::vector<ExceptionDispatch>* dispatches,
+                               const uint8_t* context, uint32_t stack_base) {
+  if (dispatches->empty()) {
+    return;
+  }
+  DispatchWalk walk = {};
+  uint32_t reached_sp = 0;
+  for (bool more = StartDispatchWalk(&walk, *dispatches, dispatches->size(),
+                                     context, stack_base);
+       more && !walk.met; more = NextDispatchFrame(&walk)) {
+    reached_sp = walk.sp;
+  }
+  size_t live = walk.met;
+  if (!live) {
+    live = dispatches->size();
+    while (live && (*dispatches)[live - 1].handler_sp <= reached_sp) {
+      --live;
+    }
+  }
+  for (size_t i = live; i < dispatches->size(); ++i) {
+    kernel_memory()->SystemHeapFree((*dispatches)[i].records);
+  }
+  dispatches->resize(live);
+}
+
+// Delivers an access violation at the instruction iar to the guest's
+// frame-based handlers, searching the frames from the one it was taken in as
+// RtlDispatchException does. The handlers return to handler_return. Returns
+// the address a handler continued at, with the context loaded from its CONTEXT
+// record, or 0 if none did, with the context as it was.
+static uint32_t DispatchAccessViolation(PPCContext* context,
+                                        uint32_t handler_return, uint32_t iar,
+                                        bool is_store, uint32_t address,
+                                        const char* fault) {
+  auto* thread = XThread::GetCurrentThread();
+  auto* thread_state = context->thread_state;
+  if (!thread || !thread_state) {
+    return 0;
+  }
+  uint32_t stack_end = 0;
+  uint32_t stack_base = 0;
+  xeRtlGetStackLimits(context, &stack_end, &stack_base);
+  const uint32_t sp = static_cast<uint32_t>(context->r[1]);
+  if (sp < stack_end + kTrapFrameSize || sp > stack_base ||
+      !IsGuestRangeReadable(sp - kTrapFrameSize, 4)) {
+    XELOGE("{} at {:08X}: no stack for the handlers below {:08X}", fault,
+           address, sp);
+    return 0;
+  }
+
+  // A handler that walks the stack, as the CLR's does, unwinds through real
+  // frames, so the records can't go on the stack and go in the system heap
+  // instead. On the console the walk passes RtlpExecuteHandlerForException and
+  // the kernel's dispatch frames first, which have no guest code here.
+  ExceptionDispatch dispatch = {};
+  dispatch.handler_sp = sp - kTrapFrameSize;
+  dispatch.handler_return = handler_return;
+  dispatch.records = kernel_memory()->SystemHeapAlloc(kRecordsSize, 16);
+  if (!dispatch.records) {
+    XELOGE("{} at {:08X}: no memory for the records", fault, address);
+    return 0;
+  }
+  const uint32_t context_record = dispatch.records;
+  const uint32_t exception_record = dispatch.records + kRecordsException;
+  const uint32_t dispatcher_context = dispatch.records + kRecordsDispatcher;
+  auto* records = kernel_memory()->TranslateVirtual<uint8_t*>(dispatch.records);
+  StoreContextRecord(records, context, iar, static_cast<uint32_t>(context->lr));
+  std::memcpy(records + kRecordsFaulting, records, kContextSize);
+
+  auto& dispatches = thread->exception_dispatches();
+  DropLeftDispatches(&dispatches, records + kRecordsFaulting, stack_base);
+  if (dispatches.size() >= kDispatchNesting) {
+    XELOGE("{} at {:08X}: already in {} handlers", fault, address,
+           dispatches.size());
+    kernel_memory()->SystemHeapFree(dispatch.records);
+    return 0;
+  }
+  // The trap frame's back chain, to the sp the fault was taken at.
+  xe::store_and_swap<uint32_t>(
+      kernel_memory()->TranslateVirtual<uint8_t*>(dispatch.handler_sp), sp);
+
+  // The record the kernel's storage fault handler builds (the trap dispatch at
+  // 80076BA0 in 17559): no flags or chained record, the faulting instruction's
+  // address, and two parameters, whether it was a store (from the DSISR) and
+  // the data address (the DAR). Fetching an instruction is no store, and its
+  // address is both.
+  auto* record = records + kRecordsException;
+  std::memset(record, 0, kExceptionRecordSize);
+  xe::store_and_swap<uint32_t>(record + 0x0, X_STATUS_ACCESS_VIOLATION);
+  xe::store_and_swap<uint32_t>(record + 0xC, iar);
+  xe::store_and_swap<uint32_t>(record + 0x10, 2);
+  xe::store_and_swap<uint32_t>(record + 0x14, is_store ? 1 : 0);
+  xe::store_and_swap<uint32_t>(record + 0x18, address);
+
+  const size_t index = dispatches.size();
+  dispatches.push_back(dispatch);
+
+  uint32_t resume_address = 0;
+  uint32_t flags = 0;
+  uint32_t nested_frame = 0;
+  DispatchWalk walk = {};
+  for (bool more = StartDispatchWalk(&walk, dispatches, index,
+                                     records + kRecordsFaulting, stack_base);
+       more; more = NextDispatchFrame(&walk)) {
+    if (walk.met) {
+      // A fault in an outer dispatch's handler is nested in that dispatch's
+      // frames.
+      flags |= kExceptionNestedCall;
+      nested_frame = std::max(
+          nested_frame,
+          ReadGuestWord(dispatches[walk.met - 1].records + kRecordsDispatcher +
+                        kDispatcherEstablisherFrame));
+    }
+    if (!walk.has_entry) {
+      continue;
+    }
+    // As RtlDispatchException: a frame outside the stack ends the search.
+    const uint32_t establisher = walk.establisher;
+    if (establisher < stack_end || establisher > stack_base ||
+        (establisher & 7)) {
+      break;
+    }
+    // A frame has a handler when both of its entry's top bits are set, once
+    // its prolog has run, and the handler sits two words ahead of the
+    // function.
+    if ((walk.packed >> 30) != 3 || !walk.in_function ||
+        !IsGuestRangeReadable(walk.begin - 8, 4)) {
+      continue;
+    }
+    const uint32_t handler = ReadGuestWord(walk.begin - 8);
+    auto* handler_function =
+        handler ? kernel_state()->processor()->ResolveFunction(handler)
+                : nullptr;
+    if (!handler_function) {
+      continue;
+    }
+    auto* dispatcher = records + kRecordsDispatcher;
+    xe::store_and_swap<uint32_t>(dispatcher + 0x0, walk.control_pc);
+    xe::store_and_swap<uint32_t>(dispatcher + 0x4, walk.function_entry);
+    xe::store_and_swap<uint32_t>(dispatcher + kDispatcherEstablisherFrame,
+                                 establisher);
+    xe::store_and_swap<uint32_t>(dispatcher + 0xC, context_record);
+    xe::store_and_swap<uint32_t>(record + 0x4, flags);
+
+    context->r[1] = dispatch.handler_sp;
+    context->r[3] = exception_record;
+    context->r[4] = establisher;
+    context->r[5] = context_record;
+    context->r[6] = dispatcher_context;
+    context->lr = dispatch.handler_return;
+    if (!handler_function->Call(thread_state, dispatch.handler_return)) {
+      XELOGE("{} at {:08X}: the handler at {:08X} didn't run", fault, address,
+             handler);
+      break;
+    }
+    if (index >= dispatches.size() ||
+        dispatches[index].records != dispatch.records) {
+      XELOGE("{} at {:08X}: dropped while the handler at {:08X} ran", fault,
+             address, handler);
+      return 0;
+    }
+    if (nested_frame == establisher) {
+      flags &= ~kExceptionNestedCall;
+      nested_frame = 0;
+    }
+    const uint32_t disposition = static_cast<uint32_t>(context->r[3]);
+    if (disposition == kExceptionContinueExecution) {
+      resume_address = LoadContextRecord(records, context);
+      XELOGD(
+          "{} at {:08X}: the handler at {:08X} of frame #{} continued at "
+          "{:08X}",
+          fault, address, handler, walk.count - 1, resume_address);
+      break;
+    }
+    if (disposition == kExceptionNestedException) {
+      flags |= kExceptionNestedCall;
+      nested_frame =
+          std::max(nested_frame, xe::load_and_swap<uint32_t>(
+                                     dispatcher + kDispatcherEstablisherFrame));
+    } else if (disposition != kExceptionContinueSearch) {
+      XELOGE(
+          "{} at {:08X}: the handler at {:08X} returned {}, which isn't "
+          "supported",
+          fault, address, handler, disposition);
+      break;
+    }
+  }
+
+  if (!resume_address) {
+    LoadContextRecord(records + kRecordsFaulting, context);
+    XELOGE("{} at {:08X} by {:08X}: no handler in {} frames continued it",
+           fault, address, iar, walk.count);
+  }
+  for (size_t i = index; i < dispatches.size(); ++i) {
+    kernel_memory()->SystemHeapFree(dispatches[i].records);
+  }
+  dispatches.resize(index);
+  return resume_address;
+}
+
+uint32_t DispatchCodeFetchFault(PPCContext* context, uint32_t address) {
+  if (!XThread::IsInThread()) {
+    return 0;
+  }
+  // The call never ran, so lr holds its return address and r1 the caller's
+  // stack pointer. The handlers return as if the faulting call had called
+  // them.
+  const uint32_t return_address = static_cast<uint32_t>(context->lr);
+  const uint32_t resume_address = DispatchAccessViolation(
+      context, return_address ? return_address : kHostReturnAddress, address,
+      false, address, "Code fetch fault");
+  if (!resume_address) {
+    kernel_state()->emulator()->HaltCrashedGuestThread(
+        address, fmt::format("Access Violation: fetch at 0x{:08X}", address));
+  }
+  return resume_address;
+}
+
+uint32_t DispatchDataFault(PPCContext* context, uint32_t pc, bool is_store,
+                           uint32_t address) {
+  // The search starts at the function the access is in, at the access, as the
+  // kernel hands RtlDispatchException the trap's context. The handlers return
+  // as if the access had called them, so a handler that walks the stack finds
+  // the faulting function first.
+  return DispatchAccessViolation(context, pc + 4, pc, is_store, address,
+                                 "Data fault");
+}
+
 // Where an unwind leaves a frame for one returning to a handler the dispatcher
 // called, it goes on from the registers the access or call faulted with. The
 // CONTEXT keeps its iar.
@@ -1627,21 +1649,18 @@ static void MeetDispatchForUnwind(XThread* thread, uint8_t* context,
                                   uint32_t* pc) {
   ContextView c{context};
   const auto& dispatches = thread->exception_dispatches();
-  for (size_t i = dispatches.size(); i-- > 0;) {
-    const ExceptionDispatch& dispatch = dispatches[i];
-    if (*pc + 4 != dispatch.handler_return ||
-        uint32_t(c.gpr(1)) != dispatch.handler_sp) {
-      continue;
-    }
-    const uint32_t iar = c.iar();
-    std::memcpy(context,
-                kernel_memory()->TranslateVirtual<uint8_t*>(dispatch.records +
-                                                            kRecordsFaulting),
-                kContextSize);
-    *pc = c.iar();
-    c.set_iar(iar);
+  const size_t i = FindDispatchReturnedTo(dispatches, dispatches.size(), *pc,
+                                          uint32_t(c.gpr(1)));
+  if (i == dispatches.size()) {
     return;
   }
+  const uint32_t iar = c.iar();
+  std::memcpy(context,
+              kernel_memory()->TranslateVirtual<uint8_t*>(
+                  dispatches[i].records + kRecordsFaulting),
+              kContextSize);
+  *pc = c.iar();
+  c.set_iar(iar);
 }
 
 // Calls guest code from a kernel function, on the stack at sp, returning to the
