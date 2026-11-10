@@ -87,6 +87,10 @@ uint32_t TransferBlock(Block* block, uint32_t live, bool apply,
     } else if (i->opcode->flags & OPCODE_FLAG_VOLATILE) {
       // Calls included: guest code need not follow the ABI's volatile fields.
       live = kAllCR;
+    } else if (i->opcode->flags & OPCODE_FLAG_MEMORY) {
+      // A guest access can fault, and the guest's handlers see the CR in the
+      // context.
+      live = kAllCR;
     }
     i = prev;
   }

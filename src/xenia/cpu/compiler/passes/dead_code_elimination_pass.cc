@@ -23,6 +23,18 @@ using xe::cpu::hir::HIRBuilder;
 using xe::cpu::hir::Instr;
 using xe::cpu::hir::Value;
 
+// Whether an instruction whose value goes unused can go. A guest load still
+// faults, and a volatile instruction has effects of its own.
+static bool IsRemovable(const Instr* i) {
+  return !(i->opcode->flags & (OPCODE_FLAG_VOLATILE | OPCODE_FLAG_MEMORY));
+}
+
+// Whether a value an operand of user leaves unused can go with the instruction
+// defining it.
+static bool CanRemoveValue(const Value* value, const Instr* user) {
+  return !value->def || value->def == user || IsRemovable(value->def);
+}
+
 DeadCodeEliminationPass::DeadCodeEliminationPass() : CompilerPass() {}
 
 DeadCodeEliminationPass::~DeadCodeEliminationPass() {}
@@ -74,8 +86,7 @@ bool DeadCodeEliminationPass::Run(HIRBuilder* builder) {
       auto prev = i->prev;
 
       auto opcode = i->opcode;
-      if (!(opcode->flags & OPCODE_FLAG_VOLATILE) && i->dest &&
-          !i->dest->use_head) {
+      if (IsRemovable(i) && i->dest && !i->dest->use_head) {
         // Has no uses and is not volatile. This instruction can die!
         MakeNopRecursive(i);
         any_instr_removed = true;
@@ -161,7 +172,7 @@ void DeadCodeEliminationPass::MakeNopRecursive(Instr* i) {
     i->src##n##_use = NULL;                              \
     i->src##n.value = NULL;                              \
     value->RemoveUse(use);                               \
-    if (!value->use_head) {                              \
+    if (!value->use_head && CanRemoveValue(value, i)) {  \
       /* Value is now unused, so recursively kill it. */ \
       if (value->def && value->def != i) {               \
         MakeNopRecursive(value->def);                    \

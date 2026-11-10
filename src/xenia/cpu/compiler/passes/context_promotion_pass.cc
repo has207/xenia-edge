@@ -232,6 +232,14 @@ void ContextPromotionPass::RemoveDeadStoresBlock(Block* block) {
     if (i->opcode->flags & (OPCODE_FLAG_VOLATILE | OPCODE_FLAG_BRANCH)) {
       // Volatile instruction - requires all context values be flushed.
       validity.reset();
+    } else if (i->opcode->flags & OPCODE_FLAG_MEMORY) {
+      // A guest access can fault, and the guest's handlers see the registers
+      // in the context. Vector registers are left out, as keeping their stores
+      // is what costs frame time.
+      constexpr uint32_t v_begin = offsetof(ppc::PPCContext, v);
+      constexpr uint32_t v_end = v_begin + sizeof(ppc::PPCContext::v);
+      validity.reset(0, v_begin);
+      validity.reset(v_end, validity.size());
     } else if (i->opcode == &OPCODE_LOAD_CONTEXT_info) {
       // A load that survived PromoteBlock is a live use of these bytes:
       // earlier stores overlapping it must be kept. (PromoteBlock folds
