@@ -163,9 +163,6 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
       input_state->gamepad.buttons =
           input_state->gamepad.buttons & ~hid::X_INPUT_GAMEPAD_GUIDE;
     }
-    if (auto patch = kernel_state()->xmp_volume_patch()) {
-      patch->OnInputPoll(input_state->packet_number);
-    }
   }
 
   return result;

@@ -28,7 +28,6 @@
 #include "xenia/kernel/util/kernel_fwd.h"
 #include "xenia/kernel/util/native_list.h"
 #include "xenia/kernel/util/object_table.h"
-#include "xenia/kernel/util/xmp_volume_patch.h"
 #include "xenia/kernel/xam/xdbf/spa_info.h"
 #include "xenia/kernel/xconfig.h"
 #include "xenia/kernel/xevent.h"
@@ -214,9 +213,6 @@ class KernelState {
   xam::AchievementManager* achievement_manager() const;
   xam::AppManager* app_manager() const;
   xam::ContentManager* content_manager() const;
-
-  XmpVolumePatch* xmp_volume_patch() const { return xmp_volume_patch_.get(); }
-  void InitXmpVolumePatch();
 
   XConfig* xconfig() const { return xconfig_.get(); }
 
@@ -432,7 +428,6 @@ class KernelState {
   std::mutex io_event_lock_;
   std::vector<object_ref<XEvent>> idle_io_events_;
   std::unique_ptr<SystemManagementController> smc_;
-  std::unique_ptr<XmpVolumePatch> xmp_volume_patch_;
   std::unique_ptr<XConfig> xconfig_;
   std::unique_ptr<NUIController> nui_;
 

@@ -1095,6 +1095,32 @@ add_library(libavformat STATIC
 target_link_libraries(libavformat PRIVATE libavutil libavcodec)
 ffmpeg_common(libavformat)
 
+# --- libswresample ---
+add_library(libswresample STATIC
+  FFmpeg/libswresample/audioconvert.c
+  FFmpeg/libswresample/dither.c
+  FFmpeg/libswresample/options.c
+  FFmpeg/libswresample/rematrix.c
+  FFmpeg/libswresample/resample.c
+  FFmpeg/libswresample/resample_dsp.c
+  FFmpeg/libswresample/swresample.c
+  FFmpeg/libswresample/swresample_frame.c
+  FFmpeg/libswresample/version.c
+)
+# aarch64 platform files (x86 SIMD needs x86asm, which is off)
+if(XE_TARGET_AARCH64 AND XE_HAS_GAS_ASM)
+  target_sources(libswresample PRIVATE
+    FFmpeg/libswresample/aarch64/audio_convert_init.c
+    FFmpeg/libswresample/aarch64/resample_init.c
+  )
+  xe_add_gas_sources(libswresample
+    FFmpeg/libswresample/aarch64/audio_convert_neon.S
+    FFmpeg/libswresample/aarch64/resample.S
+  )
+endif()
+target_link_libraries(libswresample PRIVATE libavutil)
+ffmpeg_common(libswresample)
+
 # ==============================================================================
 # wxWidgets
 # ==============================================================================

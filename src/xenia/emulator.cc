@@ -286,8 +286,8 @@ void Emulator::Shutdown() {
     input_system_.reset();
   }
   graphics_system_.reset();
-  audio_system_.reset();
   audio_media_player_.reset();
+  audio_system_.reset();
 
   kernel_state_.reset();
   file_system_.reset();

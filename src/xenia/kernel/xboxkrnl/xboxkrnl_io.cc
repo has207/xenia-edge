@@ -484,16 +484,8 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
         CompletesAsync(file.get(), length, byte_offset, false),
         [file, buffer_address, length, byte_offset,
          apc_context_address](uint32_t* bytes_read) {
-          X_STATUS status = file->Read(buffer_address, length, byte_offset,
-                                       bytes_read, apc_context_address, false);
-          if (XSUCCEEDED(status)) {
-            if (auto patch = kernel_state()->xmp_volume_patch()) {
-              auto host_buf = kernel_memory()->TranslateVirtual(buffer_address);
-              patch->OnFileRead(file->entry()->name(), host_buf, length,
-                                buffer_address);
-            }
-          }
-          return status;
+          return file->Read(buffer_address, length, byte_offset, bytes_read,
+                            apc_context_address, false);
         });
   }
 
@@ -575,17 +567,8 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
         CompletesAsync(file.get(), length, byte_offset, true),
         [file, buffer_address, length, byte_offset,
          apc_context_address](uint32_t* bytes_written) {
-          X_STATUS status =
-              file->Write(buffer_address, length, byte_offset, bytes_written,
-                          apc_context_address, false);
-          if (XSUCCEEDED(status)) {
-            if (auto patch = kernel_state()->xmp_volume_patch()) {
-              auto host_buf = kernel_memory()->TranslateVirtual(buffer_address);
-              patch->OnFileWrite(file->entry()->name(), host_buf, length,
-                                 buffer_address);
-            }
-          }
-          return status;
+          return file->Write(buffer_address, length, byte_offset, bytes_written,
+                             apc_context_address, false);
         });
   }
 

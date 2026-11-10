@@ -194,15 +194,20 @@ void AudioSystem::WorkerThreadMain() {
 
     uint32_t client_callback = 0;
     uint32_t client_callback_arg = 0;
+    HostClient* host_client = nullptr;
     {
       std::lock_guard<std::mutex> clients_lock(clients_mutex_);
       if (clients_[client_index].in_use) {
         client_callback = clients_[client_index].callback;
         client_callback_arg = clients_[client_index].wrapped_callback_arg;
+        host_client = clients_[client_index].host_client;
       }
     }
 
-    if (client_callback) {
+    if (host_client) {
+      SCOPE_profile_cpu_i("apu", "xe::apu::AudioSystem->host_client");
+      host_client->Pump(worker_thread_->thread_state());
+    } else if (client_callback) {
       SCOPE_profile_cpu_i("apu", "xe::apu::AudioSystem->client_callback");
       uint64_t args[] = {client_callback_arg};
       processor_->Execute(worker_thread_->thread_state(), client_callback, args,
@@ -254,6 +259,7 @@ void AudioSystem::Shutdown() {
         clients_[i].callback = 0;
         clients_[i].callback_arg = 0;
         clients_[i].wrapped_callback_arg = 0;
+        clients_[i].host_client = nullptr;
         clients_[i].in_use = false;
       }
     }
@@ -272,13 +278,26 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   uint32_t ptr = memory()->SystemHeapAlloc(0x4);
   xe::store_and_swap<uint32_t>(memory()->TranslateVirtual(ptr), callback_arg);
 
-  std::unique_lock<std::mutex> clients_lock(clients_mutex_);
+  X_STATUS result = AddClient(callback, callback_arg, ptr, nullptr, out_index);
+  if (XFAILED(result)) {
+    memory()->SystemHeapFree(ptr);
+  }
+  return result;
+}
+
+X_STATUS AudioSystem::RegisterHostClient(HostClient* client,
+                                         size_t* out_index) {
+  return AddClient(0, 0, 0, client, out_index);
+}
+
+X_STATUS AudioSystem::AddClient(uint32_t callback, uint32_t callback_arg,
+                                uint32_t wrapped_callback_arg,
+                                HostClient* host_client, size_t* out_index) {
+  std::lock_guard<std::mutex> clients_lock(clients_mutex_);
 
   auto index = FindFreeClient();
   assert_true(index >= 0);
   if (index < 0) {
-    clients_lock.unlock();
-    memory()->SystemHeapFree(ptr);
     return X_STATUS_UNSUCCESSFUL;
   }
 
@@ -291,8 +310,6 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   if (XFAILED(result)) {
     XELOGE("AudioSystem::RegisterClient: CreateDriver failed for index={}",
            index);
-    clients_lock.unlock();
-    memory()->SystemHeapFree(ptr);
     return result;
   }
   assert_not_null(driver);
@@ -303,7 +320,8 @@ X_STATUS AudioSystem::RegisterClient(uint32_t callback, uint32_t callback_arg,
   clients_[index].driver = driver;
   clients_[index].callback = callback;
   clients_[index].callback_arg = callback_arg;
-  clients_[index].wrapped_callback_arg = ptr;
+  clients_[index].wrapped_callback_arg = wrapped_callback_arg;
+  clients_[index].host_client = host_client;
   clients_[index].in_use = true;
   clients_[index].next_pump_us = 0;
   clients_[index].frames_submitted.store(0);
@@ -386,6 +404,7 @@ void AudioSystem::UnregisterClient(size_t index) {
     clients_[index].callback = 0;
     clients_[index].callback_arg = 0;
     clients_[index].wrapped_callback_arg = 0;
+    clients_[index].host_client = nullptr;
     clients_[index].in_use = false;
     clients_[index].next_pump_us = 0;
     clients_[index].frames_submitted.store(0);
@@ -416,9 +435,10 @@ bool AudioSystem::Save(ByteStream* stream) {
 
   // Count the number of used clients first.
   // Any gaps should be handled gracefully.
+  // Host clients aren't guest state.
   uint32_t used_clients = 0;
   for (int i = 0; i < kMaximumClientCount; i++) {
-    if (clients_[i].in_use) {
+    if (clients_[i].in_use && !clients_[i].host_client) {
       used_clients++;
     }
   }
@@ -426,7 +446,7 @@ bool AudioSystem::Save(ByteStream* stream) {
   stream->Write(used_clients);
   for (uint32_t i = 0; i < kMaximumClientCount; i++) {
     auto& client = clients_[i];
-    if (!client.in_use) {
+    if (!client.in_use || client.host_client) {
       continue;
     }
 

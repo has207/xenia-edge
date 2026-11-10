@@ -4,5 +4,6 @@ target_include_directories(xenia-apu PRIVATE
   ${PROJECT_SOURCE_DIR}/third_party/FFmpeg
   ${PROJECT_SOURCE_DIR}/third_party/ffmpeg-xenia
 )
-target_link_libraries(xenia-apu PUBLIC libavcodec libavutil libavformat xenia-base)
+target_link_libraries(xenia-apu PUBLIC libavcodec libavutil libavformat
+  libswresample xenia-base)
 xe_target_defaults(xenia-apu)

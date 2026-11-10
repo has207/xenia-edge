@@ -51,8 +51,18 @@ class AudioSystem {
   // Shutdown does it too.
   void StopWorker();
 
+  // A render client the host implements. The worker calls Pump on its guest
+  // thread in place of a guest callback, at the same cadence and with the
+  // same back-pressure so each Pump must submit one frame.
+  class HostClient {
+   public:
+    virtual ~HostClient() = default;
+    virtual void Pump(cpu::ThreadState* thread_state) = 0;
+  };
+
   X_STATUS RegisterClient(uint32_t callback, uint32_t callback_arg,
                           size_t* out_index);
+  X_STATUS RegisterHostClient(HostClient* client, size_t* out_index);
   void UnregisterClient(size_t index);
   void SubmitFrame(size_t index, float* samples);
 
@@ -107,6 +117,7 @@ class AudioSystem {
     uint32_t callback = 0;
     uint32_t callback_arg = 0;
     uint32_t wrapped_callback_arg = 0;
+    HostClient* host_client = nullptr;
     bool in_use = false;
     // Wall-clock deadline for this client's next pump.
     uint64_t next_pump_us = 0;
@@ -119,6 +130,9 @@ class AudioSystem {
   ClientSlot clients_[kMaximumClientCount];
 
   int FindFreeClient();
+  X_STATUS AddClient(uint32_t callback, uint32_t callback_arg,
+                     uint32_t wrapped_callback_arg, HostClient* host_client,
+                     size_t* out_index);
 
   std::unique_ptr<xe::threading::Semaphore>
       client_semaphores_[kMaximumClientCount];

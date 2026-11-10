@@ -9,11 +9,12 @@
 
 #include "xenia/apu/audio_media_player.h"
 
+#include <algorithm>
+#include <array>
 #include <random>
 
 #include "xenia/apu/audio_driver.h"
 #include "xenia/apu/audio_system.h"
-#include "xenia/apu/pacing_audio_driver.h"
 #include "xenia/apu/xma_context.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/guest_scheduler.h"
@@ -26,6 +27,7 @@ extern "C" {
 #include "third_party/FFmpeg/libavcodec/avcodec.h"
 #include "third_party/FFmpeg/libavformat/avformat.h"
 #include "third_party/FFmpeg/libavformat/avio.h"
+#include "third_party/FFmpeg/libswresample/swresample.h"
 #if XE_COMPILER_MSVC
 #pragma warning(pop)
 #endif
@@ -35,6 +37,9 @@ DEFINE_bool(enable_xmp, true, "Enables Music Player playback.", "APU");
 
 namespace xe {
 namespace apu {
+
+// Set while the audio worker runs the title's capture callback.
+static thread_local bool in_capture_callback = false;
 
 int32_t InitializeAndOpenAvCodec(std::span<uint8_t> song_data,
                                  AVFormatContext*& format_context,
@@ -72,60 +77,84 @@ int32_t InitializeAndOpenAvCodec(std::span<uint8_t> song_data,
   return ret;
 }
 
-void ConvertAudioFrame(AVFrame* frame, int channel_count,
-                       std::vector<float>* framebuffer) {
-  framebuffer->reserve(frame->nb_samples * channel_count);
-
-  switch (frame->format) {
-    case AV_SAMPLE_FMT_FLTP: {
-      for (int sample = 0; sample < frame->nb_samples; sample++) {
-        for (int ch = 0; ch < channel_count; ch++) {
-          float sampleValue = reinterpret_cast<float*>(frame->data[ch])[sample];
-          framebuffer->push_back(sampleValue);
-        }
-      }
-      break;
-    }
-
-    case AV_SAMPLE_FMT_FLT: {
-      float* frameData = reinterpret_cast<float*>(frame->data[0]);
-      framebuffer->insert(framebuffer->end(), frameData,
-                          frameData + frame->nb_samples * channel_count);
-
-      break;
-    }
-
-    default:
-      break;
+// XMP plays every song as 48 kHz stereo and a mono song on both channels at
+// full level.
+SwrContext* CreateResampler(const AVCodecContext* avctx) {
+  AVChannelLayout in_layout = {};
+  if (avctx->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
+    av_channel_layout_default(&in_layout, avctx->ch_layout.nb_channels);
+  } else if (av_channel_layout_copy(&in_layout, &avctx->ch_layout) < 0) {
+    return nullptr;
   }
+  AVChannelLayout out_layout = {};
+  av_channel_layout_default(&out_layout, AudioMediaPlayer::kChannels);
+
+  SwrContext* resampler = nullptr;
+  int ret = swr_alloc_set_opts2(
+      &resampler, &out_layout, AV_SAMPLE_FMT_FLT, AudioMediaPlayer::kSampleRate,
+      &in_layout, avctx->sample_fmt, avctx->sample_rate, 0, nullptr);
+  if (ret >= 0 && in_layout.nb_channels == 1) {
+    const double matrix[] = {1.0, 1.0};
+    ret = swr_set_matrix(resampler, matrix, 1);
+  }
+  if (ret >= 0) {
+    ret = swr_init(resampler);
+  }
+  av_channel_layout_uninit(&in_layout);
+  if (ret < 0) {
+    swr_free(&resampler);
+  }
+  return resampler;
+}
+
+// Converts `frame`, or what the resampler holds back when it's null, and
+// queues it. False once the song is unloaded.
+bool ResampleFrame(AudioMediaPlayer* player, SwrContext* resampler,
+                   const AVFrame* frame, std::vector<float>* samples) {
+  const int in_count = frame ? frame->nb_samples : 0;
+  const int out_count = swr_get_out_samples(resampler, in_count);
+  if (out_count <= 0) {
+    return true;
+  }
+  samples->resize(size_t(out_count) * AudioMediaPlayer::kChannels);
+  uint8_t* out[] = {reinterpret_cast<uint8_t*>(samples->data())};
+  const int converted =
+      swr_convert(resampler, out, out_count,
+                  frame ? frame->extended_data : nullptr, in_count);
+  if (converted < 0) {
+    XELOGW("XMP: resampling failed: {:08X}", uint32_t(converted));
+    return true;
+  }
+  return !converted || player->PushSamples(samples->data(), converted);
 }
 
 ProcessAudioResult ProcessAudioLoop(AudioMediaPlayer* player,
-                                    AudioDriver* driver, AVFormatContext* s,
-                                    AVCodecContext* avctx, int streamIndex) {
+                                    AVFormatContext* s, AVCodecContext* avctx,
+                                    int streamIndex) {
+  SwrContext* resampler = avctx ? CreateResampler(avctx) : nullptr;
+  if (!resampler) {
+    XELOGE("XMP: can't convert the song to {} Hz stereo",
+           AudioMediaPlayer::kSampleRate);
+    return ProcessAudioResult::Failure;
+  }
   AVPacket* packet = av_packet_alloc();
   AVFrame* frame = av_frame_alloc();
-  std::vector<float> frameBuffer;
+  std::vector<float> samples;
+  ProcessAudioResult result = ProcessAudioResult::Successful;
 
-  while (av_read_frame(s, packet) >= 0) {
+  while (result == ProcessAudioResult::Successful &&
+         av_read_frame(s, packet) >= 0) {
     if (!player->IsSongLoaded()) {
-      av_frame_free(&frame);
-      av_packet_free(&packet);
-      return ProcessAudioResult::ForcedFinish;
-    }
-
-    if (packet->stream_index == streamIndex) {
+      result = ProcessAudioResult::ForcedFinish;
+    } else if (packet->stream_index == streamIndex) {
       int ret = avcodec_send_packet(avctx, packet);
       if (ret < 0) {
         XELOGE("Error sending packet for decoding: {:X}", ret);
+        av_packet_unref(packet);
         break;
       }
 
       while (ret >= 0) {
-        if (!player->IsSongLoaded()) {
-          break;
-        }
-
         ret = avcodec_receive_frame(avctx, frame);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
           break;
@@ -135,16 +164,25 @@ ProcessAudioResult ProcessAudioLoop(AudioMediaPlayer* player,
           break;
         }
 
-        ConvertAudioFrame(frame, avctx->ch_layout.nb_channels, &frameBuffer);
-        player->ProcessAudioBuffer(&frameBuffer);
+        if (!ResampleFrame(player, resampler, frame, &samples)) {
+          result = ProcessAudioResult::ForcedFinish;
+          break;
+        }
       }
     }
     av_packet_unref(packet);
   }
 
+  if (result == ProcessAudioResult::Successful &&
+      (!ResampleFrame(player, resampler, nullptr, &samples) ||
+       !player->IsSongLoaded())) {
+    result = ProcessAudioResult::ForcedFinish;
+  }
+
   av_frame_free(&frame);
   av_packet_free(&packet);
-  return ProcessAudioResult::Successful;
+  swr_free(&resampler);
+  return result;
 }
 
 AudioMediaPlayer::AudioMediaPlayer(apu::AudioSystem* audio_system,
@@ -163,7 +201,9 @@ AudioMediaPlayer::~AudioMediaPlayer() {
     xe::threading::Wait(worker_thread_.get(), false);
     worker_thread_.reset();
   }
-  DeleteDriver();
+  if (client_registered_) {
+    audio_system_->UnregisterClient(client_index_);
+  }
 };
 
 void AudioMediaPlayer::WorkerThreadMain() {
@@ -187,9 +227,6 @@ void AudioMediaPlayer::Setup() {
   if (!cvars::enable_xmp) {
     return;
   }
-
-  // sample_buffer_ptr_ = kernel_state_->memory()->SystemHeapAlloc(
-  //     xe::apu::AudioDriver::kFrameSamplesMax);
 
   worker_running_ = true;
   worker_thread_ = threading::Thread::Create({}, [&] { WorkerThreadMain(); });
@@ -237,19 +274,19 @@ void AudioMediaPlayer::Play() {
     return;
   }
 
+  // The driver client stays registered once playback has started.
+  if (!client_registered_) {
+    if (XFAILED(audio_system_->RegisterHostClient(this, &client_index_))) {
+      XELOGE("XMP: no free audio driver client");
+      av_free(song_buffer.data());
+      return;
+    }
+    client_registered_ = true;
+  }
+
   AVFormatContext* formatContext = nullptr;
   AVCodecContext* codecContext = nullptr;
   InitializeAndOpenAvCodec(song_buffer, formatContext, codecContext);
-
-  if (!SetupDriver(codecContext->sample_rate,
-                   codecContext->ch_layout.nb_channels)) {
-    XELOGE("Driver initialization failed!");
-    avcodec_free_context(&codecContext);
-    av_freep(&formatContext->pb->buffer);
-    avio_context_free(&formatContext->pb);
-    avformat_close_input(&formatContext);
-    return;
-  }
 
   state_ = XmpApp::State::kPlaying;
   current_song_handle_ = active_song_->handle;
@@ -260,21 +297,17 @@ void AudioMediaPlayer::Play() {
         kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_MUSIC_VOLUME);
   }
 
-  // Always apply the stored volume to the newly created driver
-  driver_->SetVolume(volume_);
+  auto result = ProcessAudioLoop(this, formatContext, codecContext, 0);
 
-  auto result =
-      ProcessAudioLoop(this, driver_.get(), formatContext, codecContext, 0);
-
-  // We need to stop playback only if it wasn't
+  // We need to stop playback only if it wasn't, once the pump has played out
+  // what's queued.
   if (result != ProcessAudioResult::ForcedFinish) {
-    Stop(true, true);
-  }
-
-  // We're waiting for dangling samples to finish playing.
-  if (result == ProcessAudioResult::Successful) {
-    xe::threading::Wait(driver_semaphore_.get(), true,
-                        std::chrono::milliseconds(500));
+    WaitForDrain();
+    if (IsSongLoaded()) {
+      Stop(true, true);
+    } else {
+      result = ProcessAudioResult::ForcedFinish;
+    }
   }
 
   // Cleanup after work
@@ -286,7 +319,6 @@ void AudioMediaPlayer::Play() {
   processing_end_fence_.Signal();
 
   if (result == ProcessAudioResult::ForcedFinish) {
-    DeleteDriver();
     return;
   }
 
@@ -306,9 +338,6 @@ void AudioMediaPlayer::Pause() {
     return;
   }
 
-  if (driver_) {
-    driver_->Pause();
-  }
   state_ = XmpApp::State::kPaused;
   OnStateChanged();
 };
@@ -318,12 +347,9 @@ void AudioMediaPlayer::Stop(bool change_state, bool force) {
     return;
   }
 
-  if (driver_ && IsPaused()) {
-    driver_->Resume();
-  }
-
   state_ = XmpApp::State::kIdle;
   active_song_ = nullptr;
+  FlushSamples();
 
   if (!force) {
     // Reachable from the guest XMP shim, so on a fiber this must park rather
@@ -344,9 +370,6 @@ void AudioMediaPlayer::Continue() {
 
   state_ = XmpApp::State::kPlaying;
   resume_fence_.Signal();
-  if (driver_) {
-    driver_->Resume();
-  }
   OnStateChanged();
 }
 
@@ -479,13 +502,6 @@ void AudioMediaPlayer::RemovePlaylist(uint32_t handle) {
 
 X_STATUS AudioMediaPlayer::SetVolume(float volume) {
   volume_.store(std::min(volume, 1.0f));
-
-  std::unique_lock<xe_mutex> guard(driver_mutex_);
-  if (!driver_) {
-    return X_STATUS_UNSUCCESSFUL;
-  }
-
-  driver_->SetVolume(volume_);
   return X_STATUS_SUCCESS;
 }
 
@@ -534,10 +550,24 @@ bool AudioMediaPlayer::IsLastSongInPlaylist() const {
 
 void AudioMediaPlayer::SetCaptureCallback(uint32_t callback, uint32_t context,
                                           bool title_render) {
-  // TODO: Something is incorrect with callback and causes audio to be muted!
-  callback_ = 0;
-  callback_context_ = context;
-  is_title_rendering_enabled_ = false;  // title_render;
+  if (callback && !capture_buffer_) {
+    capture_buffer_ =
+        kernel_state_->memory()->SystemHeapAlloc(kFrameSamples * sizeof(float));
+  }
+  bool wait;
+  {
+    std::lock_guard<std::mutex> lock(capture_mutex_);
+    capture_callback_ = callback;
+    capture_context_ = context;
+    capture_title_render_ = title_render;
+    // The title may free the context once this returns. A callback that
+    // replaces itself can't wait for its own return.
+    wait = capture_in_flight_ && !in_capture_callback;
+    capture_waiter_ |= wait;
+  }
+  if (wait) {
+    kernel::GuestScheduler::WaitOnFence(capture_done_fence_);
+  }
 }
 
 void AudioMediaPlayer::OnStateChanged() {
@@ -545,80 +575,107 @@ void AudioMediaPlayer::OnStateChanged() {
                                        static_cast<uint32_t>(state_));
 }
 
-void AudioMediaPlayer::ProcessAudioBuffer(std::vector<float>* buffer) {
-  while (buffer->size() >= xe::apu::AudioDriver::kFrameSamplesMax) {
-    xe::threading::Wait(driver_semaphore_.get(), true);
-
-    if (!IsSongLoaded()) {
-      buffer->clear();
-      break;
-    }
-
-    // XMP should be processed on Audio thread. Some games goes insane when they
-    // have additional unexpected guest thread (NG2 for example).
-    /*
-    if (callback_) {
-      std::memcpy(kernel_state_->memory()->TranslateVirtual(sample_buffer_ptr_),
-                  buffer->data(), xe::apu::AudioDriver::kFrameSamplesMax);
-
-      uint64_t args[] = {sample_buffer_ptr_, callback_context_, true};
-      audio_system_->processor()->Execute(worker_thread_->thread_state(),
-                                          callback_, args, xe::countof(args));
-    }*/
-
-    driver_->SubmitFrame(buffer->data());
-    buffer->erase(buffer->begin(),
-                  buffer->begin() + xe::apu::AudioDriver::kFrameSamplesMax);
-  }
-}
-
-bool AudioMediaPlayer::SetupDriver(uint32_t sample_rate, uint32_t channels) {
-  DeleteDriver();
-
-  std::unique_lock<xe_mutex> guard(driver_mutex_);
-  if (!sample_rate || !channels || channels > AudioDriver::kFrameSamplesMax) {
+bool AudioMediaPlayer::PushSamples(const float* samples, size_t frames) {
+  std::unique_lock<std::mutex> lock(samples_mutex_);
+  samples_cv_.wait(lock, [this] {
+    return !IsSongLoaded() || samples_.size() < kQueuedSamplesMax;
+  });
+  if (!IsSongLoaded()) {
     return false;
   }
-  driver_semaphore_ = xe::threading::Semaphore::Create(
-      AudioSystem::kMaximumQueuedFrames, AudioSystem::kMaximumQueuedFrames);
-
-  if (!driver_semaphore_) {
-    return false;
-  }
-
-  driver_.reset(audio_system_->CreateDriver(driver_semaphore_.get(),
-                                            sample_rate, channels, false));
-  if (driver_ && driver_->Initialize()) {
-    return true;
-  }
-  if (driver_) {
-    driver_->Shutdown();
-    driver_.reset();
-  }
-  driver_ = std::make_unique<PacingAudioDriver>(
-      driver_semaphore_.get(), sample_rate,
-      AudioDriver::kFrameSamplesMax / channels);
-  if (!driver_->Initialize()) {
-    driver_.reset();
-    driver_semaphore_.reset();
-    return false;
-  }
-  XELOGW(
-      "APU: {} failed to create or initialize a media driver; "
-      "continuing silently",
-      audio_system_->name());
-
+  samples_.insert(samples_.end(), samples, samples + frames * kChannels);
   return true;
 }
 
-void AudioMediaPlayer::DeleteDriver() {
-  std::unique_lock<xe_mutex> guard(driver_mutex_);
-  if (driver_) {
-    // Stop the driver before destroying the semaphore used by its callbacks.
-    driver_->Shutdown();
-    driver_.reset();
+void AudioMediaPlayer::WaitForDrain() {
+  std::unique_lock<std::mutex> lock(samples_mutex_);
+  // Lets the pump take a last partial frame.
+  song_decoded_ = true;
+  samples_cv_.wait(lock,
+                   [this] { return samples_.empty() || !IsSongLoaded(); });
+  song_decoded_ = false;
+}
+
+void AudioMediaPlayer::FlushSamples() {
+  {
+    std::lock_guard<std::mutex> lock(samples_mutex_);
+    samples_.clear();
   }
-  driver_semaphore_.reset();
+  samples_cv_.notify_all();
+}
+
+void AudioMediaPlayer::Pump(cpu::ThreadState* thread_state) {
+  std::array<float, kFrameSamples> pcm;
+  bool have_pcm = false;
+  {
+    std::lock_guard<std::mutex> lock(samples_mutex_);
+    if (IsPlaying() && (samples_.size() >= kFrameSamples ||
+                        (song_decoded_ && !samples_.empty()))) {
+      const size_t count = std::min<size_t>(samples_.size(), kFrameSamples);
+      std::copy_n(samples_.begin(), count, pcm.begin());
+      std::fill(pcm.begin() + count, pcm.end(), 0.0f);
+      samples_.erase(samples_.begin(), samples_.begin() + count);
+      have_pcm = true;
+    }
+  }
+  if (have_pcm) {
+    samples_cv_.notify_all();
+  }
+
+  uint32_t callback = 0;
+  uint32_t context = 0;
+  bool title_render;
+  {
+    std::lock_guard<std::mutex> lock(capture_mutex_);
+    if (have_pcm) {
+      callback = capture_callback_;
+      context = capture_context_;
+      capture_in_flight_ = callback != 0;
+    }
+    // xam takes the rendering back while anyone else controls playback.
+    title_render = capture_title_render_ &&
+                   playback_controller_ == PlaybackController::kGame &&
+                   !xmp_override_;
+  }
+
+  // It runs on the audio driver thread with the same buffer every time and
+  // only while there's music. The samples don't have XMP's volume applied.
+  // The third argument says whether the title renders.
+  if (callback) {
+    auto samples =
+        kernel_state_->memory()->TranslateVirtual<float*>(capture_buffer_);
+    for (uint32_t i = 0; i < kFrameSamples; ++i) {
+      xe::store_and_swap<float>(samples + i, pcm[i]);
+    }
+    uint64_t args[] = {capture_buffer_, context, title_render};
+    in_capture_callback = true;
+    audio_system_->processor()->Execute(thread_state, callback, args,
+                                        xe::countof(args));
+    in_capture_callback = false;
+    bool signal;
+    {
+      std::lock_guard<std::mutex> lock(capture_mutex_);
+      capture_in_flight_ = false;
+      signal = capture_waiter_;
+      capture_waiter_ = false;
+    }
+    if (signal) {
+      capture_done_fence_.Signal();
+    }
+  }
+
+  // Driver frames are planar big-endian, front left and right first.
+  constexpr uint32_t kChannelSamples = AudioDriver::kChannelSamplesDefault;
+  float frame[AudioDriver::kFrameSamplesMax] = {};
+  if (have_pcm && !title_render) {
+    const float volume = volume_;
+    for (uint32_t i = 0; i < kChannelSamples; ++i) {
+      xe::store_and_swap<float>(&frame[i], pcm[i * kChannels] * volume);
+      xe::store_and_swap<float>(&frame[kChannelSamples + i],
+                                pcm[i * kChannels + 1] * volume);
+    }
+  }
+  audio_system_->SubmitFrame(client_index_, frame);
 }
 
 }  // namespace apu
