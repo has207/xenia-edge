@@ -475,16 +475,17 @@ def calls(routine):
     return body
 
 
-def handler_scenario(corpus, name, actions, with_context=False):
-    """A probe with a scripted handler, run on address 0, with an RtlUnwind2
-    context if it unwinds with one."""
+def handler_scenario(corpus, name, actions, with_context=False,
+                     body=load_logged):
+    """A probe with a scripted handler, running `body` on address 0, with an
+    RtlUnwind2 context if it unwinds with one."""
     s = corpus.scenario(name)
     log = s.alloc(H_SIZE, 'log', fill=0)
     context = None
     if with_context:
         context = s.alloc(CONTEXT_SIZE, 'unwind context', fill=0)
     handler = scripted_handler(s, log, actions, context)
-    routine = resumable(s, f'{name} probe', log, handler, load_logged,
+    routine = resumable(s, f'{name} probe', log, handler, body,
                         context=context)
     s.call(routine, NULL, name=name, capture=h_captures(log))
 
@@ -538,6 +539,76 @@ def unwind_without_exception(corpus):
                         body, context=context, extra=unwinder(context))
     s.call(routine, NULL, name='unwind without exception',
            capture=h_captures(log))
+
+
+def leaf_scenario(corpus, name, leaf):
+    """A probe whose scripted handler continues the fault of a leaf it calls,
+    which `leaf(a, r, log)` emits at the label 'leaf' with its .pdata. The
+    probe logs r31 after the call."""
+    s = corpus.scenario(name)
+    log = s.alloc(H_SIZE, 'log', fill=0)
+    handler = scripted_handler(s, log, ['continue'])
+
+    def body(a, r, thunk):
+        a.bl(r.label('leaf'))
+        a.load32(11, log.address)
+        a.stw(31, H_RESUMED + 8, 11)
+
+    def extra(a, r, thunk):
+        leaf(a, r, log)
+
+    routine = resumable(s, f'{name} probe', log, handler, body, extra=extra)
+    s.call(routine, NULL, name=name, capture=h_captures(log))
+
+
+def leaf_saving_in_prolog(a, r, log):
+    """A frameless leaf whose prolog saves r31 below its stack pointer."""
+    a.label(r.label('leaf'))
+    a.std(31, -0x10, 1)
+    a.label(r.label('leaf prolog end'))
+    a.load32(31, INNER_MARKER)
+    a.lwz(4, 0, 3)
+    a.stw(4, H_LOADED, 11)
+    a.ld(31, -0x10, 1)
+    a.blr()
+    a.label(r.label('leaf end'))
+    r.function(r.label('leaf'), r.label('leaf prolog end'),
+               r.label('leaf end'))
+
+
+def leaf_saving_in_body(a, r, log):
+    """A frameless leaf saving r31 below its stack pointer, whose fault the
+    handler continues at the leaf's own recovery label, which restores r31."""
+    a.label(r.label('leaf'))
+    a.std(31, -0x10, 1)
+    a.load32(31, INNER_MARKER)
+    a.load_address(12, r.label('leaf recovery'))
+    a.stw(12, L_RECOVERY, 11)
+    a.lwz(4, 0, 3)
+    a.stw(4, H_LOADED, 11)
+    a.label(r.label('leaf recovery'))
+    a.ld(31, -0x10, 1)
+    a.blr()
+    a.label(r.label('leaf end'))
+    r.function(r.label('leaf'), r.label('leaf'), r.label('leaf end'))
+
+
+def faulting_prolog(a, r, log):
+    """A framed function whose prolog faults after its stwu."""
+    a.label(r.label('leaf'))
+    a.mflr(12)
+    a.stw(12, -8, 1)
+    a.stwu(1, -0x60, 1)
+    a.lwz(4, 0, 3)
+    a.label(r.label('leaf prolog end'))
+    a.stw(4, H_LOADED, 11)
+    a.addi(1, 1, 0x60)
+    a.lwz(12, -8, 1)
+    a.mtlr(12)
+    a.blr()
+    a.label(r.label('leaf end'))
+    r.function(r.label('leaf'), r.label('leaf prolog end'),
+               r.label('leaf end'))
 
 
 # A __C_specific_handler probe's log. Its setup writes the stack pointers and
@@ -827,3 +898,16 @@ def build(corpus):
     # A finally handler on the way runs as the unwind passes it.
     c_scenario(corpus, 'finally', c_call_inner, one_scope, [(1, False)],
                extra=c_inner)
+
+    # A frameless leaf whose prolog saved r31 below its stack pointer faults
+    # to its caller's handler.
+    leaf_scenario(corpus, 'leaf save fault', leaf_saving_in_prolog)
+    # The handler continues a frameless leaf, whose saves below its stack
+    # pointer stay as they were.
+    leaf_scenario(corpus, 'leaf red zone', leaf_saving_in_body)
+    # A fault in a prolog after its stwu, which unwinding the frame undoes.
+    leaf_scenario(corpus, 'prolog fault', faulting_prolog)
+    # An unwind from the handler of a call to no code goes on from the call
+    # to the probe's frame.
+    handler_scenario(corpus, 'unwind call fault', ['unwind', 'search'],
+                     body=lambda a, r, thunk: call_target(a))
