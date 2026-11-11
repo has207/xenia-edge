@@ -2882,46 +2882,79 @@ bool BaseHeap::Release(uint32_t base_address, uint32_t* out_region_size) {
     *out_region_size = (base_page_entry.region_page_count * page_size_);
   }
 
+  ReleasePages(base_page_number, base_page_entry.region_page_count);
+  return true;
+}
+
+bool BaseHeap::ReleaseRange(uint32_t address, uint32_t size) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  uint32_t start_page_number = (address - heap_base_) >> page_size_shift_;
+  uint32_t page_count = get_page_count(size, page_size_);
+  if (address < heap_base_ || start_page_number >= page_table_.size() ||
+      !page_count || page_count > page_table_.size() - start_page_number) {
+    return false;
+  }
+  auto start_page_entry = page_table_[start_page_number];
+  uint32_t region_start = start_page_entry.base_address;
+  uint32_t region_end = region_start + start_page_entry.region_page_count;
+  uint32_t end_page_number = start_page_number + page_count;
+  if (!start_page_entry.state || end_page_number > region_end) {
+    return false;
+  }
+
+  // The pages either side become regions of their own.
+  for (uint32_t page_number = region_start; page_number < start_page_number;
+       ++page_number) {
+    page_table_[page_number].region_page_count =
+        start_page_number - region_start;
+  }
+  for (uint32_t page_number = end_page_number; page_number < region_end;
+       ++page_number) {
+    page_table_[page_number].base_address = end_page_number;
+    page_table_[page_number].region_page_count = region_end - end_page_number;
+  }
+
+  ReleasePages(start_page_number, page_count);
+  return true;
+}
+
+void BaseHeap::ReleasePages(uint32_t start_page_number, uint32_t page_count) {
   // Release from host not needed as mapping reserves the range for us.
   // TODO(benvanik): protect with NOACCESS?
   /*BOOL result = VirtualFree(
-      TranslateRelative(base_page_number * page_size_), 0, MEM_RELEASE);
+      TranslateRelative(start_page_number * page_size_), 0, MEM_RELEASE);
   if (!result) {
     PLOGE("BaseHeap::Release failed due to host VirtualFree failure");
     return false;
   }*/
   // Instead, we just protect it, if we can.
   if (page_size_ == xe::memory::page_size() ||
-      ((base_page_entry.region_page_count * page_size_) %
-               xe::memory::page_size() ==
-           0 &&
-       ((base_page_number * page_size_) % xe::memory::page_size() == 0))) {
+      ((page_count * page_size_) % xe::memory::page_size() == 0 &&
+       ((start_page_number * page_size_) % xe::memory::page_size() == 0))) {
     // TODO(benvanik): figure out why games are using memory after releasing
     // it. It's possible this is some virtual/physical stuff where the GPU
     // still can access it.
     if (cvars::protect_on_release && !skip_host_protect_) {
-      if (!xe::memory::Protect(TranslateRelative(base_page_number * page_size_),
-                               base_page_entry.region_page_count * page_size_,
-                               xe::memory::PageAccess::kNoAccess, nullptr)) {
+      if (!xe::memory::Protect(
+              TranslateRelative(start_page_number * page_size_),
+              page_count * page_size_, xe::memory::PageAccess::kNoAccess,
+              nullptr)) {
         XELOGW("BaseHeap::Release failed due to host VirtualProtect failure");
       }
     }
   }
 
   // Perform table change.
-  uint32_t end_page_number =
-      base_page_number + base_page_entry.region_page_count - 1;
-  for (uint32_t page_number = base_page_number; page_number <= end_page_number;
-       ++page_number) {
+  for (uint32_t page_number = start_page_number;
+       page_number < start_page_number + page_count; ++page_number) {
     auto& page_entry = page_table_[page_number];
     page_entry.qword = 0;
     unreserved_page_count_++;
   }
 
   // Insert freed block into tracker with coalescing.
-  InsertFreeBlock(base_page_number, base_page_entry.region_page_count);
-
-  return true;
+  InsertFreeBlock(start_page_number, page_count);
 }
 
 bool BaseHeap::ApplyHostProtect(uint32_t start_page_number,

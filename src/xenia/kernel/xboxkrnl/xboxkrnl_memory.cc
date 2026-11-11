@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -91,6 +92,39 @@ static std::vector<std::pair<uint32_t, uint32_t>> UncommittedRuns(
   return runs;
 }
 
+// The title's address spaces as the kernel bounds them, [low, high).
+struct TitleSpace {
+  uint32_t page_size;
+  uint32_t low;
+  uint32_t high;
+};
+constexpr TitleSpace kTitleSpaces[] = {{0x1000, 0x00010000, 0x2FFF0000},
+                                       {0x10000, 0x40000000, 0x6FFF0000}};
+
+static const TitleSpace& TitleSpaceFor(uint32_t page_size) {
+  return kTitleSpaces[page_size == kTitleSpaces[0].page_size ? 0 : 1];
+}
+
+static const TitleSpace* TitleSpaceOf(uint32_t address) {
+  for (const auto& space : kTitleSpaces) {
+    if (address >= space.low && address < space.high) {
+      return &space;
+    }
+  }
+  return nullptr;
+}
+
+// The base of the reservation holding an address, if one does.
+static std::optional<uint32_t> ReservationOf(BaseHeap* heap, uint32_t address) {
+  HeapAllocationInfo info;
+  // One page is enough; the scan would otherwise walk the whole reservation.
+  if (address - heap->heap_base() >= heap->heap_size() ||
+      !heap->QueryRegionInfo(address, &info, 1) || !info.state) {
+    return std::nullopt;
+  }
+  return info.allocation_base;
+}
+
 dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
                                              lpdword_t region_size_ptr,
                                              dword_t alloc_type,
@@ -139,10 +173,12 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
     XELOGW("Game setting EXECUTE bit on allocation");
   }
 
+  const uint32_t base = base_addr_ptr.value();
+  BaseHeap* heap = nullptr;
   uint32_t page_size;
-  if (base_addr_ptr.value() != 0) {
+  if (base) {
     // ignore specified page size when base address is specified.
-    auto heap = kernel_memory()->LookupHeap(base_addr_ptr.value());
+    heap = kernel_memory()->LookupHeap(base);
     // Edge case when title can check for XPS/MMIO range and will receive
     // nullptr.
     if (!heap) {
@@ -162,46 +198,54 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
     }
   }
 
-  // Round the base address down to the nearest page boundary.
-  uint32_t adjusted_base =
-      base_addr_ptr.value() - (base_addr_ptr.value() % page_size);
-  // For some reason, some games pass in negative sizes.
-  uint32_t adjusted_size = int32_t(region_size_ptr.value()) < 0
-                               ? -int32_t(region_size_ptr.value())
-                               : region_size_ptr.value();
-
-  uint32_t original_size = adjusted_size;  // Save size before rounding
-  adjusted_size = xe::round_up(adjusted_size, page_size);
-
-  // Check for overflow after rounding (compare against the already-converted
-  // positive size, not the original which could be negative)
-  if (adjusted_size < original_size) {
-    XELOGE(
-        "NtAllocateVirtualMemory: Size overflow after rounding: "
-        "original={:08X}, "
-        "rounded={:08X}",
-        original_size, adjusted_size);
-    return X_STATUS_INVALID_PARAMETER;
-  }
-
-  // A commit without a reserve takes the pages that start inside the range, so
-  // a range starting mid-page leaves that page alone and one inside a single
-  // page commits nothing.
-  if (adjusted_base && !(alloc_type & X_MEM_RESERVE)) {
-    const uint64_t start =
-        xe::round_up(uint64_t(base_addr_ptr.value()), page_size, false);
-    const uint64_t end = xe::round_up(
-        uint64_t(base_addr_ptr.value()) + original_size, page_size, false);
-    if (end > UINT32_MAX) {
+  const uint32_t size = region_size_ptr.value();
+  // Held from the checks through the fill, so no other call commits or frees
+  // these pages in between.
+  auto global_lock = global_critical_region::AcquireDirect();
+  uint32_t adjusted_base = 0;
+  uint32_t adjusted_size;
+  if (base) {
+    // The range must fit in the address space its base is in.
+    const TitleSpace* space = TitleSpaceOf(base);
+    if (!space || size > space->high - base) {
       return X_STATUS_INVALID_PARAMETER;
     }
-    adjusted_base = uint32_t(start);
-    adjusted_size = uint32_t(std::max(start, end) - start);
+    const uint32_t end = xe::round_up(base + size, page_size, false);
+    if (alloc_type & X_MEM_RESERVE) {
+      // A reservation starts on the 64 KB boundary below the base, on pages
+      // no other reservation holds.
+      adjusted_base = base & ~uint32_t(0xFFFF);
+      if (!heap->IsRangeUnallocated(adjusted_base, end - adjusted_base)) {
+        return X_STATUS_CONFLICTING_ADDRESSES;
+      }
+    } else {
+      // A commit takes the pages that start inside the range, so a range
+      // starting mid-page leaves that page alone and one inside a single page
+      // commits nothing. One reservation must hold the range, or for an empty
+      // one the page holding the base and the next.
+      adjusted_base = xe::round_up(base, page_size, false);
+      const auto reservation = ReservationOf(heap, adjusted_base);
+      if (!reservation || ReservationOf(heap, end - 1) != reservation) {
+        return X_STATUS_CONFLICTING_ADDRESSES;
+      }
+      // A reset leaves the pages, and the base and size, as they are.
+      if (alloc_type & X_MEM_RESET) {
+        return X_STATUS_SUCCESS;
+      }
+    }
+    adjusted_size = std::max(end, adjusted_base) - adjusted_base;
     if (!adjusted_size) {
       *base_addr_ptr = adjusted_base;
       *region_size_ptr = 0;
       return X_STATUS_SUCCESS;
     }
+  } else {
+    // The range must fit in the address space for its page size.
+    const TitleSpace& space = TitleSpaceFor(page_size);
+    if (size > space.high - space.low) {
+      return X_STATUS_INVALID_PARAMETER;
+    }
+    adjusted_size = xe::round_up(size, page_size);
   }
 
   // Allocate.
@@ -218,17 +262,11 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   }
   uint32_t protect = FromXdkProtectFlags(protect_bits);
   uint32_t address = 0;
-  BaseHeap* heap;
   const bool commit = !!(alloc_type & X_MEM_COMMIT);
   // Only the pages this call commits are initialized.
   std::vector<std::pair<uint32_t, uint32_t>> commit_runs;
 
-  if (adjusted_base != 0) {
-    heap = kernel_memory()->LookupHeap(adjusted_base);
-    if (heap->page_size() != page_size) {
-      // Specified the wrong page size for the wrong heap.
-      return X_STATUS_ACCESS_DENIED;
-    }
+  if (base) {
     if (commit) {
       commit_runs = UncommittedRuns(heap, adjusted_base, adjusted_size);
     }
@@ -240,9 +278,11 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   } else {
     bool top_down = !!(alloc_type & X_MEM_TOP_DOWN);
     heap = kernel_memory()->LookupHeapByType(false, page_size);
-    // A region starts on a 64 KB boundary whatever its page size.
-    heap->Alloc(adjusted_size, 64 * 1024, allocation_type, protect, top_down,
-                &address);
+    // A region starts on a 64 KB boundary whatever its page size, inside the
+    // address space for its page size.
+    const TitleSpace& space = TitleSpaceFor(page_size);
+    heap->AllocRange(space.low, space.high - 1, adjusted_size, 64 * 1024,
+                     allocation_type, protect, top_down, &address);
     if (commit) {
       commit_runs.emplace_back(address, adjusted_size);
     }
@@ -353,8 +393,13 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
         base_addr_value, region_size_value);
   }
 
-  if (!base_addr_value) {
-    return X_STATUS_MEMORY_NOT_ALLOCATED;
+  if (free_type != X_MEM_DECOMMIT && free_type != X_MEM_RELEASE) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
+  // The range must fit in the address space its base is in.
+  const TitleSpace* space = TitleSpaceOf(base_addr_value);
+  if (!space || region_size_value > space->high - base_addr_value) {
+    return X_STATUS_INVALID_PARAMETER;
   }
 
   auto heap = kernel_state()->memory()->LookupHeap(base_addr_value);
@@ -365,36 +410,39 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
         base_addr_value);
     return X_STATUS_INVALID_PARAMETER;
   }
-  bool result = false;
-  if (free_type == X_MEM_DECOMMIT) {
-    if (!region_size_value) {
-      // Real NT decommits the whole region containing BaseAddress when
-      // RegionSize is zero. We don't implement that yet; refuse rather than
-      // silently dropping the call.
-      XELOGW(
-          "NtFreeVirtualMemory: MEM_DECOMMIT with RegionSize=0 (base: {:08X}) "
-          "is not implemented; returning INVALID_PARAMETER.",
-          base_addr_value);
-      return X_STATUS_INVALID_PARAMETER;
-    }
-    // Like a commit, takes the pages that start inside the range.
-    const uint32_t page_size = heap->page_size();
-    const uint64_t start =
-        xe::round_up(uint64_t(base_addr_value), page_size, false);
-    const uint64_t end = xe::round_up(
-        uint64_t(base_addr_value) + region_size_value, page_size, false);
-    if (end > UINT32_MAX) {
-      return X_STATUS_INVALID_PARAMETER;
-    }
-    base_addr_value = uint32_t(start);
-    region_size_value = uint32_t(std::max(start, end) - start);
-    result = !region_size_value ||
-             heap->Decommit(base_addr_value, region_size_value);
-  } else {
-    result = heap->Release(base_addr_value, &region_size_value);
+  auto global_lock = global_critical_region::AcquireDirect();
+  // Both take the pages that start inside the range, so size 0 decommits
+  // nothing. A reservation must hold the first page and the range.
+  const uint32_t page_size = heap->page_size();
+  const uint32_t end =
+      xe::round_up(base_addr_value + region_size_value, page_size, false);
+  const uint32_t start = xe::round_up(base_addr_value, page_size, false);
+  const uint32_t length = std::max(end, start) - start;
+  const auto reservation = ReservationOf(heap, start);
+  if (!reservation) {
+    return X_STATUS_MEMORY_NOT_ALLOCATED;
   }
-  if (!result) {
-    return X_STATUS_UNSUCCESSFUL;
+  if (length && ReservationOf(heap, end - 1) != reservation) {
+    return X_STATUS_UNABLE_TO_FREE_VM;
+  }
+  if (free_type == X_MEM_RELEASE && !region_size_value) {
+    // Size 0 releases the whole reservation, from its base.
+    if (base_addr_value >> 12 != *reservation >> 12) {
+      return X_STATUS_FREE_VM_NOT_AT_BASE;
+    }
+    if (!heap->Release(*reservation, &region_size_value)) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    base_addr_value = *reservation;
+  } else {
+    // A release of part of a reservation leaves the rest reserved.
+    if (length &&
+        !(free_type == X_MEM_DECOMMIT ? heap->Decommit(start, length)
+                                      : heap->ReleaseRange(start, length))) {
+      return X_STATUS_UNSUCCESSFUL;
+    }
+    base_addr_value = start;
+    region_size_value = length;
   }
 
   *base_addr_ptr = base_addr_value;
