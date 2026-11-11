@@ -1109,6 +1109,74 @@ void XObject::SetNativePointer(uint32_t native_ptr, bool uninitialized) {
   guest_object_ptr_ = native_ptr;
 }
 
+// Read without the global lock, as a signature is never removed under a reader
+// and every other header is checked again under the lock.
+static bool MayBeUnwrappedEvent(const X_DISPATCH_HEADER* header) {
+  return (header->type == X_OBJECT_TYPES::EventNotificationObject ||
+          header->type == X_OBJECT_TYPES::EventSynchronizationObject) &&
+         header->wait_list.flink_ptr != kXObjSignature;
+}
+
+static bool IsUnwrappedEvent(KernelState* kernel_state,
+                             const X_DISPATCH_HEADER* header) {
+  return MayBeUnwrappedEvent(header) &&
+         !kernel_state->object_table()->LookupAllocatedBody(
+             kernel_state->memory()->HostToGuestVirtual(header));
+}
+
+bool XObject::TryWaitUnwrappedEvent(KernelState* kernel_state,
+                                    void* native_ptr) {
+  auto header = reinterpret_cast<X_DISPATCH_HEADER*>(native_ptr);
+  if (!MayBeUnwrappedEvent(header)) {
+    return false;
+  }
+  auto global_lock = global_critical_region::AcquireDirect();
+  if (!IsUnwrappedEvent(kernel_state, header) ||
+      static_cast<int32_t>(uint32_t(header->signal_state)) <= 0) {
+    return false;
+  }
+  if (header->type == X_OBJECT_TYPES::EventSynchronizationObject) {
+    header->signal_state = 0;
+  }
+  return true;
+}
+
+bool XObject::TrySetUnwrappedEvent(KernelState* kernel_state, void* native_ptr,
+                                   int32_t* old_signal_state) {
+  auto header = reinterpret_cast<X_DISPATCH_HEADER*>(native_ptr);
+  if (!MayBeUnwrappedEvent(header)) {
+    return false;
+  }
+  auto global_lock = global_critical_region::AcquireDirect();
+  if (!IsUnwrappedEvent(kernel_state, header)) {
+    return false;
+  }
+  *old_signal_state = static_cast<int32_t>(uint32_t(header->signal_state));
+  // A signaled header with a nonempty wait list is left as it is.
+  const uint32_t wait_list_ptr =
+      kernel_state->memory()->HostToGuestVirtual(header) +
+      offsetof(X_DISPATCH_HEADER, wait_list);
+  if (!*old_signal_state || header->wait_list.flink_ptr == wait_list_ptr) {
+    header->signal_state = 1;
+  }
+  return true;
+}
+
+void XObject::ReleaseStashedHandle(KernelState* kernel_state,
+                                   X_DISPATCH_HEADER* header) {
+  auto global_lock = global_critical_region::AcquireDirect();
+  if (header->wait_list.flink_ptr != kXObjSignature) {
+    return;
+  }
+  uint32_t handle = header->wait_list.blink_ptr;
+  auto object =
+      kernel_state->object_table()->LookupObject<XObject>(handle, true);
+  if (object && object->guest_object() ==
+                    kernel_state->memory()->HostToGuestVirtual(header)) {
+    kernel_state->object_table()->ReleaseHandleInLock(handle);
+  }
+}
+
 object_ref<XObject> XObject::GetNativeObject(KernelState* kernel_state,
                                              void* native_ptr,
                                              X_OBJECT_TYPES as_type,

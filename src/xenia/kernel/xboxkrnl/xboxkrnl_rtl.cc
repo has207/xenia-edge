@@ -544,12 +544,7 @@ static_assert_size(X_RTL_CRITICAL_SECTION, 28);
 
 void xeRtlInitializeCriticalSection(X_RTL_CRITICAL_SECTION* cs,
                                     uint32_t cs_ptr) {
-  cs->header.type = X_OBJECT_TYPES::EventSynchronizationObject;
-  cs->header.absolute = 0;  // spin count div 256
-  cs->header.signal_state = 0;
-  cs->lock_count = -1;
-  cs->recursion_count = 0;
-  cs->owning_thread = 0;
+  xeRtlInitializeCriticalSectionAndSpinCount(cs, cs_ptr, 0);
 }
 
 void RtlInitializeCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
@@ -567,9 +562,14 @@ X_STATUS xeRtlInitializeCriticalSectionAndSpinCount(X_RTL_CRITICAL_SECTION* cs,
     spin_count_div_256 = 255;
   }
 
+  XObject::ReleaseStashedHandle(kernel_state(), &cs->header);
   cs->header.type = X_OBJECT_TYPES::EventSynchronizationObject;
   cs->header.absolute = spin_count_div_256;
   cs->header.signal_state = 0;
+  const uint32_t wait_list_ptr =
+      cs_ptr + offsetof(X_DISPATCH_HEADER, wait_list);
+  cs->header.wait_list.flink_ptr = wait_list_ptr;
+  cs->header.wait_list.blink_ptr = wait_list_ptr;
   cs->lock_count = -1;
   cs->recursion_count = 0;
   cs->owning_thread = 0;

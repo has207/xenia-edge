@@ -615,6 +615,11 @@ void KeInitializeEvent_entry(pointer_t<X_KEVENT> event_ptr, dword_t event_type,
 DECLARE_XBOXKRNL_EXPORT1(KeInitializeEvent, kThreading, kImplemented);
 
 uint32_t xeKeSetEvent(X_KEVENT* event_ptr, uint32_t increment, uint32_t wait) {
+  int32_t old_signal_state;
+  if (XObject::TrySetUnwrappedEvent(kernel_state(), event_ptr,
+                                    &old_signal_state)) {
+    return old_signal_state;
+  }
   auto ev = XObject::GetNativeObject<XEvent>(kernel_state(), event_ptr,
                                              event_ptr->header.type);
   if (!ev) {
@@ -995,6 +1000,9 @@ uint32_t xeKeWaitForSingleObject(void* object_ptr, uint32_t wait_reason,
                                  uint32_t processor_mode, uint32_t alertable,
                                  uint64_t* timeout_ptr) {
   xeProcessKernelApcs(nullptr);
+  if (XObject::TryWaitUnwrappedEvent(kernel_state(), object_ptr)) {
+    return X_STATUS_SUCCESS;
+  }
   auto object = XObject::GetNativeObject<XObject>(kernel_state(), object_ptr);
 
   if (!object) {

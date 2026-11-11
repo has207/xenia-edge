@@ -263,6 +263,17 @@ class XObject {
                                        void* native_ptr,
                                        X_OBJECT_TYPES as_type = UndefinedObject,
                                        bool already_locked = false);
+  // An event header no XObject wraps has no waiters, so these work on its
+  // guest bytes and stash nothing, as the console only writes a header's wait
+  // list when a thread blocks. The wait returns false when it has to block.
+  static bool TryWaitUnwrappedEvent(KernelState* kernel_state,
+                                    void* native_ptr);
+  static bool TrySetUnwrappedEvent(KernelState* kernel_state, void* native_ptr,
+                                   int32_t* old_signal_state);
+  // Releases the handle stashed in a header that is about to be initialized
+  // again, if it still belongs to the object for that header.
+  static void ReleaseStashedHandle(KernelState* kernel_state,
+                                   X_DISPATCH_HEADER* header);
 
   // Priority increment stored by the most recent signal operation
   // (KeSetEvent, KeReleaseSemaphore, etc.).  Read by the waiter on wake
