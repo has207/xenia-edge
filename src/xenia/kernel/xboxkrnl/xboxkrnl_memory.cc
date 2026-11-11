@@ -185,6 +185,26 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
     return X_STATUS_INVALID_PARAMETER;
   }
 
+  // A commit without a reserve takes the pages that start inside the range, so
+  // a range starting mid-page leaves that page alone and one inside a single
+  // page commits nothing.
+  if (adjusted_base && !(alloc_type & X_MEM_RESERVE)) {
+    const uint64_t start =
+        xe::round_up(uint64_t(base_addr_ptr.value()), page_size, false);
+    const uint64_t end = xe::round_up(
+        uint64_t(base_addr_ptr.value()) + original_size, page_size, false);
+    if (end > UINT32_MAX) {
+      return X_STATUS_INVALID_PARAMETER;
+    }
+    adjusted_base = uint32_t(start);
+    adjusted_size = uint32_t(std::max(start, end) - start);
+    if (!adjusted_size) {
+      *base_addr_ptr = adjusted_base;
+      *region_size_ptr = 0;
+      return X_STATUS_SUCCESS;
+    }
+  }
+
   // Allocate.
   uint32_t allocation_type = 0;
   if (alloc_type & X_MEM_RESERVE) {
@@ -357,8 +377,19 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
           base_addr_value);
       return X_STATUS_INVALID_PARAMETER;
     }
-    region_size_value = xe::round_up(region_size_value, heap->page_size());
-    result = heap->Decommit(base_addr_value, region_size_value);
+    // Like a commit, takes the pages that start inside the range.
+    const uint32_t page_size = heap->page_size();
+    const uint64_t start =
+        xe::round_up(uint64_t(base_addr_value), page_size, false);
+    const uint64_t end = xe::round_up(
+        uint64_t(base_addr_value) + region_size_value, page_size, false);
+    if (end > UINT32_MAX) {
+      return X_STATUS_INVALID_PARAMETER;
+    }
+    base_addr_value = uint32_t(start);
+    region_size_value = uint32_t(std::max(start, end) - start);
+    result = !region_size_value ||
+             heap->Decommit(base_addr_value, region_size_value);
   } else {
     result = heap->Release(base_addr_value, &region_size_value);
   }
