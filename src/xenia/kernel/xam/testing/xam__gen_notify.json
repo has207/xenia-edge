@@ -1,6 +1,6 @@
 {
  "corpus": "notify",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-30",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-11",
  "steps": [
   {
    "scenario": "signaled once",
@@ -708,6 +708,294 @@
   {
    "scenario": "two areas",
    "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "create listener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 32
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "first poll",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "first next",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "0a000001",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 8
+    },
+    {
+     "pointer": "param",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "first next again",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000001",
+   "capture": {
+    "id": "0a000003",
+    "param": "00000001"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 24
+    },
+    {
+     "pointer": "param",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "first next when empty",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "id": "00000000",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 40
+    },
+    {
+     "pointer": "param",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "first poll when empty",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 56
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "first close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "create listener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 32
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "second poll",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 64
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "second next",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "id": "00000000",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 72
+    },
+    {
+     "pointer": "param",
+     "offset": 80
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "second next again",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "id": "00000000",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 88
+    },
+    {
+     "pointer": "param",
+     "offset": 96
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "second next when empty",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "id": "00000000",
+    "param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "id",
+     "offset": 104
+    },
+    {
+     "pointer": "param",
+     "offset": 112
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "second poll when empty",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "no wait",
+     "offset": 120
+    }
+   ]
+  },
+  {
+   "scenario": "xmp area at creation",
+   "name": "second close",
    "export": "NtClose",
    "r3": "0000000000000000",
    "args": [

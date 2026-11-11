@@ -4,13 +4,16 @@ handle is signaled.
 
 The notifications are custom ones (area 3), which titles get from their own
 player list UI, and a friends presence change (area 2). Every listener of those
-areas sees them, as on any console.
+areas sees them, as on any console. A new listener of the music player's area
+(5) gets its state and playback controller at once, so nothing may play during
+the run.
 """
 
 import struct
 
 FRIENDS = 1 << 2
 CUSTOM = 1 << 3
+XMP = 1 << 5
 MAX_VERSION = 1
 
 FRIEND_PRESENCE = 0x04000001
@@ -95,3 +98,14 @@ def build(corpus):
     next_notification(s, handle, 0, 'next')
     poll(s, handle, 'poll when empty')
     s.call('NtClose', handle)
+
+    # Each new listener of the area, not only the first.
+    s = corpus.scenario('xmp area at creation')
+    for which in ('first', 'second'):
+        handle = listener(s, XMP)
+        poll(s, handle, f'{which} poll')
+        next_notification(s, handle, 0, f'{which} next')
+        next_notification(s, handle, 0, f'{which} next again')
+        next_notification(s, handle, 0, f'{which} next when empty')
+        poll(s, handle, f'{which} poll when empty')
+        s.call('NtClose', handle, name=f'{which} close')
