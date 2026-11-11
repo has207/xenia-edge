@@ -1,0 +1,468 @@
+{
+ "corpus": "voice_category",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-11",
+ "steps": [
+  {
+   "scenario": "voice category",
+   "name": "register first",
+   "export": "XAudioRegisterRenderDriverClient",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "first registration",
+     "offset": 0
+    },
+    {
+     "pointer": "first handle",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "register second",
+   "export": "XAudioRegisterRenderDriverClient",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "second registration",
+     "offset": 32
+    },
+    {
+     "pointer": "second handle",
+     "offset": 56
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "first mask at registration",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "first mask at registration mask": "ffffffff"
+   },
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "pointer": "first mask at registration mask",
+     "offset": 64
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "first mask read again",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "first mask read again mask": "00000000"
+   },
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "pointer": "first mask read again mask",
+     "offset": 72
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "second mask at registration",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "second mask at registration mask": "ffffffff"
+   },
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "pointer": "second mask at registration mask",
+     "offset": 80
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "category 0",
+   "export": "XAudioGetVoiceCategoryVolume",
+   "r3": "0000000000000000",
+   "capture": {
+    "category 0 volume": "3f800000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "category 0 volume",
+     "offset": 88
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "category 30",
+   "export": "XAudioGetVoiceCategoryVolume",
+   "r3": "0000000000000000",
+   "capture": {
+    "category 30 volume": "3f800000"
+   },
+   "args": [
+    {
+     "value": 30
+    },
+    {
+     "pointer": "category 30 volume",
+     "offset": 96
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "category 31",
+   "export": "XAudioGetVoiceCategoryVolume",
+   "r3": "0000000000000000",
+   "capture": {
+    "category 31 volume": "3f800000"
+   },
+   "args": [
+    {
+     "value": 31
+    },
+    {
+     "pointer": "category 31 volume",
+     "offset": 104
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "set 30 to 0.5",
+   "export": "set category volume",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 30
+    },
+    {
+     "pointer": "set 30 to 0.5 value",
+     "offset": 112
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "first mask after set",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "first mask after set mask": "40000000"
+   },
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "pointer": "first mask after set mask",
+     "offset": 120
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "second mask after set",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "second mask after set mask": "40000000"
+   },
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "pointer": "second mask after set mask",
+     "offset": 128
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "first mask read again after set",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "first mask read again after set mask": "00000000"
+   },
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "pointer": "first mask read again after set mask",
+     "offset": 136
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "category 30 after set",
+   "export": "XAudioGetVoiceCategoryVolume",
+   "r3": "0000000000000000",
+   "capture": {
+    "category 30 after set volume": "3f000000"
+   },
+   "args": [
+    {
+     "value": 30
+    },
+    {
+     "pointer": "category 30 after set volume",
+     "offset": 144
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "set 30 to 0.5 again",
+   "export": "set category volume",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 30
+    },
+    {
+     "pointer": "set 30 to 0.5 again value",
+     "offset": 152
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "first mask after same value",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "first mask after same value mask": "40000000"
+   },
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "pointer": "first mask after same value mask",
+     "offset": 160
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "set 30 to 1.5",
+   "export": "set category volume",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 30
+    },
+    {
+     "pointer": "set 30 to 1.5 value",
+     "offset": 168
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "category 30 above 1",
+   "export": "XAudioGetVoiceCategoryVolume",
+   "r3": "0000000000000000",
+   "capture": {
+    "category 30 above 1 volume": "3fc00000"
+   },
+   "args": [
+    {
+     "value": 30
+    },
+    {
+     "pointer": "category 30 above 1 volume",
+     "offset": 176
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "set 32",
+   "export": "set category volume",
+   "r3": "FFFFFFFF80070057",
+   "args": [
+    {
+     "value": 32
+    },
+    {
+     "pointer": "set 32 value",
+     "offset": 184
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "category 32",
+   "export": "XAudioGetVoiceCategoryVolume",
+   "r3": "FFFFFFFF80070057",
+   "capture": {
+    "category 32 volume": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 32
+    },
+    {
+     "pointer": "category 32 volume",
+     "offset": 192
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "first mask after set 32",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "first mask after set 32 mask": "40000000"
+   },
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "pointer": "first mask after set 32 mask",
+     "offset": 200
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "mask of handle 0",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "FFFFFFFF80070057",
+   "capture": {
+    "mask of handle 0 mask": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "pointer": "mask of handle 0 mask",
+     "offset": 208
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "restore 30",
+   "export": "set category volume",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 30
+    },
+    {
+     "pointer": "restore 30 value",
+     "offset": 216
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "unregister first",
+   "export": "XAudioUnregisterRenderDriverClient",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "second mask after restore",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "second mask after restore mask": "40000000"
+   },
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "pointer": "second mask after restore mask",
+     "offset": 224
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "register third",
+   "export": "XAudioRegisterRenderDriverClient",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "third registration",
+     "offset": 232
+    },
+    {
+     "pointer": "third handle",
+     "offset": 256
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "third mask at registration",
+   "export": "XAudioGetVoiceCategoryVolumeChangeMask",
+   "r3": "0000000000000000",
+   "capture": {
+    "third mask at registration mask": "ffffffff"
+   },
+   "args": [
+    {
+     "variable": "third"
+    },
+    {
+     "pointer": "third mask at registration mask",
+     "offset": 264
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "unregister second",
+   "export": "XAudioUnregisterRenderDriverClient",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "voice category",
+   "name": "unregister third",
+   "export": "XAudioUnregisterRenderDriverClient",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "third"
+    }
+   ]
+  }
+ ]
+}

@@ -89,6 +89,7 @@ class Assembler:
     def stw(self, rs, d, ra): self._dform(36, rs, ra, d)
     def stwu(self, rs, d, ra): self._dform(37, rs, ra, d)
     def stb(self, rs, d, ra): self._dform(38, rs, ra, d)
+    def lfs(self, frt, d, ra): self._dform(48, frt, ra, d)
 
     def cmpwi(self, ra, imm): self._dform(11, 0, ra, imm)
     def cmplwi(self, ra, imm): self._dform(10, 0, ra, imm, UNSIGNED)
