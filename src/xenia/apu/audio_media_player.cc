@@ -567,8 +567,9 @@ void AudioMediaPlayer::SetCaptureCallback(uint32_t callback, uint32_t context,
 }
 
 void AudioMediaPlayer::OnStateChanged() {
+  // The parameter says whether a song is playing or paused.
   kernel_state_->BroadcastNotification(kXNotificationXmpStateChanged,
-                                       static_cast<uint32_t>(state_));
+                                       state_ != XmpApp::State::kIdle);
 }
 
 bool AudioMediaPlayer::PushSamples(const float* samples, size_t frames) {
