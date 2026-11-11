@@ -117,7 +117,10 @@ union PageEntry {
     uint32_t current_protect : 4;
     // Allocation state of the page as a MemoryAllocationFlag bit mask.
     uint32_t state : 2;
-    uint32_t reserved : 14;
+    // Set once a commit has initialized the page. Decommit and release keep it
+    // because the page holds data from then on.
+    uint32_t initialized : 1;
+    uint32_t reserved : 13;
   };
 };
 
@@ -206,6 +209,11 @@ class BaseHeap {
   // Releases whole pages inside one region. The pages before and after them
   // become regions of their own.
   bool ReleaseRange(uint32_t address, uint32_t size);
+
+  // The runs of the range whose pages no commit has initialized since the heap
+  // was reset. Marks the whole range initialized.
+  std::vector<std::pair<uint32_t, uint32_t>> TakeUninitializedRuns(
+      uint32_t address, uint32_t size);
 
   // Modifies the protection mode of pages within the given range.
   virtual bool Protect(uint32_t address, uint32_t size, uint32_t protect,

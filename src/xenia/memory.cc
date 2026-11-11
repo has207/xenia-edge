@@ -2932,6 +2932,35 @@ bool BaseHeap::ReleaseRange(uint32_t address, uint32_t size) {
   return true;
 }
 
+std::vector<std::pair<uint32_t, uint32_t>> BaseHeap::TakeUninitializedRuns(
+    uint32_t address, uint32_t size) {
+  std::vector<std::pair<uint32_t, uint32_t>> runs;
+  if (address < heap_base_ || address - heap_base_ >= heap_size_) {
+    return runs;
+  }
+  auto global_lock = global_critical_region_.Acquire();
+  uint32_t page_number = (address - heap_base_) >> page_size_shift_;
+  const uint32_t end_page_number =
+      std::min(uint32_t(page_table_.size()),
+               page_number + get_page_count(size, page_size_));
+  for (; page_number < end_page_number; ++page_number) {
+    auto& page_entry = page_table_[page_number];
+    if (page_entry.initialized) {
+      continue;
+    }
+    page_entry.initialized = 1;
+    const uint32_t page_address =
+        heap_base_ + (page_number << page_size_shift_);
+    if (!runs.empty() &&
+        runs.back().first + runs.back().second == page_address) {
+      runs.back().second += page_size_;
+    } else {
+      runs.emplace_back(page_address, page_size_);
+    }
+  }
+  return runs;
+}
+
 void BaseHeap::ReleasePages(uint32_t start_page_number, uint32_t page_count) {
   // Release from host not needed as mapping reserves the range for us.
   // TODO(benvanik): protect with NOACCESS?
@@ -2962,7 +2991,9 @@ void BaseHeap::ReleasePages(uint32_t start_page_number, uint32_t page_count) {
   for (uint32_t page_number = start_page_number;
        page_number < start_page_number + page_count; ++page_number) {
     auto& page_entry = page_table_[page_number];
+    const uint32_t initialized = page_entry.initialized;
     page_entry.qword = 0;
+    page_entry.initialized = initialized;
     unreserved_page_count_++;
   }
 
