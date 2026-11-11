@@ -619,11 +619,11 @@ dword_result_t NtRemoveIoCompletion_entry(
   auto port =
       kernel_state()->object_table()->LookupObject<XIOCompletion>(handle);
   if (!port) {
-    status = X_STATUS_INVALID_HANDLE;
+    return X_STATUS_INVALID_HANDLE;
   }
 
   uint64_t timeout_ticks =
-      timeout ? static_cast<uint32_t>(*timeout)
+      timeout ? static_cast<uint64_t>(*timeout)
               : static_cast<uint64_t>(std::numeric_limits<int64_t>::min());
   XIOCompletion::IONotification notification;
   if (port->WaitForNotification(timeout_ticks, &notification)) {
