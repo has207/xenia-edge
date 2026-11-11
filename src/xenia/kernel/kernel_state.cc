@@ -1216,13 +1216,17 @@ void KernelState::RegisterNotifyListener(XNotifyListener* listener) {
                                   xam::SystemLinkEnabled());
   }
 
+  // The first music player listener starts with its state and controller,
+  // without being signaled.
   if (!has_notified_xmp_startup_ && listener->mask() & kXNotifyXmp) {
     has_notified_xmp_startup_ = true;
-    // Playback state is idle until the media player broadcasts a transition
-    // of its own, so only the controller is worth priming.
+    auto media_player = emulator()->audio_media_player();
     listener->EnqueueNotification(
-        kXNotificationXmpPlaybackControllerChanged,
-        emulator()->audio_media_player()->IsTitleInPlaybackControl());
+        kXNotificationXmpStateChanged,
+        media_player->GetState() != xam::apps::XmpApp::State::kIdle, false);
+    listener->EnqueueNotification(kXNotificationXmpPlaybackControllerChanged,
+                                  media_player->IsTitleInPlaybackControl(),
+                                  false);
   }
 }
 

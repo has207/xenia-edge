@@ -54,7 +54,10 @@ class XNotifyListener : public XObject {
 
   void Initialize(uint64_t mask, uint32_t is_system, uint32_t max_version);
 
-  void EnqueueNotification(XNotificationID id, uint32_t data);
+  // Queues |id| with |data|. Unless |signal| is false, a wait on the
+  // listener then returns.
+  void EnqueueNotification(XNotificationID id, uint32_t data,
+                           bool signal = true);
   bool DequeueNotification(XNotificationID* out_id, uint32_t* out_data);
   bool DequeueNotification(XNotificationID id, uint32_t* out_data);
 
