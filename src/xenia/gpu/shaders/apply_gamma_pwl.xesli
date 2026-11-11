@@ -8,6 +8,7 @@
  */
 
 #include "../../ui/shaders/xesl.xesli"
+#include "apply_gamma_color_space.xesli"
 
 float XeApplyPWLGamma(uint input_value, uint2_xe ramp_value) {
   // output = base + (multiplier * delta) / increment
@@ -33,6 +34,7 @@ float XeApplyPWLGamma(uint input_value, uint2_xe ramp_value) {
 #endif
 push_const_begin_xe(b0, space0)
   uint2_xe xe_apply_gamma_size;
+  uint xe_apply_gamma_color_space;
 push_const_end_xe
 #define LOCAL_SIZE_X_XE 16
 #define LOCAL_SIZE_Y_XE 8
@@ -60,7 +62,10 @@ entry_inputs_end_code_begin_compute_xe
   }
   // UNORM conversion according to the Direct3D 10+ rules.
   uint3_xe apply_gamma_input = uint3_xe(
-      texel_fetch_2d_xe(xe_apply_gamma_source, pixel_index, 0).rgb * 1023.0f +
+      XeFrontBufferToRGB(
+          texel_fetch_2d_xe(xe_apply_gamma_source, pixel_index, 0).rgb,
+          push_const_xe(xe_apply_gamma_color_space)) *
+          1023.0f +
       0.5f);
   // TODO(Triang3l): If this is ever used for gamma other than 128 entries for a
   // 10bpc front buffer, handle the increment from DC_LUTA/B_CONTROL. Currently

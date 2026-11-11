@@ -2412,6 +2412,7 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         ApplyGammaConstants apply_gamma_constants;
         apply_gamma_constants.size[0] = frontbuffer_width_scaled;
         apply_gamma_constants.size[1] = frontbuffer_height_scaled;
+        apply_gamma_constants.color_space = swap_color_space_;
         deferred_command_buffer_.CmdVkPushConstants(
             swap_apply_gamma_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
             sizeof(apply_gamma_constants), &apply_gamma_constants);

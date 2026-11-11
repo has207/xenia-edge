@@ -2561,11 +2561,12 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
       uint32_t source_height = output_height;
       bool force_swap_rb_copy = force_swap_rb;
       bool use_pwl_gamma_ramp_copy = use_pwl_gamma_ramp;
+      uint32_t color_space = swap_color_space_;
       auto aspect = graphics_system_->GetScaledAspectRatio();
       presenter->RefreshGuestOutput(
           output_width, output_height, aspect.first, aspect.second,
           [source_texture, metal_presenter, source_width, source_height,
-           force_swap_rb_copy, use_pwl_gamma_ramp_copy](
+           force_swap_rb_copy, use_pwl_gamma_ramp_copy, color_space](
               ui::Presenter::GuestOutputRefreshContext& context) -> bool {
             auto& metal_context =
                 static_cast<ui::metal::MetalGuestOutputRefreshContext&>(
@@ -2575,7 +2576,7 @@ void MetalCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
             bool copy_success = metal_presenter->CopyTextureToGuestOutput(
                 source_texture, metal_context.resource_uav_capable(),
                 source_width, source_height, force_swap_rb_copy,
-                use_pwl_gamma_ramp_copy, &submission_id);
+                use_pwl_gamma_ramp_copy, color_space, &submission_id);
             if (copy_success && submission_id) {
               metal_context.SetSubmissionId(submission_id);
             }

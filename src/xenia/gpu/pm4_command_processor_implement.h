@@ -812,7 +812,14 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
   uint32_t frontbuffer_ptr = reader_.ReadAndSwap<uint32_t>();
   uint32_t frontbuffer_width = reader_.ReadAndSwap<uint32_t>();
   uint32_t frontbuffer_height = reader_.ReadAndSwap<uint32_t>();
-  reader_.AdvanceRead((count - 4) * sizeof(uint32_t));
+  uint32_t read_count = 4;
+  // Traces recorded before the color space was added end here.
+  swap_color_space_ = 0;
+  if (count > read_count) {
+    swap_color_space_ = reader_.ReadAndSwap<uint32_t>();
+    ++read_count;
+  }
+  reader_.AdvanceRead((count - read_count) * sizeof(uint32_t));
 
   if (COMMAND_PROCESSOR::debug_markers_enabled()) {
     COMMAND_PROCESSOR::InsertDebugMarker("PM4_XE_SWAP: 0x%08X %ux%u",

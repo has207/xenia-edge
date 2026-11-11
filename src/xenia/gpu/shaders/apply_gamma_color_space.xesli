@@ -1,0 +1,36 @@
+/**
+ ******************************************************************************
+ * Xenia : Xbox 360 Emulator Research Project                                 *
+ ******************************************************************************
+ * Copyright 2026 Ben Vanik. All rights reserved.                             *
+ * Released under the BSD license - see LICENSE in the root for more details. *
+ ******************************************************************************
+ */
+
+#ifndef XENIA_GPU_SHADERS_APPLY_GAMMA_COLOR_SPACE_XESLI_
+#define XENIA_GPU_SHADERS_APPLY_GAMMA_COLOR_SPACE_XESLI_
+
+#include "../../ui/shaders/xesl.xesli"
+
+// A YCbCr front buffer holds Cr in red, Y in green and Cb in blue, studio
+// range. Color space 1 is taken as BT.601 and 2 as BT.709, any other value is
+// presented as RGB.
+float3_xe XeFrontBufferToRGB(float3_xe source, uint color_space) {
+  if (color_space != 1u && color_space != 2u) {
+    return source;
+  }
+  float y = (source.g - 16.0f / 255.0f) * (255.0f / 219.0f);
+  float cb = (source.b - 128.0f / 255.0f) * (255.0f / 224.0f);
+  float cr = (source.r - 128.0f / 255.0f) * (255.0f / 224.0f);
+  float3_xe rgb;
+  if (color_space == 1u) {
+    rgb = float3_xe(y + 1.402f * cr, y - 0.344136f * cb - 0.714136f * cr,
+                    y + 1.772f * cb);
+  } else {
+    rgb = float3_xe(y + 1.5748f * cr, y - 0.187324f * cb - 0.468124f * cr,
+                    y + 1.8556f * cb);
+  }
+  return saturate_xe(rgb);
+}
+
+#endif  // XENIA_GPU_SHADERS_APPLY_GAMMA_COLOR_SPACE_XESLI_

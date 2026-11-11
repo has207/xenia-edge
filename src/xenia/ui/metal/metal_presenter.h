@@ -89,6 +89,7 @@ class MetalPresenter : public Presenter {
   bool CopyTextureToGuestOutput(MTL::Texture* source_texture, id dest_texture,
                                 uint32_t source_width, uint32_t source_height,
                                 bool force_swap_rb, bool use_pwl_gamma_ramp,
+                                uint32_t color_space,
                                 uint64_t* submission_out = nullptr);
 
   bool UpdateGammaRamp(const void* table_data, size_t table_bytes,

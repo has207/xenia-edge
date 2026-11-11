@@ -9,6 +9,8 @@
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_video.h"
 
+#include <atomic>
+
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
 #include "xenia/gpu/graphics_system.h"
@@ -487,11 +489,16 @@ void VdSwap_entry(
   gpu_fetch.base_address = frontbuffer_physical_address >> 12;
   XE_MAYBE_UNUSED
   auto texture_format = gpu::xenos::TextureFormat(texture_format_ptr.value());
-  auto color_space = *color_space_ptr;
+  uint32_t color_space = *color_space_ptr;
   assert_true(texture_format == gpu::xenos::TextureFormat::k_8_8_8_8 ||
               texture_format ==
                   gpu::xenos::TextureFormat::k_2_10_10_10_AS_16_16_16_16);
-  assert_true(color_space == 0);  // RGB(0)
+  // RGB(0), or YCbCr taken as BT.601(1) and BT.709(2).
+  assert_true(color_space <= 2);
+  static std::atomic<uint32_t> last_color_space{0};
+  if (last_color_space.exchange(color_space) != color_space) {
+    XELOGI("VdSwap: front buffer color space {}", color_space);
+  }
   assert_true(*width == 1 + gpu_fetch.size_2d.width);
   assert_true(*height == 1 + gpu_fetch.size_2d.height);
 
@@ -515,12 +522,13 @@ void VdSwap_entry(
   dwords[offset++] = gpu_fetch.dword_4;
   dwords[offset++] = gpu_fetch.dword_5;
 
-  dwords[offset++] = xenos::MakePacketType3(xenos::PM4_XE_SWAP, 4);
+  dwords[offset++] = xenos::MakePacketType3(xenos::PM4_XE_SWAP, 5);
   dwords[offset++] = xe::gpu::xenos::kSwapSignature;
   dwords[offset++] = frontbuffer_physical_address;
 
   dwords[offset++] = *width;
   dwords[offset++] = *height;
+  dwords[offset++] = color_space;
 
   // Fill the rest of the buffer with NOP packets.
   for (uint32_t i = offset; i < 64; i++) {

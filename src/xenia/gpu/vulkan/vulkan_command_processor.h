@@ -893,6 +893,7 @@ class VulkanCommandProcessor final : public CommandProcessor {
   // Gamma ramp application compute pipeline constants.
   struct ApplyGammaConstants {
     uint32_t size[2];
+    uint32_t color_space;
   };
   VkPipelineLayout swap_apply_gamma_pipeline_layout_ = VK_NULL_HANDLE;
   VkPipeline swap_apply_gamma_256_entry_table_pipeline_ = VK_NULL_HANDLE;

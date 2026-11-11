@@ -8,6 +8,7 @@
  */
 
 #include "../../ui/shaders/xesl.xesli"
+#include "apply_gamma_color_space.xesli"
 
 #ifdef XE_APPLY_GAMMA_FXAA_LUMA
   #define XE_APPLY_GAMMA_DEST_FORMAT image_format_rgba16f_xe
@@ -18,6 +19,7 @@
 #endif
 push_const_begin_xe(b0, space0)
   uint2_xe xe_apply_gamma_size;
+  uint xe_apply_gamma_color_space;
 push_const_end_xe
 #define LOCAL_SIZE_X_XE 16
 #define LOCAL_SIZE_Y_XE 8
@@ -45,7 +47,10 @@ entry_inputs_end_code_begin_compute_xe
   }
   // UNORM conversion according to the Direct3D 10+ rules.
   uint3_xe apply_gamma_input = uint3_xe(
-      texel_fetch_2d_xe(xe_apply_gamma_source, pixel_index, 0).rgb * 255.0f +
+      XeFrontBufferToRGB(
+          texel_fetch_2d_xe(xe_apply_gamma_source, pixel_index, 0).rgb,
+          push_const_xe(xe_apply_gamma_color_space)) *
+          255.0f +
       0.5f);
   // The ramp has blue in bits 0:9, green in 10:19, red in 20:29 - BGR passed as
   // an R10G10B10A2 buffer.

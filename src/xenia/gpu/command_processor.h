@@ -772,6 +772,8 @@ class CommandProcessor {
   uint32_t swap_frontbuffer_width_ = 0;
   uint32_t swap_frontbuffer_height_ = 0;
   bool swap_representable_ = false;
+  // VdSwap color space of the swap being issued, 0 for RGB.
+  uint32_t swap_color_space_ = 0;
 
   std::atomic<bool> worker_running_;
   kernel::object_ref<kernel::XHostThread> worker_thread_;

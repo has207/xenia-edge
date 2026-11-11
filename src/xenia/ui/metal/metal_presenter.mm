@@ -1218,7 +1218,7 @@ bool MetalPresenter::EnsureGuestOutputPaintResources(uint32_t pixel_format) {
 bool MetalPresenter::CopyTextureToGuestOutput(MTL::Texture* source_texture, id dest_texture,
                                               uint32_t source_width, uint32_t source_height,
                                               bool force_swap_rb, bool use_pwl_gamma_ramp,
-                                              uint64_t* submission_out) {
+                                              uint32_t color_space, uint64_t* submission_out) {
   if (!source_texture || !dest_texture) {
     XELOGE("MetalPresenter::CopyTextureToGuestOutput: Invalid textures");
     return false;
@@ -1482,12 +1482,16 @@ bool MetalPresenter::CopyTextureToGuestOutput(MTL::Texture* source_texture, id d
       return false;
     }
 
+    // MSL rounds the shader's uint2 + uint block up to 16 bytes.
     struct ApplyGammaConstants {
       uint32_t width;
       uint32_t height;
-    } constants;
+      uint32_t color_space;
+      uint32_t padding;
+    } constants = {};
     constants.width = copy_width;
     constants.height = copy_height;
+    constants.color_space = color_space;
 
     [compute_encoder setComputePipelineState:pipeline];
     [compute_encoder setTexture:ramp_texture atIndex:0];

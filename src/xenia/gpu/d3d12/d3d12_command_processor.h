@@ -786,6 +786,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
 
   struct ApplyGammaConstants {
     uint32_t size[2];
+    uint32_t color_space;
   };
   enum class ApplyGammaRootParameter : UINT {
     kConstants,

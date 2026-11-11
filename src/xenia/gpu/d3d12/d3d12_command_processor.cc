@@ -2220,6 +2220,7 @@ void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr,
         ApplyGammaConstants apply_gamma_constants;
         apply_gamma_constants.size[0] = uint32_t(swap_texture_desc.Width);
         apply_gamma_constants.size[1] = uint32_t(swap_texture_desc.Height);
+        apply_gamma_constants.color_space = swap_color_space_;
         deferred_command_list_.D3DSetComputeRoot32BitConstants(
             UINT(ApplyGammaRootParameter::kConstants),
             sizeof(apply_gamma_constants) / sizeof(uint32_t),
