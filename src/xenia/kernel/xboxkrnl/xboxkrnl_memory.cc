@@ -170,9 +170,8 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
                                ? -int32_t(region_size_ptr.value())
                                : region_size_ptr.value();
 
-  uint32_t alignment = adjusted_base ? page_size : 64 * 1024;
   uint32_t original_size = adjusted_size;  // Save size before rounding
-  adjusted_size = xe::round_up(adjusted_size, alignment);
+  adjusted_size = xe::round_up(adjusted_size, page_size);
 
   // Check for overflow after rounding (compare against the already-converted
   // positive size, not the original which could be negative)
@@ -241,7 +240,8 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   } else {
     bool top_down = !!(alloc_type & X_MEM_TOP_DOWN);
     heap = kernel_memory()->LookupHeapByType(false, page_size);
-    heap->Alloc(adjusted_size, page_size, allocation_type, protect, top_down,
+    // A region starts on a 64 KB boundary whatever its page size.
+    heap->Alloc(adjusted_size, 64 * 1024, allocation_type, protect, top_down,
                 &address);
     if (commit) {
       commit_runs.emplace_back(address, adjusted_size);
