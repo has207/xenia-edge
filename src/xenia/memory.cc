@@ -2868,7 +2868,8 @@ bool BaseHeap::Release(uint32_t base_address, uint32_t* out_region_size) {
   // Given address must be a region base address.
   uint32_t base_page_number = (base_address - heap_base_) / page_size_;
   auto base_page_entry = page_table_[base_page_number];
-  if (base_page_entry.base_address != base_page_number) {
+  if (!base_page_entry.state ||
+      base_page_entry.base_address != base_page_number) {
     XELOGE("BaseHeap::Release failed because address is not a region start");
     return false;
   }
