@@ -9,7 +9,14 @@
 
 #include "xenia/memory.h"
 
+#include <cstring>
+
 #include "third_party/catch/include/catch.hpp"
+
+#include "xenia/base/cvar.h"
+
+DECLARE_bool(scribble_heap);
+DECLARE_int32(scribble_heap_value);
 
 namespace xe {
 namespace test {
@@ -167,6 +174,50 @@ TEST_CASE("Physical range access follows guest commitment", "[memory]") {
   CHECK(heap->QueryRangeAccess(address, address) == PageAccess::kNoAccess);
   CHECK(physical_heap->QueryRangeAccess(physical_address, physical_address) ==
         PageAccess::kNoAccess);
+}
+
+TEST_CASE("Scribbling a commit leaves pages already committed alone",
+          "[memory]") {
+  Memory memory;
+  REQUIRE(memory.Initialize());
+
+  struct Scribble {
+    bool enabled = cvars::scribble_heap;
+    int32_t value = cvars::scribble_heap_value;
+    Scribble() {
+      cvars::scribble_heap = true;
+      cvars::scribble_heap_value = 0x5A;
+    }
+    ~Scribble() {
+      cvars::scribble_heap = enabled;
+      cvars::scribble_heap_value = value;
+    }
+  } scribble;
+
+  constexpr uint32_t page_size = 0x1000;
+  constexpr uint32_t protect = kMemoryProtectRead | kMemoryProtectWrite;
+  // vE0000000 sits at a 0x1000 host offset from its guest addresses.
+  for (uint32_t address : {0x90010000u, 0xE1000000u}) {
+    INFO("address " << address);
+    auto* heap = memory.LookupHeap(address);
+    REQUIRE(heap != nullptr);
+    REQUIRE(heap->AllocFixed(address, 2 * page_size, page_size,
+                             kMemoryAllocationReserve, protect));
+    REQUIRE(heap->AllocFixed(address, page_size, page_size,
+                             kMemoryAllocationCommit, protect));
+    auto* first = memory.TranslateVirtual(address);
+    auto* second = memory.TranslateVirtual(address + page_size);
+    CHECK(first[0] == 0x5A);
+    CHECK(first[page_size - 1] == 0x5A);
+    std::memset(first, 0xC3, page_size);
+
+    REQUIRE(heap->AllocFixed(address, 2 * page_size, page_size,
+                             kMemoryAllocationCommit, protect));
+    CHECK(first[0] == 0xC3);
+    CHECK(first[page_size - 1] == 0xC3);
+    CHECK(second[0] == 0x5A);
+    CHECK(second[page_size - 1] == 0x5A);
+  }
 }
 
 }  // namespace test

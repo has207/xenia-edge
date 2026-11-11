@@ -254,5 +254,34 @@ TEST_CASE("PhysicalHeap::AllocRange stays within the requested range",
   REQUIRE(addr + size - 1 <= high_address);
 }
 
+TEST_CASE("PhysicalHeap vE0000000 release", "[memory]") {
+  Memory memory;
+  VirtualHeap parent;
+  parent.Initialize(nullptr, nullptr, HeapType::kGuestPhysical, 0x00000000,
+                    0x20000000, 4096);
+
+  PhysicalHeap heap;
+  heap.Initialize(&memory, nullptr, HeapType::kGuestPhysical, 0xE0000000,
+                  0x1FD00000, 4096, &parent);
+
+  const uint32_t parent_free = parent.unreserved_page_count();
+  uint32_t addr = 0;
+  REQUIRE(heap.Alloc(0x3000, 0x1000, kMemoryAllocationReserve,
+                     kMemoryProtectRead, false, &addr));
+  REQUIRE(parent.unreserved_page_count() == parent_free - 3);
+  // The parent holds the pages 0x1000 above the heap-relative address.
+  const uint32_t physical_address = heap.GetPhysicalAddress(addr);
+  REQUIRE(physical_address == addr - 0xE0000000 + 0x1000);
+
+  uint32_t size = 0;
+  REQUIRE(heap.Release(addr, &size));
+  CHECK(size == 0x3000);
+  CHECK(parent.unreserved_page_count() == parent_free);
+  // Both page tables hold the pages as free.
+  CHECK_FALSE(heap.Release(addr));
+  CHECK_FALSE(parent.Release(physical_address));
+  CHECK(parent.unreserved_page_count() == parent_free);
+}
+
 }  // namespace test
 }  // namespace xe

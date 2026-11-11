@@ -7,6 +7,9 @@
  ******************************************************************************
  */
 
+#include <utility>
+#include <vector>
+
 #include "third_party/catch/include/catch.hpp"
 
 #include "xenia/memory.h"
@@ -385,6 +388,112 @@ TEST_CASE("heap_64k_pages", "[heap]") {
   REQUIRE(h.Release(0x40000000));
   REQUIRE(h.Release(0x40010000));
   REQUIRE(h.unreserved_page_count() == 64);
+}
+
+// ============================================================================
+// Releasing free pages and part of a region
+// ============================================================================
+
+// The region holding an address as {base, size}, {0, 0} for a free page.
+static std::pair<uint32_t, uint32_t> RegionOf(BaseHeap& heap,
+                                              uint32_t address) {
+  HeapAllocationInfo info = {};
+  REQUIRE(heap.QueryRegionInfo(address, &info));
+  if (!info.state) {
+    return {0, 0};
+  }
+  return {info.allocation_base, info.allocation_size};
+}
+
+TEST_CASE("heap_release_free_page", "[heap]") {
+  // A free first page reads as a region of no pages starting there.
+  TestHeap h(0x80000000, 0x100000, 0x1000);
+  REQUIRE_FALSE(h.Release(0x80000000));
+  REQUIRE(h.unreserved_page_count() == 256);
+
+  uint32_t addr = 0;
+  REQUIRE(h.Alloc(0x1000, 0x1000, false, &addr));
+  REQUIRE(addr == 0x80000000);
+  REQUIRE(h.Release(addr));
+  REQUIRE_FALSE(h.Release(addr));
+  REQUIRE(h.unreserved_page_count() == 256);
+}
+
+TEST_CASE("heap_release_range", "[heap]") {
+  TestHeap h(0x80000000, 0x100000, 0x1000);
+  uint32_t addr = 0;
+  REQUIRE(h.Alloc(0x3000, 0x1000, false, &addr));
+  REQUIRE(addr == 0x80000000);
+
+  SECTION("the middle page leaves a region either side") {
+    REQUIRE(h.heap().ReleaseRange(0x80001000, 0x1000));
+    CHECK(RegionOf(h.heap(), 0x80000000) ==
+          std::pair<uint32_t, uint32_t>(0x80000000, 0x1000));
+    CHECK(RegionOf(h.heap(), 0x80001000) == std::pair<uint32_t, uint32_t>());
+    CHECK(RegionOf(h.heap(), 0x80002000) ==
+          std::pair<uint32_t, uint32_t>(0x80002000, 0x1000));
+    CHECK(h.unreserved_page_count() == 254);
+    REQUIRE(h.Release(0x80000000));
+    REQUIRE(h.Release(0x80002000));
+    CHECK(h.unreserved_page_count() == 256);
+    // The three pages coalesced again.
+    REQUIRE(h.Alloc(0x3000, 0x1000, false, &addr));
+    CHECK(addr == 0x80000000);
+  }
+
+  SECTION("the first page leaves the rest as a region") {
+    REQUIRE(h.heap().ReleaseRange(0x80000000, 0x1000));
+    CHECK(RegionOf(h.heap(), 0x80000000) == std::pair<uint32_t, uint32_t>());
+    CHECK(RegionOf(h.heap(), 0x80001000) ==
+          std::pair<uint32_t, uint32_t>(0x80001000, 0x2000));
+    CHECK_FALSE(h.Release(0x80000000));
+    REQUIRE(h.Release(0x80001000));
+    CHECK(h.unreserved_page_count() == 256);
+  }
+
+  SECTION("the last page shrinks the region") {
+    REQUIRE(h.heap().ReleaseRange(0x80002000, 0x1000));
+    CHECK(RegionOf(h.heap(), 0x80000000) ==
+          std::pair<uint32_t, uint32_t>(0x80000000, 0x2000));
+    CHECK(RegionOf(h.heap(), 0x80002000) == std::pair<uint32_t, uint32_t>());
+    uint32_t size = 0;
+    REQUIRE(h.heap().Release(0x80000000, &size));
+    CHECK(size == 0x2000);
+    CHECK(h.unreserved_page_count() == 256);
+  }
+
+  SECTION("all of it frees the region") {
+    REQUIRE(h.heap().ReleaseRange(0x80000000, 0x3000));
+    CHECK(RegionOf(h.heap(), 0x80000000) == std::pair<uint32_t, uint32_t>());
+    CHECK(h.unreserved_page_count() == 256);
+  }
+
+  SECTION("a range past the region or on free pages changes nothing") {
+    CHECK_FALSE(h.heap().ReleaseRange(0x80002000, 0x2000));
+    CHECK_FALSE(h.heap().ReleaseRange(0x80003000, 0x1000));
+    CHECK(RegionOf(h.heap(), 0x80000000) ==
+          std::pair<uint32_t, uint32_t>(0x80000000, 0x3000));
+    CHECK(h.unreserved_page_count() == 253);
+  }
+}
+
+TEST_CASE("heap_uninitialized_runs", "[heap]") {
+  using Runs = std::vector<std::pair<uint32_t, uint32_t>>;
+  TestHeap h(0x80000000, 0x100000, 0x1000);
+  uint32_t addr = 0;
+  REQUIRE(h.Alloc(0x3000, 0x1000, false, &addr));
+  REQUIRE(addr == 0x80000000);
+  CHECK(h.heap().TakeUninitializedRuns(0x80001000, 0x1000) ==
+        Runs{{0x80001000, 0x1000}});
+
+  // A page stays initialized through a release so a later commit of it holds
+  // that data.
+  REQUIRE(h.Release(addr));
+  REQUIRE(h.Alloc(0x3000, 0x1000, false, &addr));
+  REQUIRE(addr == 0x80000000);
+  CHECK(h.heap().TakeUninitializedRuns(0x80000000, 0x3000) ==
+        Runs{{0x80000000, 0x1000}, {0x80002000, 0x1000}});
+  CHECK(h.heap().TakeUninitializedRuns(0x80000000, 0x3000).empty());
 }
 
 }  // namespace test
