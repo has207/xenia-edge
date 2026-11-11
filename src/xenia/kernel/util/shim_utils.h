@@ -166,11 +166,11 @@ class Param {
 template <>
 inline void Param::LoadValue<float>(Param::Init& init, float* out_value) {
   *out_value =
-      static_cast<float>(init.ppc_context->f[1 + ++init.float_ordinal]);
+      static_cast<float>(init.ppc_context->f[1 + init.float_ordinal++]);
 }
 template <>
 inline void Param::LoadValue<double>(Param::Init& init, double* out_value) {
-  *out_value = init.ppc_context->f[1 + ++init.float_ordinal];
+  *out_value = init.ppc_context->f[1 + init.float_ordinal++];
 }
 template <typename T>
 class ParamBase : public Param {
