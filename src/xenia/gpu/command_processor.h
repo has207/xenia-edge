@@ -762,6 +762,17 @@ class CommandProcessor {
   std::vector<uint32_t> trace_frame_numbers_;
   uint32_t trace_swap_count_ = 0;
 
+  // Front buffer region the display scaler scans out, 0 until set.
+  uint32_t scaler_source_width_ = 0;
+  uint32_t scaler_source_height_ = 0;
+  // The last swap, presented again when a scaler change follows it before
+  // anything is drawn.
+  uint32_t swap_fetch_[6] = {};
+  uint32_t swap_frontbuffer_ptr_ = 0;
+  uint32_t swap_frontbuffer_width_ = 0;
+  uint32_t swap_frontbuffer_height_ = 0;
+  bool swap_representable_ = false;
+
   std::atomic<bool> worker_running_;
   kernel::object_ref<kernel::XHostThread> worker_thread_;
 

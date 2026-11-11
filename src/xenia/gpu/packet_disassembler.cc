@@ -172,6 +172,12 @@ bool PacketDisassembler::DisasmPacketType3(const uint8_t* base_ptr,
 
       break;
     }
+    case PM4_XE_SET_SCALER: {
+      static constexpr PacketTypeInfo op_info = {PacketCategory::kGeneric,
+                                                 "PM4_XE_SET_SCALER"};
+      out_info->type_info = &op_info;
+      break;
+    }
     case PM4_INDIRECT_BUFFER:
     case PM4_INDIRECT_BUFFER_PFD: {
       // indirect buffer dispatch

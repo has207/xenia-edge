@@ -24,6 +24,7 @@ namespace xenos {
 // 32-bit words).
 
 constexpr fourcc_t kSwapSignature = make_fourcc("SWAP");
+constexpr fourcc_t kScalerSignature = make_fourcc("SCAL");
 
 enum class ShaderType : uint32_t {
   kVertex = 0,
@@ -1707,6 +1708,7 @@ enum Type3Opcode {
   PM4_INTERRUPT             = 0x54,   // generate interrupt from the command stream
 
   PM4_XE_SWAP               = 0x64,   // Xenia only: VdSwap uses this to trigger a swap.
+  PM4_XE_SET_SCALER         = 0x65,   // Xenia only: the scaler source rect from VdInitializeScalerCommandBuffer.
 
   PM4_IM_STORE              = 0x2c,   // copy sequencer instruction memory to system memory
 

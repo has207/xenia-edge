@@ -508,6 +508,10 @@ bool COMMAND_PROCESSOR::ExecutePacketType3(uint32_t packet) XE_RESTRICT {
       case PM4_XE_SWAP:
         result = COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(packet, count);
         break;
+      case PM4_XE_SET_SCALER:
+        result =
+            COMMAND_PROCESSOR::ExecutePacketType3_XE_SET_SCALER(packet, count);
+        break;
       case PM4_INDIRECT_BUFFER:
       case PM4_INDIRECT_BUFFER_PFD:
         result = COMMAND_PROCESSOR::ExecutePacketType3_INDIRECT_BUFFER(packet,
@@ -816,8 +820,14 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
                                          frontbuffer_height);
   }
 
-  COMMAND_PROCESSOR::IssueSwap(frontbuffer_ptr, frontbuffer_width,
-                               frontbuffer_height);
+  std::memcpy(swap_fetch_,
+              &register_file_->values[XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0],
+              sizeof(swap_fetch_));
+  swap_frontbuffer_ptr_ = frontbuffer_ptr;
+  swap_frontbuffer_width_ = frontbuffer_width;
+  swap_frontbuffer_height_ = frontbuffer_height;
+  COMMAND_PROCESSOR::IssueScalerSwap();
+  swap_representable_ = true;
 
   // Advance the present-frame counter shown in the log prefix.
   logging::IncrementFrameNumber();
@@ -826,6 +836,74 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
   COMMAND_PROCESSOR::ThrottlePresentation();
 
   return true;
+}
+
+XE_NOINLINE
+bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SET_SCALER(
+    uint32_t packet, uint32_t count) XE_RESTRICT {
+  // Xenia-specific VdInitializeScalerCommandBuffer hook.
+  if (count < 3) {
+    reader_.AdvanceRead(count * sizeof(uint32_t));
+    return true;
+  }
+  uint32_t magic = reader_.ReadAndSwap<fourcc_t>();
+  uint32_t source_xy = reader_.ReadAndSwap<uint32_t>();
+  uint32_t source_wh = reader_.ReadAndSwap<uint32_t>();
+  reader_.AdvanceRead((count - 3) * sizeof(uint32_t));
+  if (magic != kScalerSignature) {
+    return true;
+  }
+  uint32_t source_width = 0;
+  uint32_t source_height = 0;
+  if (source_xy) {
+    // A tiled front buffer can't be offset through its fetch constant.
+    XELOGW("Scaler source offset {},{} is not supported", source_xy >> 16,
+           source_xy & 0xFFFF);
+  } else {
+    source_width = source_wh >> 16;
+    source_height = source_wh & 0xFFFF;
+  }
+  if (source_width == scaler_source_width_ &&
+      source_height == scaler_source_height_) {
+    return true;
+  }
+  scaler_source_width_ = source_width;
+  scaler_source_height_ = source_height;
+  XELOGGPU("PM4_XE_SET_SCALER: source {}x{}", source_width, source_height);
+  // A scaler change applies to the swap emitted just before it.
+  if (swap_representable_) {
+    COMMAND_PROCESSOR::IssueScalerSwap();
+  }
+  return true;
+}
+
+XE_NOINLINE
+void COMMAND_PROCESSOR::IssueScalerSwap() XE_RESTRICT {
+  // The scaler scans out only its source rect, so fetch constant 0 holds the
+  // swap's front buffer cut down to it while the swap is issued.
+  uint32_t* fetch_registers =
+      &register_file_->values[XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0];
+  uint32_t current_fetch[6];
+  std::memcpy(current_fetch, fetch_registers, sizeof(current_fetch));
+  std::memcpy(fetch_registers, swap_fetch_, sizeof(swap_fetch_));
+  uint32_t width = swap_frontbuffer_width_;
+  uint32_t height = swap_frontbuffer_height_;
+  if (scaler_source_width_ && scaler_source_height_) {
+    xenos::xe_gpu_texture_fetch_t fetch = register_file_->GetTextureFetch(0);
+    uint32_t fetch_width = uint32_t(fetch.size_2d.width) + 1;
+    uint32_t fetch_height = uint32_t(fetch.size_2d.height) + 1;
+    uint32_t crop_width = std::min(fetch_width, scaler_source_width_);
+    uint32_t crop_height = std::min(fetch_height, scaler_source_height_);
+    if (crop_width != fetch_width || crop_height != fetch_height) {
+      fetch.size_2d.width = crop_width - 1;
+      fetch.size_2d.height = crop_height - 1;
+      fetch_registers[2] = fetch.dword_2;
+      width = crop_width;
+      height = crop_height;
+    }
+  }
+  COMMAND_PROCESSOR::IssueSwap(swap_frontbuffer_ptr_, width, height);
+  std::memcpy(fetch_registers, current_fetch, sizeof(current_fetch));
 }
 
 bool COMMAND_PROCESSOR::ExecutePacketType3_INDIRECT_BUFFER(
@@ -1292,6 +1370,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3Draw(
   // Bit 8 makes the draw conditional on the ID's visibility in bits 0:5,
   // from an earlier PM4_VIZ_QUERY.
 
+  swap_representable_ = false;
   assert_not_zero(count_remaining);
   if (!count_remaining) {
     XELOGE("{}: Packet too small, can't read VGT_DRAW_INITIATOR", opcode_name);

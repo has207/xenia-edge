@@ -33,6 +33,11 @@ XE_NOINLINE
 bool ExecutePacketType3_INTERRUPT(uint32_t packet, uint32_t count) XE_RESTRICT;
 XE_NOINLINE
 bool ExecutePacketType3_XE_SWAP(uint32_t packet, uint32_t count) XE_RESTRICT;
+XE_NOINLINE
+bool ExecutePacketType3_XE_SET_SCALER(uint32_t packet,
+                                      uint32_t count) XE_RESTRICT;
+XE_NOINLINE
+void IssueScalerSwap() XE_RESTRICT;
 
 bool ExecutePacketType3_INDIRECT_BUFFER(uint32_t packet,
                                         uint32_t count) XE_RESTRICT;
