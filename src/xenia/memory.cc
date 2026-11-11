@@ -2605,14 +2605,26 @@ bool BaseHeap::AllocFixed(uint32_t base_address, uint32_t size,
   if (allocation_type == kMemoryAllocationReserve) {
     // Reserve is not needed, as we are mapped already.
   } else {
-    if (!ShouldSkipHostCommit(*this)) {
-      if (!CommitHostPages(start_page_number, page_count, protect)) {
-        XELOGE("BaseHeap::AllocFixed failed to alloc range from host");
-        return false;
+    if (!ShouldSkipHostCommit(*this) &&
+        !CommitHostPages(start_page_number, page_count, protect)) {
+      XELOGE("BaseHeap::AllocFixed failed to alloc range from host");
+      return false;
+    }
+    if (cvars::scribble_heap && IsWritableProtect(protect)) {
+      // Pages already committed hold the guest's data.
+      for (uint32_t page_number = start_page_number;
+           page_number <= end_page_number;) {
+        uint32_t run_end = page_number;
+        while (run_end <= end_page_number &&
+               !(page_table_[run_end].state & kMemoryAllocationCommit)) {
+          ++run_end;
+        }
+        if (run_end > page_number) {
+          RandomizeMemory(TranslateRelative(page_number * page_size_),
+                          (run_end - page_number) * page_size_);
+        }
+        page_number = run_end + 1;
       }
-    } else if (cvars::scribble_heap && IsWritableProtect(protect)) {
-      RandomizeMemory(TranslateRelative(start_page_number * page_size_),
-                      page_count * page_size_);
     }
   }
 
@@ -2784,14 +2796,14 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   if (allocation_type == kMemoryAllocationReserve) {
     // Reserve is not needed, as we are mapped already.
   } else {
-    if (!ShouldSkipHostCommit(*this)) {
-      if (!CommitHostPages(start_page_number, page_count, protect)) {
-        XELOGE("BaseHeap::Alloc failed to alloc range from host");
-        // Restore the free block since we failed.
-        InsertFreeBlock(start_page_number, page_count);
-        return false;
-      }
-    } else if (cvars::scribble_heap && IsWritableProtect(protect)) {
+    if (!ShouldSkipHostCommit(*this) &&
+        !CommitHostPages(start_page_number, page_count, protect)) {
+      XELOGE("BaseHeap::Alloc failed to alloc range from host");
+      // Restore the free block since we failed.
+      InsertFreeBlock(start_page_number, page_count);
+      return false;
+    }
+    if (cvars::scribble_heap && IsWritableProtect(protect)) {
       RandomizeMemory(TranslateRelative(start_page_number << page_size_shift_),
                       page_count << page_size_shift_);
     }
@@ -3077,24 +3089,11 @@ bool BaseHeap::CommitHostPages(uint32_t start_page_number, uint32_t page_count,
         TranslateRelative(start_page_number * page_size_),
         page_count * page_size_, xe::memory::AllocationType::kCommit,
         ToPageAccess(protect));
-    if (!result) {
-      return false;
-    }
-    if (cvars::scribble_heap && IsWritableProtect(protect)) {
-      RandomizeMemory(result, page_count * page_size_);
-    }
-    return true;
+    return result != nullptr;
   }
 
-  if (!ApplyHostProtect(start_page_number, start_page_number + page_count - 1,
-                        protect, nullptr)) {
-    return false;
-  }
-  if (cvars::scribble_heap && IsWritableProtect(protect)) {
-    RandomizeMemory(TranslateRelative(start_page_number * page_size_),
-                    page_count * page_size_);
-  }
-  return true;
+  return ApplyHostProtect(start_page_number, start_page_number + page_count - 1,
+                          protect, nullptr);
 }
 
 bool BaseHeap::Protect(uint32_t address, uint32_t size, uint32_t protect,
