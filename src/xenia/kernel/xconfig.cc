@@ -10,7 +10,6 @@
 #include "xenia/kernel/xconfig.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <iterator>
 #include <span>
@@ -74,9 +73,6 @@ DEFINE_bool(allow_nui_initialization, false,
             " Only set true when testing kinect games. Certain games may\n"
             " require avatar implementation.",
             "Console");
-
-DEFINE_int32(xmp_default_volume, 70,
-             "Default music volume if game doesn't set it [0-100].", "Console");
 
 DECLARE_bool(widescreen);
 DECLARE_int32(video_standard);
@@ -233,11 +229,13 @@ uint16_t BuildSetting(X_CONFIG_CATEGORY category, uint16_t setting,
         case XCONFIG_USER_VIDEO_OUTPUT_BLACK_LEVELS:
           xe::store_and_swap<uint32_t>(out, X_BLACK_LEVEL::LevelNormal);
           return 4;
-        case XCONFIG_USER_MUSIC_VOLUME: {
-          const float volume = cvars::xmp_default_volume / 100.0f;
-          xe::store_and_swap<float>(out, volume);
+        // XMP's saved playback mode and volume, with flags saying neither was
+        // saved.
+        case XCONFIG_USER_MUSIC_PLAYBACK_MODE:
+        case XCONFIG_USER_MUSIC_VOLUME:
+        case XCONFIG_USER_MUSIC_FLAGS:
+          xe::store_and_swap<uint32_t>(out, 0);
           return 4;
-        }
       }
       break;
     case XCONFIG_CONSOLE_CATEGORY:
@@ -406,14 +404,6 @@ void XConfig::WriteSetting(const X_CONFIG_CATEGORY category,
                                     (xe::load_and_swap<uint32_t>(buffer) &
                                      X_RETAIL_FLAGS::KinectInitialized) != 0);
           return;
-        case XCONFIG_USER_MUSIC_VOLUME: {
-          const float volume = xe::load_and_swap<float>(buffer);
-          StoreConsoleSetting<int32_t>(
-              cvars::xmp_default_volume, "xmp_default_volume",
-              std::clamp(static_cast<int32_t>(std::lround(volume * 100.0f)), 0,
-                         100));
-          return;
-        }
       }
       break;
     default:

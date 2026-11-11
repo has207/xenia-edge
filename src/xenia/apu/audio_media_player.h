@@ -64,7 +64,6 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
   bool IsLastSongInPlaylist() const;
 
   X_STATUS SetVolume(float volume);
-  const std::atomic<float>* GetVolume() const { return &volume_; }
 
   void SetPlaybackMode(XmpApp::PlaybackMode playback_mode) {
     playback_mode_ = playback_mode;
@@ -81,12 +80,14 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
   }
   XmpApp::PlaybackFlags GetPlaybackFlags() const { return playback_flags_; }
 
+  // Every client's volume before anything sets it, -12 dB (10^(-12/20)).
+  static constexpr float kDefaultVolume = 0.25118864f;
+
   struct ControllerSettings {
     XmpApp::PlaybackMode playback_mode = XmpApp::PlaybackMode::kInOrder;
     XmpApp::RepeatMode repeat_mode = XmpApp::RepeatMode::kPlaylist;
     XmpApp::PlaybackFlags playback_flags = XmpApp::PlaybackFlags::kDefault;
-    // Initial return before anything sets it, -12 dB (10^(-12/20)).
-    float volume = 0.25118864f;
+    float volume = kDefaultVolume;
   };
   ControllerSettings& GetControllerSettings(XmpClient xmp_client);
 
@@ -151,7 +152,7 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
   PlaybackController playback_controller_ = PlaybackController::kGame;
   XmpClient xmp_client_ = XmpClient::kGame;
   ControllerSettings controller_settings_[4];
-  std::atomic<float> volume_ = 0.0f;
+  std::atomic<float> volume_ = kDefaultVolume;
   uint32_t dash_init_state = 0;
 
   std::unordered_map<uint32_t, std::unique_ptr<XmpApp::Playlist>> playlists_;

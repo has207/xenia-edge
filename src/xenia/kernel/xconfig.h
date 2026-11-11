@@ -402,8 +402,7 @@ enum X_KEYBOARD_LAYOUT : uint16_t {
 template <typename T>
 concept XConfigValidValueType =
     std::same_as<T, uint8_t> || std::same_as<T, uint16_t> ||
-    std::same_as<T, uint32_t> || std::same_as<T, uint64_t> ||
-    std::same_as<T, float>;
+    std::same_as<T, uint32_t> || std::same_as<T, uint64_t>;
 
 // The MAC address of the console |identity| names.
 std::array<uint8_t, 6> ConsoleMacAddress(std::string_view identity);

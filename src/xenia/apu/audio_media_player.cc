@@ -33,8 +33,6 @@ extern "C" {
 #endif
 }  // extern "C"
 
-DEFINE_bool(enable_xmp, true, "Enables Music Player playback.", "APU");
-
 namespace xe {
 namespace apu {
 
@@ -224,10 +222,6 @@ void AudioMediaPlayer::WorkerThreadMain() {
 }
 
 void AudioMediaPlayer::Setup() {
-  if (!cvars::enable_xmp) {
-    return;
-  }
-
   worker_running_ = true;
   worker_thread_ = threading::Thread::Create({}, [&] { WorkerThreadMain(); });
   worker_thread_->set_name("Audio Media Player");
@@ -291,11 +285,6 @@ void AudioMediaPlayer::Play() {
   state_ = XmpApp::State::kPlaying;
   current_song_handle_ = active_song_->handle;
   OnStateChanged();
-
-  if (volume_ == 0.0f) {
-    volume_ = kernel_state_->xconfig()->ReadSetting<float>(
-        kernel::XCONFIG_USER_CATEGORY, kernel::XCONFIG_USER_MUSIC_VOLUME);
-  }
 
   auto result = ProcessAudioLoop(this, formatContext, codecContext, 0);
 
