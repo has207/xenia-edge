@@ -60,6 +60,9 @@ AudioSystem::AudioSystem(cpu::Processor* processor)
   for (size_t i = 0; i < kMaximumClientCount; ++i) {
     client_semaphores_[i] = xe::threading::Semaphore::Create(0, queued_frames_);
   }
+  for (float& volume : voice_category_volumes_) {
+    volume = 1.0f;
+  }
   pending_work_event_ = xe::threading::Event::CreateAutoResetEvent(false);
   assert_not_null(pending_work_event_);
 
@@ -324,6 +327,7 @@ X_STATUS AudioSystem::AddClient(uint32_t callback, uint32_t callback_arg,
   clients_[index].host_client = host_client;
   clients_[index].in_use = true;
   clients_[index].next_pump_us = 0;
+  clients_[index].voice_category_change_mask = 0xFFFFFFFF;
   clients_[index].frames_submitted.store(0);
   clients_[index].frames_processed.store(0);
   clients_[index].frames_dropped.store(0);
@@ -385,6 +389,38 @@ bool AudioSystem::GetClientPerformance(size_t index,
   out_perf->frames_submitted = clients_[index].frames_submitted.load();
   out_perf->frames_processed = clients_[index].frames_processed.load();
   out_perf->frames_dropped = clients_[index].frames_dropped.load();
+  return true;
+}
+
+bool AudioSystem::SetVoiceCategoryVolume(uint32_t category, float volume) {
+  if (category >= kVoiceCategoryCount) {
+    return false;
+  }
+  std::lock_guard<std::mutex> clients_lock(clients_mutex_);
+  voice_category_volumes_[category] = volume;
+  for (auto& client : clients_) {
+    client.voice_category_change_mask |= 1u << category;
+  }
+  return true;
+}
+
+bool AudioSystem::GetVoiceCategoryVolume(uint32_t category, float* out_volume) {
+  if (category >= kVoiceCategoryCount) {
+    return false;
+  }
+  std::lock_guard<std::mutex> clients_lock(clients_mutex_);
+  *out_volume = voice_category_volumes_[category];
+  return true;
+}
+
+bool AudioSystem::TakeVoiceCategoryChangeMask(size_t index,
+                                              uint32_t* out_mask) {
+  if (index >= kMaximumClientCount) {
+    return false;
+  }
+  std::lock_guard<std::mutex> clients_lock(clients_mutex_);
+  *out_mask = clients_[index].voice_category_change_mask;
+  clients_[index].voice_category_change_mask = 0;
   return true;
 }
 

@@ -97,27 +97,44 @@ DECLARE_XBOXKRNL_EXPORT1(XAudioQueryDriverPerformance, kAudio, kStub);
 
 dword_result_t XAudioGetVoiceCategoryVolumeChangeMask_entry(
     lpunknown_t driver_ptr, lpdword_t out_ptr) {
-  assert_true((driver_ptr.guest_address() & 0xFFFF0000) == 0x41550000);
-
+  // Some games spin threads on this.
   xe::threading::MaybeYield();
 
-  // Checking these bits to see if any voice volume changed.
-  // I think.
-  *out_ptr = 0;
+  const uint32_t handle = driver_ptr.guest_address();
+  uint32_t mask = 0;
+  if ((handle & 0xFFFF0000) != 0x41550000 ||
+      !kernel_state()->emulator()->audio_system()->TakeVoiceCategoryChangeMask(
+          handle & 0x0000FFFF, &mask)) {
+    return X_E_INVALIDARG;
+  }
+  *out_ptr = mask;
   return X_ERROR_SUCCESS;
 }
-DECLARE_XBOXKRNL_EXPORT2(XAudioGetVoiceCategoryVolumeChangeMask, kAudio, kStub,
-                         kHighFrequency);
+DECLARE_XBOXKRNL_EXPORT2(XAudioGetVoiceCategoryVolumeChangeMask, kAudio,
+                         kImplemented, kHighFrequency);
 
-dword_result_t XAudioGetVoiceCategoryVolume_entry(dword_t unk,
+dword_result_t XAudioGetVoiceCategoryVolume_entry(dword_t category,
                                                   lpfloat_t out_ptr) {
-  // Expects a floating point single. Volume %?
-  *out_ptr = 1.0f;
-
+  float volume = 0.0f;
+  if (!kernel_state()->emulator()->audio_system()->GetVoiceCategoryVolume(
+          category, &volume)) {
+    return X_E_INVALIDARG;
+  }
+  *out_ptr = volume;
   return X_ERROR_SUCCESS;
 }
-DECLARE_XBOXKRNL_EXPORT2(XAudioGetVoiceCategoryVolume, kAudio, kStub,
+DECLARE_XBOXKRNL_EXPORT2(XAudioGetVoiceCategoryVolume, kAudio, kImplemented,
                          kHighFrequency);
+
+dword_result_t XAudioSetVoiceCategoryVolume_entry(dword_t category,
+                                                  double_t volume) {
+  if (!kernel_state()->emulator()->audio_system()->SetVoiceCategoryVolume(
+          category, static_cast<float>(volume))) {
+    return X_E_INVALIDARG;
+  }
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XBOXKRNL_EXPORT1(XAudioSetVoiceCategoryVolume, kAudio, kImplemented);
 
 dword_result_t XAudioEnableDucker_entry(dword_t unk) { return X_ERROR_SUCCESS; }
 DECLARE_XBOXKRNL_EXPORT1(XAudioEnableDucker, kAudio, kStub);

@@ -39,6 +39,9 @@ namespace apu {
 // Set while the audio worker runs the title's capture callback.
 static thread_local bool in_capture_callback = false;
 
+// The voice category titles put their music in.
+constexpr uint32_t kMusicVoiceCategory = 1;
+
 int32_t InitializeAndOpenAvCodec(std::span<uint8_t> song_data,
                                  AVFormatContext*& format_context,
                                  AVCodecContext*& av_context) {
@@ -514,6 +517,10 @@ void AudioMediaPlayer::SetPlaybackController(
       uint32_t(playback_controller) >= xe::countof(controller_settings_)) {
     return;
   }
+  // The user's music silences the title's.
+  audio_system_->SetVoiceCategoryVolume(
+      kMusicVoiceCategory,
+      playback_controller == PlaybackController::kUser ? 0.0f : 1.0f);
 
   const ControllerSettings& settings =
       controller_settings_[uint32_t(playback_controller)];

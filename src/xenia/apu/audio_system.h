@@ -60,6 +60,15 @@ class AudioSystem {
     virtual void Pump(cpu::ThreadState* thread_state) = 0;
   };
 
+  // Voice category volumes titles scale their voices by. Setting one marks
+  // its category changed for every client. False for a category out of range.
+  static constexpr uint32_t kVoiceCategoryCount = 32;
+  bool SetVoiceCategoryVolume(uint32_t category, float volume);
+  bool GetVoiceCategoryVolume(uint32_t category, float* out_volume);
+  // The categories set since client |index| last asked, which this clears.
+  // False for an index out of range.
+  bool TakeVoiceCategoryChangeMask(size_t index, uint32_t* out_mask);
+
   X_STATUS RegisterClient(uint32_t callback, uint32_t callback_arg,
                           size_t* out_index);
   X_STATUS RegisterHostClient(HostClient* client, size_t* out_index);
@@ -121,6 +130,8 @@ class AudioSystem {
     bool in_use = false;
     // Wall-clock deadline for this client's next pump.
     uint64_t next_pump_us = 0;
+    // Every category counts as changed for a new client.
+    uint32_t voice_category_change_mask = 0;
     std::atomic<uint32_t> frames_submitted{0};
     std::atomic<uint32_t> frames_processed{0};
     std::atomic<uint32_t> frames_dropped{0};
@@ -128,6 +139,8 @@ class AudioSystem {
     std::mutex callback_mutex;
   };
   ClientSlot clients_[kMaximumClientCount];
+  // Guarded by clients_mutex_.
+  float voice_category_volumes_[kVoiceCategoryCount];
 
   int FindFreeClient();
   X_STATUS AddClient(uint32_t callback, uint32_t callback_arg,
