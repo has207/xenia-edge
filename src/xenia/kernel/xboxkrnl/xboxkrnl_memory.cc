@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "xenia/base/logging.h"
+#include "xenia/base/profiling.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/xex_module.h"
 #include "xenia/kernel/kernel_state.h"
@@ -230,8 +231,9 @@ dword_result_t NtAllocateVirtualMemory_entry(lpdword_t base_addr_ptr,
   std::vector<std::pair<uint32_t, uint32_t>> init_runs;
   {
     // Held from the checks through the fill so no other call commits or frees
-    // these pages in between.
+    // these pages in between. The timer covers the time it's held.
     auto global_lock = global_critical_region::AcquireDirect();
+    SCOPE_profile_cpu_i("guestmem", "NtAllocateVirtualMemory");
     uint32_t adjusted_base = 0;
     if (base) {
       // The range must fit in the address space its base is in.
@@ -440,6 +442,7 @@ dword_result_t NtFreeVirtualMemory_entry(lpdword_t base_addr_ptr,
     return X_STATUS_INVALID_PARAMETER;
   }
   auto global_lock = global_critical_region::AcquireDirect();
+  SCOPE_profile_cpu_i("guestmem", "NtFreeVirtualMemory");
   // Both take the pages that start inside the range so size 0 decommits
   // nothing. A reservation must hold the first page and the range.
   const uint32_t page_size = heap->page_size();

@@ -1257,21 +1257,24 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
             // generated code, which is settled by the time a title starts.
             bool coverage_live =
                 cpu_processor && cpu_processor->trace_counts_enabled();
+            bool profiler_enabled = Profiler::is_enabled();
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::BeginDisabled(!coverage_live);
+            ImGui::BeginDisabled(!profiler_enabled);
             DrawLabelCell("reset_capture_window",
-                          coverage_live
+                          profiler_enabled
                               ? "Discard what has been gathered and start the "
                                 "window here"
-                              : "[requires --trace_function_coverage]");
+                              : "[requires --enable-profiler build]");
             ImGui::TableSetColumnIndex(1);
             if (ImGui::Button("Reset##reset_capture_window", ImVec2(-1, 0)) &&
-                coverage_live) {
+                profiler_enabled) {
               // Both halves restart together, otherwise the dump would cover
               // two different windows.
               Profiler::ResetAggregation();
-              cpu_processor->ResetTraceCounts();
+              if (coverage_live) {
+                cpu_processor->ResetTraceCounts();
+              }
               ShowNotification("reset_capture_window", "Window restarted");
             }
             ImGui::EndDisabled();
