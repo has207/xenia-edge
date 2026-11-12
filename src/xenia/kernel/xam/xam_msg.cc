@@ -61,6 +61,14 @@ X_HRESULT xeXMsgStartIORequestEx(uint32_t app, uint32_t message,
       kernel_state()->CompleteOverlappedImmediate(overlapped_ptr, result);
       result = X_ERROR_IO_PENDING;
     }
+  } else if (!overlapped_ptr) {
+    // xam waits for the request, leaves its result as the last error and
+    // returns that it was queued.
+    XThread::SetLastError(result);
+    return X_E_SUCCESS;
+  } else if (result == X_ERROR_IO_PENDING) {
+    // Queued, the overlapped carries the result.
+    result = X_E_SUCCESS;
   }
   if (result == X_ERROR_SUCCESS || result == X_ERROR_IO_PENDING) {
     XThread::SetLastError(0);

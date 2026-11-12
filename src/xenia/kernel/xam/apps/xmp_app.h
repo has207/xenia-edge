@@ -304,6 +304,7 @@ class XmpApp : public App {
 
   X_HRESULT DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                 uint32_t buffer_length) override;
+  Completion CompleteRequest(X_HRESULT result) const override;
 
  private:
   xe::global_critical_region global_critical_region_;

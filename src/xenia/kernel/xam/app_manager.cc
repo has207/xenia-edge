@@ -29,6 +29,11 @@ App::App(KernelState* kernel_state, uint32_t app_id)
       memory_(kernel_state->memory()),
       app_id_(app_id) {}
 
+App::Completion App::CompleteRequest(X_HRESULT result) const {
+  // Some titles take a nonzero length as failure.
+  return {result, result, result ? 0xFFFFFFFF : 0};
+}
+
 void AppManager::RegisterApps(KernelState* kernel_state, AppManager* manager) {
   manager->RegisterApp(std::make_unique<apps::MessengerApp>(kernel_state));
   manager->RegisterApp(std::make_unique<apps::XmpApp>(kernel_state));
@@ -86,12 +91,11 @@ X_HRESULT AppManager::DispatchMessageAsync(uint32_t app_id, uint32_t message,
   kernel_state()->CompleteOverlappedDeferredEx(
       [app, message, copy_ptr, buffer_length](uint32_t& extended_error,
                                               uint32_t& length) -> X_RESULT {
-        const X_HRESULT result =
-            app->DispatchMessageSync(message, copy_ptr, buffer_length);
-        extended_error = result;
-        // Some titles take a nonzero length as failure.
-        length = result ? 0xFFFFFFFF : 0;
-        return result;
+        const App::Completion completion = app->CompleteRequest(
+            app->DispatchMessageSync(message, copy_ptr, buffer_length));
+        extended_error = completion.extended_error;
+        length = completion.length;
+        return completion.result;
       },
       overlapped_ptr, nullptr,
       [memory, copy_ptr]() {

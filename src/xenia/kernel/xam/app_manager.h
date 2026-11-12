@@ -30,10 +30,19 @@ namespace xam {
 
 class App {
  public:
+  // What a request leaves in its XOVERLAPPED.
+  struct Completion {
+    uint32_t result;
+    uint32_t extended_error;
+    uint32_t length;
+  };
+
   uint32_t app_id() const { return app_id_; }
 
   virtual X_HRESULT DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                         uint32_t buffer_length) = 0;
+  // Each app completes its own requests.
+  virtual Completion CompleteRequest(X_HRESULT result) const;
 
   virtual ~App() = default;
 

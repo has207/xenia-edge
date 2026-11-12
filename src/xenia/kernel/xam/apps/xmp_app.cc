@@ -308,6 +308,13 @@ X_HRESULT XmpApp::XMPGetTitlePlaylistBufferSize(apu::XmpClient xmp_client,
   return X_E_SUCCESS;
 }
 
+App::Completion XmpApp::CompleteRequest(X_HRESULT result) const {
+  // xam 16747 81702DF0: a failure reads as ERROR_FUNCTION_FAILED, with the
+  // HRESULT as the extended error.
+  return {XFAILED(result) ? X_ERROR_FUNCTION_FAILED : X_ERROR_SUCCESS, result,
+          0};
+}
+
 X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
                                       uint32_t buffer_length) {
   // NOTE: buffer_length may be zero or valid.
