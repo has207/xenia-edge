@@ -1,0 +1,1035 @@
+{
+ "corpus": "kstack",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-12",
+ "steps": [
+  {
+   "scenario": "kernel stack 32 KB, caller type",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "args": [
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 32 KB, caller type",
+   "name": "region",
+   "export": "region",
+   "r3": "0000000000000030",
+   "args": [
+    {
+     "variable": "top"
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 32 KB, caller type",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "top",
+     "delta": -32768
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 32 KB, caller type",
+   "name": "delete",
+   "export": "MmDeleteKernelStack",
+   "args": [
+    {
+     "variable": "top"
+    },
+    {
+     "variable": "top",
+     "delta": -32768
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 16 KB, title",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "args": [
+    {
+     "value": 16384
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 16 KB, title",
+   "name": "region",
+   "export": "region",
+   "r3": "0000000000000030",
+   "args": [
+    {
+     "variable": "top"
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 16 KB, title",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "top",
+     "delta": -16384
+    },
+    {
+     "value": 16384
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 16 KB, title",
+   "name": "delete",
+   "export": "MmDeleteKernelStack",
+   "args": [
+    {
+     "variable": "top"
+    },
+    {
+     "variable": "top",
+     "delta": -16384
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 38 KB unrounded, title",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "args": [
+    {
+     "value": 38912
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 38 KB unrounded, title",
+   "name": "region",
+   "export": "region",
+   "r3": "0000000000000030",
+   "args": [
+    {
+     "variable": "top"
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 38 KB unrounded, title",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "top",
+     "delta": -40960
+    },
+    {
+     "value": 40960
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 38 KB unrounded, title",
+   "name": "delete",
+   "export": "MmDeleteKernelStack",
+   "args": [
+    {
+     "variable": "top"
+    },
+    {
+     "variable": "top",
+     "delta": -40960
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, title",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "args": [
+    {
+     "value": 65536
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, title",
+   "name": "region",
+   "export": "region",
+   "r3": "0000000000000070",
+   "args": [
+    {
+     "variable": "top"
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, title",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "top",
+     "delta": -65536
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, title",
+   "name": "delete",
+   "export": "MmDeleteKernelStack",
+   "args": [
+    {
+     "variable": "top"
+    },
+    {
+     "variable": "top",
+     "delta": -65536
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 256 KB, caller type",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "args": [
+    {
+     "value": 262144
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 256 KB, caller type",
+   "name": "region",
+   "export": "region",
+   "r3": "0000000000000070",
+   "args": [
+    {
+     "variable": "top"
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 256 KB, caller type",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "top",
+     "delta": -262144
+    },
+    {
+     "value": 262144
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 256 KB, caller type",
+   "name": "delete",
+   "export": "MmDeleteKernelStack",
+   "args": [
+    {
+     "variable": "top"
+    },
+    {
+     "variable": "top",
+     "delta": -262144
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 32 KB, system",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "args": [
+    {
+     "value": 32768
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 32 KB, system",
+   "name": "region",
+   "export": "region",
+   "r3": "000000000000003A",
+   "args": [
+    {
+     "variable": "top"
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 32 KB, system",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "top",
+     "delta": -32768
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 32 KB, system",
+   "name": "delete",
+   "export": "MmDeleteKernelStack",
+   "args": [
+    {
+     "variable": "top"
+    },
+    {
+     "variable": "top",
+     "delta": -32768
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, system",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "args": [
+    {
+     "value": 65536
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, system",
+   "name": "region",
+   "export": "region",
+   "r3": "000000000000007A",
+   "args": [
+    {
+     "variable": "top"
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, system",
+   "name": "fill",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "variable": "top",
+     "delta": -65536
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 1520812860
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack 64 KB, system",
+   "name": "delete",
+   "export": "MmDeleteKernelStack",
+   "args": [
+    {
+     "variable": "top"
+    },
+    {
+     "variable": "top",
+     "delta": -65536
+    }
+   ]
+  },
+  {
+   "scenario": "kernel stack of type 3",
+   "name": "create",
+   "export": "MmCreateKernelStack",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 32768
+    },
+    {
+     "value": 3
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 32 KB",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 0
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "thread start"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 32 KB",
+   "name": "reference",
+   "export": "ObReferenceObjectByHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "kthread",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 32 KB",
+   "name": "stack",
+   "export": "thread stack",
+   "r3": "0000000000000030",
+   "capture": {
+    "stack size": "00008000"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "stack size",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 32 KB",
+   "name": "ObDereferenceObject",
+   "export": "ObDereferenceObject",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 32 KB",
+   "name": "resume",
+   "export": "NtResumeThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "suspend count": "00000001"
+   },
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "pointer": "suspend count",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 32 KB",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 32 KB",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 8 KB, raised to the minimum",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 0
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "thread start"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 8 KB, raised to the minimum",
+   "name": "reference",
+   "export": "ObReferenceObjectByHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "kthread",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 8 KB, raised to the minimum",
+   "name": "stack",
+   "export": "thread stack",
+   "r3": "0000000000000030",
+   "capture": {
+    "stack size": "00004000"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "stack size",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 8 KB, raised to the minimum",
+   "name": "ObDereferenceObject",
+   "export": "ObDereferenceObject",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 8 KB, raised to the minimum",
+   "name": "resume",
+   "export": "NtResumeThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "suspend count": "00000001"
+   },
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "pointer": "suspend count",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 8 KB, raised to the minimum",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 8 KB, raised to the minimum",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 38 KB unrounded",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 0
+    },
+    {
+     "value": 38912
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "thread start"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 38 KB unrounded",
+   "name": "reference",
+   "export": "ObReferenceObjectByHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "kthread",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 38 KB unrounded",
+   "name": "stack",
+   "export": "thread stack",
+   "r3": "0000000000000030",
+   "capture": {
+    "stack size": "0000a000"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "stack size",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 38 KB unrounded",
+   "name": "ObDereferenceObject",
+   "export": "ObDereferenceObject",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 38 KB unrounded",
+   "name": "resume",
+   "export": "NtResumeThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "suspend count": "00000001"
+   },
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "pointer": "suspend count",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 38 KB unrounded",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 38 KB unrounded",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 64 KB",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "thread start"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 64 KB",
+   "name": "reference",
+   "export": "ObReferenceObjectByHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "kthread",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 64 KB",
+   "name": "stack",
+   "export": "thread stack",
+   "r3": "0000000000000070",
+   "capture": {
+    "stack size": "00010000"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "stack size",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 64 KB",
+   "name": "ObDereferenceObject",
+   "export": "ObDereferenceObject",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 64 KB",
+   "name": "resume",
+   "export": "NtResumeThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "suspend count": "00000001"
+   },
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "pointer": "suspend count",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 64 KB",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack 64 KB",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack default size",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "thread start"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack default size",
+   "name": "reference",
+   "export": "ObReferenceObjectByHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "kthread",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack default size",
+   "name": "stack",
+   "export": "thread stack",
+   "r3": "0000000000000070",
+   "capture": {
+    "stack size": "00040000"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "stack size",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack default size",
+   "name": "ObDereferenceObject",
+   "export": "ObDereferenceObject",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack default size",
+   "name": "resume",
+   "export": "NtResumeThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "suspend count": "00000001"
+   },
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "pointer": "suspend count",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack default size",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "thread stack default size",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  }
+ ]
+}
