@@ -478,9 +478,9 @@ void AudioMediaPlayer::AddPlaylist(uint32_t handle,
   playlists_.insert({handle, std::move(playlist)});
 }
 
-void AudioMediaPlayer::RemovePlaylist(uint32_t handle) {
+bool AudioMediaPlayer::RemovePlaylist(uint32_t handle) {
   if (playlists_.count(handle) == 0) {
-    return;
+    return false;
   }
 
   // TODO: Check if currently played song is from that playlist and stop
@@ -489,7 +489,12 @@ void AudioMediaPlayer::RemovePlaylist(uint32_t handle) {
     Stop();
   }
 
+  const bool current = active_playlist_ && active_playlist_->handle == handle;
+  if (current) {
+    active_playlist_ = nullptr;
+  }
   playlists_.erase(handle);
+  return current;
 }
 
 X_STATUS AudioMediaPlayer::SetVolume(float volume) {

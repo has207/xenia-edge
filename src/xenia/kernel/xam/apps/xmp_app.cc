@@ -95,9 +95,11 @@ X_HRESULT XmpApp::XMPCreateTitlePlaylist(
 
 X_HRESULT XmpApp::XMPDeleteTitlePlaylist(uint32_t playlist_handle) {
   XELOGD("XMPDeleteTitlePlaylist({:08X})", playlist_handle);
-  kernel_state_->emulator()->audio_media_player()->RemovePlaylist(
-      playlist_handle);
-  return X_E_SUCCESS;
+  // xam 81708798: S_FALSE unless it was the current playlist.
+  return kernel_state_->emulator()->audio_media_player()->RemovePlaylist(
+             playlist_handle)
+             ? X_E_SUCCESS
+             : X_S_FALSE;
 }
 
 X_HRESULT XmpApp::XMPPlayTitlePlaylist(apu::XmpClient xmp_client,
@@ -114,8 +116,6 @@ X_HRESULT XmpApp::XMPPlayTitlePlaylist(apu::XmpClient xmp_client,
   }
   kernel_state_->emulator()->audio_media_player()->Play(playlist_handle,
                                                         song_handle, false);
-  kernel_state_->BroadcastNotification(kXNotificationXmpPlaybackBehaviorChanged,
-                                       1);
   return X_E_SUCCESS;
 }
 
@@ -420,18 +420,22 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
           kernel_state_->emulator()->audio_media_player()->GetCurrentSong();
 
       if (!current_song) {
-        return X_E_FAIL;
+        return X_HRESULT_FROM_WIN32(X_ERROR_NOT_READY);
       }
 
       memset(info, 0, sizeof(XMP_SONGINFO));
 
+      // Cut to fit, keeping the terminator.
+      const auto store = [](xe::be<char16_t>* field, std::u16string_view text) {
+        xe::store_and_swap<std::u16string_view>(
+            field, text.substr(0, kMaxXmpMetadataStringLength - 1));
+      };
       info->handle = current_song->handle;
-      xe::store_and_swap<std::u16string>(info->title, current_song->name);
-      xe::store_and_swap<std::u16string>(info->artist, current_song->artist);
-      xe::store_and_swap<std::u16string>(info->album, current_song->album);
-      xe::store_and_swap<std::u16string>(info->album_artist,
-                                         current_song->album_artist);
-      xe::store_and_swap<std::u16string>(info->genre, current_song->genre);
+      store(info->title, current_song->name);
+      store(info->artist, current_song->artist);
+      store(info->album, current_song->album);
+      store(info->album_artist, current_song->album_artist);
+      store(info->genre, current_song->genre);
       info->track_number = current_song->track_number;
       info->duration = current_song->duration_ms;
       info->song_format = static_cast<uint32_t>(current_song->format);

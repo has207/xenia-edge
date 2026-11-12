@@ -46,7 +46,7 @@ static_assert_size(XMP_UNK_SONG_STRUCT, 0x494);
 constexpr uint32_t kMaxXmpMetadataStringLength = 40;
 
 struct XMP_SONGINFO {
-  X_HANDLE handle;
+  xe::be<uint32_t> handle;
 
   uint8_t unknown[0x23C];
   xe::be<char16_t> title[kMaxXmpMetadataStringLength];
