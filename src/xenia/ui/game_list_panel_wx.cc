@@ -34,8 +34,10 @@
 #include "xenia/app/game_compat_db.h"
 #include "xenia/base/chrono.h"
 #include "xenia/base/chrono_steady_cast.h"
+#include "xenia/base/cvar.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
+#include "xenia/config.h"
 #include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/xam/profile_manager.h"
@@ -44,6 +46,15 @@
 #include "xenia/kernel/xam/xdbf/gpd_info_profile.h"
 #include "xenia/ui/compat_display_wx.h"
 #include "xenia/ui/icon_decode.h"
+
+DEFINE_string(game_list_sort, "last_played",
+              "How the game library is sorted: last_played, title or "
+              "status. Saved when the sort is changed in the library.",
+              "UI");
+DEFINE_bool(game_list_sort_descending, true,
+            "Whether the game library is sorted in descending order. Saved "
+            "when the sort direction is changed in the library.",
+            "UI");
 
 namespace xe {
 namespace app {
@@ -134,11 +145,20 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
     search_->SetFont(f);
   }
 
+  // Start from the sort the user last chose, saved in the config.
+  if (cvars::game_list_sort == "title") {
+    sort_key_ = SortKey::kTitle;
+  } else if (cvars::game_list_sort == "status") {
+    sort_key_ = SortKey::kStatus;
+  } else {
+    sort_key_ = SortKey::kLastPlayed;
+  }
+  sort_descending_ = cvars::game_list_sort_descending;
   sort_choice_ = new wxChoice(list_side_, wxID_ANY);
   sort_choice_->Append(_("Last Played"));
   sort_choice_->Append(_("Title"));
   sort_choice_->Append(_("Status"));
-  sort_choice_->SetSelection(0);
+  sort_choice_->SetSelection(static_cast<int>(sort_key_));
   sort_dir_button_ =
       new wxButton(list_side_, wxID_ANY, SortArrow(sort_descending_),
                    wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
@@ -192,10 +212,12 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
         sort_descending_ = true;
         break;
     }
+    SaveSort();
     OnSortChanged();
   });
   sort_dir_button_->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     sort_descending_ = !sort_descending_;
+    SaveSort();
     OnSortChanged();
   });
 
@@ -796,6 +818,24 @@ void GameListPanel::SortEntries() {
     }
   };
   std::stable_sort(entries_.begin(), entries_.end(), cmp);
+}
+
+void GameListPanel::SaveSort() {
+  const char* key = "last_played";
+  switch (sort_key_) {
+    case SortKey::kTitle:
+      key = "title";
+      break;
+    case SortKey::kStatus:
+      key = "status";
+      break;
+    case SortKey::kLastPlayed:
+    default:
+      break;
+  }
+  OVERRIDE_PERSIST_string(game_list_sort, key);
+  OVERRIDE_PERSIST_bool(game_list_sort_descending, sort_descending_);
+  config::SaveConfig();
 }
 
 void GameListPanel::OnSortChanged() {

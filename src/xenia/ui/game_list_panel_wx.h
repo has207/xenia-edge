@@ -40,6 +40,7 @@ class EmulatorWindow;
 class GameListPanel : public wxPanel {
  public:
   // Card grids have no column headers, so the order comes from a picker.
+  // In the order of the sort choice's entries.
   enum class SortKey { kLastPlayed, kTitle, kStatus };
 
   using LaunchCallback = std::function<void(const std::filesystem::path&)>;
@@ -107,6 +108,8 @@ class GameListPanel : public wxPanel {
   void OnSearch(wxCommandEvent& event);
   void OnItemActivated(int index);
   void OnSelectionChanged(bool clicked);
+  // Writes the current sort key and direction to the config.
+  void SaveSort();
   void OnSortChanged();
   // Compat DB state for `e`, optimistically upgraded by the user's local
   // achievement progress (10%+ promotes Unknown to Gameplay; 80%+ promotes
