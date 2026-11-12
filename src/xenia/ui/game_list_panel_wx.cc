@@ -18,6 +18,7 @@
 
 #include <wx/button.h>
 #include <wx/choice.h>
+#include <wx/config.h>
 #include <wx/dcclient.h>
 #include <wx/dcmemory.h>
 #include <wx/filedlg.h>
@@ -72,6 +73,33 @@ wxBitmap CenteredOnCard(const wxBitmap& art, const wxSize& size) {
 // Arrows are glyphs, not prose, so they stay out of the catalog.
 wxString SortArrow(bool descending) {
   return wxString::FromUTF8(descending ? "\xe2\x86\x93" : "\xe2\x86\x91");
+}
+
+// The sort lives in the wx config next to the other UI state that survives
+// restarts, like the window geometry and the toolbar.
+constexpr char kSortKeyConfigKey[] = "/ui/game_list_sort";
+constexpr char kSortDescendingConfigKey[] = "/ui/game_list_sort_descending";
+
+const char* SortKeyName(GameListPanel::SortKey key) {
+  switch (key) {
+    case GameListPanel::SortKey::kTitle:
+      return "title";
+    case GameListPanel::SortKey::kStatus:
+      return "status";
+    case GameListPanel::SortKey::kLastPlayed:
+    default:
+      return "last_played";
+  }
+}
+
+GameListPanel::SortKey SortKeyFromName(const wxString& name) {
+  if (name == "title") {
+    return GameListPanel::SortKey::kTitle;
+  }
+  if (name == "status") {
+    return GameListPanel::SortKey::kStatus;
+  }
+  return GameListPanel::SortKey::kLastPlayed;
 }
 
 std::string ToLower(std::string_view s) {
@@ -134,11 +162,20 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
     search_->SetFont(f);
   }
 
+  // Start from the sort the user last chose.
+  if (auto* config = wxConfigBase::Get()) {
+    wxString key;
+    if (config->Read(kSortKeyConfigKey, &key)) {
+      sort_key_ = SortKeyFromName(key);
+    }
+    config->Read(kSortDescendingConfigKey, &sort_descending_);
+  }
+
   sort_choice_ = new wxChoice(list_side_, wxID_ANY);
   sort_choice_->Append(_("Last Played"));
   sort_choice_->Append(_("Title"));
   sort_choice_->Append(_("Status"));
-  sort_choice_->SetSelection(0);
+  sort_choice_->SetSelection(static_cast<int>(sort_key_));
   sort_dir_button_ =
       new wxButton(list_side_, wxID_ANY, SortArrow(sort_descending_),
                    wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
@@ -192,10 +229,12 @@ GameListPanel::GameListPanel(wxWindow* parent, EmulatorWindow* emulator_window)
         sort_descending_ = true;
         break;
     }
+    SaveSort();
     OnSortChanged();
   });
   sort_dir_button_->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     sort_descending_ = !sort_descending_;
+    SaveSort();
     OnSortChanged();
   });
 
@@ -796,6 +835,14 @@ void GameListPanel::SortEntries() {
     }
   };
   std::stable_sort(entries_.begin(), entries_.end(), cmp);
+}
+
+void GameListPanel::SaveSort() {
+  if (auto* config = wxConfigBase::Get()) {
+    config->Write(kSortKeyConfigKey, wxString(SortKeyName(sort_key_)));
+    config->Write(kSortDescendingConfigKey, sort_descending_);
+    config->Flush();
+  }
 }
 
 void GameListPanel::OnSortChanged() {
