@@ -54,7 +54,7 @@ uint32_t xeAllocatePoolTypeWithTag(PPCContext* context, uint32_t size,
 
 void xeFreePool(PPCContext* context, uint32_t base_address);
 
-uint32_t xeMmCreateKernelStack(uint32_t size, uint32_t r4);
+uint32_t xeMmCreateKernelStack(uint32_t size, uint32_t type);
 
 // Forgets segment array copies a title left mapped, as its memory goes away.
 void xeMmForgetSegmentArrays();

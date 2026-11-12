@@ -24,6 +24,7 @@
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/xbox.h"
 
 DEFINE_bool(
@@ -1092,28 +1093,54 @@ DECLARE_XBOXKRNL_EXPORT2(KeLockL2, kMemory, kImplemented, kSketchy);
 void KeUnlockL2_entry() {}
 DECLARE_XBOXKRNL_EXPORT2(KeUnlockL2, kMemory, kImplemented, kSketchy);
 
-uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t r4) {
-  auto stack_size_aligned = (stack_size + 0xFFF) & 0xFFFFF000;
-  uint32_t stack_alignment = (stack_size & 0xF000) ? 0x1000 : 0x10000;
+// Kernel stack ranges of the title (type 1) and system (type 2) regions,
+// [low, high), for 4 KB and then 64 KB pages.
+struct KernelStackSpace {
+  uint32_t low;
+  uint32_t high;
+};
+constexpr KernelStackSpace kKernelStackSpaces[2][2] = {
+    {{0x30000000, 0x38000000}, {0x70000000, 0x78000000}},
+    {{0x3A000000, 0x3FC00000}, {0x7A000000, 0x7F000000}}};
 
-  uint32_t stack_address;
-  kernel_memory()
-      ->LookupHeap(0x70000000)
-      ->AllocRange(0x70000000, 0x7F000000, stack_size_aligned, stack_alignment,
-                   kMemoryAllocationReserve | kMemoryAllocationCommit,
-                   kMemoryProtectRead | kMemoryProtectWrite, false,
-                   &stack_address);
-  return stack_address + stack_size;
+uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t type) {
+  if (type != 1 && type != 2) {
+    return 0;
+  }
+  const uint32_t size = xe::round_up(stack_size, 0x1000u, false);
+  const bool large_pages = !(size & 0xFFFF);
+  const uint32_t guard = large_pages ? 0x10000 : 0x1000;
+  const KernelStackSpace& space = kKernelStackSpaces[type - 1][large_pages];
+  auto heap = kernel_memory()->LookupHeap(space.low);
+  uint32_t address;
+  if (!heap->AllocRange(space.low, space.high - 1, guard + size, guard,
+                        kMemoryAllocationReserve | kMemoryAllocationCommit,
+                        kMemoryProtectRead | kMemoryProtectWrite, false,
+                        &address)) {
+    return 0;
+  }
+  heap->Protect(address, guard, kMemoryProtectNoAccess);
+  return address + guard + size;
 }
-dword_result_t MmCreateKernelStack_entry(dword_t stack_size, dword_t r4) {
-  return xeMmCreateKernelStack(stack_size, r4);
+dword_result_t MmCreateKernelStack_entry(dword_t stack_size, dword_t type,
+                                         const ppc_context_t& context) {
+  // Type 0 is the caller's own process type.
+  uint32_t resolved = type;
+  if (!resolved) {
+    resolved = xeKeGetCurrentProcessType(context) == X_PROCTYPE_TITLE ? 1 : 2;
+  }
+  return xeMmCreateKernelStack(stack_size, resolved);
 }
 DECLARE_XBOXKRNL_EXPORT1(MmCreateKernelStack, kMemory, kImplemented);
 
 dword_result_t MmDeleteKernelStack_entry(lpvoid_t stack_base,
                                          lpvoid_t stack_end) {
-  // Release the stack (where stack_end is the low address)
-  if (kernel_memory()->LookupHeap(0x70000000)->Release(stack_end)) {
+  // The guard below the stack is one page of the stack's page size.
+  const uint32_t guard =
+      stack_base.guest_address() < 0x40000000 ? 0x1000 : 0x10000;
+  const uint32_t address = stack_end.guest_address() - guard;
+  auto heap = kernel_memory()->LookupHeap(address);
+  if (heap && heap->Release(address)) {
     return X_STATUS_SUCCESS;
   }
 
