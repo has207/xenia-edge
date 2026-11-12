@@ -12,10 +12,13 @@
 
 #include <condition_variable>
 #include <deque>
+#include <memory>
 #include <mutex>
+#include <vector>
 
 #include "xenia/apu/audio_driver.h"
 #include "xenia/apu/audio_system.h"
+#include "xenia/apu/host_media_session.h"
 #include "xenia/apu/xmp_state.h"
 #include "xenia/kernel/xam/apps/xmp_app.h"
 
@@ -36,8 +39,10 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
   static constexpr uint32_t kFrameSamples =
       kChannels * AudioDriver::kChannelSamplesDefault;
 
+  // |host_media| outlives the player.
   AudioMediaPlayer(apu::AudioSystem* audio_system,
-                   kernel::KernelState* kernel_state);
+                   kernel::KernelState* kernel_state,
+                   HostMediaSession* host_media);
   ~AudioMediaPlayer() override;
 
   void Setup();
@@ -55,7 +60,8 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
   bool IsIdle() const { return state_ == XmpApp::State::kIdle; }
   bool IsPlaying() const { return state_ == XmpApp::State::kPlaying; }
   bool IsPaused() const { return state_ == XmpApp::State::kPaused; }
-  bool IsSongLoaded() const { return active_song_; }
+  // A song the player decodes, which the user's music on the host never is.
+  bool IsSongLoaded() const { return active_song_ && !host_playback_; }
 
   bool IsInRepeatMode() const {
     return repeat_mode_ == XmpApp::RepeatMode::kPlaylist;
@@ -100,6 +106,12 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
 
   void SetPlaybackController(PlaybackController playback_controller);
 
+  // A client takes playback, locked against the user or not, or gives it back
+  // with kRestore. The user's music on the host pauses while the title holds
+  // playback.
+  X_HRESULT RequestPlaybackController(XmpClient xmp_client,
+                                      PlaybackController request, bool locked);
+
   PlaybackController GetPlaybackController() const {
     return playback_controller_;
   }
@@ -136,6 +148,18 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
   static constexpr size_t kQueuedSamplesMax = kSampleRate / 5 * kChannels;
 
   void OnStateChanged();
+
+  // The app the user picked on the host plays their music. OnHostMediaChanged
+  // takes host_mutex_, the rest run under it.
+  void OnHostMediaChanged();
+  void ApplyHostMedia(const HostMedia& media);
+  void BeginHostPlayback(const HostMedia& media);
+  void UpdateHostPlayback(const HostMedia& media);
+  void EndHostPlayback();
+  void SetHostSong(const HostMedia& media);
+  // A title's own playback drops the user's song, which doesn't come back
+  // until the user plays it again. Takes host_mutex_.
+  void ReplaceHostPlayback();
 
   void Play();
   void WorkerThreadMain();
@@ -190,6 +214,17 @@ class AudioMediaPlayer : public AudioSystem::HostClient {
   std::unique_ptr<threading::Thread> worker_thread_;
   xe::threading::Fence resume_fence_;  // Signaled when resume requested.
   xe::threading::Fence processing_end_fence_;
+
+  HostMediaSession* host_media_ = nullptr;
+  // Serializes the host's changes with clients taking and giving back
+  // playback.
+  std::mutex host_mutex_;
+  // The user's music on the host holds playback.
+  std::atomic<bool> host_playback_ = {false};
+  bool host_paused_for_title_ = false;
+  HostMedia host_media_state_;
+  // Every song the host has played, as GetCurrentSong hands out pointers.
+  std::vector<std::unique_ptr<XmpApp::Song>> host_songs_;
 };
 
 }  // namespace apu

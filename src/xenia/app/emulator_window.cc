@@ -54,6 +54,7 @@
 #include "xenia/ui/imgui_confirm_dialog.h"
 #include "xenia/ui/imgui_context_menu.h"
 #include "xenia/ui/imgui_debug_dialog.h"
+#include "xenia/ui/imgui_music_dialog.h"
 #include "xenia/ui/imgui_performance_dialog.h"
 #include "xenia/ui/imgui_postprocessing_dialog.h"
 #include "xenia/ui/profile_dialogs.h"
@@ -1843,7 +1844,11 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
   context_menu->AddAction("Profiles Menu",
                           [this]() { ToggleProfilesConfigDialog(); });
 
-  context_menu->AddAction("Audio", [this]() { ToggleAudioDialog(); });
+  context_menu->AddAction("Volume", [this]() { ToggleAudioDialog(); });
+
+  if (emulator()->host_media_session()) {
+    context_menu->AddAction("Select Music", [this]() { ToggleMusicDialog(); });
+  }
 
   context_menu->AddSeparator();
 
@@ -3383,6 +3388,19 @@ void EmulatorWindow::ToggleAudioDialog() {
   audio_dialog_->SetOnChangeCallback([this]() { RefreshAudioIcon(); });
 }
 
+void EmulatorWindow::ToggleMusicDialog() {
+  if (music_dialog_) {
+    music_dialog_->CloseDialog();
+    music_dialog_ = nullptr;
+    return;
+  }
+
+  music_dialog_ =
+      new ui::ImGuiMusicDialog(imgui_drawer(), emulator()->input_system(),
+                               emulator()->host_media_session());
+  music_dialog_->SetOnCloseCallback([this]() { music_dialog_ = nullptr; });
+}
+
 void EmulatorWindow::ToggleMute() {
   uint32_t current = cvars::volume > 100 ? 100 : cvars::volume;
   if (current > 0) {
@@ -4203,6 +4221,10 @@ void EmulatorWindow::ClearDialogs() {
   if (audio_dialog_) {
     audio_dialog_->CloseDialog();
     audio_dialog_ = nullptr;
+  }
+  if (music_dialog_) {
+    music_dialog_->CloseDialog();
+    music_dialog_ = nullptr;
   }
   // Destroyed below without running its callback.
   stop_title_dialog_ = nullptr;

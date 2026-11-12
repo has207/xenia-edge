@@ -6,4 +6,9 @@ target_include_directories(xenia-apu PRIVATE
 )
 target_link_libraries(xenia-apu PUBLIC libavcodec libavutil libavformat
   libswresample xenia-base)
+if(WIN32)
+  # The host media session uses C++/WinRT. Not the windowsapp umbrella, which
+  # would bind the executable's Win32 imports to API sets.
+  target_link_libraries(xenia-apu PRIVATE runtimeobject)
+endif()
 xe_target_defaults(xenia-apu)

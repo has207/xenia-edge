@@ -225,6 +225,12 @@ class Emulator {
     return audio_media_player_.get();
   }
 
+  // The host's media apps, one of which the user picks to play their music.
+  // Null where the platform has no media sessions.
+  apu::HostMediaSession* host_media_session() const {
+    return host_media_session_.get();
+  }
+
   // GPU emulation for command list processing.
   gpu::GraphicsSystem* graphics_system() const {
     return graphics_system_.get();
@@ -684,6 +690,8 @@ class Emulator {
 
   std::unique_ptr<cpu::Processor> processor_;
   std::unique_ptr<apu::AudioSystem> audio_system_;
+  // Outlives titles, as the user's pick does.
+  std::unique_ptr<apu::HostMediaSession> host_media_session_;
   std::unique_ptr<apu::AudioMediaPlayer> audio_media_player_;
   std::unique_ptr<gpu::GraphicsSystem> graphics_system_;
   std::unique_ptr<hid::InputSystem> input_system_;

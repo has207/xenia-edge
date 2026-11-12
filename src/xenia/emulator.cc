@@ -418,6 +418,10 @@ X_STATUS Emulator::Setup(
     }
   }
 
+  if (!host_media_session_) {
+    host_media_session_ = apu::HostMediaSession::Create();
+  }
+
   // Add inputSystem to UI (if imgui is enabled)
   if (imgui_drawer_) {
     imgui_drawer_->LoadInputSystem(input_system_.get());
@@ -498,7 +502,7 @@ X_STATUS Emulator::SetupSubsystems() {
       return result;
     }
     audio_media_player_ = std::make_unique<apu::AudioMediaPlayer>(
-        audio_system_.get(), kernel_state_.get());
+        audio_system_.get(), kernel_state_.get(), host_media_session_.get());
     audio_media_player_->Setup();
   }
 

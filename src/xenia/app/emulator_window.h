@@ -26,6 +26,7 @@
 #include "xenia/ui/imgui_debug_dialog.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
+#include "xenia/ui/imgui_music_dialog.h"
 #include "xenia/ui/imgui_performance_dialog.h"
 #include "xenia/ui/imgui_postprocessing_dialog.h"
 #include "xenia/ui/immediate_drawer.h"
@@ -114,6 +115,7 @@ class EmulatorWindow {
 
   void ToggleProfilesConfigDialog();
   void ToggleAudioDialog();
+  void ToggleMusicDialog();
   void ToggleConfigDialog();
   void OpenConfigDialog(const std::string& category = "");
   void ToggleControllerVibration();
@@ -268,6 +270,7 @@ class EmulatorWindow {
   ui::ImGuiDebugDialog* debug_dialog_ = nullptr;
   ProfileConfigDialog* profile_dialog_ = nullptr;
   ui::ImGuiAudioDialog* audio_dialog_ = nullptr;
+  ui::ImGuiMusicDialog* music_dialog_ = nullptr;
   ui::ImGuiConfirmDialog* stop_title_dialog_ = nullptr;
   ui::ImGuiContextMenu* context_menu_ = nullptr;
   std::unordered_set<ui::VirtualKey> hotkeys_down_;

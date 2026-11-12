@@ -487,25 +487,9 @@ X_HRESULT XmpApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
              uint32_t(args->playback_controller_locked));
 
       auto media_player = kernel_state_->emulator()->audio_media_player();
-
-      if (args->playback_controller_request ==
-          apu::PlaybackController::kRestore) {
-        media_player->SetXMPClient(apu::XmpClient::kGame);
-        media_player->SetPlaybackController(apu::PlaybackController::kGame);
-      } else {
-        media_player->SetXMPClient(args->xmp_client);
-        media_player->SetPlaybackController(
-            args->playback_controller_request.get());
-      }
-
-      media_player->SetXMPOverride(args->playback_controller_locked.get() != 0);
-
-      // 58411446
-      kernel_state_->BroadcastNotification(
-          kXNotificationXmpPlaybackControllerChanged,
-          media_player->IsTitleInPlaybackControl());
-
-      return X_E_SUCCESS;
+      return media_player->RequestPlaybackController(
+          args->xmp_client, args->playback_controller_request,
+          args->playback_controller_locked != 0);
     }
     case 0x0007001B: {
       // XMPGetPlaybackController
