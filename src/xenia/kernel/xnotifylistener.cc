@@ -53,6 +53,10 @@ void XNotifyListener::EnqueueNotification(XNotificationID id, uint32_t data,
   if (key.version > max_version_) {
     return;
   }
+  // xam 816A8328.
+  if (key.system_only && !is_system_) {
+    return;
+  }
   auto global_lock = global_critical_region_.Acquire();
   // A repeat replaces the pending one's data, and still signals.
   notifications_[QueueKey(id)] = {id, data};

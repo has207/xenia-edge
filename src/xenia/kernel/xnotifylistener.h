@@ -29,7 +29,8 @@ union XNotificationKey {
     uint32_t local_id : 16;
     uint32_t version : 9;
     uint32_t mask_index : 6;
-    uint32_t : 1;
+    // Only system listeners get these.
+    uint32_t system_only : 1;
   };
 
   constexpr XNotificationKey(
