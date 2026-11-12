@@ -1103,7 +1103,8 @@ constexpr KernelStackSpace kKernelStackSpaces[2][2] = {
     {{0x30000000, 0x38000000}, {0x70000000, 0x78000000}},
     {{0x3A000000, 0x3FC00000}, {0x7A000000, 0x7F000000}}};
 
-uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t type) {
+uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t type,
+                               uint32_t* out_alloc_base) {
   if (type != 1 && type != 2) {
     return 0;
   }
@@ -1120,6 +1121,9 @@ uint32_t xeMmCreateKernelStack(uint32_t stack_size, uint32_t type) {
     return 0;
   }
   heap->Protect(address, guard, kMemoryProtectNoAccess);
+  if (out_alloc_base) {
+    *out_alloc_base = address;
+  }
   return address + guard + size;
 }
 dword_result_t MmCreateKernelStack_entry(dword_t stack_size, dword_t type,
@@ -1133,14 +1137,18 @@ dword_result_t MmCreateKernelStack_entry(dword_t stack_size, dword_t type,
 }
 DECLARE_XBOXKRNL_EXPORT1(MmCreateKernelStack, kMemory, kImplemented);
 
+bool xeMmDeleteKernelStack(Memory* memory, uint32_t stack_base,
+                           uint32_t stack_limit) {
+  // The guard below the stack is one page of the stack's page size.
+  const uint32_t guard = stack_base < 0x40000000 ? 0x1000 : 0x10000;
+  const uint32_t address = stack_limit - guard;
+  auto heap = memory->LookupHeap(address);
+  return heap && heap->Release(address);
+}
 dword_result_t MmDeleteKernelStack_entry(lpvoid_t stack_base,
                                          lpvoid_t stack_end) {
-  // The guard below the stack is one page of the stack's page size.
-  const uint32_t guard =
-      stack_base.guest_address() < 0x40000000 ? 0x1000 : 0x10000;
-  const uint32_t address = stack_end.guest_address() - guard;
-  auto heap = kernel_memory()->LookupHeap(address);
-  if (heap && heap->Release(address)) {
+  if (xeMmDeleteKernelStack(kernel_memory(), stack_base.guest_address(),
+                            stack_end.guest_address())) {
     return X_STATUS_SUCCESS;
   }
 
