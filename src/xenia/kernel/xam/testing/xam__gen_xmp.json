@@ -1,6 +1,6 @@
 {
  "corpus": "xmp",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-24",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-24, xmp requests 2026-11-12",
  "steps": [
   {
    "scenario": "xmp initial state",
@@ -655,6 +655,261 @@
     },
     {
      "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "XamNotifyCreateListener",
+   "export": "XamNotifyCreateListener",
+   "args": [
+    {
+     "value": 32
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request set volume game",
+   "export": "XMsgStartIORequest",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "request set volume game overlapped": "00000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "value": 250
+    },
+    {
+     "value": 458764
+    },
+    {
+     "pointer": "request set volume game overlapped",
+     "offset": 8
+    },
+    {
+     "pointer": "request set volume game args",
+     "offset": 0
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request set volume 1.5",
+   "export": "XMsgStartIORequest",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "request set volume 1.5 overlapped": "0000065b000000000000000000000000000000000000000080070057"
+   },
+   "args": [
+    {
+     "value": 250
+    },
+    {
+     "value": 458764
+    },
+    {
+     "pointer": "request set volume 1.5 overlapped",
+     "offset": 48
+    },
+    {
+     "pointer": "request set volume 1.5 args",
+     "offset": 40
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request pause dash",
+   "export": "XMsgStartIORequest",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "request pause dash overlapped": "0000065b000000000000000000000000000000000000000080070005"
+   },
+   "args": [
+    {
+     "value": 250
+    },
+    {
+     "value": 458757
+    },
+    {
+     "pointer": "request pause dash overlapped",
+     "offset": 88
+    },
+    {
+     "pointer": "request pause dash args",
+     "offset": 80
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request pause dash, no overlapped",
+   "export": "XMsgStartIORequest",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 250
+    },
+    {
+     "value": 458757
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "request pause dash, no overlapped args",
+     "offset": 120
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request pause dash, no overlapped: last error",
+   "export": "GetLastError",
+   "r3": "0000000080070005",
+   "args": []
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request playlist buffer size",
+   "export": "XMsgStartIORequest",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "request playlist buffer size overlapped": "00000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "value": 250
+    },
+    {
+     "value": 458798
+    },
+    {
+     "pointer": "request playlist buffer size overlapped",
+     "offset": 152
+    },
+    {
+     "pointer": "request playlist buffer size args",
+     "offset": 136
+    },
+    {
+     "value": 12
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request create title playlist",
+   "export": "XMsgStartIORequest",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "request create title playlist overlapped": "00000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "value": 250
+    },
+    {
+     "value": 458765
+    },
+    {
+     "pointer": "request create title playlist overlapped",
+     "offset": 4440
+    },
+    {
+     "pointer": "request create title playlist args",
+     "offset": 4400
+    },
+    {
+     "value": 36
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "content notification after create",
+   "export": "XNotifyGetNext",
+   "r3": "0000000000000000",
+   "capture": {
+    "notification id": "00000000",
+    "notification param": "00000000"
+   },
+   "args": [
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 2315255813
+    },
+    {
+     "pointer": "notification id",
+     "offset": 4472
+    },
+    {
+     "pointer": "notification param",
+     "offset": 4480
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "request delete title playlist",
+   "export": "XMsgStartIORequest",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "request delete title playlist overlapped": "00000000000000000000000000000000000000000000000000000001"
+   },
+   "args": [
+    {
+     "value": 250
+    },
+    {
+     "value": 458771
+    },
+    {
+     "pointer": "request delete title playlist overlapped",
+     "offset": 4496
+    },
+    {
+     "pointer": "request delete title playlist args",
+     "offset": 4488
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "xmp requests",
+   "name": "close listener",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "listener"
     }
    ]
   }
