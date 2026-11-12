@@ -305,6 +305,10 @@ void GuestScheduler::Shutdown() {
     std::lock_guard<std::mutex> lock(io_pool_lock_);
     io_pool_cv_.notify_all();
   }
+  {
+    std::lock_guard<std::mutex> lock(io_timer_lock_);
+    io_timer_cv_.notify_all();
+  }
   if (watchdog_event_) {
     watchdog_event_->Set();
   }
@@ -348,8 +352,14 @@ void GuestScheduler::Shutdown() {
     xe::threading::Wait(watchdog_thread_.get(), false);
     watchdog_thread_.reset();
   }
-  // Waits out a racing EnsureIoWorker and stops later ones starting a worker.
+  // Waits out a racing EnsureIoWorker or EnsureIoTimer and stops later ones
+  // starting a thread.
   std::call_once(io_once_, [] {});
+  std::call_once(io_timer_once_, [] {});
+  if (io_timer_thread_) {
+    xe::threading::Wait(io_timer_thread_.get(), false);
+    io_timer_thread_.reset();
+  }
   // Before the leftover fibers are reclaimed, so no worker still writes into a
   // parked fiber's stack.
   if (io_thread_) {
@@ -370,6 +380,15 @@ void GuestScheduler::Shutdown() {
   };
   drop_queued(io_lock_, io_queue_);
   drop_queued(io_pool_lock_, io_pool_queue_);
+  // Outside the lock, as releasing a call's captures can free objects.
+  std::multimap<uint64_t, TimedCall> timed;
+  {
+    std::lock_guard<std::mutex> lock(io_timer_lock_);
+    timed.swap(io_timed_);
+  }
+  for (auto& entry : timed) {
+    delete entry.second.call;
+  }
   // Everything still linked is unreachable now that the dispatch threads are
   // gone. Reclaim each thread so a relaunch does not leak it and its stack.
   std::vector<XThread*> leftovers;
@@ -1109,6 +1128,57 @@ void GuestScheduler::PostHostCall(std::function<void()> fn,
   if (!EnqueueBlockingCall(call, call_class)) {
     call->fn();
     delete call;
+  }
+}
+
+void GuestScheduler::PostHostCallAt(uint64_t deadline_ms,
+                                    std::function<void()> fn,
+                                    BlockingCallClass call_class) {
+  if (deadline_ms > Clock::QueryHostUptimeMillis()) {
+    EnsureIoTimer();
+    std::lock_guard<std::mutex> lock(io_timer_lock_);
+    if (!shutting_down_.load()) {
+      auto* call = new BlockingCall;
+      call->fn = std::move(fn);
+      io_timed_.emplace(deadline_ms, TimedCall{call, call_class});
+      io_timer_cv_.notify_one();
+      return;
+    }
+  }
+  PostHostCall(std::move(fn), call_class);
+}
+
+void GuestScheduler::EnsureIoTimer() {
+  std::call_once(io_timer_once_, [this]() {
+    xe::threading::Thread::CreationParameters params;
+    io_timer_thread_ =
+        xe::threading::Thread::Create(params, [this]() { IoTimerLoop(); });
+    io_timer_thread_->set_name("Guest I/O Timer");
+    io_started_.store(true);
+  });
+}
+
+void GuestScheduler::IoTimerLoop() {
+  Profiler::ThreadEnter("GuestScheduler IO Timer");
+  std::unique_lock<std::mutex> lock(io_timer_lock_);
+  while (!shutting_down_.load()) {
+    if (io_timed_.empty()) {
+      io_timer_cv_.wait(lock);
+      continue;
+    }
+    auto due = io_timed_.begin();
+    const uint64_t now = Clock::QueryHostUptimeMillis();
+    if (due->first > now) {
+      io_timer_cv_.wait_for(lock, std::chrono::milliseconds(due->first - now));
+      continue;
+    }
+    const TimedCall timed = due->second;
+    io_timed_.erase(due);
+    lock.unlock();
+    if (!EnqueueBlockingCall(timed.call, timed.call_class)) {
+      delete timed.call;
+    }
+    lock.lock();
   }
 }
 

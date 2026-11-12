@@ -250,11 +250,12 @@ X_STATUS XFile::ReadInternal(uint32_t buffer_guest_address,
   return result;
 }
 
-void XFile::PostIo(XThread* thread, std::function<void(bool cancelled)> fn) {
+void XFile::PostIo(XThread* thread, uint64_t deadline_ms,
+                   std::function<void(bool cancelled)> fn) {
   thread->AddPostedIo();
   {
     std::lock_guard<std::mutex> lock(posted_lock_);
-    posted_.emplace_back(thread, std::move(fn));
+    posted_.push_back({thread, deadline_ms, std::move(fn)});
     if (posted_running_) {
       return;
     }
@@ -266,14 +267,27 @@ void XFile::PostIo(XThread* thread, std::function<void(bool cancelled)> fn) {
 }
 
 void XFile::RunPostedIo() {
+  auto* scheduler = kernel_state()->guest_scheduler();
   std::unique_lock<std::mutex> lock(posted_lock_);
   while (!posted_.empty()) {
-    auto [thread, fn] = std::move(posted_.front());
+    // A request runs at its deadline and the ones behind it wait their turn.
+    // This comes back then instead of holding the worker. Shutdown runs them
+    // at once.
+    const uint64_t deadline_ms = posted_.front().deadline_ms;
+    if (deadline_ms > Clock::QueryHostUptimeMillis() &&
+        !scheduler->shutting_down()) {
+      lock.unlock();
+      scheduler->PostHostCallAt(
+          deadline_ms, [file = retain_object(this)]() { file->RunPostedIo(); },
+          io_call_class());
+      return;
+    }
+    PostedIo posted = std::move(posted_.front());
     posted_.pop_front();
-    posted_running_thread_ = thread;
+    posted_running_thread_ = posted.thread;
     lock.unlock();
-    fn(false);
-    thread->RemovePostedIo();
+    posted.fn(false);
+    posted.thread->RemovePostedIo();
     lock.lock();
     posted_running_thread_ = nullptr;
   }
@@ -285,8 +299,8 @@ void XFile::CancelPostedIo(XThread* thread) {
   {
     std::lock_guard<std::mutex> lock(posted_lock_);
     for (auto it = posted_.begin(); it != posted_.end();) {
-      if (it->first == thread) {
-        cancelled.push_back(std::move(it->second));
+      if (it->thread == thread) {
+        cancelled.push_back(std::move(it->fn));
         it = posted_.erase(it);
       } else {
         ++it;
@@ -305,7 +319,7 @@ bool XFile::HasPostedIo(XThread* thread) {
     return true;
   }
   for (const auto& posted : posted_) {
-    if (posted.first == thread) {
+    if (posted.thread == thread) {
       return true;
     }
   }
@@ -313,8 +327,10 @@ bool XFile::HasPostedIo(XThread* thread) {
 }
 
 uint64_t XFile::ReserveDriveTime(uint64_t byte_offset, uint32_t length) {
-  // An async completion runs on a shared I/O worker, which must not block.
-  if (GuestScheduler::CurrentThreadIsBlockingCallWorker()) {
+  // A worker runs a request that pends, which was booked as it was issued.
+  // Shutdown runs requests inline and untimed.
+  if (GuestScheduler::CurrentThreadIsBlockingCallWorker() ||
+      kernel_state()->guest_scheduler()->shutting_down()) {
     return 0;
   }
   // A caller holding the global lock cannot release it to wait.

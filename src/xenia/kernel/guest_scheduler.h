@@ -14,6 +14,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -100,6 +101,11 @@ class GuestScheduler {
   // pool so one slow call cannot hold up the rest. Runs inline once shutdown
   // has begun.
   void PostHostCall(std::function<void()> fn, BlockingCallClass call_class);
+  // PostHostCall once host uptime reaches |deadline_ms|, with no worker held
+  // until then. Runs inline once shutdown has begun. Shutdown drops one still
+  // waiting as it drops queued calls.
+  void PostHostCallAt(uint64_t deadline_ms, std::function<void()> fn,
+                      BlockingCallClass call_class);
 
   // True when the calling thread is a scheduler-managed fiber, so a blocking
   // host call would stall other fibers and should be offloaded instead.
@@ -276,6 +282,10 @@ class GuestScheduler {
   // Caller holds io_pool_lock_.
   void StartPoolWorkerLocked();
   void IoPoolWorkerLoop();
+  // Lazily starts the thread that holds PostHostCallAt calls until they are
+  // due.
+  void EnsureIoTimer();
+  void IoTimerLoop();
   // Runs one queued call, accumulates its counters and frees it.
   void RunBlockingCall(BlockingCall* call);
   // Unlinks |thread| from a singly-linked list (ready_next), fixing up tail.
@@ -403,6 +413,17 @@ class GuestScheduler {
   size_t io_pool_busy_ = 0;
   // Mirrors io_pool_threads_.size() so the stats report skips io_pool_lock_.
   std::atomic<size_t> io_pool_size_{0};
+
+  // PostHostCallAt calls by deadline, each queued for its class once due.
+  struct TimedCall {
+    BlockingCall* call;
+    BlockingCallClass call_class;
+  };
+  std::once_flag io_timer_once_;
+  std::mutex io_timer_lock_;
+  std::condition_variable io_timer_cv_;
+  std::multimap<uint64_t, TimedCall> io_timed_;
+  std::unique_ptr<xe::threading::Thread> io_timer_thread_;
 };
 
 }  // namespace kernel

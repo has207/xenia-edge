@@ -109,12 +109,15 @@ static bool CompletesAsync(XFile* file, uint32_t length, uint64_t byte_offset,
 }
 
 // Runs |transfer|, which returns a status and fills in the bytes moved, then
-// reports the completion. A request that pends runs on an I/O worker.
+// reports the completion. A request that pends runs on an I/O worker once host
+// uptime reaches |deadline_ms|, see XFile::PostIo. Neither |transfer| nor the
+// completion retains the file, as the file's own queue holds them.
 static X_STATUS SubmitRequest(const object_ref<XFile>& file,
                               const object_ref<XEvent>& ev,
                               uint32_t apc_routine, uint32_t apc_context,
                               X_IO_STATUS_BLOCK* status_block,
                               uint32_t status_block_address, bool pends,
+                              uint64_t deadline_ms,
                               std::function<X_STATUS(uint32_t*)> transfer) {
   auto thread = retain_object(XThread::GetCurrentThread());
   // Cleared at issue, so a wait cannot return on an earlier completion.
@@ -122,9 +125,10 @@ static X_STATUS SubmitRequest(const object_ref<XFile>& file,
     ev->Reset();
   }
   file->ResetWaitState();
-  auto complete = [file, ev, thread, apc_routine, apc_context, status_block,
-                   status_block_address, transfer = std::move(transfer)](
-                      bool posted, bool cancelled) {
+  auto complete = [file = file.get(), ev, thread, apc_routine, apc_context,
+                   status_block, status_block_address,
+                   transfer = std::move(transfer)](bool posted,
+                                                   bool cancelled) {
     uint32_t bytes = 0;
     X_STATUS status = cancelled ? X_STATUS_CANCELLED : transfer(&bytes);
     // A failure the caller was not told PENDING for completes nothing.
@@ -145,7 +149,7 @@ static X_STATUS SubmitRequest(const object_ref<XFile>& file,
   };
   if (pends) {
     // The status block is left alone until the request completes.
-    file->PostIo(thread.get(),
+    file->PostIo(thread.get(), deadline_ms,
                  [complete = std::move(complete)](bool cancelled) {
                    complete(true, cancelled);
                  });
@@ -475,11 +479,13 @@ dword_result_t NtReadFile_entry(dword_t file_handle, dword_t event_handle,
     uint32_t buffer_address = buffer.guest_address();
     uint32_t length = buffer_length;
     uint32_t apc_context_address = apc_context.guest_address();
+    // A read that pends is booked on the medium as it is issued.
+    const bool pends = CompletesAsync(file.get(), length, byte_offset, false);
     result = SubmitRequest(
         file, ev, static_cast<uint32_t>(apc_routine_ptr), apc_context_address,
-        io_status_block, io_status_block.guest_address(),
-        CompletesAsync(file.get(), length, byte_offset, false),
-        [file, buffer_address, length, byte_offset,
+        io_status_block, io_status_block.guest_address(), pends,
+        pends ? file->ReserveDriveTime(byte_offset, length) : 0,
+        [file = file.get(), buffer_address, length, byte_offset,
          apc_context_address](uint32_t* bytes_read) {
           return file->Read(buffer_address, length, byte_offset, bytes_read,
                             apc_context_address, false);
@@ -518,11 +524,13 @@ dword_result_t NtReadFileScatter_entry(
     uint32_t segments_address = segment_array.guest_address();
     uint32_t read_length = length;
     uint32_t apc_context_address = apc_context.guest_address();
+    const bool pends =
+        CompletesAsync(file.get(), read_length, byte_offset, false);
     result = SubmitRequest(
         file, ev, static_cast<uint32_t>(apc_routine_ptr), apc_context_address,
-        io_status_block, io_status_block.guest_address(),
-        CompletesAsync(file.get(), read_length, byte_offset, false),
-        [file, segments_address, read_length, byte_offset,
+        io_status_block, io_status_block.guest_address(), pends,
+        pends ? file->ReserveDriveTime(byte_offset, read_length) : 0,
+        [file = file.get(), segments_address, read_length, byte_offset,
          apc_context_address](uint32_t* bytes_read) {
           return file->ReadScatter(segments_address, read_length, byte_offset,
                                    bytes_read, apc_context_address, false);
@@ -561,8 +569,8 @@ dword_result_t NtWriteFile_entry(dword_t file_handle, dword_t event_handle,
     result = SubmitRequest(
         file, ev, apc_routine, apc_context_address, io_status_block,
         io_status_block.guest_address(),
-        CompletesAsync(file.get(), length, byte_offset, true),
-        [file, buffer_address, length, byte_offset,
+        CompletesAsync(file.get(), length, byte_offset, true), 0,
+        [file = file.get(), buffer_address, length, byte_offset,
          apc_context_address](uint32_t* bytes_written) {
           return file->Write(buffer_address, length, byte_offset, bytes_written,
                              apc_context_address, false);
@@ -786,7 +794,7 @@ dword_result_t NtFlushBuffersFile_entry(
   // behind the handle's pending requests, so it completes after them.
   return SubmitRequest(file, nullptr, 0, 0, io_status_block_ptr,
                        io_status_block_ptr.guest_address(),
-                       !file->is_synchronous(),
+                       !file->is_synchronous(), 0,
                        [](uint32_t*) { return X_STATUS_SUCCESS; });
 }
 DECLARE_XBOXKRNL_EXPORT1(NtFlushBuffersFile, kFileSystem, kImplemented);

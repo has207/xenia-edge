@@ -562,8 +562,9 @@ X_STATUS XThread::Exit(int exit_code) {
   // This may only be called on the thread itself.
   assert_true(XThread::GetCurrentThread() == this);
   // The thread's pending requests complete before it exits, checked every
-  // 100 ms. None is cancelled as STFS ignores cancellation and nothing here
-  // models a request waiting on a busy drive. Shutdown drops queued requests.
+  // 100 ms. None is cancelled. STFS ignores cancellation. One still queued on
+  // another device completes at its deadline rather than as cancelled.
+  // Shutdown drops queued requests.
   while (posted_io_.load(std::memory_order_acquire) &&
          !kernel_state()->guest_scheduler()->shutting_down()) {
     uint64_t interval = uint64_t(-1000000);

@@ -171,9 +171,14 @@ class XFile : public XObject {
   // Clears the handle's wait state, as every new request does.
   void ResetWaitState() { async_event_->Reset(); }
   // Runs |fn| on an I/O worker without waiting, after every request posted
-  // before it. |thread| issued the request. |fn| is told whether it was
+  // before it and once host uptime reaches |deadline_ms|, as ReserveDriveTime
+  // returns it. |thread| issued the request. |fn| is told whether it was
   // cancelled instead.
-  void PostIo(XThread* thread, std::function<void(bool cancelled)> fn);
+  void PostIo(XThread* thread, uint64_t deadline_ms,
+              std::function<void(bool cancelled)> fn);
+  // Books this read on the medium and returns when it would be delivered, or
+  // 0 for a read this does not model.
+  uint64_t ReserveDriveTime(uint64_t byte_offset, uint32_t length);
   // Cancels the requests |thread| posted that have yet to start.
   void CancelPostedIo(XThread* thread);
   // True while a request |thread| posted has yet to complete.
@@ -224,12 +229,9 @@ class XFile : public XObject {
   // KernelState::RunBlockingIo.
   void RunSynchronousIo(const std::function<void()>& fn);
 
-  // Runs the requests PostIo queued until none are left.
+  // Runs the requests PostIo queued that are due and comes back at the next
+  // one's deadline.
   void RunPostedIo();
-
-  // Books this read on the medium and returns when it would be delivered, or
-  // 0 for a read this does not model.
-  uint64_t ReserveDriveTime(uint64_t byte_offset, uint32_t length);
 
   // Holds the request open until |deadline_ms| by parking the calling fiber.
   void AwaitDriveTime(uint64_t deadline_ms);
@@ -258,8 +260,13 @@ class XFile : public XObject {
   mutable std::mutex file_lock_;
   // Requests PostIo queued, with the thread that issued each. One worker at a
   // time runs them in order.
+  struct PostedIo {
+    XThread* thread;
+    uint64_t deadline_ms;
+    std::function<void(bool)> fn;
+  };
   std::mutex posted_lock_;
-  std::deque<std::pair<XThread*, std::function<void(bool)>>> posted_;
+  std::deque<PostedIo> posted_;
   bool posted_running_ = false;
   // The thread that issued the request running now.
   XThread* posted_running_thread_ = nullptr;
