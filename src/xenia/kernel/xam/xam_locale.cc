@@ -10,9 +10,11 @@
 #include <cstring>
 
 #include "xenia/base/logging.h"
+#include "xenia/base/string.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/util/xfiletime.h"
+#include "xenia/kernel/xam/system_manifest.h"
 #include "xenia/kernel/xam/xam_private.h"
 #include "xenia/kernel/xam/xam_state.h"
 #include "xenia/kernel/xconfig.h"
@@ -734,14 +736,17 @@ DECLARE_XAM_EXPORT1(XamGetLanguageLocaleFallbackString, kNone, kImplemented);
 dword_result_t XamGetLanguageTypeface_entry(dword_t language,
                                             dword_t buffer_size,
                                             dword_t buffer) {
-  std::u16string path{};
+  std::u16string path = u"file://media:/XenonJKLatin.xtt";
 
   if (language == static_cast<uint32_t>(XLanguage::kSChinese)) {
-    path = u"file://media:/XenonSCLatin.xtt";
+    // The SC font comes with the system update. Without it the JK one is
+    // used.
+    const std::string sc_path = FindSystemExtFile("XenonSCLatin.xtt");
+    if (!sc_path.empty()) {
+      path = u"file://" + xe::to_utf16(sc_path);
+    }
   } else if (language == static_cast<uint32_t>(XLanguage::kTChinese)) {
     path = u"file://media:/XenonCLatin.xtt";
-  } else {
-    path = u"file://media:/XenonJKLatin.xtt";
   }
   xe::string_util::copy_and_swap_truncating(
       kernel_state()->memory()->TranslateVirtual<char16_t*>(buffer), path,
