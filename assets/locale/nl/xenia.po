@@ -1830,3 +1830,20 @@ msgstr "Spellen waarvan de cover niet kon worden gedownload: %d"
 #: src/xenia/app/emulator_window.cc:2427
 msgid "Covers that couldn't be saved: %d"
 msgstr "Covers die niet konden worden opgeslagen: %d"
+
+#: src/xenia/app/emulator_window.cc:524
+msgid "M PLUS 1p by Coji Morishita"
+msgstr "M PLUS 1p van Coji Morishita"
+
+#: src/xenia/app/emulator_window.cc:530
+msgid "Noto Sans TC by Adobe"
+msgstr "Noto Sans TC van Adobe"
+
+#: src/xenia/app/emulator_window.cc:527
+msgid "Pretendard by Kil Hyung-jin"
+msgstr "Pretendard van Kil Hyung-jin"
+
+#: src/xenia/app/emulator_window.cc:526
+#: src/xenia/app/emulator_window.cc:529
+msgid "System font: %s (SIL Open Font License 1.1)"
+msgstr "Systeemlettertype: %s (SIL Open Font License 1.1)"

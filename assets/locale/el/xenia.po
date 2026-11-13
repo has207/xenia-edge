@@ -1832,3 +1832,20 @@ msgstr "Παιχνίδια των οποίων το εξώφυλλο δεν ήτ
 #: src/xenia/app/emulator_window.cc:2427
 msgid "Covers that couldn't be saved: %d"
 msgstr "Εξώφυλλα που δεν ήταν δυνατό να αποθηκευτούν: %d"
+
+#: src/xenia/app/emulator_window.cc:524
+msgid "M PLUS 1p by Coji Morishita"
+msgstr "M PLUS 1p από τον Coji Morishita"
+
+#: src/xenia/app/emulator_window.cc:530
+msgid "Noto Sans TC by Adobe"
+msgstr "Noto Sans TC από την Adobe"
+
+#: src/xenia/app/emulator_window.cc:527
+msgid "Pretendard by Kil Hyung-jin"
+msgstr "Pretendard, δημιουργός Kil Hyung-jin"
+
+#: src/xenia/app/emulator_window.cc:526
+#: src/xenia/app/emulator_window.cc:529
+msgid "System font: %s (SIL Open Font License 1.1)"
+msgstr "Γραμματοσειρά συστήματος: %s (SIL Open Font License 1.1)"

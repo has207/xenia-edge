@@ -520,6 +520,15 @@ class AboutDialog : public wxGenericAboutDialog {
     AddText("\n");
     AddLinkedLine(_("UI font: %s (SIL Open Font License 1.1)"),
                   _("Inter by Rasmus Andersson"), "https://rsms.me/inter/");
+    AddLinkedLine(_("UI font: %s (SIL Open Font License 1.1)"),
+                  _("M PLUS 1p by Coji Morishita"),
+                  "https://mplusfonts.github.io/");
+    AddLinkedLine(_("System font: %s (SIL Open Font License 1.1)"),
+                  _("Pretendard by Kil Hyung-jin"),
+                  "https://github.com/orioncactus/pretendard");
+    AddLinkedLine(_("System font: %s (SIL Open Font License 1.1)"),
+                  _("Noto Sans TC by Adobe"),
+                  "https://fonts.google.com/noto/specimen/Noto+Sans+TC");
     AddLinkedLine(_("Icons by %s"), _("Icons8"), "https://icons8.com");
   }
 

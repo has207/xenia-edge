@@ -1822,3 +1822,20 @@ msgstr "जिन गेम का कवर डाउनलोड नहीं 
 #: src/xenia/app/emulator_window.cc:2427
 msgid "Covers that couldn't be saved: %d"
 msgstr "जो कवर सहेजे नहीं जा सके: %d"
+
+#: src/xenia/app/emulator_window.cc:524
+msgid "M PLUS 1p by Coji Morishita"
+msgstr "M PLUS 1p, Coji Morishita द्वारा"
+
+#: src/xenia/app/emulator_window.cc:530
+msgid "Noto Sans TC by Adobe"
+msgstr "Noto Sans TC, Adobe द्वारा"
+
+#: src/xenia/app/emulator_window.cc:527
+msgid "Pretendard by Kil Hyung-jin"
+msgstr "Pretendard, Kil Hyung-jin द्वारा"
+
+#: src/xenia/app/emulator_window.cc:526
+#: src/xenia/app/emulator_window.cc:529
+msgid "System font: %s (SIL Open Font License 1.1)"
+msgstr "सिस्टम फ़ॉन्ट: %s (SIL Open Font License 1.1)"

@@ -1829,3 +1829,20 @@ msgstr "Pelit, joiden kansikuvaa ei voitu ladata: %d"
 #: src/xenia/app/emulator_window.cc:2427
 msgid "Covers that couldn't be saved: %d"
 msgstr "Kansikuvat, joita ei voitu tallentaa: %d"
+
+#: src/xenia/app/emulator_window.cc:524
+msgid "M PLUS 1p by Coji Morishita"
+msgstr "M PLUS 1p, tekijä Coji Morishita"
+
+#: src/xenia/app/emulator_window.cc:530
+msgid "Noto Sans TC by Adobe"
+msgstr "Noto Sans TC, tekijä Adobe"
+
+#: src/xenia/app/emulator_window.cc:527
+msgid "Pretendard by Kil Hyung-jin"
+msgstr "Pretendard, tekijä Kil Hyung-jin"
+
+#: src/xenia/app/emulator_window.cc:526
+#: src/xenia/app/emulator_window.cc:529
+msgid "System font: %s (SIL Open Font License 1.1)"
+msgstr "Järjestelmäfontti: %s (SIL Open Font License 1.1)"
