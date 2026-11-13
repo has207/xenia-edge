@@ -2582,6 +2582,7 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
 
   // Off the UI thread and after plugins, which patch code in place.
   auto module = kernel_state_->GetExecutableModule();
+  kernel_state_->xam_state()->dash_mouse()->Attach(module->xex_module());
   if (module->xex_module()) {
     module->xex_module()->PrecompileDiscoveredFunctions();
     module->xex_module()->PrecompileStaticInitializers();

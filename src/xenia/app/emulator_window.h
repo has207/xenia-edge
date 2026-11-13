@@ -41,6 +41,11 @@
 class wxTimer;
 
 namespace xe {
+namespace kernel {
+namespace xam {
+class DashMouse;
+}  // namespace xam
+}  // namespace kernel
 namespace app {
 
 class GameListPanel;
@@ -173,6 +178,9 @@ class EmulatorWindow {
     void OnMouseDown(ui::MouseEvent& e) override;
     void OnMouseUp(ui::MouseEvent& e) override;
     void OnMouseDoubleClick(ui::MouseEvent& e) override;
+    void OnMouseMove(ui::MouseEvent& e) override;
+    void OnMouseWheel(ui::MouseEvent& e) override;
+    void OnLostFocus(ui::UISetupEvent& e) override;
     void OnUsbDeviceChanged(bool is_arrival) override;
 
    private:
@@ -210,7 +218,15 @@ class EmulatorWindow {
   void OnMouseDoubleClick(ui::MouseEvent& e);
   void FileDrop(const std::filesystem::path& filename);
   void OnMouseUp(const ui::MouseEvent& e);
+  void OnMouseMove(const ui::MouseEvent& e);
+  void OnMouseWheel(const ui::MouseEvent& e);
+  // The dashboard's mouse input, while it takes the game window's mouse.
+  kernel::xam::DashMouse* GetDashMouse() const;
   bool HasOpenDialogs() const;
+  // The mouse as fractions of the guest output, clamped to it, with whether
+  // it's over the output.
+  bool GetGuestOutputMousePosition(const ui::MouseEvent& e, float& x_out,
+                                   float& y_out, bool& inside_out) const;
   void FileClose();
   void UpdateAddGamesMenuState();
   void UpdateStartDashboardMenuState();
@@ -274,6 +290,8 @@ class EmulatorWindow {
   ui::ImGuiMusicDialog* music_dialog_ = nullptr;
   ui::ImGuiConfirmDialog* stop_title_dialog_ = nullptr;
   ui::ImGuiContextMenu* context_menu_ = nullptr;
+  // Wheel turns toward the next detent sent to the dashboard.
+  int32_t dash_mouse_wheel_ = 0;
   std::unordered_set<ui::VirtualKey> hotkeys_down_;
 
   GameListPanel* game_list_panel_ = nullptr;

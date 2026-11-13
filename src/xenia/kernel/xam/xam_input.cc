@@ -201,8 +201,15 @@ dword_result_t XamInputGetKeystrokeEx_entry(
 
   keystroke.Zero();
 
-  uint32_t user_index = *user_index_ptr;
   bool ui_active = kernel_state()->xam_state()->IsUIActive();
+  // The dashboard's own reads also carry the host mouse to it.
+  if (!(flags & kInputFlagSystem) &&
+      kernel_state()->xam_state()->dash_mouse()->Update(keystroke, ui_active)) {
+    *user_index_ptr = keystroke->user_index;
+    return X_ERROR_SUCCESS;
+  }
+
+  uint32_t user_index = *user_index_ptr;
   auto input_system = kernel_state()->emulator()->input_system();
   auto lock = input_system->lock();
   if ((user_index & XUserIndexAny) == XUserIndexAny) {

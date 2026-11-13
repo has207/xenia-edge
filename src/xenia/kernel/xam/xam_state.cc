@@ -32,6 +32,7 @@ XamState::XamState(Emulator* emulator, KernelState* kernel_state)
   profile_manager_ =
       std::make_unique<ProfileManager>(kernel_state, user_tracker_.get());
   achievement_manager_ = std::make_unique<AchievementManager>();
+  dash_mouse_ = std::make_unique<DashMouse>(kernel_state);
 
   LoadLanguageLocaleFallback();
   LoadLanguageTypefacePatch();

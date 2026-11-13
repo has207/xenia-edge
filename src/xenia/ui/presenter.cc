@@ -672,6 +672,20 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
   return std::move(consumer_lock);
 }
 
+bool Presenter::GetGuestOutputPaintArea(float& x_out, float& y_out,
+                                        float& width_out,
+                                        float& height_out) const {
+  std::lock_guard<std::mutex> lock(guest_output_paint_area_mutex_);
+  if (!guest_output_paint_area_valid_) {
+    return false;
+  }
+  x_out = guest_output_paint_area_[0];
+  y_out = guest_output_paint_area_[1];
+  width_out = guest_output_paint_area_[2];
+  height_out = guest_output_paint_area_[3];
+  return true;
+}
+
 Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
     const GuestOutputProperties& properties, uint32_t host_rt_width,
     uint32_t host_rt_height, uint32_t max_rt_width, uint32_t max_rt_height,
@@ -694,6 +708,8 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
   if (!properties.IsActive() || !host_rt_width || !host_rt_height ||
       !surface_width_in_paint_connection_ ||
       !surface_height_in_paint_connection_) {
+    std::lock_guard<std::mutex> lock(guest_output_paint_area_mutex_);
+    guest_output_paint_area_valid_ = false;
     return flow;
   }
 
@@ -815,6 +831,16 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
     flow.output_x =
         (int32_t(surface_width_in_paint_connection_) - int32_t(output_width)) /
         2;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(guest_output_paint_area_mutex_);
+    guest_output_paint_area_ = {
+        float(flow.output_x) / float(surface_width_in_paint_connection_),
+        float(flow.output_y) / float(surface_height_in_paint_connection_),
+        float(output_width) / float(surface_width_in_paint_connection_),
+        float(output_height) / float(surface_height_in_paint_connection_)};
+    guest_output_paint_area_valid_ = true;
   }
 
   // Convert the location from surface pixels (which have 1:1 aspect ratio

@@ -345,6 +345,11 @@ class Presenter {
   // guest would never be painted again.
   bool IsGuestOutputDrivingPaints() const;
 
+  // Where the guest output was last painted, as fractions of the surface, or
+  // false before it has been painted.
+  bool GetGuestOutputPaintArea(float& x_out, float& y_out, float& width_out,
+                               float& height_out) const;
+
  protected:
   enum class PaintResult {
     kPresented,
@@ -928,6 +933,11 @@ class Presenter {
   std::mutex guest_output_paint_config_mutex_;
   // UI thread: writable, guest output thread: read-only.
   GuestOutputPaintConfig guest_output_paint_config_;
+
+  // Recorded by GetGuestOutputPaintFlow, read from any thread.
+  mutable std::mutex guest_output_paint_area_mutex_;
+  mutable std::array<float, 4> guest_output_paint_area_ = {};
+  mutable bool guest_output_paint_area_valid_ = false;
 
   // Single-producer-multiple-consumers (lock-free SPSC + consumer lock) mailbox
   // for presenting of the most up-to-date guest output image without long
