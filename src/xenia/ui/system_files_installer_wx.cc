@@ -113,6 +113,9 @@ bool WriteBaseFonts(const std::filesystem::path& flash_path) {
       BaseFont{"xenonjklatin.xtt",
                {embedded_system_font::XenonJKLatin_xtt_data,
                 embedded_system_font::XenonJKLatin_xtt_size}},
+      BaseFont{"xenonclatin.xtt",
+               {embedded_system_font::XenonCLatin_xtt_data,
+                embedded_system_font::XenonCLatin_xtt_size}},
   };
   for (const auto& font : fonts) {
     const auto font_path = flash_path / font.name;

@@ -4,15 +4,31 @@
 
 """Builds an Xbox 360 system font (.xtt) from TrueType fonts.
 
-assets/system_font/XenonJKLatin.xtt stands in for the console's flash font and
-comes from the bundled fonts:
+The fonts in assets/system_font stand in for the console's flash fonts. They
+come from the bundled fonts and two downloaded ones:
+
+  Pretendard-Regular.ttf, in public/static/alternative of
+  https://github.com/orioncactus/pretendard/releases/download/v1.3.9/Pretendard-1.3.9.zip
+  Pretendard-Regular.ttf SHA-256:
+  6d0af5258997aec7354a6e340fc2325ba321c410ca48b3af858c8c3d6e92a324
+
+  NotoSansTC[wght].ttf from
+  https://github.com/google/fonts/raw/b950a7257470b900078f2bf3223823a8602de7e1/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf
+  NotoSansTC[wght].ttf SHA-256:
+  864727d210d54f2537bbe23b3a839436c3992af72de9322af5270897246bd44f
 
   python3 tools/xtt-build.py assets/font/MPLUS1p-Regular.ttf \\
       assets/system_font/XenonJKLatin.xtt --name "Xbox JK" \\
       --latin "assets/font/Inter-VariableFont_opsz,wght.ttf" \\
+      --hangul Pretendard-Regular.ttf --asc 2075 --desc -410
+
+  python3 tools/xtt-build.py "NotoSansTC[wght].ttf" \\
+      assets/system_font/XenonCLatin.xtt --name "Xbox TC" --big5 \\
+      --latin "assets/font/Inter-VariableFont_opsz,wght.ttf" \\
       --asc 2075 --desc -410
 
-Needs fontTools. The file it writes is laid out like the retail fonts:
+Needs fontTools. 4.46.0 rebuilds the committed fonts byte for byte. The file it
+writes is laid out like the retail fonts:
 
   0x000 'xttf', then the 0x100-byte RSA signature of the rest
   0x104 u32 signed length, from 0x104 up to the first glyph page
@@ -34,6 +50,7 @@ import hashlib
 import struct
 import zlib
 
+from fontTools import subset
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont, newTable
@@ -48,6 +65,8 @@ MAX_UNPACKED_PAGE = 0x3400
 UNITS_PER_EM = 2048
 LATIN_RANGES = [(0x20, 0x24F), (0x370, 0x3FF), (0x400, 0x4FF),
                 (0x2000, 0x206F), (0x20A0, 0x20CF), (0x2100, 0x214F)]
+# Compatibility jamo and every syllable.
+HANGUL_RANGES = [(0x3130, 0x318F), (0xAC00, 0xD7A3)]
 
 
 def load(path, wght, opsz):
@@ -56,31 +75,58 @@ def load(path, wght, opsz):
     axes = {a.axisTag: a.defaultValue for a in font['fvar'].axes}
     axes.update({k: v for k, v in (('wght', wght), ('opsz', opsz))
                  if k in axes})
+    # The instance keeps overlapping contours, which the dashboard draws
+    # without seams.
     font = instantiateVariableFont(font, axes)
   if font['head'].unitsPerEm != UNITS_PER_EM:
     scale_upem(font, UNITS_PER_EM)
   return font
 
 
-def merge_latin(base, latin):
-  """Maps LATIN_RANGES to the latin font's glyphs, decomposed so no component
+def big5_codepoints():
+  """Big5's symbols and level 1 hanzi (A140-C67E), the retail TC font's set,
+  with CJK punctuation and fullwidth forms."""
+  codepoints = set(range(0x3000, 0x3040)) | set(range(0xFF00, 0xFFF0))
+  for lead in range(0xA1, 0xC7):
+    for trail in [*range(0x40, 0x7F), *range(0xA1, 0xFF)]:
+      if lead << 8 | trail > 0xC67E:
+        break
+      try:
+        codepoints.add(ord(bytes([lead, trail]).decode('big5')))
+      except UnicodeDecodeError:
+        pass
+  return codepoints
+
+
+def keep_codepoints(font, codepoints):
+  options = subset.Options()
+  options.layout_features = []
+  options.hinting = False
+  options.notdef_outline = True
+  options.name_IDs = ['*']
+  subsetter = subset.Subsetter(options)
+  subsetter.populate(unicodes=codepoints)
+  subsetter.subset(font)
+
+
+def merge(base, cmap, other, ranges, prefix):
+  """Maps |ranges| in |cmap| to |other|'s glyphs, decomposed so no component
   refers to a glyph of the other font."""
-  latin_cmap = latin.getBestCmap()
-  cmap = base.getBestCmap()
-  glyph_set = latin.getGlyphSet()
+  glyph_set = other.getGlyphSet()
   order = base.getGlyphOrder()
   added = {}
-  for cp, name in sorted(latin_cmap.items()):
-    if not any(a <= cp <= b for a, b in LATIN_RANGES):
+  for cp, name in sorted(other.getBestCmap().items()):
+    if not any(a <= cp <= b for a, b in ranges):
       continue
     if name not in added:
       recording = DecomposingRecordingPen(glyph_set)
       glyph_set[name].draw(recording)
       pen = TTGlyphPen(None)
       recording.replay(pen)
-      new_name = f'latin.{name}'
+      new_name = f'{prefix}.{name}'
+      # This also appends new_name to the glyph order.
       base['glyf'][new_name] = pen.glyph()
-      base['hmtx'][new_name] = latin['hmtx'][name]
+      base['hmtx'][new_name] = other['hmtx'][name]
       added[name] = new_name
     cmap[cp] = added[name]
   base.setGlyphOrder(order)
@@ -108,6 +154,25 @@ def glyph_records(font):
   return records
 
 
+def fit_metrics(font):
+  """Sets each left side bearing to its glyph's xMin. Returns the bounding box
+  of the glyphs and their smallest right side bearing, which a merge or subset
+  leaves stale in head and hhea."""
+  glyf, hmtx = font['glyf'], font['hmtx']
+  boxes = []
+  for name in font.getGlyphOrder():
+    glyph = glyf[name]
+    if not glyph.numberOfContours:
+      continue
+    glyph.recalcBounds(glyf)
+    advance = hmtx[name][0]
+    hmtx[name] = (advance, glyph.xMin)
+    boxes.append((glyph.xMin, glyph.yMin, glyph.xMax, glyph.yMax, advance))
+  bounds = (min(box[0] for box in boxes), min(box[1] for box in boxes),
+            max(box[2] for box in boxes), max(box[3] for box in boxes))
+  return bounds, min(box[4] - box[2] for box in boxes)
+
+
 def pack_pages(records):
   """Packs whole records into pages that compress to at most PAGE bytes."""
   pages, xloc = [], []
@@ -128,7 +193,7 @@ def pack_pages(records):
 def build_cmap(font, cmap):
   subtable = cmap_format_4(4)
   subtable.platformID, subtable.platEncID, subtable.language = 3, 1, 0
-  subtable.cmap = {cp: g for cp, g in cmap.items() if cp <= 0xFFFF}
+  subtable.cmap = cmap
   table = newTable('cmap')
   table.tableVersion = 0
   table.tables = [subtable]
@@ -161,6 +226,7 @@ def build_name(names):
 
 def build(font, cmap, names, ascent, descent, signature):
   pages, xloc = pack_pages(glyph_records(font))
+  bounds, min_right_side_bearing = fit_metrics(font)
   packed_pages = [zlib.compress(page, 9) for page in pages]
   if max(map(len, packed_pages)) > PAGE:
     raise ValueError('a glyph is too big for a page')
@@ -175,13 +241,14 @@ def build(font, cmap, names, ascent, descent, signature):
       'cmap': build_cmap(font, cmap),
       'head': struct.pack('>IIIIHHqqhhhhHHhhh', 0x00010000, 0x00010000, 0,
                           0x5F0F3CF5, head.flags, UNITS_PER_EM, 0, 0,
-                          head.xMin, head.yMin, head.xMax, head.yMax,
-                          head.macStyle, head.lowestRecPPEM, 2, 1, 0),
+                          *bounds, head.macStyle, head.lowestRecPPEM, 2, 1,
+                          0),
+      # With each left side bearing at xMin, the smallest one is the box's
+      # xMin and the largest extent its xMax.
       'hhea': struct.pack('>IhhhHhhhhhhhhhhhH', 0x00010000, ascent, descent,
-                          0, max(hmtx[g][0] for g in order),
-                          hhea.minLeftSideBearing, hhea.minRightSideBearing,
-                          hhea.xMaxExtent, 1, 0, 0, 0, 0, 0, 0, 0,
-                          len(order)),
+                          0, max(hmtx[g][0] for g in order), bounds[0],
+                          min_right_side_bearing, bounds[2], 1, 0, 0, 0, 0,
+                          0, 0, 0, len(order)),
       'hmtx': b''.join(struct.pack('>Hh', *hmtx[g]) for g in order),
       'name': build_name(names),
       'xchk': b''.join(hashlib.sha1(page).digest() for page in packed_pages),
@@ -234,6 +301,10 @@ def main():
   parser.add_argument('--name', required=True, help='family name')
   parser.add_argument('--latin', help='TrueType font for Latin, Greek and '
                       'Cyrillic')
+  parser.add_argument('--hangul', help='TrueType font for Hangul')
+  parser.add_argument('--big5', action='store_true',
+                      help='keep only the source glyphs for Big5 symbols '
+                      'and level 1 hanzi')
   parser.add_argument('--asc', type=int, help='ascent in 2048 units')
   parser.add_argument('--desc', type=int, help='descent in 2048 units')
   parser.add_argument('--wght', type=float, default=400)
@@ -243,12 +314,18 @@ def main():
   args = parser.parse_args()
 
   font = load(args.source, args.wght, args.opsz)
+  if args.big5:
+    keep_codepoints(font, big5_codepoints())
   cmap = dict(font.getBestCmap())
   copyrights = [font['name'].getDebugName(0)]
-  if args.latin:
-    latin = load(args.latin, args.wght, args.opsz)
-    cmap = merge_latin(font, latin)
-    copyrights.append(latin['name'].getDebugName(0))
+  for path, ranges, prefix in ((args.latin, LATIN_RANGES, 'latin'),
+                               (args.hangul, HANGUL_RANGES, 'hangul')):
+    if path:
+      other = load(path, args.wght, args.opsz)
+      cmap = merge(font, cmap, other, ranges, prefix)
+      copyrights.append(other['name'].getDebugName(0))
+  # Format 4 holds only the BMP.
+  cmap = {cp: g for cp, g in cmap.items() if cp <= 0xFFFF}
   names = [
       (0, ' '.join(c for c in copyrights if c)),
       (1, args.name),
