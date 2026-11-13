@@ -10,6 +10,9 @@
 #ifndef XENIA_KERNEL_XAM_XAM_UI_H_
 #define XENIA_KERNEL_XAM_XAM_UI_H_
 
+#include <algorithm>
+#include <string_view>
+
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xam/xam.h"
 #include "xenia/ui/imgui_dialog.h"
@@ -124,9 +127,8 @@ class KeyboardInputDialog : public XamGamepadDialog {
       }
     }
     text_ = default_text;
-    text_buffer_.resize(max_length);
-    xe::string_util::copy_truncating(text_buffer_.data(), default_text_,
-                                     text_buffer_.size());
+    text_buffer_.resize(std::max<size_t>(max_length, 1));
+    CopyText(default_text_);
   }
   virtual ~KeyboardInputDialog() {}
 
@@ -136,6 +138,9 @@ class KeyboardInputDialog : public XamGamepadDialog {
   void OnDraw(ImGuiIO& io) override;
 
  private:
+  // Copies the whole characters of |text| that fit in the text box.
+  void CopyText(std::string_view text);
+
   bool has_opened_ = false;
   bool focus_set_ = false;
   std::string title_;
