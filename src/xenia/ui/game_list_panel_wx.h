@@ -40,7 +40,6 @@ class EmulatorWindow;
 class GameListPanel : public wxPanel {
  public:
   // Card grids have no column headers, so the order comes from a picker.
-  // In the order of the picker's entries.
   enum class SortKey { kLastPlayed, kTitle, kStatus };
 
   using LaunchCallback = std::function<void(const std::filesystem::path&)>;
