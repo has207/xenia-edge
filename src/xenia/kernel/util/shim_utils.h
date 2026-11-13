@@ -457,7 +457,7 @@ inline void AppendParam(StringBuffer* string_buffer, lpstring_t param) {
 inline void AppendParam(StringBuffer* string_buffer, lpu16string_t param) {
   string_buffer->AppendHexUInt32(param.guest_address());
   if (param) {
-    string_buffer->AppendFormat("({})", xe::to_utf8(param.value()));
+    string_buffer->AppendFormat("({})", xe::to_utf8_lossy(param.value()));
   }
 }
 inline void AppendParam(StringBuffer* string_buffer,

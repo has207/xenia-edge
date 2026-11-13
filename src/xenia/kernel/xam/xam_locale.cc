@@ -262,7 +262,7 @@ DECLARE_XAM_EXPORT1(XamGetOnlineCountryFromLocale, kLocale, kImplemented);
 
 dword_result_t XamGetOnlineCountryString_entry(dword_t id,
                                                dword_t buffer_length,
-                                               lpu16string_t buffer) {
+                                               pointer_t<char16_t> buffer) {
   if (buffer_length >= 0x80000000u) {
     return X_E_INVALIDARG;
   }
@@ -284,7 +284,7 @@ dword_result_t XamGetOnlineCountryString_entry(dword_t id,
 DECLARE_XAM_EXPORT1(XamGetOnlineCountryString, kLocale, kImplemented);
 
 dword_result_t XamGetCountryString_entry(dword_t id, dword_t buffer_length,
-                                         lpu16string_t buffer) {
+                                         pointer_t<char16_t> buffer) {
   if (buffer_length >= 0x80000000u) {
     return X_E_INVALIDARG;
   }
@@ -306,7 +306,7 @@ dword_result_t XamGetCountryString_entry(dword_t id, dword_t buffer_length,
 DECLARE_XAM_EXPORT1(XamGetCountryString, kLocale, kImplemented);
 
 dword_result_t XamGetLanguageString_entry(dword_t id, dword_t buffer_length,
-                                          lpu16string_t buffer) {
+                                          pointer_t<char16_t> buffer) {
   if (buffer_length >= 0x80000000u) {
     return X_E_INVALIDARG;
   }
@@ -330,7 +330,7 @@ DECLARE_XAM_EXPORT1(XamGetLanguageString, kLocale, kImplemented);
 dword_result_t XamGetLanguageLocaleString_entry(dword_t language_id,
                                                 dword_t locale_id,
                                                 dword_t buffer_length,
-                                                lpu16string_t buffer) {
+                                                pointer_t<char16_t> buffer) {
   if (buffer_length >= 0x80000000u) {
     return X_E_INVALIDARG;
   }
@@ -390,7 +390,7 @@ DECLARE_XAM_EXPORT1(XamGetOnlineLanguageAndCountry, kLocale, kImplemented);
 
 dword_result_t XamGetOnlineLanguageAndCountryString_entry(
     dword_t language_id, dword_t country_id, dword_t buffer_length,
-    lpu16string_t buffer) {
+    pointer_t<char16_t> buffer) {
   if (buffer_length >= 0x80000000u) {
     return X_E_INVALIDARG;
   }
@@ -413,7 +413,7 @@ DECLARE_XAM_EXPORT1(XamGetOnlineLanguageAndCountryString, kLocale,
 
 dword_result_t XamProfileGetLiveLegalLocale_entry(qword_t xuid,
                                                   dword_t buffer_length,
-                                                  lpu16string_t buffer) {
+                                                  pointer_t<char16_t> buffer) {
   const auto user = kernel_state()->xam_state()->GetUserProfileLive(xuid);
 
   const uint8_t country_id =
@@ -433,7 +433,7 @@ dword_result_t XamProfileGetLiveLegalLocale_entry(qword_t xuid,
 DECLARE_XAM_EXPORT1(XamProfileGetLiveLegalLocale, kLocale, kImplemented);
 
 dword_result_t XapipGetLocale_entry(dword_t buffer_length,
-                                    lpstring_t buffer_ptr) {
+                                    pointer_t<char> buffer_ptr) {
   // Console settings only, no profile.
   const auto value = xeXamGetOnlineLanguageAndCountryString(
       static_cast<uint8_t>(kernel_state()->xconfig()->ReadSetting<uint32_t>(
@@ -450,7 +450,7 @@ dword_result_t XapipGetLocale_entry(dword_t buffer_length,
 DECLARE_XAM_EXPORT1(XapipGetLocale, kLocale, kImplemented);
 
 dword_result_t XamGetLocaleString_entry(dword_t id, dword_t buffer_length,
-                                        lpu16string_t buffer) {
+                                        pointer_t<char16_t> buffer) {
   if (buffer_length >= 0x80000000u) {
     return X_E_INVALIDARG;
   }
@@ -483,7 +483,7 @@ DECLARE_XAM_EXPORT1(XamGetLanguageFromOnlineLanguage, kLocale, kImplemented);
 
 dword_result_t XamGetOnlineLanguageString_entry(dword_t id,
                                                 dword_t buffer_length,
-                                                lpu16string_t buffer) {
+                                                pointer_t<char16_t> buffer) {
   if (buffer_length >= 0x80000000u) {
     return X_E_INVALIDARG;
   }
