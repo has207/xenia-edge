@@ -48,6 +48,7 @@ class SDLInputDriver final : public InputDriver {
   X_RESULT SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration) override;
   X_RESULT GetKeystroke(uint32_t user_index, uint32_t flags,
                         X_INPUT_KEYSTROKE* out_keystroke) override;
+  void DiscardKeystrokes() override;
   virtual InputType GetInputType() const override;
   std::vector<InputDeviceInfo> EnumerateDevices() override;
   void SetNativeMode(uint8_t driver_slot, bool enabled) override;
@@ -76,6 +77,8 @@ class SDLInputDriver final : public InputDriver {
   };
   struct KeystrokeState {
     uint64_t buttons;
+    // Buttons whose KEYDOWN the title received, which still get their KEYUP.
+    uint64_t delivered;
     RepeatState repeat_state;
     // the button number that was pressed last:
     uint8_t repeat_butt_idx;
@@ -93,6 +96,9 @@ class SDLInputDriver final : public InputDriver {
   std::optional<size_t> GetControllerIndexFromInstanceID(
       SDL_JoystickID instance_id);
   ControllerState* GetControllerState(uint32_t user_index);
+  // Reads the buttons and analog pseudo-buttons, false while the controller
+  // can't be read.
+  bool GetKeystrokeButtons(uint32_t user_index, uint64_t& buttons);
   void UpdateXCapabilities(ControllerState& state);
 
   // Owns SDL init, the event pump, and teardown so the UI thread's modal
@@ -105,6 +111,7 @@ class SDLInputDriver final : public InputDriver {
   std::thread sdl_thread_;
   std::atomic<bool> sdl_thread_should_exit_;
   std::array<ControllerState, HID_SDL_USER_COUNT> controllers_;
+  std::mutex keystroke_mutex_;
   std::array<KeystrokeState, HID_SDL_USER_COUNT> keystroke_states_;
 };
 

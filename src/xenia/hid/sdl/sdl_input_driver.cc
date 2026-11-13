@@ -422,26 +422,17 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
       ui::VirtualKey::kXInputPadRThumbDownLeft,
   };
 
+  std::lock_guard<std::mutex> lock(keystroke_mutex_);
   for (uint32_t user_index = (user_any ? 0 : users);
        user_index < (user_any ? HID_SDL_USER_COUNT : users + 1); user_index++) {
-    auto controller = GetControllerState(user_index);
-    const bool native = controller && controller->native();
-    X_INPUT_STATE native_state = {};
-    if (!controller ||
-        (native && !PollXInput(controller->xinput_slot, &native_state))) {
+    uint64_t curr_butts;
+    if (!GetKeystrokeButtons(user_index, curr_butts)) {
       if (user_any) {
         continue;
       } else {
         return X_ERROR_DEVICE_NOT_CONNECTED;
       }
     }
-
-    // If input is not active (e.g. due to a dialog overlay), force buttons to
-    // "unpressed". The algorithm will automatically send UP events when
-    // `is_active()` goes low and DOWN events when it goes high again.
-    const X_INPUT_GAMEPAD& gamepad =
-        native ? native_state.gamepad : controller->state.gamepad;
-    const uint64_t curr_butts = gamepad.buttons | AnalogToKeyfield(gamepad);
     KeystrokeState& last = keystroke_states_.at(user_index);
 
     // Handle repeating
@@ -488,16 +479,23 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
           continue;
         }
 
+        bool is_pressed = curr_butts & fbutton;
+        // A press the title didn't get, such as one held over UI, ends unseen.
+        if (clear_pass && !is_pressed && !(last.delivered & fbutton)) {
+          last.buttons &= ~fbutton;
+          continue;
+        }
+
         out_keystroke->virtual_key = uint16_t(vk);
         out_keystroke->unicode = 0;
         out_keystroke->user_index = user_index;
         out_keystroke->hid_code = 0;
 
-        bool is_pressed = curr_butts & fbutton;
         if (clear_pass && !is_pressed) {
           // up
           out_keystroke->flags = X_INPUT_KEYSTROKE_KEYUP;
           last.buttons &= ~fbutton;
+          last.delivered &= ~fbutton;
           last.repeat_state = RepeatState::Idle;
           return X_ERROR_SUCCESS;
         }
@@ -505,6 +503,7 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
           // down
           out_keystroke->flags = X_INPUT_KEYSTROKE_KEYDOWN;
           last.buttons |= fbutton;
+          last.delivered |= fbutton;
           last.repeat_state = RepeatState::Waiting;
           last.repeat_butt_idx = i;
           last.repeat_time = guest_now;
@@ -514,6 +513,40 @@ X_RESULT SDLInputDriver::GetKeystroke(uint32_t users, uint32_t flags,
     }
   }
   return X_ERROR_EMPTY;
+}
+
+void SDLInputDriver::DiscardKeystrokes() {
+  // Held buttons count as already down so they don't press in the title.
+  std::lock_guard<std::mutex> lock(keystroke_mutex_);
+  for (uint32_t user_index = 0; user_index < HID_SDL_USER_COUNT; user_index++) {
+    uint64_t buttons;
+    if (!GetKeystrokeButtons(user_index, buttons)) {
+      continue;
+    }
+    KeystrokeState& last = keystroke_states_.at(user_index);
+    last.buttons = buttons | last.delivered;
+    last.repeat_state = RepeatState::Idle;
+  }
+}
+
+bool SDLInputDriver::GetKeystrokeButtons(uint32_t user_index,
+                                         uint64_t& buttons) {
+  auto controller = GetControllerState(user_index);
+  if (!controller) {
+    return false;
+  }
+  if (controller->native()) {
+    X_INPUT_STATE native_state = {};
+    if (!PollXInput(controller->xinput_slot, &native_state)) {
+      return false;
+    }
+    buttons =
+        native_state.gamepad.buttons | AnalogToKeyfield(native_state.gamepad);
+    return true;
+  }
+  const X_INPUT_GAMEPAD& gamepad = controller->state.gamepad;
+  buttons = gamepad.buttons | AnalogToKeyfield(gamepad);
+  return true;
 }
 
 InputType SDLInputDriver::GetInputType() const { return InputType::Controller; }
@@ -788,7 +821,10 @@ void SDLInputDriver::OnControllerDeviceRemoved(const SDL_Event& event) {
            name ? name : "?", guid_str, *idx);
     SDL_CloseGamepad(sdl);
     controllers_.at(*idx) = {};
-    keystroke_states_.at(*idx) = {};
+    {
+      std::lock_guard<std::mutex> lock(keystroke_mutex_);
+      keystroke_states_.at(*idx) = {};
+    }
     NotifyDevicesChanged();
   } else {
     // Can happen in case all slots where full previously.
