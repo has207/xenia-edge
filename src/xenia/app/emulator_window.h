@@ -207,9 +207,10 @@ class EmulatorWindow {
 
   void OnKeyDown(ui::KeyEvent& e);
   void OnMouseDown(const ui::MouseEvent& e);
-  void OnMouseDoubleClick(const ui::MouseEvent& e);
+  void OnMouseDoubleClick(ui::MouseEvent& e);
   void FileDrop(const std::filesystem::path& filename);
   void OnMouseUp(const ui::MouseEvent& e);
+  bool HasOpenDialogs() const;
   void FileClose();
   void UpdateAddGamesMenuState();
   void UpdateStartDashboardMenuState();

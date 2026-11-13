@@ -1749,8 +1749,7 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
       // In game Esc toggles the context menu, which offers leaving fullscreen.
       // Other open dialogs keep Esc to cancel.
       if (emulator_->is_title_open()) {
-        if (!context_menu_ && imgui_drawer() &&
-            imgui_drawer()->HasOpenDialogs()) {
+        if (!context_menu_ && HasOpenDialogs()) {
           return;
         }
         ToggleContextMenu(false);
@@ -1778,13 +1777,17 @@ void EmulatorWindow::OnKeyDown(ui::KeyEvent& e) {
   e.set_handled(true);
 }
 
+bool EmulatorWindow::HasOpenDialogs() const {
+  return imgui_drawer_ && imgui_drawer_->HasOpenDialogs();
+}
+
 void EmulatorWindow::OnMouseDown(const ui::MouseEvent& e) {
   if (e.button() == ui::MouseEvent::Button::kRight) {
     if (cvars::disable_game_window_mouse) {
       return;
     }
     // Don't show context menu if a dialog (other than context menu) is open
-    if (!context_menu_ && imgui_drawer() && imgui_drawer()->HasOpenDialogs()) {
+    if (!context_menu_ && HasOpenDialogs()) {
       return;
     }
     ToggleContextMenu();
@@ -1967,19 +1970,13 @@ void EmulatorWindow::SaveImage(const std::filesystem::path& filepath,
   }
 }
 
-void EmulatorWindow::OnMouseDoubleClick(const ui::MouseEvent& e) {
-  if (cvars::disable_game_window_mouse) {
+void EmulatorWindow::OnMouseDoubleClick(ui::MouseEvent& e) {
+  // A handled double click keeps the window from toggling fullscreen.
+  if (e.button() != ui::MouseEvent::Button::kLeft) {
     return;
   }
-  // Don't toggle fullscreen if any ImGui dialogs are open
-  // This allows users to double-click to select text in dialog input fields
-  if (imgui_drawer_ && imgui_drawer_->HasOpenDialogs()) {
-    return;
-  }
-
-  // Only toggle fullscreen on left button double-click
-  if (e.button() == ui::MouseEvent::Button::kLeft) {
-    ToggleFullscreen();
+  if (cvars::disable_game_window_mouse || HasOpenDialogs()) {
+    e.set_handled(true);
   }
 }
 

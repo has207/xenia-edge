@@ -835,7 +835,12 @@ void WxWindow::OnPanelPaint(wxPaintEvent& event) {
 }
 
 void WxWindow::OnPanelDoubleClick(wxMouseEvent& event) {
-  if (cvars::disable_doubleclick_fullscreen) {
+  MouseEvent mouse_event(this, MouseEvent::Button::kLeft, event.GetX(),
+                         event.GetY());
+  WindowDestructionReceiver destruction_receiver(this);
+  OnMouseDoubleClick(mouse_event, destruction_receiver);
+  if (destruction_receiver.IsWindowDestroyed() || mouse_event.is_handled() ||
+      cvars::disable_doubleclick_fullscreen) {
     return;
   }
   bool entering_fullscreen = !IsFullscreen();
