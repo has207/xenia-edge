@@ -12,6 +12,9 @@
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/string.h"
+#include "xenia/base/string_util.h"
+#include "xenia/base/utf8.h"
 #include "xenia/base/xxhash.h"
 #include "xenia/cpu/elf_module.h"
 #include "xenia/emulator.h"
@@ -30,7 +33,10 @@ namespace kernel {
 UserModule::UserModule(KernelState* kernel_state)
     : XModule(kernel_state, ModuleType::kUserModule, true) {}
 
-UserModule::~UserModule() { Unload(); }
+UserModule::~UserModule() {
+  Unload();
+  memory()->SystemHeapFree(guest_dll_name_);
+}
 
 uint32_t UserModule::title_id() const {
   if (module_format_ != kModuleFormatXex) {
@@ -219,7 +225,8 @@ X_STATUS UserModule::LoadFromMemory(const void* addr, const size_t length) {
 X_STATUS UserModule::LoadFromMemoryNamed(const std::string_view raw_name,
                                          const void* addr,
                                          const size_t length) {
-  name_ = std::string(raw_name);
+  name_ = utf8::find_base_name_from_guest_path(raw_name);
+  memory_load_name_ = std::string(raw_name);
   return LoadFromMemory(addr, length);
 }
 
@@ -271,6 +278,28 @@ X_STATUS UserModule::LoadContinue() {
   ldr_data->image_base = this->xex_module()->base_address();
 
   ldr_data->entry_point = entry_point_;
+
+  // FullDllName is the module's path, or the name it was loaded from memory
+  // with. BaseDllName is the file name at its end. The dashboard names its
+  // language packs after it.
+  const std::string& dll_path = path_.empty() ? memory_load_name_ : path_;
+  const std::u16string full_name = xe::to_utf16(dll_path);
+  const std::u16string base_name =
+      xe::to_utf16(utf8::find_name_from_guest_path(dll_path));
+  guest_dll_name_ = memory()->SystemHeapAlloc(
+      static_cast<uint32_t>((full_name.size() + 1) * sizeof(char16_t)));
+  string_util::copy_and_swap_truncating(
+      memory()->TranslateVirtual<char16_t*>(guest_dll_name_), full_name,
+      full_name.size() + 1);
+  ldr_data->full_dll_name.length =
+      static_cast<uint16_t>(full_name.size() * sizeof(char16_t));
+  ldr_data->full_dll_name.pointer = guest_dll_name_;
+  ldr_data->base_dll_name.length =
+      static_cast<uint16_t>(base_name.size() * sizeof(char16_t));
+  ldr_data->base_dll_name.pointer =
+      guest_dll_name_ +
+      static_cast<uint32_t>((full_name.size() - base_name.size()) *
+                            sizeof(char16_t));
 
   if (cvars::dump_module_images) {
     DumpImage();

@@ -775,7 +775,7 @@ object_ref<UserModule> KernelState::LoadUserModuleFromMemory(
 
     // Module wasn't loaded, so load it.
     module = object_ref<UserModule>(new UserModule(this));
-    X_STATUS status = module->LoadFromMemoryNamed(name, addr, length);
+    X_STATUS status = module->LoadFromMemoryNamed(raw_name, addr, length);
     if (XFAILED(status)) {
       object_table()->ReleaseHandle(module->handle());
       return nullptr;

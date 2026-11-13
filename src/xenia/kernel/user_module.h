@@ -130,9 +130,13 @@ class UserModule : public XModule {
 
   std::string name_;
   std::string path_;
+  // The name a module loaded from memory was given, extension included.
+  std::string memory_load_name_;
   std::optional<uint64_t> hash_ = std::nullopt;
 
   uint32_t guest_xex_header_ = 0;
+  // FullDllName and BaseDllName of the loader data.
+  uint32_t guest_dll_name_ = 0;
   ModuleFormat module_format_ = kModuleFormatUndefined;
 
   bool is_dll_module_ = false;

@@ -534,6 +534,15 @@ dword_result_t XeCryptBnDwLePkcs1Verify_entry(lpvoid_t hash, lpvoid_t sig,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeCryptBnDwLePkcs1Verify, kNone, kStub);
 
+dword_result_t XeKeysVerifyRSASignature_entry(dword_t key_index, lpvoid_t hash,
+                                              lpvoid_t sig) {
+  // Indexes above 3 name no key. The public keys aren't available, so every
+  // signature checked against one passes. The dashboard checks its language
+  // packs with it.
+  return key_index <= 3;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysVerifyRSASignature, kNone, kStub);
+
 void XeCryptRandom_entry(lpvoid_t buf, dword_t buf_size) {
   uint8_t* buf_data = buf.as<uint8_t*>();
 

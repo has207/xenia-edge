@@ -823,6 +823,31 @@ X_HRESULT_result_t XdfLaunchNewImageFromCache_entry(lpstring_t name_ptr,
 }
 DECLARE_XAM_EXPORT1(XdfLaunchNewImageFromCache, kNone, kImplemented);
 
+// The package manager's error for a name no installed package has.
+constexpr X_HRESULT kPackageFileNotFound = 0x8B050009;
+
+// Gives the path of a system extended partition file, which is how the
+// dashboard finds its language packs.
+X_HRESULT_result_t XamPackageManagerGetFilePathW_entry(lpu16string_t name_ptr,
+                                                       lpvoid_t path_ptr,
+                                                       dword_t path_count) {
+  if (!name_ptr) {
+    return X_E_INVALIDARG;
+  }
+  const std::u16string path =
+      xe::to_utf16(FindSystemExtFile(xe::to_utf8(name_ptr.value())));
+  if (path.empty()) {
+    return kPackageFileNotFound;
+  }
+  if (!path_ptr || path.size() >= path_count) {
+    return X_E_INVALIDARG;
+  }
+  xe::string_util::copy_and_swap_truncating(path_ptr.as<char16_t*>(), path,
+                                            path_count);
+  return X_E_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamPackageManagerGetFilePathW, kNone, kImplemented);
+
 void XamLoaderTerminateTitle_entry() { kernel_state()->ExitToDashboard(); }
 DECLARE_XAM_EXPORT1(XamLoaderTerminateTitle, kNone, kSketchy);
 
