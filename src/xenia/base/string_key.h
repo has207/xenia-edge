@@ -85,7 +85,7 @@ struct string_key_insensitive : internal::string_key_base {
                });
   }
 
-  size_t hash() const { return utf8::hash_fnv1a(view()); }
+  size_t hash() const { return utf8::hash_fnv1a_case(view()); }
 
   struct Hash {
     size_t operator()(const string_key_insensitive& t) const {
