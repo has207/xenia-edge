@@ -24,7 +24,9 @@ namespace vfs {
 class SvodContainerDevice : public XContentContainerDevice {
  public:
   SvodContainerDevice(const std::string_view mount_path,
-                      const std::filesystem::path& host_path);
+                      const std::filesystem::path& host_path,
+                      std::unique_ptr<XContentContainerHeader> header,
+                      size_t files_size);
   ~SvodContainerDevice() override;
 
   bool is_read_only() const override { return true; }

@@ -8,6 +8,7 @@
  */
 
 #include "xenia/vfs/devices/xcontent_container_device.h"
+#include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/vfs/devices/xcontent_devices/stfs_container_device.h"
 #include "xenia/vfs/devices/xcontent_devices/svod_container_device.h"
@@ -19,34 +20,43 @@ namespace vfs {
 std::unique_ptr<XContentContainerDevice>
 XContentContainerDevice::CreateContentDevice(
     const std::string_view mount_path, const std::filesystem::path& host_path) {
+  // The package may be on slow storage, so it's opened and its header read
+  // once for the whole mount.
   std::error_code ec;
-  if (!std::filesystem::exists(host_path, ec)) {
-    XELOGE("Path to XContent container does not exist: {}",
-           xe::strip_pii(xe::path_to_utf8(host_path)));
+  auto file = xe::filesystem::FileHandle::OpenExisting(
+      host_path, xe::filesystem::FileAccess::kFileReadData);
+  if (!file) {
+    if (!std::filesystem::exists(host_path, ec)) {
+      XELOGE("Path to XContent container does not exist: {}",
+             xe::strip_pii(xe::path_to_utf8(host_path)));
+    }
     return nullptr;
   }
 
-  if (std::filesystem::is_directory(host_path, ec)) {
+  // A directory can open, and reading it fails.
+  auto header = std::make_unique<XContentContainerHeader>();
+  size_t bytes_read = 0;
+  if (!file->Read(0, header.get(), sizeof(XContentContainerHeader),
+                  &bytes_read) ||
+      bytes_read != sizeof(XContentContainerHeader) ||
+      !header->content_header.is_magic_valid()) {
     return nullptr;
   }
-
-  const auto header = ReadContainerHeader(host_path);
-  if (!header || !header->content_header.is_magic_valid()) {
+  const uintmax_t file_size = std::filesystem::file_size(host_path, ec);
+  if (ec) {
     return nullptr;
   }
 
   switch (header->content_metadata.volume_type) {
     case XContentVolumeType::kStfs:
-      return std::make_unique<StfsContainerDevice>(mount_path, host_path);
-      break;
+      return std::make_unique<StfsContainerDevice>(
+          mount_path, host_path, std::move(header), file_size, std::move(file));
     case XContentVolumeType::kSvod:
-      return std::make_unique<SvodContainerDevice>(mount_path, host_path);
-      break;
+      return std::make_unique<SvodContainerDevice>(
+          mount_path, host_path, std::move(header), file_size);
     default:
-      break;
+      return nullptr;
   }
-
-  return nullptr;
 }
 
 std::unique_ptr<XContentContainerDevice>
@@ -74,16 +84,18 @@ XContentContainerDevice::CreateContentDevice(const std::string_view mount_path,
 }
 
 XContentContainerDevice::XContentContainerDevice(
-    const std::string_view mount_path, const std::filesystem::path& host_path)
+    const std::string_view mount_path, const std::filesystem::path& host_path,
+    std::unique_ptr<XContentContainerHeader> host_header, size_t files_size)
     : Device(mount_path),
       name_("XContent"),
       host_path_(host_path),
-      files_total_size_(0),
-      header_(std::make_unique<XContentContainerHeader>()) {}
+      files_total_size_(files_size),
+      header_(std::make_unique<XContentContainerHeader>()),
+      host_header_(std::move(host_header)) {}
 
 XContentContainerDevice::XContentContainerDevice(
     const std::string_view mount_path, File* package_file)
-    : XContentContainerDevice(mount_path, std::filesystem::path()) {
+    : XContentContainerDevice(mount_path, std::filesystem::path(), nullptr, 0) {
   package_file_ = package_file;
 }
 
@@ -101,26 +113,9 @@ bool XContentContainerDevice::Initialize() {
     files_total_size_ = package_file_->entry()->size();
     header = ReadContainerHeader(package_file_);
   } else {
-    if (!std::filesystem::exists(host_path_)) {
-      XELOGE("Path to XContent container does not exist: {}",
-             xe::strip_pii(xe::path_to_utf8(host_path_)));
-      return false;
-    }
-
-    if (std::filesystem::is_directory(host_path_)) {
-      return false;
-    }
-
     XELOGI("Loading XContent header file: {}",
            xe::strip_pii(xe::path_to_utf8(host_path_)));
-    auto header_file = xe::filesystem::OpenFile(host_path_, "rb");
-    if (!header_file) {
-      XELOGE("Error opening XContent header file.");
-      return false;
-    }
-    files_total_size_ = std::filesystem::file_size(host_path_);
-    header = ReadContainerHeader(header_file);
-    fclose(header_file);
+    header = std::move(host_header_);
   }
 
   auto header_loading_result = VerifyHeader(std::move(header));

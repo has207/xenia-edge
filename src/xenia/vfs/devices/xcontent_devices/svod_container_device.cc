@@ -23,9 +23,11 @@ static bool ReadAt(xe::filesystem::FileHandle* file, size_t offset,
          bytes_read == length;
 }
 
-SvodContainerDevice::SvodContainerDevice(const std::string_view mount_path,
-                                         const std::filesystem::path& host_path)
-    : XContentContainerDevice(mount_path, host_path),
+SvodContainerDevice::SvodContainerDevice(
+    const std::string_view mount_path, const std::filesystem::path& host_path,
+    std::unique_ptr<XContentContainerHeader> header, size_t files_size)
+    : XContentContainerDevice(mount_path, host_path, std::move(header),
+                              files_size),
       svod_base_offset_(),
       svod_layout_() {
   SetName("FATX");

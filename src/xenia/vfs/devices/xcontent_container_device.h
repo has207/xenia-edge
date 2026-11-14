@@ -98,8 +98,12 @@ class XContentContainerDevice : public Device {
   }
 
  protected:
+  // |host_header| is what CreateContentDevice read of the host file, of
+  // |files_size| bytes.
   XContentContainerDevice(const std::string_view mount_path,
-                          const std::filesystem::path& host_path);
+                          const std::filesystem::path& host_path,
+                          std::unique_ptr<XContentContainerHeader> host_header,
+                          size_t files_size);
   // Takes ownership of |package_file|.
   XContentContainerDevice(const std::string_view mount_path,
                           File* package_file);
@@ -137,6 +141,8 @@ class XContentContainerDevice : public Device {
   size_t files_total_size_;
   std::unique_ptr<Entry> root_entry_;
   std::unique_ptr<XContentContainerHeader> header_;
+  // Verified by Initialize.
+  std::unique_ptr<XContentContainerHeader> host_header_;
 };
 
 }  // namespace vfs

@@ -15,11 +15,15 @@
 namespace xe {
 namespace vfs {
 
-StfsContainerDevice::StfsContainerDevice(const std::string_view mount_path,
-                                         const std::filesystem::path& host_path)
-    : XContentContainerDevice(mount_path, host_path),
+StfsContainerDevice::StfsContainerDevice(
+    const std::string_view mount_path, const std::filesystem::path& host_path,
+    std::unique_ptr<XContentContainerHeader> header, size_t files_size,
+    std::unique_ptr<xe::filesystem::FileHandle> host_file)
+    : XContentContainerDevice(mount_path, host_path, std::move(header),
+                              files_size),
       blocks_per_hash_table_(1),
-      block_step_{0, 0} {
+      block_step_{0, 0},
+      host_file_(std::move(host_file)) {
   SetName("STFS");
 }
 
@@ -49,17 +53,7 @@ XContentContainerDevice::Result StfsContainerDevice::LoadHostFiles() {
   if (header->content_metadata.data_file_count > 0) {
     XELOGW("STFS container is not a single file. Loading might fail!");
   }
-
-  if (package_file_) {
-    return Result::kSuccess;
-  }
-
-  data_ = MappedMemory::Open(host_path_, MappedMemory::Mode::kRead);
-  if (!data_) {
-    return Result::kOutOfMemory;
-  }
-
-  return Result::kSuccess;
+  return package_file_ || host_file_ ? Result::kSuccess : Result::kReadError;
 }
 
 StfsContainerDevice::Result StfsContainerDevice::Read() {
@@ -338,14 +332,12 @@ const StfsHashEntry* StfsContainerDevice::GetBlockHash(uint32_t block_index) {
 
 bool StfsContainerDevice::ReadData(size_t offset,
                                    std::span<uint8_t> buffer) const {
-  if (data_) {
-    if (offset > data_->size() || buffer.size() > data_->size() - offset) {
-      return false;
-    }
-    std::memcpy(buffer.data(), data_->data() + offset, buffer.size());
-    return true;
-  }
   size_t bytes_read = 0;
+  if (host_file_) {
+    return host_file_->Read(offset, buffer.data(), buffer.size(),
+                            &bytes_read) &&
+           bytes_read == buffer.size();
+  }
   return package_file_->ReadSync(buffer, offset, &bytes_read) ==
              X_STATUS_SUCCESS &&
          bytes_read == buffer.size();
