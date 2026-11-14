@@ -1494,12 +1494,42 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
   if (exceptfds) {
     host_exceptfds.Load(exceptfds);
   }
+  // Non-blocking connects in progress or failed. The console reports a failed
+  // one in every set the guest asks for it in: XAM gathers each set by the
+  // events it wants, read 0x429, write 0x412 and error 0x400, and a failed
+  // connection's readiness is 0x400, which all three take (xam.xex 17559,
+  // 0x81745824 and 0x81743BF4). Windows puts it in the error set alone and
+  // POSIX hosts in the write and read sets, so the host watches each pending
+  // one for errors too.
+  std::vector<object_ref<XSocket>> connects;
+  bool failed_connect = false;
+  for (const host_set* set : {&host_readfds, &host_writefds, &host_exceptfds}) {
+    for (uint32_t i = 0; i < set->count; ++i) {
+      const auto& socket = set->sockets[i];
+      if (socket->system_link() ||
+          (!socket->connecting() && !socket->connect_failed()) ||
+          std::any_of(connects.begin(), connects.end(),
+                      [&](const auto& known) { return known == socket.get(); })) {
+        continue;
+      }
+      failed_connect = failed_connect || socket->connect_failed();
+      connects.push_back(socket);
+    }
+  }
+  fd_set* const native_exceptfds_in =
+      exceptfds || !connects.empty() ? &native_exceptfds : nullptr;
   uint32_t native_count = 0;
   // A select with nothing ready empties the sets, so this refills them too.
   auto store_native = [&]() {
     native_count = host_readfds.Store(&native_readfds) +
                    host_writefds.Store(&native_writefds) +
                    host_exceptfds.Store(&native_exceptfds);
+    for (const auto& socket : connects) {
+      const auto handle = socket->native_handle();
+      if (socket->connecting() && handle != static_cast<uint64_t>(-1)) {
+        FD_SET(handle, &native_exceptfds);
+      }
+    }
   };
   store_native();
   timeval* timeout_in = nullptr;
@@ -1512,6 +1542,11 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
         reinterpret_cast<int32_t*>(&timeout.tv_usec));
     timeout_in = &timeout;
   }
+  // A connect that has already failed is ready now.
+  if (failed_connect) {
+    timeout = {0, 0};
+    timeout_in = &timeout;
+  }
   const bool offload = GuestScheduler::CurrentThreadOffloadsBlockingCalls();
   const bool system_link = host_readfds.HasSystemLink() ||
                            host_writefds.HasSystemLink() ||
@@ -1519,8 +1554,8 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
   int ret;
   if (!offload && !system_link) {
     ret = select(nfds, readfds ? &native_readfds : nullptr,
-                 writefds ? &native_writefds : nullptr,
-                 exceptfds ? &native_exceptfds : nullptr, timeout_in);
+                 writefds ? &native_writefds : nullptr, native_exceptfds_in,
+                 timeout_in);
   } else {
     // A blocking select would stall the other guest threads on this host
     // thread and System Link sockets have no host handle to wait on. Poll
@@ -1539,8 +1574,8 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
       if (native_count || !system_link) {
         timeval poll_timeout = {0, 0};
         ret = select(nfds, readfds ? &native_readfds : nullptr,
-                     writefds ? &native_writefds : nullptr,
-                     exceptfds ? &native_exceptfds : nullptr, &poll_timeout);
+                     writefds ? &native_writefds : nullptr, native_exceptfds_in,
+                     &poll_timeout);
       }
       if (ret >= 0) {
         ret += host_readfds.CountSystemLinkReady() +
@@ -1559,6 +1594,24 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
       }
     }
   }
+  if (ret >= 0) {
+    for (const auto& socket : connects) {
+      const auto handle = socket->native_handle();
+      if (handle == static_cast<uint64_t>(-1)) {
+        continue;
+      }
+      if (socket->connecting() && (FD_ISSET(handle, &native_readfds) ||
+                                   FD_ISSET(handle, &native_writefds) ||
+                                   FD_ISSET(handle, &native_exceptfds))) {
+        socket->SettleConnect();
+      }
+      if (socket->connect_failed()) {
+        FD_SET(handle, &native_readfds);
+        FD_SET(handle, &native_writefds);
+        FD_SET(handle, &native_exceptfds);
+      }
+    }
+  }
   if (readfds) {
     host_readfds.UpdateFrom(&native_readfds);
     host_readfds.Store(readfds);
@@ -1572,7 +1625,13 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
     host_exceptfds.Store(exceptfds);
   }
 
-  // TODO(gibbed): modify ret to be what's actually copied to the guest fd_sets?
+  // What the guest's sets hold: the host's count also takes in the connects
+  // watched for failure in a set the guest didn't ask for.
+  if (ret >= 0) {
+    ret = int((readfds ? host_readfds.count : 0) +
+              (writefds ? host_writefds.count : 0) +
+              (exceptfds ? host_exceptfds.count : 0));
+  }
   return ret;
 }
 DECLARE_XAM_EXPORT1(NetDll_select, kNetworking, kImplemented);
