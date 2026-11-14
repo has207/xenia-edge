@@ -160,14 +160,6 @@ DEFINE_string(gpu, "vulkan", "Graphics system. Use: " GPU_OPTIONS, "GPU");
 
 DECLARE_bool(allow_plugins);
 
-DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
-
-DEFINE_bool(mount_cache, true, "Enable cache mount", "Storage");
-UPDATE_from_bool(mount_cache, 2024, 8, 31, 20, false);
-
-DEFINE_bool(mount_memory_unit, false, "Enable memory unit (MU) mount",
-            "Storage");
-
 DEFINE_path(xefu_path, "",
             "Folder with XeFu, the Xbox 360's original Xbox emulator: xbox.xex "
             "and the xefu*.xex builds it picks from, as the console's system "
@@ -1938,60 +1930,6 @@ void Emulator::ResetTitle() {
 
 void Emulator::MountStandardDrives() {
   auto fs = file_system_.get();
-
-  if (cvars::mount_scratch) {
-    auto scratch_device = std::make_unique<xe::vfs::HostPathDevice>(
-        "\\SCRATCH", storage_root_ / "scratch", false);
-    if (!scratch_device->Initialize()) {
-      XELOGE("Unable to scan scratch path");
-    } else {
-      if (!fs->RegisterDevice(std::move(scratch_device))) {
-        XELOGE("Unable to register scratch path");
-      } else {
-        fs->RegisterSymbolicLink("scratch:", "\\SCRATCH");
-      }
-    }
-  }
-
-  if (cvars::mount_cache) {
-    auto cache0_device = std::make_unique<xe::vfs::HostPathDevice>(
-        "\\CACHE0", storage_root_ / "cache0", false);
-    if (!cache0_device->Initialize()) {
-      XELOGE("Unable to scan cache0 path");
-    } else {
-      if (!fs->RegisterDevice(std::move(cache0_device))) {
-        XELOGE("Unable to register cache0 path");
-      } else {
-        fs->RegisterSymbolicLink("cache0:", "\\CACHE0");
-      }
-    }
-
-    auto cache1_device = std::make_unique<xe::vfs::HostPathDevice>(
-        "\\CACHE1", storage_root_ / "cache1", false);
-    if (!cache1_device->Initialize()) {
-      XELOGE("Unable to scan cache1 path");
-    } else {
-      if (!fs->RegisterDevice(std::move(cache1_device))) {
-        XELOGE("Unable to register cache1 path");
-      } else {
-        fs->RegisterSymbolicLink("cache1:", "\\CACHE1");
-      }
-    }
-  }
-
-  if (cvars::mount_memory_unit) {
-    auto mu_device = std::make_unique<xe::vfs::HostPathDevice>(
-        "\\MU", storage_root_ / "mu", false);
-    if (!mu_device->Initialize()) {
-      XELOGE("Unable to scan MU path");
-    } else {
-      if (!fs->RegisterDevice(std::move(mu_device))) {
-        XELOGE("Unable to register MU path");
-      } else {
-        fs->RegisterSymbolicLink("MU:", "\\MU");
-      }
-    }
-  }
 
   if (cvars::force_mount_devkit) {
     auto devkit_device =

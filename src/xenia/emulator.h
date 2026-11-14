@@ -290,7 +290,7 @@ class Emulator {
   // Tears down all subsystems. Called by the destructor and by RelaunchTitle.
   void Shutdown();
 
-  // Mounts scratch, cache, and devkit drives based on cvars.
+  // Mounts the devkit drive when force_mount_devkit is set.
   void MountStandardDrives();
 
   // Terminates the currently running title.

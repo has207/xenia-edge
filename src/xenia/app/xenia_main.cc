@@ -89,11 +89,6 @@ DEFINE_path(
     "for the OS, will be used.",
     "Storage");
 
-DECLARE_bool(mount_scratch);
-DECLARE_bool(mount_cache);
-DECLARE_bool(mount_memory_unit);
-DECLARE_bool(force_mount_devkit);
-
 // Positional cvar bound to the first non-flag argv entry (see
 // EmulatorApp::EmulatorApp -> AddPositionalOption("target")).
 DEFINE_transient_path(target, "", "Specifies the target file to run.",

@@ -70,8 +70,7 @@ AURORA = 'Hdd:\\Aurora\\Aurora.xex'
 # Settings a user's config may change that results depend on, at what a
 # console does. Without cache: the executor writes its results to game:, which
 # is OUTDIR once Xenia may write there.
-XENIA_ARGS = ['--license_mask=0', '--mount_cache=false',
-              '--allow_game_relative_writes=true']
+XENIA_ARGS = ['--license_mask=0', '--allow_game_relative_writes=true']
 
 
 def from_wsl(program):
