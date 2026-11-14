@@ -402,7 +402,8 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
     // an open fails with ERROR_ALREADY_EXISTS.
     const bool root_in_use =
         kernel_state()->file_system()->IsSymbolicLinkRegistered(root_name +
-                                                                ':');
+                                                                ':') ||
+        content_manager->IsRootTaken(root_name);
 
     kDispositionState disposition = kDispositionState::Unknown;
     if (!result) {

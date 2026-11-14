@@ -233,6 +233,10 @@ class ContentPackage {
 
   const std::filesystem::path& package_path() const { return package_path_; }
 
+  // Makes the package reachable through its root, once it's mounted and
+  // listed as open.
+  void LinkRoot();
+
  private:
   ContentPackage(KernelState* kernel_state, const std::string_view root_name,
                  const XCONTENT_AGGREGATE_DATA& data,
@@ -245,10 +249,13 @@ class ContentPackage {
   KernelState* kernel_state_;
   std::string root_name_;
   std::string device_path_;
+  // What the root links to, inside the device.
+  std::string root_target_;
   std::filesystem::path package_path_;
   XCONTENT_AGGREGATE_DATA content_data_;
   uint32_t license_;
   bool mounted_ = false;
+  bool linked_ = false;
 };
 
 class ContentManager {
@@ -342,6 +349,8 @@ class ContentManager {
                          const XCONTENT_AGGREGATE_DATA& data);
   std::filesystem::path ResolveGameUserContentPath(const uint64_t xuid);
   bool IsContentOpen(const std::filesystem::path& package_path) const;
+  // Whether content is open, or being opened, under |root_name|.
+  bool IsRootTaken(std::string_view root_name) const;
   void CloseOpenedFilesFromContent(const ContentPackage& package);
 
   uint64_t GetContentTotalSpace() const;
@@ -386,6 +395,8 @@ class ContentManager {
   // TODO(benvanik): remove use of global lock, it's bad here!
   xe::global_critical_region global_critical_region_;
   std::unordered_map<string_key_insensitive, ContentPackage*> open_packages_;
+  // Roots whose packages are mounting outside the lock, with the packages.
+  std::unordered_map<string_key_insensitive, std::filesystem::path> opening_;
 };
 
 }  // namespace xam
