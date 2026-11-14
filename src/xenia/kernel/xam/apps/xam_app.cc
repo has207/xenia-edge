@@ -9,11 +9,15 @@
 
 #include "xenia/kernel/xam/apps/xam_app.h"
 
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/utf8.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/nui.h"
 #include "xenia/kernel/xam/xam_content_device.h"
 #include "xenia/kernel/xenumerator.h"
+
+DECLARE_string(media_type);
 
 /* Notes:
    - Messages ids that start with 0x00021xxx are UI calls
@@ -102,14 +106,23 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
         return X_E_INVALIDARG;
       }
 
-      // Only XContent packages are volumes with a device type.
-      if (!target.starts_with("\\Device\\Content\\") &&
-          !target.starts_with("\\Device\\Package_")) {
+      // The answer is where the volume lives, not the deployment type. A disc
+      // rip installed to the HDD runs as a disc title from an HDD volume.
+      // media_type picks the drive the launch volume reports.
+      const bool on_package =
+          xe::utf8::starts_with_case(target, "\\Device\\Package_");
+      bool on_hdd = xe::utf8::starts_with_case(target, "\\Device\\Content\\");
+      if (on_package ||
+          xe::utf8::starts_with_case(target, "\\Device\\Cdrom0")) {
+        on_hdd = cvars::media_type == "hdd" ||
+                 (cvars::media_type != "odd" && on_package);
+      }
+
+      // A disc answers like any other root.
+      if (!on_hdd) {
         return X_E_INVALIDARG;
       }
 
-      // The answer is where the package lives, not the deployment type. A
-      // disc rip installed to the HDD runs as a disc title from an HDD volume.
       xe::be<DeviceType>* device_type_ptr =
           memory_->TranslateVirtual<xe::be<DeviceType>*>(
               static_cast<uint32_t>(data->device_type_ptr.get()));
