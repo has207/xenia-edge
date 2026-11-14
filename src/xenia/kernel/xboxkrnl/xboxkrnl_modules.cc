@@ -16,6 +16,8 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/xbox.h"
 
+DECLARE_int32(console_type);
+
 namespace xe {
 namespace kernel {
 namespace xboxkrnl {
@@ -112,6 +114,28 @@ dword_result_t XexGetModuleSection_entry(lpvoid_t hmodule, lpstring_t name,
   return result;
 }
 DECLARE_XBOXKRNL_EXPORT1(XexGetModuleSection, kModules, kImplemented);
+
+// Executable memory for code a title generates at run time. In the retail
+// kernel (2.0.17559, xboxkrnl.exe 0x8007BB68) both ordinals are one stub that
+// returns STATUS_INVALID_SYSTEM_SERVICE, and 2.0.1888 doesn't export them:
+// only a devkit kernel implements them. The Silverlight CLR (xcoreclr.dll)
+// calls XexReserveCodeBuffer on the range between two exports of its
+// CLRCodeCachedll_N.xex before carving stubs from it, and treats the failure
+// as out of memory, which is what a retail console does; it only tries when
+// xbdm.xex is loaded, so a devkit (console_type >= 0) gets the devkit
+// behaviour. Guest memory here is executable wherever it is, so there is
+// nothing to reserve or commit.
+dword_result_t XexReserveCodeBuffer_entry(lpdword_t buffer_ptr, dword_t size) {
+  return cvars::console_type >= 0 ? X_STATUS_SUCCESS
+                                  : X_STATUS_INVALID_SYSTEM_SERVICE;
+}
+DECLARE_XBOXKRNL_EXPORT1(XexReserveCodeBuffer, kModules, kStub);
+
+dword_result_t XexCommitCodeBuffer_entry(lpdword_t buffer_ptr, dword_t size) {
+  return cvars::console_type >= 0 ? X_STATUS_SUCCESS
+                                  : X_STATUS_INVALID_SYSTEM_SERVICE;
+}
+DECLARE_XBOXKRNL_EXPORT1(XexCommitCodeBuffer, kModules, kStub);
 
 // Returns the image base of the module containing pc (callers pass it to
 // RtlImageDirectoryEntryToData to find .pdata) and stores its loader entry. A
