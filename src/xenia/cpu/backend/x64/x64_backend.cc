@@ -2056,6 +2056,9 @@ void X64Backend::InvalidateDynamicCalls(uint32_t start, uint32_t end) {
   // A range with fewer instructions than the cache has slots only checks the
   // slots those hash to.
   const bool targeted = end - start < kX64DynamicCallCacheSize * 4;
+  // Code with an indirection slot is reached through the slot, not the
+  // per-thread cache below, so the slot goes back to the resolve thunk.
+  code_cache()->ResetIndirectionRange(start, end);
   auto invalidate = [start, end](X64DynamicCallCacheEntry& entry) {
     if (entry.guest_address >= start && entry.guest_address <= end) {
       // The lookup only rejects an entry whose host address is zero.
