@@ -733,6 +733,13 @@ dword_result_t ObCreateSymbolicLink_entry(pointer_t<X_ANSI_STRING> path_ptr,
   auto target = xe::utf8::canonicalize_guest_path(
       util::TranslateAnsiPath(kernel_memory(), target_ptr));
 
+  // A link to a cache partition reaches the file system on it.
+  if (xe::utf8::equal_case(target, "\\Device\\Harddisk0\\Cache0")) {
+    target = "\\Device\\cache0";
+  } else if (xe::utf8::equal_case(target, "\\Device\\Harddisk0\\Cache1")) {
+    target = "\\Device\\cache1";
+  }
+
   // 4D5307DC expects success.
   if (kernel_state()->file_system()->FindSymbolicLink(path, target)) {
     return X_STATUS_SUCCESS;

@@ -1977,19 +1977,6 @@ void Emulator::MountStandardDrives() {
         fs->RegisterSymbolicLink("cache1:", "\\CACHE1");
       }
     }
-
-    // Some (older?) games try accessing cache:\ too
-    auto cache_device = std::make_unique<xe::vfs::HostPathDevice>(
-        "\\CACHE", storage_root_ / "cache", false);
-    if (!cache_device->Initialize()) {
-      XELOGE("Unable to scan cache path");
-    } else {
-      if (!fs->RegisterDevice(std::move(cache_device))) {
-        XELOGE("Unable to register cache path");
-      } else {
-        fs->RegisterSymbolicLink("cache:", "\\CACHE");
-      }
-    }
   }
 
   if (cvars::mount_memory_unit) {
@@ -2850,6 +2837,19 @@ X_STATUS Emulator::PrepareLaunch(const std::filesystem::path& path,
     if (title_version.value != 0) {
       title_version_ = format_version(title_version);
     }
+  }
+
+  // XMountUtilityDrive creates \Device\cacheN on Harddisk0\CacheN and links
+  // cache: to it.
+  auto cache_device = std::make_unique<vfs::HostPathDevice>(
+      "\\CACHE", storage_root_ / "cache" / fmt::format("{:08X}", *title_id_),
+      false);
+  if (cache_device->Initialize()) {
+    file_system_->RegisterDevice(std::move(cache_device));
+    file_system_->RegisterSymbolicLink("\\Device\\cache0", "\\CACHE");
+    file_system_->RegisterSymbolicLink("\\Device\\cache1", "\\CACHE");
+  } else {
+    XELOGE("Unable to scan the title's cache path");
   }
 
   if (title_id_ == kXeFuTitleId) {
