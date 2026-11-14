@@ -2180,21 +2180,12 @@ void SpirvShaderTranslator::FSI_DepthStencilTest(
     depth_dxy[0] = const_float_0_;
     depth_dxy[1] = const_float_0_;
   } else {
-    // Load the depth in the center of the pixel and calculate the derivatives
-    // of the depth outside non-uniform control flow.
-    assert_true(input_fragment_coordinates_ != spv::NoResult);
-    id_vector_temp_.clear();
-    id_vector_temp_.push_back(builder_->makeIntConstant(2));
-    center_depth32_unbiased =
-        builder_->createLoad(builder_->createAccessChain(
-                                 spv::StorageClassInput,
-                                 input_fragment_coordinates_, id_vector_temp_),
-                             spv::NoPrecision);
-    builder_->addCapability(spv::CapabilityDerivativeControl);
-    depth_dxy[0] = builder_->createUnaryOp(spv::OpDPdxCoarse, type_float_,
-                                           center_depth32_unbiased);
-    depth_dxy[1] = builder_->createUnaryOp(spv::OpDPdyCoarse, type_float_,
-                                           center_depth32_unbiased);
+    // The depth and its derivatives were taken at the start of the shader: the
+    // late test may run in the branch on main_fsi_sample_mask_ != 0, which is
+    // non-uniform control flow.
+    assert_true(main_fbo_depth_unbiased_ != spv::NoResult);
+    center_depth32_unbiased = main_fbo_depth_unbiased_;
+    depth_dxy = main_fbo_depth_derivatives_;
   }
 
   // Skip everything if potentially discarded all the samples previously in the
