@@ -176,7 +176,7 @@ DEFINE_string(xefu_launcher, "xbox.xex",
               "game.",
               "General");
 
-DECLARE_bool(force_mount_devkit);
+DEFINE_bool(force_mount_devkit, false, "Force devkit mount", "Storage");
 
 DEFINE_int32(priority_class, 0,
              "Forces Xenia to use different process priority than default one. "
@@ -1929,23 +1929,25 @@ void Emulator::ResetTitle() {
 }
 
 void Emulator::MountStandardDrives() {
-  auto fs = file_system_.get();
-
   if (cvars::force_mount_devkit) {
-    auto devkit_device =
-        std::make_unique<xe::vfs::HostPathDevice>("\\DEVKIT", "devkit", false);
-
-    if (!devkit_device->Initialize()) {
-      XELOGE("Unable to scan devkit path");
-    }
-
-    if (!fs->RegisterDevice(std::move(devkit_device))) {
-      XELOGE("Unable to register devkit path");
-    }
-
-    fs->RegisterSymbolicLink("DEVKIT:", "\\DEVKIT");
-    fs->RegisterSymbolicLink("e:", "\\DEVKIT");
+    MountDevkitDrive();
   }
+}
+
+bool Emulator::MountDevkitDrive() {
+  if (file_system_->GetDevice("\\DEVKIT")) {
+    return true;
+  }
+  auto devkit_device = std::make_unique<vfs::HostPathDevice>(
+      "\\DEVKIT", storage_root_ / "devkit", false);
+  if (!devkit_device->Initialize()) {
+    XELOGE("Unable to scan devkit path");
+    return false;
+  }
+  file_system_->RegisterDevice(std::move(devkit_device));
+  file_system_->RegisterSymbolicLink("DEVKIT:", "\\DEVKIT");
+  file_system_->RegisterSymbolicLink("e:", "\\DEVKIT");
+  return true;
 }
 
 const std::filesystem::path Emulator::GetNewDiscPath(

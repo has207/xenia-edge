@@ -293,6 +293,10 @@ class Emulator {
   // Mounts the devkit drive when force_mount_devkit is set.
   void MountStandardDrives();
 
+  // Maps DEVKIT: and e: to the devkit folder under the storage root unless
+  // they're already mapped.
+  bool MountDevkitDrive();
+
   // Terminates the currently running title.
   X_STATUS TerminateTitle();
 

@@ -11,17 +11,15 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/string_util.h"
 #include "xenia/cpu/processor.h"
+#include "xenia/emulator.h"
 #include "xenia/kernel/kernel_state.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xbdm/xbdm_private.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xthread.h"
-#include "xenia/vfs/devices/host_path_device.h"
 #include "xenia/xbox.h"
 
 DECLARE_bool(debug);
-
-DEFINE_bool(force_mount_devkit, false, "Force devkit mount", "Storage");
 
 DEFINE_int32(
     console_type, -1,
@@ -157,28 +155,7 @@ dword_result_t DmCloseLoadedModules_entry(lpdword_t walk_modules_ptr) {
 DECLARE_XBDM_EXPORT1(DmCloseLoadedModules, kDebug, kStub);
 
 dword_result_t DmMapDevkitDrive_entry(const ppc_context_t& ctx) {
-  if (cvars::force_mount_devkit) {
-    return 0;
-  }
-
-  auto devkit_device =
-      std::make_unique<xe::vfs::HostPathDevice>("\\DEVKIT", "devkit", false);
-
-  auto fs = kernel_state()->file_system();
-
-  if (!devkit_device->Initialize()) {
-    XELOGE("Unable to scan devkit path");
-    return XBDM_UNSUCCESSFUL;
-  }
-
-  if (!fs->RegisterDevice(std::move(devkit_device))) {
-    XELOGE("Unable to register devkit path");
-    return XBDM_UNSUCCESSFUL;
-  }
-
-  fs->RegisterSymbolicLink("DEVKIT:", "\\DEVKIT");
-  fs->RegisterSymbolicLink("e:", "\\DEVKIT");
-  return 0;
+  return kernel_state()->emulator()->MountDevkitDrive() ? 0 : XBDM_UNSUCCESSFUL;
 }
 DECLARE_XBDM_EXPORT1(DmMapDevkitDrive, kDebug, kImplemented);
 
