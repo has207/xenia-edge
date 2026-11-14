@@ -160,6 +160,13 @@ uint32_t HostPathDevice::available_allocation_units() const {
   return BytesToUnits(QueryHostSpace(host_path_).available, *this);
 }
 
+Entry* HostPathDevice::AddEntry(HostPathEntry* parent,
+                                std::unique_ptr<HostPathEntry> entry) {
+  auto global_lock = global_critical_region_.Acquire();
+  parent->children_.push_back(std::move(entry));
+  return parent->children_.back().get();
+}
+
 void HostPathDevice::PopulateEntry(HostPathEntry* parent_entry) {
   std::vector<std::filesystem::path> ancestors;
   PopulateEntry(parent_entry, ancestors);

@@ -11,6 +11,7 @@
 #define XENIA_KERNEL_XAM_TITLE_IMAGE_DEVICE_H_
 
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -32,6 +33,8 @@ inline constexpr std::string_view kTitleImageSymbolicLink = "TitleImages:";
 inline constexpr std::u16string_view kTitleImageUriRoot =
     u"file://TitleImages:";
 
+class TitleImageEntry;
+
 // Title images as <title id>\<locale>\<image> or <title id>\<image>, made for
 // this launch from the downloaded box art of the title's game library release,
 // or else its NXEArt, or its icon for box art.
@@ -44,10 +47,20 @@ class TitleImageDevice : public vfs::HostPathDevice {
   vfs::Entry* ResolvePath(const std::string_view path) override;
 
  private:
+  friend class TitleImageEntry;
+
+  std::filesystem::path ReleaseImagesFolder(uint32_t title_id) const;
+  // Fills |entry| from its title's releases, false when they have nothing.
+  bool MakeImage(TitleImageEntry& entry);
+
   std::filesystem::path cache_root_;
   Emulator* emulator_;
   // Lowercase title folders made this launch, empty ones included.
   std::unordered_set<std::string> made_;
+  std::mutex images_mutex_;
+  // Titles whose releases couldn't be read this launch. Guarded by
+  // images_mutex_.
+  std::unordered_set<uint32_t> unreadable_;
 };
 
 }  // namespace xam

@@ -11,11 +11,13 @@
 
 #include <algorithm>
 #include <charconv>
+#include <memory>
 #include <span>
 #include <vector>
 
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/threading.h"
 #include "xenia/base/utf8.h"
 #include "xenia/emulator.h"
 #include "xenia/vfs/devices/host_path_entry.h"
@@ -163,9 +165,11 @@ static void MakeReleaseImages(Emulator* emulator, const uint32_t title_id,
     return;
   }
   // Written beside |folder| and renamed into place, so a write cut short isn't
-  // kept as the title's images.
+  // kept as the title's images. Named for the thread, as another opener can be
+  // making the same folder.
   auto partial = folder;
-  partial += ".partial";
+  partial +=
+      fmt::format(".{:X}.partial", xe::threading::current_thread_system_id());
   std::filesystem::remove_all(partial, ec);
   std::filesystem::create_directories(partial, ec);
   for (size_t i = 0; i < images.size(); ++i) {
@@ -201,6 +205,72 @@ static std::filesystem::path FindReleaseFile(
   return {};
 }
 
+static bool HasRelease(Emulator* emulator, const uint32_t title_id) {
+  const auto titles = emulator->LibraryTitles();
+  return titles && std::ranges::any_of(*titles, [&](const auto& title) {
+           return title.title_id == title_id;
+         });
+}
+
+// What stands in for |image| once the releases were looked at, their image or
+// else the icon for box art. Empty when there's none.
+static std::filesystem::path LookedImageSource(
+    Emulator* emulator, const uint32_t title_id,
+    const std::filesystem::path& release_images, const std::string_view image) {
+  std::error_code ec;
+  auto source = release_images / (IsBoxArt(image) ? kReleaseImages[0] : image);
+  if (std::filesystem::exists(source, ec)) {
+    return source;
+  }
+  if (IsBoxArt(image)) {
+    return FindReleaseFile(emulator, title_id,
+                           &Emulator::LibraryTitle::icon_path);
+  }
+  return {};
+}
+
+// An image only the title's releases can give, read from them when it's first
+// opened, which is outside the file system lock.
+class TitleImageEntry final : public vfs::HostPathEntry {
+ public:
+  TitleImageEntry(TitleImageDevice* device, vfs::Entry* parent,
+                  const std::string_view path,
+                  const std::filesystem::path& host_path,
+                  const xe::filesystem::FileInfo& file_info,
+                  const uint32_t title_id)
+      : HostPathEntry(device, parent, path, host_path), title_id_(title_id) {
+    SetInfo(file_info);
+  }
+
+  uint32_t title_id() const { return title_id_; }
+
+  // Held open while the release is read, so a delete can't free the entry.
+  X_STATUS Open(uint32_t desired_access, vfs::File** out_file) override {
+    RetainFile();
+    X_STATUS status = X_STATUS_OBJECT_NAME_NOT_FOUND;
+    if (static_cast<TitleImageDevice*>(device())->MakeImage(*this)) {
+      status = HostPathEntry::Open(desired_access, out_file);
+    }
+    ReleaseFile();
+    return status;
+  }
+
+  // A query reports the image's size, so it's made first.
+  void update() override {
+    RetainFile();
+    static_cast<TitleImageDevice*>(device())->MakeImage(*this);
+    HostPathEntry::update();
+    ReleaseFile();
+  }
+
+ private:
+  friend class TitleImageDevice;
+
+  const uint32_t title_id_;
+  // Guarded by the device's images_mutex_.
+  bool filled_ = false;
+};
+
 TitleImageDevice::TitleImageDevice(const std::string_view mount_path,
                                    const std::filesystem::path& cache_root,
                                    Emulator* emulator)
@@ -213,6 +283,18 @@ bool TitleImageDevice::Initialize() {
   // in for it.
   std::error_code ec;
   std::filesystem::remove_all(host_path(), ec);
+  // A launch cut short leaves its half-written release images behind.
+  std::vector<std::filesystem::path> partials;
+  for (std::filesystem::directory_iterator it(cache_root_ / "title_art", ec),
+       end;
+       !ec && it != end; it.increment(ec)) {
+    if (it->path().extension() == ".partial") {
+      partials.push_back(it->path());
+    }
+  }
+  for (const auto& partial : partials) {
+    std::filesystem::remove_all(partial, ec);
+  }
   return HostPathDevice::Initialize();
 }
 
@@ -243,39 +325,24 @@ vfs::Entry* TitleImageDevice::ResolvePath(const std::string_view path) {
                         : std::span<const std::string_view>(kDashboardImages);
   const auto cover = FindReleaseFile(emulator_, title_id,
                                      &Emulator::LibraryTitle::boxart_path);
-  const auto release_images =
-      cache_root_ / "title_art" / fmt::format("{:08X}", title_id);
-  if (cover.empty() ||
-      std::ranges::any_of(names, [](auto name) { return !IsBoxArt(name); })) {
-    MakeReleaseImages(emulator_, title_id, release_images);
-  }
-  std::filesystem::path icon;
+  const auto release_images = ReleaseImagesFolder(title_id);
   std::error_code ec;
+  // Releases not looked at yet are read when their image is opened.
+  const bool pending = !std::filesystem::exists(release_images, ec) &&
+                       HasRelease(emulator_, title_id);
   std::vector<std::filesystem::path> sources(names.size());
   for (size_t i = 0; i < names.size(); ++i) {
-    if (!IsBoxArt(names[i])) {
-      sources[i] = release_images / names[i];
-    } else if (!cover.empty()) {
+    if (IsBoxArt(names[i]) && !cover.empty()) {
       sources[i] = cover;
-      continue;
-    } else {
-      sources[i] = release_images / kReleaseImages[0];
-    }
-    if (std::filesystem::exists(sources[i], ec)) {
-      continue;
-    }
-    sources[i].clear();
-    if (IsBoxArt(names[i])) {
-      if (icon.empty()) {
-        icon = FindReleaseFile(emulator_, title_id,
-                               &Emulator::LibraryTitle::icon_path);
-      }
-      sources[i] = icon;
+    } else if (!pending) {
+      sources[i] =
+          LookedImageSource(emulator_, title_id, release_images, names[i]);
     }
   }
 
-  if (std::ranges::all_of(sources,
-                          [](const auto& source) { return source.empty(); })) {
+  if (!pending && std::ranges::all_of(sources, [](const auto& source) {
+        return source.empty();
+      })) {
     return HostPathDevice::ResolvePath(path);
   }
   vfs::Entry* folder = HostPathDevice::ResolvePath("");
@@ -289,7 +356,26 @@ vfs::Entry* TitleImageDevice::ResolvePath(const std::string_view path) {
     return nullptr;
   }
   for (size_t i = 0; i < names.size(); ++i) {
-    if (sources[i].empty() || folder->GetChild(names[i])) {
+    if (folder->GetChild(names[i])) {
+      continue;
+    }
+    if (sources[i].empty()) {
+      if (!pending) {
+        continue;
+      }
+      auto* host_folder = static_cast<vfs::HostPathEntry*>(folder);
+      const auto host_path = host_folder->host_path() / names[i];
+      if (!xe::filesystem::CreateEmptyFile(host_path)) {
+        continue;
+      }
+      const auto file_info = xe::filesystem::GetInfo(host_path);
+      if (file_info) {
+        AddEntry(host_folder,
+                 std::make_unique<TitleImageEntry>(
+                     this, folder,
+                     xe::utf8::join_guest_paths(folder->path(), names[i]),
+                     host_path, *file_info, title_id));
+      }
       continue;
     }
     vfs::Entry* entry =
@@ -307,6 +393,46 @@ vfs::Entry* TitleImageDevice::ResolvePath(const std::string_view path) {
   }
   XELOGI("TitleImageDevice: made {} for {:08X}", path, title_id);
   return folder;
+}
+
+std::filesystem::path TitleImageDevice::ReleaseImagesFolder(
+    const uint32_t title_id) const {
+  return cache_root_ / "title_art" / fmt::format("{:08X}", title_id);
+}
+
+bool TitleImageDevice::MakeImage(TitleImageEntry& entry) {
+  const uint32_t title_id = entry.title_id();
+  bool read_releases;
+  {
+    std::lock_guard lock(images_mutex_);
+    if (entry.filled_) {
+      return true;
+    }
+    read_releases = !unreadable_.contains(title_id);
+  }
+  const auto release_images = ReleaseImagesFolder(title_id);
+  if (read_releases) {
+    MakeReleaseImages(emulator_, title_id, release_images);
+  }
+  std::error_code ec;
+  const bool looked = std::filesystem::exists(release_images, ec);
+  const auto source =
+      LookedImageSource(emulator_, title_id, release_images, entry.name());
+  std::lock_guard lock(images_mutex_);
+  if (!looked) {
+    // Read again next launch, not on every open of this one.
+    unreadable_.insert(title_id);
+  }
+  if (!entry.filled_ && !source.empty() &&
+      std::filesystem::copy_file(
+          source, entry.host_path(),
+          std::filesystem::copy_options::overwrite_existing, ec)) {
+    // The plain refresh, as its own update() comes back here.
+    entry.HostPathEntry::update();
+    entry.filled_ = true;
+    XELOGI("TitleImageDevice: made {} for {:08X}", entry.path(), title_id);
+  }
+  return entry.filled_;
 }
 
 }  // namespace xam

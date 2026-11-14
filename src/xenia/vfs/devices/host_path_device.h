@@ -56,6 +56,8 @@ class HostPathDevice : public Device {
  protected:
   friend class HostPathEntry;
   std::filesystem::path host_path() const { return host_path_; }
+  // Adds an entry of a subclass's own kind for a file already in |parent|.
+  Entry* AddEntry(HostPathEntry* parent, std::unique_ptr<HostPathEntry> entry);
 
  private:
   void PopulateEntry(HostPathEntry* parent_entry);

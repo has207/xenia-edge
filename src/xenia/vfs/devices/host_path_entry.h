@@ -51,6 +51,10 @@ class HostPathEntry : public Entry {
                 uint64_t create_timestamp, uint64_t access_timestamp,
                 uint64_t write_timestamp);
 
+ protected:
+  // Takes the attributes, size and times |file_info| gives.
+  void SetInfo(const xe::filesystem::FileInfo& file_info);
+
  private:
   friend class HostPathDevice;
   friend class HostPathFile;
