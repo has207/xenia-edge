@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "xenia/base/cvar.h"
 #include "xenia/base/debugging.h"
 #include "xenia/base/logging.h"
 #include "xenia/cpu/processor.h"
@@ -1999,6 +2000,10 @@ void KeBugCheckEx_entry(dword_t code, dword_t param1, dword_t param2,
 
   if (xe::debugging::IsDebuggerAttached()) {
     xe::debugging::Break();
+  }
+
+  if (xe::IsUnattended()) {
+    xe::ExitUnattended(EXIT_FAILURE, "title crashed (KeBugCheck)");
   }
 
   // Show crash dialog and suspend the guest thread instead of killing the

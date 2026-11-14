@@ -1058,13 +1058,17 @@ void KernelState::UnloadUserModule(const object_ref<UserModule>& module,
 
 void KernelState::TerminateTitle() {
   XELOGI("KernelState::TerminateTitle");
+  if (xe::IsUnattended()) {
+    xe::ExitUnattended(EXIT_SUCCESS, "title exited");
+  }
   xe::FlushLog();
   std::quick_exit(EXIT_SUCCESS);
 }
 
 // Doesn't return when the host UI's handler took the title down.
 static void HandOffToHostUI(const Emulator::ExitToDashboardCallback& handler) {
-  if (handler && handler()) {
+  // Unattended, there's no game list to go back to.
+  if (handler && !xe::IsUnattended() && handler()) {
     // Park off guest code until the host's reset or exit ends us; Suspend can
     // return on POSIX, so loop rather than fall through to TerminateTitle.
     auto* current_thread = XThread::GetCurrentThread();

@@ -97,6 +97,12 @@ class MessageBoxDialog : public XamGamepadDialog {
   void OnDraw(ImGuiIO& io) override;
   virtual ~MessageBoxDialog() {}
 
+ protected:
+  std::string GetLogTitle() const override { return title_; }
+  std::string GetLogText() const override;
+  std::string GetLogResult() const override;
+  void OnUnattendedDismiss() override { chosen_button_ = default_button_; }
+
  private:
   bool has_opened_ = false;
   std::string title_;
@@ -136,6 +142,16 @@ class KeyboardInputDialog : public XamGamepadDialog {
   bool cancelled() const { return cancelled_; }
 
   void OnDraw(ImGuiIO& io) override;
+
+ protected:
+  std::string GetLogTitle() const override { return title_; }
+  std::string GetLogText() const override;
+  std::string GetLogResult() const override;
+  // Enters the default text, as pressing OK straight away would.
+  void OnUnattendedDismiss() override {
+    text_ = default_text_;
+    cancelled_ = false;
+  }
 
  private:
   // Copies the whole characters of |text| that fit in the text box.

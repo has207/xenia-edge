@@ -11,6 +11,7 @@
 #define XENIA_UI_IMGUI_DRAWER_H_
 
 #include <cstddef>
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -95,6 +96,9 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   }
 
   bool HasOpenDialogs() const { return !dialogs_.empty(); }
+  bool HasDialog(const ImGuiDialog* dialog) const {
+    return std::ranges::find(dialogs_, dialog) != dialogs_.cend();
+  }
   void LoadInputSystem(hid::InputSystem* input_system);
 
   // Post a callback to be executed after the current frame completes

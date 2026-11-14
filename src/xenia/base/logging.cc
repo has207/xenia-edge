@@ -62,6 +62,16 @@ DEFINE_bool(log_to_debugprint, false, "Dump the log to DebugPrint.", "Logging");
 DEFINE_bool(flush_log, true, "Flush log file after each log line batch.",
             "Logging");
 
+DEFINE_transient_bool(
+    unattended, false,
+    "Runs the target with nobody there to answer: the log goes to stdout, "
+    "message boxes and dialogs are logged and dismissed with their default "
+    "choice, and the process exits when the title exits (0) or crashes (1).",
+    "General");
+DEFINE_transient_bool(headless, false,
+                      "Runs unattended without showing the window.",
+                      "General");
+
 DEFINE_uint32(log_mask, 0,
               "Disables specific categorizes for more granular debug logging. "
               "Kernel = 1, Apu = 2, Cpu = 4, Gpu = 8.",
@@ -544,8 +554,13 @@ void InitializeLogging(const std::string_view app_name) {
         OpenLogFile(log_path, !cvars::log_append), true));
   }
 
-  if (cvars::log_to_stdout) {
+  if (cvars::log_to_stdout || xe::IsUnattended()) {
     logger_->AddLogSink(std::make_unique<FileLogSink>(stdout, false));
+  }
+  // enable_console with stdout redirected: the console window gets its own
+  // copy.
+  if (FILE* console = console_echo_stream()) {
+    logger_->AddLogSink(std::make_unique<FileLogSink>(console, false));
   }
 
   if (cvars::log_to_debugprint) {
@@ -604,15 +619,62 @@ void logging::internal::AppendLogLine(LogLevel log_level,
 
 void logging::AppendLogLine(LogLevel log_level, const char prefix_char,
                             const std::string_view str, uint32_t log_mask) {
-  if (!ShouldLog(log_level, log_mask) || !str.size()) {
+  // Null once ShutdownLogging has begun, before a quick_exit.
+  if (!logger_ || !ShouldLog(log_level, log_mask) || !str.size()) {
     return;
   }
   logger_->AppendLine(xe::threading::current_thread_id(), prefix_char,
                       str.data(), str.size());
 }
 
+void LogUIElement(const std::string_view kind, const std::string_view title,
+                  const std::string_view text) {
+  if (text.empty()) {
+    XELOGI("UI {}: {}", kind, title);
+  } else {
+    XELOGI("UI {}: {}\n{}", kind, title, text);
+  }
+}
+
+bool IsUnattended() { return cvars::unattended || cvars::headless; }
+
+bool LogSimpleMessageBox(SimpleMessageBoxType type,
+                         const std::string_view message) {
+  std::string_view title;
+  switch (type) {
+    default:
+    case SimpleMessageBoxType::Help:
+      title = "Xenia Help";
+      break;
+    case SimpleMessageBoxType::Warning:
+      title = "Xenia Warning";
+      break;
+    case SimpleMessageBoxType::Error:
+      title = "Xenia Error";
+      break;
+  }
+  LogUIElement("message box", title, message);
+  return !xe::IsUnattended();
+}
+
+void ExitUnattended(int exit_code, const std::string_view reason) {
+  XELOGI("Unattended: {}, exiting with code {}", reason, exit_code);
+  // Waits for the writer to drain the queue, which FlushLog doesn't.
+  if (logger_ && !IsLogWriterThread()) {
+    ShutdownLogging();
+  } else {
+    FlushLog();
+  }
+  fflush(stdout);
+  std::quick_exit(exit_code);
+}
+
 void FatalError(const std::string_view str) {
   logging::AppendLogLine(LogLevel::Error, 'x', str);
+
+  if (xe::IsUnattended()) {
+    ExitUnattended(EXIT_FAILURE, "fatal error");
+  }
 
   if (!xe::has_console_attached()) {
     ShowSimpleMessageBox(SimpleMessageBoxType::Error, str);

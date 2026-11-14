@@ -185,7 +185,6 @@ DEFINE_string(xefu_launcher, "xbox.xex",
               "General");
 
 DECLARE_bool(force_mount_devkit);
-
 DEFINE_int32(priority_class, 0,
              "Forces Xenia to use different process priority than default one. "
              "It might affect performance and cause unexpected bugs. Possible "
@@ -236,7 +235,9 @@ Emulator::Emulator(const std::filesystem::path& command_line,
   // Show a disclaimer that links to the quickstart
   // guide the first time they ever open the emulator
   uint64_t persistent_flags = GetPersistentEmulatorFlags();
-  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
+  // Unattended, it waits for a later run with someone there to read it.
+  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged) &&
+      !xe::IsUnattended()) {
     if ((MessageBoxW(
              nullptr,
              L"DISCLAIMER: Xenia is not for enabling illegal activity, and "
@@ -2443,6 +2444,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
 
 void Emulator::ReportGuestCrash(const std::string& crash_msg) {
   XELOGE("{}", crash_msg);
+  if (xe::IsUnattended()) {
+    ExitUnattended(EXIT_FAILURE, "title crashed");
+  }
   FlushLog();
 
   // Only pause the entire emulator if debugging is enabled. After the dump,

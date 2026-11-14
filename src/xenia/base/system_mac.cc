@@ -56,6 +56,9 @@ void LaunchFileExplorer(const std::filesystem::path& path) {
 }
 
 void ShowSimpleMessageBox(SimpleMessageBoxType type, std::string_view message) {
+  if (!LogSimpleMessageBox(type, message)) {
+    return;
+  }
   const char* icon;
   switch (type) {
     case SimpleMessageBoxType::Help:

@@ -18,6 +18,8 @@
 
 #include "xenia/base/cvar.h"
 
+DECLARE_bool(headless);
+
 DEFINE_bool(disable_doubleclick_fullscreen, false,
             "Allows the user to disable the behavior where a fast double-click "
             "causes Xenia to enter fullscreen mode.",
@@ -119,7 +121,8 @@ static wxPoint ReadInitialFramePositionFromConfig() {
 }
 
 void WxWindow::SaveGeometryToConfig() {
-  if (!frame_ || frame_->IsFullScreen()) {
+  // A headless frame was never placed, so it has no geometry worth keeping.
+  if (!frame_ || frame_->IsFullScreen() || cvars::headless) {
     return;
   }
   auto* config = wxConfigBase::Get();
@@ -376,10 +379,13 @@ bool WxWindow::OpenImpl() {
   }
 #endif
 
-  RestoreGeometryFromConfig();
+  // headless keeps the frame hidden for the whole run.
+  if (!cvars::headless) {
+    RestoreGeometryFromConfig();
 
-  if (IsFullscreen()) {
-    frame_->ShowFullScreen(true);
+    if (IsFullscreen()) {
+      frame_->ShowFullScreen(true);
+    }
   }
 
 #if XE_PLATFORM_MAC
@@ -388,8 +394,10 @@ bool WxWindow::OpenImpl() {
   frame_->EnableFullScreenView(true);
 #endif
 
-  frame_->Show(true);
-  render_target()->SetFocus();
+  if (!cvars::headless) {
+    frame_->Show(true);
+    render_target()->SetFocus();
+  }
 
   wxSize client_size = render_target()->GetClientSize();
   WindowDestructionReceiver destruction_receiver(this);
@@ -413,6 +421,9 @@ uint32_t WxWindow::GetLatestDpiImpl() const { return dpi_; }
 
 void WxWindow::ApplyNewFullscreen() {
   if (!frame_) {
+    return;
+  }
+  if (cvars::headless) {
     return;
   }
   bool fullscreen = IsFullscreen();
