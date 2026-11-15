@@ -8,6 +8,7 @@
 */
 
 #include <algorithm>
+#include <cstring>
 #include <random>
 #include <tuple>
 
@@ -885,6 +886,27 @@ dword_result_t XeKeysGetConsoleID_entry(pointer_t<XE_CONSOLE_ID> raw_bytes,
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysGetConsoleID, kNone, kImplemented);
 
+// The certificate this console signs with.
+static void FillConsoleCertificate(XE_CONSOLE_CERTIFICATE* certificate) {
+  std::memset(certificate, 0, sizeof(*certificate));
+  certificate->console_id.RefurbBits = 0b0011;
+  certificate->console_id.ManufactureMonth = 0b1001;
+  certificate->console_id.ManufactureYear = 0b0001;
+  certificate->console_id.MacIndex3 = 0b01000000;
+  certificate->console_id.MacIndex4 = 0b01100110;
+  certificate->console_id.MacIndex5 = 0b01111110;
+  certificate->console_id.Crc = 0b0000;
+  certificate->console_type = Retail;
+  certificate->manufacture_date[0] = 2;
+  certificate->manufacture_date[1] = 0;
+  certificate->manufacture_date[2] = 0;
+  certificate->manufacture_date[3] = 5;
+  certificate->manufacture_date[4] = 1;
+  certificate->manufacture_date[5] = 1;
+  certificate->manufacture_date[6] = 2;
+  certificate->manufacture_date[7] = 2;
+}
+
 dword_result_t XeKeysConsolePrivateKeySign_entry(
     lpvoid_t hash, pointer_t<XE_CONSOLE_CERTIFICATE> output) {
   if (!hash) {
@@ -895,26 +917,30 @@ dword_result_t XeKeysConsolePrivateKeySign_entry(
     return false;
   }
 
-  output.Zero();
-  output->console_id.RefurbBits = 0b0011;
-  output->console_id.ManufactureMonth = 0b1001;
-  output->console_id.ManufactureYear = 0b0001;
-  output->console_id.MacIndex3 = 0b01000000;
-  output->console_id.MacIndex4 = 0b01100110;
-  output->console_id.MacIndex5 = 0b01111110;
-  output->console_id.Crc = 0b0000;
-  output->console_type = Retail;
-  output->manufacture_date[0] = 2;
-  output->manufacture_date[1] = 0;
-  output->manufacture_date[2] = 0;
-  output->manufacture_date[3] = 5;
-  output->manufacture_date[4] = 1;
-  output->manufacture_date[5] = 1;
-  output->manufacture_date[6] = 2;
-  output->manufacture_date[7] = 2;
+  FillConsoleCertificate(output);
   return true;
 }
 DECLARE_XBOXKRNL_EXPORT1(XeKeysConsolePrivateKeySign, kNone, kSketchy);
+
+// Signatures from XeKeysConsolePrivateKeySign hold only the certificate, the
+// one thing checked here.
+dword_result_t XeKeysConsoleSignatureVerification_entry(
+    lpvoid_t hash, pointer_t<XE_CONSOLE_SIGNATURE> signature,
+    lpdword_t same_console) {
+  if (!hash || !signature) {
+    return false;
+  }
+
+  XE_CONSOLE_CERTIFICATE certificate;
+  FillConsoleCertificate(&certificate);
+  const bool matches = !std::memcmp(&signature->console_certificate,
+                                    &certificate, sizeof(certificate));
+  if (same_console) {
+    *same_console = matches;
+  }
+  return matches;
+}
+DECLARE_XBOXKRNL_EXPORT1(XeKeysConsoleSignatureVerification, kNone, kSketchy);
 
 }  // namespace xboxkrnl
 }  // namespace kernel
