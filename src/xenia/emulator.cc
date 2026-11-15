@@ -2780,9 +2780,12 @@ X_STATUS Emulator::PrepareLaunch(const std::filesystem::path& path,
   }
 
   // XMountUtilityDrive creates \Device\cacheN on Harddisk0\CacheN and links
-  // cache: to it.
+  // cache: to it. Each game XeFu runs gets its own folder.
+  const uint32_t cache_title_id = game_config_title_id();
   auto cache_device = std::make_unique<vfs::HostPathDevice>(
-      "\\CACHE", storage_root_ / "cache" / fmt::format("{:08X}", *title_id_),
+      "\\CACHE",
+      storage_root_ / "cache" /
+          fmt::format("{:08X}", cache_title_id ? cache_title_id : *title_id_),
       false);
   if (cache_device->Initialize()) {
     file_system_->RegisterDevice(std::move(cache_device));
