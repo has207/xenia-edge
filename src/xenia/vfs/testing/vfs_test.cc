@@ -21,7 +21,9 @@
 
 #include "xenia/base/byte_order.h"
 #include "xenia/base/math.h"
+#include "xenia/base/memory.h"
 #include "xenia/vfs/devices/host_path_device.h"
+#include "xenia/vfs/devices/null_device.h"
 #include "xenia/vfs/devices/stfs_xbox.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/entry.h"
@@ -453,6 +455,133 @@ TEST_CASE("XEX allowed media", "[xex]") {
     REQUIRE(m->allowed_media_types == 0);
     REQUIRE(!m->RunsFromPackageOnly());
   }
+}
+
+TEST_CASE("Cache partitions keep what the title leaves", "[null_device]") {
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() /
+      ("xenia-vfs-cache-partitions-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+  const auto header = root / "Headers" / "CAFE0001.header";
+  const auto paths = {std::string("\\Partition0"), std::string("\\Cache0"),
+                      std::string("\\Cache1")};
+  auto make_device = [&](bool with_header) {
+    auto device = std::make_unique<NullDevice>("\\Device\\Harddisk0", paths);
+    REQUIRE(device->Initialize());
+    if (with_header) {
+      device->LoadCacheHeader(header);
+    }
+    return device;
+  };
+  auto write = [](NullDevice& device, std::string_view path, size_t offset,
+                  std::span<const uint8_t> data) {
+    File* file = nullptr;
+    REQUIRE(device.ResolvePath(path)->Open(FileAccess::kFileWriteData, &file) ==
+            X_STATUS_SUCCESS);
+    size_t written = 0;
+    REQUIRE(file->WriteSync(data, offset, &written) == X_STATUS_SUCCESS);
+    file->Destroy();
+  };
+  // Bytes the read reported, empty when it reported none.
+  auto read = [](NullDevice& device, std::string_view path, size_t offset,
+                 size_t length) {
+    File* file = nullptr;
+    REQUIRE(device.ResolvePath(path)->Open(FileAccess::kFileReadData, &file) ==
+            X_STATUS_SUCCESS);
+    std::vector<uint8_t> data(length, 0xCD);
+    size_t bytes_read = 0;
+    REQUIRE(file->ReadSync(data, offset, &bytes_read) == X_STATUS_SUCCESS);
+    file->Destroy();
+    data.resize(bytes_read);
+    return data;
+  };
+  auto fatx_header = [](uint32_t sectors_per_cluster) {
+    std::vector<uint8_t> data(0x1000, 0);
+    xe::store_and_swap<uint32_t>(data.data(), 0x58544146);
+    xe::store_and_swap<uint32_t>(data.data() + 8, sectors_per_cluster);
+    return data;
+  };
+  std::vector<uint8_t> table(0x400);
+  for (size_t i = 0; i < table.size(); ++i) {
+    table[i] = uint8_t(i * 7);
+  }
+
+  SECTION("A title reads back the cache table it wrote") {
+    auto first = make_device(true);
+    CHECK(read(*first, "\\Partition0", 0x800, 0x400) ==
+          std::vector<uint8_t>(0x400, 0));
+    write(*first, "\\Partition0", 0x800, table);
+    auto next = make_device(true);
+    CHECK(read(*next, "\\Partition0", 0x800, 0x400) == table);
+  }
+
+  SECTION("Only the part of a write that lands on the table is kept") {
+    auto first = make_device(true);
+    write(*first, "\\Partition0", 0x600, table);
+    auto next = make_device(true);
+    std::vector<uint8_t> expected(0x400, 0);
+    std::copy(table.begin() + 0x200, table.end(), expected.begin());
+    CHECK(read(*next, "\\Partition0", 0x800, 0x400) == expected);
+  }
+
+  SECTION("A read around the table finds it in place") {
+    auto device = make_device(true);
+    write(*device, "\\Partition0", 0x800, table);
+    std::vector<uint8_t> expected(0x1000, 0);
+    std::copy(table.begin(), table.end(), expected.begin() + 0x800);
+    CHECK(read(*device, "\\Partition0", 0, 0x1000) == expected);
+  }
+
+  SECTION("Reads away from the table are left as they were") {
+    auto device = make_device(true);
+    CHECK(read(*device, "\\Partition0", 0, 0x200).empty());
+    CHECK(read(*device, "\\Cache0", 0x800, 0x400).empty());
+  }
+
+  SECTION("A format keeps its cluster size") {
+    auto first = make_device(true);
+    write(*first, "\\Cache1", 0, fatx_header(8));
+    auto next = make_device(true);
+    CHECK(next->ResolvePath("\\Cache1")->sectors_per_allocation_unit() == 8);
+    CHECK(next->ResolvePath("\\Cache0")->sectors_per_allocation_unit() == 0x80);
+  }
+
+  SECTION("Only a FATX header written to a cache partition is a format") {
+    auto device = make_device(true);
+    int formats = 0;
+    device->set_cache_format_handler([&formats]() { ++formats; });
+    write(*device, "\\Cache0", 0, std::vector<uint8_t>(0x1000, 0));
+    write(*device, "\\Cache0", 0x1000, fatx_header(8));
+    write(*device, "\\Partition0", 0, fatx_header(8));
+    CHECK(formats == 0);
+    write(*device, "\\Cache0", 0, fatx_header(8));
+    CHECK(formats == 1);
+  }
+
+  SECTION("A FATX header that can't be mounted formats but keeps the size") {
+    auto first = make_device(true);
+    int formats = 0;
+    first->set_cache_format_handler([&formats]() { ++formats; });
+    write(*first, "\\Cache0", 0, fatx_header(8));
+    write(*first, "\\Cache0", 0, fatx_header(3));
+    CHECK(formats == 2);
+    auto next = make_device(true);
+    CHECK(next->ResolvePath("\\Cache0")->sectors_per_allocation_unit() == 8);
+  }
+
+  SECTION("Without a header file nothing is kept") {
+    auto device = make_device(false);
+    int formats = 0;
+    device->set_cache_format_handler([&formats]() { ++formats; });
+    write(*device, "\\Partition0", 0x800, table);
+    CHECK(read(*device, "\\Partition0", 0x800, 0x400).empty());
+    write(*device, "\\Cache0", 0, fatx_header(8));
+    CHECK(formats == 0);
+    CHECK_FALSE(std::filesystem::exists(header));
+  }
+
+  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("A device mounted on a host folder", "[vfs]") {

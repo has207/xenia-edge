@@ -635,6 +635,9 @@ class Emulator {
   // Applies the media_type cvar override, if any.
   void SetDeploymentType(XDeploymentType detected_type);
 
+  // Empties the title's cache: volume when it formats a cache partition.
+  void EmptyTitleCache();
+
   X_STATUS CompleteLaunch(const std::filesystem::path& path,
                           const std::string_view module_path);
   // UI-thread half of CompleteLaunch, ends with the main thread suspended.
