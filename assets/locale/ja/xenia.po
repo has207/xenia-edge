@@ -1848,3 +1848,117 @@ msgstr "Pretendard (作者: Kil Hyung-jin)"
 #: src/xenia/app/emulator_window.cc:529
 msgid "System font: %s (SIL Open Font License 1.1)"
 msgstr "システム フォント: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:110
+msgid "%s doesn't fit this release of the game."
+msgstr "%s はこのバージョンのゲーム向けではありません。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:65
+msgid "%s has no newer title update for this release of %s."
+msgstr "%s には、このバージョンの %s 向けの新しいタイトルアップデートはありません。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:108
+msgid "%s is damaged."
+msgstr "%s は破損しています。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:350
+msgid "%s is not a title update package."
+msgstr "%s はタイトルアップデートのパッケージではありません。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Close"
+msgstr "閉じる(&C)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Not Now"
+msgstr "今はしない(&N)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:59
+msgid "A title update for %s is available from %s (%s)."
+msgstr "%s のタイトルアップデートを %s から入手できます (%s)。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:184
+msgid "Check xboxunity.net"
+msgstr "xboxunity.net を確認"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:308
+#: src/xenia/ui/title_update_dialog_wx.cc:435
+msgid "Checking the title update..."
+msgstr "タイトルアップデートを確認中…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+msgid "Checking xboxunity.net..."
+msgstr "xboxunity.net を確認中…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:364
+msgid "Copying the title update..."
+msgstr "タイトルアップデートをコピー中…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:201
+msgid "Don't ask again for this game"
+msgstr "このゲームでは今後確認しない"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:179
+msgid "Download from archive.org"
+msgstr "archive.org からダウンロード"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:255
+msgid "Download from xboxunity.net"
+msgstr "xboxunity.net からダウンロード"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:276
+msgid "Downloading the title update..."
+msgstr "タイトルアップデートをダウンロード中…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:193
+msgid "Install from File..."
+msgstr "ファイルからインストール…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:338
+msgid "Offer Title Updates:"
+msgstr "タイトルアップデートの提案:"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:338
+msgid "Select a title update package"
+msgstr "タイトルアップデートのパッケージを選択"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:311
+msgid "The downloaded title update is damaged."
+msgstr "ダウンロードしたタイトルアップデートは破損しています。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:304
+msgid "The downloaded title update isn't the one this game needs."
+msgstr "ダウンロードしたタイトルアップデートは、このゲームに必要なものではありません。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:320
+msgid "The title update couldn't be downloaded."
+msgstr "タイトルアップデートをダウンロードできませんでした。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:323
+#: src/xenia/ui/title_update_dialog_wx.cc:403
+msgid "The title update couldn't be saved."
+msgstr "タイトルアップデートを保存できませんでした。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:94
+#: src/xenia/ui/title_update_dialog_wx.cc:156
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+#: src/xenia/ui/title_update_dialog_wx.cc:275
+#: src/xenia/ui/title_update_dialog_wx.cc:410
+msgid "Title Update"
+msgstr "タイトルアップデート"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:55
+msgid "Title update %u for %s is available from %s (%s)."
+msgstr "タイトルアップデート %u (%s 用) を %s から入手できます (%s)。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:246
+msgid "xboxunity.net couldn't be reached."
+msgstr "xboxunity.net に接続できませんでした。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:240
+msgid "xboxunity.net's answer couldn't be read."
+msgstr "xboxunity.net からの応答を読み取れませんでした。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:243
+msgid "xboxunity.net's answer couldn't be saved."
+msgstr "xboxunity.net からの応答を保存できませんでした。"

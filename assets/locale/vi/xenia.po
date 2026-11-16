@@ -1841,3 +1841,117 @@ msgstr "Pretendard của Kil Hyung-jin"
 #: src/xenia/app/emulator_window.cc:529
 msgid "System font: %s (SIL Open Font License 1.1)"
 msgstr "Phông chữ hệ thống: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:110
+msgid "%s doesn't fit this release of the game."
+msgstr "%s không phù hợp với phiên bản này của trò chơi."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:65
+msgid "%s has no newer title update for this release of %s."
+msgstr "%s không có bản cập nhật tựa game mới hơn cho phiên bản này của %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:108
+msgid "%s is damaged."
+msgstr "%s bị hỏng."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:350
+msgid "%s is not a title update package."
+msgstr "%s không phải là gói cập nhật tựa game."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Close"
+msgstr "Đó&ng"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Not Now"
+msgstr "Không phải &bây giờ"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:59
+msgid "A title update for %s is available from %s (%s)."
+msgstr "Đã có bản cập nhật tựa game cho %s trên %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:184
+msgid "Check xboxunity.net"
+msgstr "Kiểm tra xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:308
+#: src/xenia/ui/title_update_dialog_wx.cc:435
+msgid "Checking the title update..."
+msgstr "Đang kiểm tra bản cập nhật tựa game…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+msgid "Checking xboxunity.net..."
+msgstr "Đang kiểm tra xboxunity.net…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:364
+msgid "Copying the title update..."
+msgstr "Đang sao chép bản cập nhật tựa game…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:201
+msgid "Don't ask again for this game"
+msgstr "Không hỏi lại cho trò chơi này"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:179
+msgid "Download from archive.org"
+msgstr "Tải xuống từ archive.org"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:255
+msgid "Download from xboxunity.net"
+msgstr "Tải xuống từ xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:276
+msgid "Downloading the title update..."
+msgstr "Đang tải xuống bản cập nhật tựa game…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:193
+msgid "Install from File..."
+msgstr "Cài đặt từ tệp…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:338
+msgid "Offer Title Updates:"
+msgstr "Đề xuất bản cập nhật tựa game:"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:338
+msgid "Select a title update package"
+msgstr "Chọn gói cập nhật tựa game"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:311
+msgid "The downloaded title update is damaged."
+msgstr "Bản cập nhật tựa game đã tải xuống bị hỏng."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:304
+msgid "The downloaded title update isn't the one this game needs."
+msgstr "Bản cập nhật tựa game đã tải xuống không phải là bản mà trò chơi này cần."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:320
+msgid "The title update couldn't be downloaded."
+msgstr "Không thể tải xuống bản cập nhật tựa game."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:323
+#: src/xenia/ui/title_update_dialog_wx.cc:403
+msgid "The title update couldn't be saved."
+msgstr "Không thể lưu bản cập nhật tựa game."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:94
+#: src/xenia/ui/title_update_dialog_wx.cc:156
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+#: src/xenia/ui/title_update_dialog_wx.cc:275
+#: src/xenia/ui/title_update_dialog_wx.cc:410
+msgid "Title Update"
+msgstr "Bản cập nhật tựa game"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:55
+msgid "Title update %u for %s is available from %s (%s)."
+msgstr "Bản cập nhật tựa game %u cho %s hiện có trên %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:246
+msgid "xboxunity.net couldn't be reached."
+msgstr "Không thể kết nối tới xboxunity.net."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:240
+msgid "xboxunity.net's answer couldn't be read."
+msgstr "Không thể đọc phản hồi từ xboxunity.net."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:243
+msgid "xboxunity.net's answer couldn't be saved."
+msgstr "Không thể lưu phản hồi từ xboxunity.net."

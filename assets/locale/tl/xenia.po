@@ -1848,3 +1848,117 @@ msgstr "Pretendard ni Kil Hyung-jin"
 #: src/xenia/app/emulator_window.cc:529
 msgid "System font: %s (SIL Open Font License 1.1)"
 msgstr "Font ng system: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:110
+msgid "%s doesn't fit this release of the game."
+msgstr "Hindi tugma ang %s sa bersyong ito ng laro."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:65
+msgid "%s has no newer title update for this release of %s."
+msgstr "Walang mas bagong title update ang %s para sa bersyong ito ng %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:108
+msgid "%s is damaged."
+msgstr "Sira ang %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:350
+msgid "%s is not a title update package."
+msgstr "Ang %s ay hindi title update package."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Close"
+msgstr "&Isara"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Not Now"
+msgstr "&Hindi Ngayon"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:59
+msgid "A title update for %s is available from %s (%s)."
+msgstr "May title update para sa %s na makukuha mula sa %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:184
+msgid "Check xboxunity.net"
+msgstr "Tingnan ang xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:308
+#: src/xenia/ui/title_update_dialog_wx.cc:435
+msgid "Checking the title update..."
+msgstr "Sinusuri ang title update…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+msgid "Checking xboxunity.net..."
+msgstr "Tinitingnan ang xboxunity.net…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:364
+msgid "Copying the title update..."
+msgstr "Kinokopya ang title update…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:201
+msgid "Don't ask again for this game"
+msgstr "Huwag nang magtanong muli para sa larong ito"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:179
+msgid "Download from archive.org"
+msgstr "I-download mula sa archive.org"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:255
+msgid "Download from xboxunity.net"
+msgstr "I-download mula sa xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:276
+msgid "Downloading the title update..."
+msgstr "Dina-download ang title update…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:193
+msgid "Install from File..."
+msgstr "I-install mula sa File…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:338
+msgid "Offer Title Updates:"
+msgstr "Mag-alok ng mga Title Update:"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:338
+msgid "Select a title update package"
+msgstr "Pumili ng title update package"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:311
+msgid "The downloaded title update is damaged."
+msgstr "Sira ang na-download na title update."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:304
+msgid "The downloaded title update isn't the one this game needs."
+msgstr "Hindi ang na-download na title update ang kailangan ng larong ito."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:320
+msgid "The title update couldn't be downloaded."
+msgstr "Hindi ma-download ang title update."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:323
+#: src/xenia/ui/title_update_dialog_wx.cc:403
+msgid "The title update couldn't be saved."
+msgstr "Hindi ma-save ang title update."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:94
+#: src/xenia/ui/title_update_dialog_wx.cc:156
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+#: src/xenia/ui/title_update_dialog_wx.cc:275
+#: src/xenia/ui/title_update_dialog_wx.cc:410
+msgid "Title Update"
+msgstr "Title Update"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:55
+msgid "Title update %u for %s is available from %s (%s)."
+msgstr "Makukuha ang title update %u para sa %s mula sa %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:246
+msgid "xboxunity.net couldn't be reached."
+msgstr "Hindi makakonekta sa xboxunity.net."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:240
+msgid "xboxunity.net's answer couldn't be read."
+msgstr "Hindi mabasa ang sagot ng xboxunity.net."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:243
+msgid "xboxunity.net's answer couldn't be saved."
+msgstr "Hindi ma-save ang sagot ng xboxunity.net."

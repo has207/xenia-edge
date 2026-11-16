@@ -1839,3 +1839,117 @@ msgstr "Pretendard โดย Kil Hyung-jin"
 #: src/xenia/app/emulator_window.cc:529
 msgid "System font: %s (SIL Open Font License 1.1)"
 msgstr "ฟอนต์ระบบ: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:110
+msgid "%s doesn't fit this release of the game."
+msgstr "%s ใช้กับเกมเวอร์ชันนี้ไม่ได้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:65
+msgid "%s has no newer title update for this release of %s."
+msgstr "%s ไม่มีอัปเดตเกมที่ใหม่กว่าสำหรับ %s เวอร์ชันนี้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:108
+msgid "%s is damaged."
+msgstr "%s เสียหาย"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:350
+msgid "%s is not a title update package."
+msgstr "%s ไม่ใช่แพ็กเกจอัปเดตเกม"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Close"
+msgstr "ปิด(&C)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Not Now"
+msgstr "ไม่ใช่ตอนนี้(&N)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:59
+msgid "A title update for %s is available from %s (%s)."
+msgstr "มีอัปเดตเกมสำหรับ %s ให้ดาวน์โหลดจาก %s (%s)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:184
+msgid "Check xboxunity.net"
+msgstr "ตรวจสอบที่ xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:308
+#: src/xenia/ui/title_update_dialog_wx.cc:435
+msgid "Checking the title update..."
+msgstr "กำลังตรวจสอบอัปเดตเกม…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+msgid "Checking xboxunity.net..."
+msgstr "กำลังตรวจสอบที่ xboxunity.net…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:364
+msgid "Copying the title update..."
+msgstr "กำลังคัดลอกอัปเดตเกม…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:201
+msgid "Don't ask again for this game"
+msgstr "ไม่ต้องถามอีกสำหรับเกมนี้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:179
+msgid "Download from archive.org"
+msgstr "ดาวน์โหลดจาก archive.org"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:255
+msgid "Download from xboxunity.net"
+msgstr "ดาวน์โหลดจาก xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:276
+msgid "Downloading the title update..."
+msgstr "กำลังดาวน์โหลดอัปเดตเกม…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:193
+msgid "Install from File..."
+msgstr "ติดตั้งจากไฟล์…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:338
+msgid "Offer Title Updates:"
+msgstr "เสนออัปเดตเกม:"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:338
+msgid "Select a title update package"
+msgstr "เลือกแพ็กเกจอัปเดตเกม"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:311
+msgid "The downloaded title update is damaged."
+msgstr "อัปเดตเกมที่ดาวน์โหลดมาเสียหาย"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:304
+msgid "The downloaded title update isn't the one this game needs."
+msgstr "อัปเดตเกมที่ดาวน์โหลดมาไม่ใช่อัปเดตที่เกมนี้ต้องการ"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:320
+msgid "The title update couldn't be downloaded."
+msgstr "ไม่สามารถดาวน์โหลดอัปเดตเกมได้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:323
+#: src/xenia/ui/title_update_dialog_wx.cc:403
+msgid "The title update couldn't be saved."
+msgstr "ไม่สามารถบันทึกอัปเดตเกมได้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:94
+#: src/xenia/ui/title_update_dialog_wx.cc:156
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+#: src/xenia/ui/title_update_dialog_wx.cc:275
+#: src/xenia/ui/title_update_dialog_wx.cc:410
+msgid "Title Update"
+msgstr "อัปเดตเกม"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:55
+msgid "Title update %u for %s is available from %s (%s)."
+msgstr "มีอัปเดตเกม %u สำหรับ %s ให้ดาวน์โหลดจาก %s (%s)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:246
+msgid "xboxunity.net couldn't be reached."
+msgstr "ไม่สามารถเชื่อมต่อกับ xboxunity.net ได้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:240
+msgid "xboxunity.net's answer couldn't be read."
+msgstr "ไม่สามารถอ่านการตอบกลับจาก xboxunity.net ได้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:243
+msgid "xboxunity.net's answer couldn't be saved."
+msgstr "ไม่สามารถบันทึกการตอบกลับจาก xboxunity.net ได้"

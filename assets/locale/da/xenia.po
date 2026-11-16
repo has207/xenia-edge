@@ -1844,3 +1844,117 @@ msgstr "Pretendard af Kil Hyung-jin"
 #: src/xenia/app/emulator_window.cc:529
 msgid "System font: %s (SIL Open Font License 1.1)"
 msgstr "Systemskrifttype: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:110
+msgid "%s doesn't fit this release of the game."
+msgstr "%s passer ikke til denne udgave af spillet."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:65
+msgid "%s has no newer title update for this release of %s."
+msgstr "%s har ingen nyere titelopdatering til denne udgave af %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:108
+msgid "%s is damaged."
+msgstr "%s er beskadiget."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:350
+msgid "%s is not a title update package."
+msgstr "%s er ikke en titelopdateringspakke."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Close"
+msgstr "&Luk"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Not Now"
+msgstr "Ikke &nu"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:59
+msgid "A title update for %s is available from %s (%s)."
+msgstr "En titelopdatering til %s er tilgængelig på %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:184
+msgid "Check xboxunity.net"
+msgstr "Tjek xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:308
+#: src/xenia/ui/title_update_dialog_wx.cc:435
+msgid "Checking the title update..."
+msgstr "Kontrollerer titelopdateringen…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+msgid "Checking xboxunity.net..."
+msgstr "Tjekker xboxunity.net…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:364
+msgid "Copying the title update..."
+msgstr "Kopierer titelopdateringen…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:201
+msgid "Don't ask again for this game"
+msgstr "Spørg ikke igen for dette spil"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:179
+msgid "Download from archive.org"
+msgstr "Download fra archive.org"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:255
+msgid "Download from xboxunity.net"
+msgstr "Download fra xboxunity.net"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:276
+msgid "Downloading the title update..."
+msgstr "Downloader titelopdateringen…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:193
+msgid "Install from File..."
+msgstr "Installér fra fil…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:338
+msgid "Offer Title Updates:"
+msgstr "Tilbyd titelopdateringer:"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:338
+msgid "Select a title update package"
+msgstr "Vælg en titelopdateringspakke"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:311
+msgid "The downloaded title update is damaged."
+msgstr "Den downloadede titelopdatering er beskadiget."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:304
+msgid "The downloaded title update isn't the one this game needs."
+msgstr "Den downloadede titelopdatering er ikke den, som dette spil kræver."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:320
+msgid "The title update couldn't be downloaded."
+msgstr "Titelopdateringen kunne ikke downloades."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:323
+#: src/xenia/ui/title_update_dialog_wx.cc:403
+msgid "The title update couldn't be saved."
+msgstr "Titelopdateringen kunne ikke gemmes."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:94
+#: src/xenia/ui/title_update_dialog_wx.cc:156
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+#: src/xenia/ui/title_update_dialog_wx.cc:275
+#: src/xenia/ui/title_update_dialog_wx.cc:410
+msgid "Title Update"
+msgstr "Titelopdatering"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:55
+msgid "Title update %u for %s is available from %s (%s)."
+msgstr "Titelopdatering %u til %s er tilgængelig på %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:246
+msgid "xboxunity.net couldn't be reached."
+msgstr "xboxunity.net kunne ikke nås."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:240
+msgid "xboxunity.net's answer couldn't be read."
+msgstr "Svaret fra xboxunity.net kunne ikke læses."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:243
+msgid "xboxunity.net's answer couldn't be saved."
+msgstr "Svaret fra xboxunity.net kunne ikke gemmes."

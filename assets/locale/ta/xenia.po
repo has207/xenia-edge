@@ -1845,3 +1845,117 @@ msgstr "Pretendard, உருவாக்கியவர் Kil Hyung-jin"
 #: src/xenia/app/emulator_window.cc:529
 msgid "System font: %s (SIL Open Font License 1.1)"
 msgstr "முறைமை எழுத்துரு: %s (SIL Open Font License 1.1)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:110
+msgid "%s doesn't fit this release of the game."
+msgstr "%s விளையாட்டின் இந்தப் பதிப்புக்குப் பொருந்தாது."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:65
+msgid "%s has no newer title update for this release of %s."
+msgstr "%s-இல் %s-இன் இந்தப் பதிப்புக்குப் புதிய தலைப்பு புதுப்பிப்பு எதுவும் இல்லை."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:108
+msgid "%s is damaged."
+msgstr "%s சிதைந்துள்ளது."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:350
+msgid "%s is not a title update package."
+msgstr "%s ஒரு தலைப்பு புதுப்பிப்புத் தொகுப்பு அல்ல."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Close"
+msgstr "மூடு(&C)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:206
+msgid "&Not Now"
+msgstr "இப்போது இல்லை(&N)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:59
+msgid "A title update for %s is available from %s (%s)."
+msgstr "%s-க்கான தலைப்பு புதுப்பிப்பு ஒன்று %s-இலிருந்து கிடைக்கிறது (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:184
+msgid "Check xboxunity.net"
+msgstr "xboxunity.net-இல் சரிபார்"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:308
+#: src/xenia/ui/title_update_dialog_wx.cc:435
+msgid "Checking the title update..."
+msgstr "தலைப்பு புதுப்பிப்பு சரிபார்க்கப்படுகிறது…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+msgid "Checking xboxunity.net..."
+msgstr "xboxunity.net-இல் சரிபார்க்கப்படுகிறது…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:364
+msgid "Copying the title update..."
+msgstr "தலைப்பு புதுப்பிப்பு நகலெடுக்கப்படுகிறது…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:201
+msgid "Don't ask again for this game"
+msgstr "இந்த விளையாட்டுக்கு மீண்டும் கேட்க வேண்டாம்"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:179
+msgid "Download from archive.org"
+msgstr "archive.org-இலிருந்து பதிவிறக்கு"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:255
+msgid "Download from xboxunity.net"
+msgstr "xboxunity.net-இலிருந்து பதிவிறக்கு"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:276
+msgid "Downloading the title update..."
+msgstr "தலைப்பு புதுப்பிப்பு பதிவிறக்கப்படுகிறது…"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:193
+msgid "Install from File..."
+msgstr "கோப்பிலிருந்து நிறுவு…"
+
+#: src/xenia/ui/quick_settings_dialog_wx.cc:338
+msgid "Offer Title Updates:"
+msgstr "தலைப்பு புதுப்பிப்புகளை வழங்கு:"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:338
+msgid "Select a title update package"
+msgstr "தலைப்பு புதுப்பிப்புத் தொகுப்பைத் தேர்ந்தெடுக்கவும்"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:311
+msgid "The downloaded title update is damaged."
+msgstr "பதிவிறக்கிய தலைப்பு புதுப்பிப்பு சிதைந்துள்ளது."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:304
+msgid "The downloaded title update isn't the one this game needs."
+msgstr "பதிவிறக்கிய தலைப்பு புதுப்பிப்பு இந்த விளையாட்டுக்குத் தேவையானது அல்ல."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:320
+msgid "The title update couldn't be downloaded."
+msgstr "தலைப்பு புதுப்பிப்பைப் பதிவிறக்க முடியவில்லை."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:323
+#: src/xenia/ui/title_update_dialog_wx.cc:403
+msgid "The title update couldn't be saved."
+msgstr "தலைப்பு புதுப்பிப்பைச் சேமிக்க முடியவில்லை."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:94
+#: src/xenia/ui/title_update_dialog_wx.cc:156
+#: src/xenia/ui/title_update_dialog_wx.cc:218
+#: src/xenia/ui/title_update_dialog_wx.cc:275
+#: src/xenia/ui/title_update_dialog_wx.cc:410
+msgid "Title Update"
+msgstr "தலைப்பு புதுப்பிப்பு"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:55
+msgid "Title update %u for %s is available from %s (%s)."
+msgstr "தலைப்பு புதுப்பிப்பு %u, %s-க்கு %s-இலிருந்து கிடைக்கிறது (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:246
+msgid "xboxunity.net couldn't be reached."
+msgstr "xboxunity.net-ஐ அணுக முடியவில்லை."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:240
+msgid "xboxunity.net's answer couldn't be read."
+msgstr "xboxunity.net-இன் பதிலைப் படிக்க முடியவில்லை."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:243
+msgid "xboxunity.net's answer couldn't be saved."
+msgstr "xboxunity.net-இன் பதிலைச் சேமிக்க முடியவில்லை."
