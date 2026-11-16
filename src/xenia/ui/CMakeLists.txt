@@ -27,7 +27,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
   target_link_libraries(xenia-ui PUBLIC xe-wxWidgets PRIVATE mbedtls)
 endif()
 if(WIN32)
-  target_link_libraries(xenia-ui PRIVATE dxgi)
+  # winhttp: IPv6 fast fallback in http_download_wx.cc.
+  target_link_libraries(xenia-ui PRIVATE dxgi winhttp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # xcb / X11 / X11-xcb: Vulkan surface creation in window_wx.cc.
   # fontconfig: imgui_drawer.cc font lookup.

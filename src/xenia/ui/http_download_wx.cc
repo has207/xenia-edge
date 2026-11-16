@@ -30,8 +30,35 @@
 #include <curl/curl.h>
 #endif
 
+#if XE_PLATFORM_WIN32
+#include <mutex>
+
+#include "xenia/base/platform_win.h"
+
+#include <winhttp.h>  // NOLINT(build/include_order)
+#endif
+
 namespace xe {
 namespace ui {
+
+// WinHTTP otherwise tries a host's IPv6 addresses first and waits out the
+// connect timeout on one that doesn't answer before it tries IPv4. wx opens the
+// session's handle with its first request so this follows CreateRequest().
+static void EnableIpv6FastFallback([[maybe_unused]] wxWebSessionBase& session) {
+#if XE_PLATFORM_WIN32
+  BOOL enable = TRUE;
+  if (!WinHttpSetOption(session.GetNativeHandle(),
+                        WINHTTP_OPTION_IPV6_FAST_FALLBACK, &enable,
+                        sizeof(enable))) {
+    // A WinHTTP without the option refuses it on every request.
+    static std::once_flag logged;
+    const DWORD error = GetLastError();
+    std::call_once(logged, [error]() {
+      XELOGW("Download: no IPv6 fast fallback, error {}", error);
+    });
+  }
+#endif
+}
 
 #if XE_PLATFORM_LINUX
 // The bundled curl looks for root certificates only where the distribution it
@@ -105,6 +132,7 @@ bool HttpDownloader::DownloadToMemory(const std::string& url,
     XELOGE("Download: failed to create the request");
     return false;
   }
+  EnableIpv6FastFallback(*session_);
 #if XE_PLATFORM_LINUX
   ConfigureCurl(reinterpret_cast<CURL*>(request.GetNativeHandle()));
 #endif
@@ -158,6 +186,7 @@ DownloadResult DownloadFile(
     XELOGE("Download: failed to create the request");
     return DownloadResult::kFailed;
   }
+  EnableIpv6FastFallback(session);
 #if XE_PLATFORM_LINUX
   ConfigureCurl(reinterpret_cast<CURL*>(request.GetNativeHandle()));
 #endif
