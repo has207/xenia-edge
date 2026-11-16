@@ -513,8 +513,14 @@ X_STATUS VirtualFileSystem::ExtractContentFile(
 
     while (remaining_size > 0) {
       size_t bytes_read = 0;
-      in_file->ReadSync(std::span<uint8_t>(buffer, write_buffer_size), offset,
-                        &bytes_read);
+      // A package cut short reads back nothing past its end.
+      if (XFAILED(
+              in_file->ReadSync(std::span<uint8_t>(buffer, write_buffer_size),
+                                offset, &bytes_read)) ||
+          !bytes_read) {
+        result = X_STATUS_END_OF_FILE;
+        break;
+      }
       fwrite(buffer, bytes_read, 1, file);
       offset += bytes_read;
       remaining_size -= bytes_read;
@@ -528,7 +534,7 @@ X_STATUS VirtualFileSystem::ExtractContentFile(
   if (buffer) {
     delete[] buffer;
   }
-  return 0;
+  return result;
 }
 
 X_STATUS VirtualFileSystem::ExtractContentFiles(
@@ -551,7 +557,10 @@ X_STATUS VirtualFileSystem::ExtractContentFiles(
       queue.push(entry.get());
     }
 
-    ExtractContentFile(entry, base_path, progress);
+    if (const X_STATUS result = ExtractContentFile(entry, base_path, progress);
+        result != X_STATUS_SUCCESS) {
+      return result;
+    }
   }
   return X_STATUS_SUCCESS;
 }
