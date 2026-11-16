@@ -274,6 +274,10 @@ class XexModule : public xe::cpu::Module {
   std::vector<uint32_t> PreanalyzeCode();
   friend struct XexInfoCache;
   void ReadSecurityInfo();
+  // Whether the image matches the page digest chain. section_digest hashes
+  // the first page region with its descriptor and each data_digest hashes the
+  // next region with its descriptor.
+  bool PageDigestsMatch() const;
 
   int ReadImage(const void* xex_addr, size_t xex_length, const uint8_t* key);
   bool AllocImage(uint32_t size);

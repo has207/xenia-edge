@@ -196,6 +196,46 @@ uint32_t XexModule::GetProcAddress(const std::string_view name) const {
   return 0;
 }
 
+bool XexModule::PageDigestsMatch() const {
+  // Only the XEX2 layout is checked.
+  if (xex_format_ != kFormatXex2) {
+    return true;
+  }
+  const auto* security =
+      static_cast<const xex2_security_info*>(GetSecurityInfo(xex_header()));
+  const uint32_t page_size = memory()->LookupHeap(base_address_)->page_size();
+  const uint8_t* image = memory()->TranslateVirtual<uint8_t*>(base_address_);
+  // The image was allocated by this size, which the regions mustn't run past.
+  const size_t total = image_size();
+  const char* expected = security->section_digest;
+  size_t offset = 0;
+  for (uint32_t i = 0; i < security->page_descriptor_count; ++i) {
+    const xex2_page_descriptor& entry = security->page_descriptors[i];
+    // Byteswap the bitfield manually.
+    xex2_page_descriptor descriptor;
+    descriptor.value = xe::byte_swap(entry.value);
+    const size_t length = size_t(descriptor.page_count) * page_size;
+    if (length > total - offset) {
+      return false;
+    }
+    uint8_t digest[0x14];
+    mbedtls_sha1_context context;
+    mbedtls_sha1_init(&context);
+    mbedtls_sha1_starts(&context);
+    mbedtls_sha1_update(&context, image + offset, length);
+    mbedtls_sha1_update(&context, reinterpret_cast<const uint8_t*>(&entry),
+                        sizeof(entry));
+    mbedtls_sha1_finish(&context, digest);
+    mbedtls_sha1_free(&context);
+    if (std::memcmp(digest, expected, sizeof(digest))) {
+      return false;
+    }
+    expected = entry.data_digest;
+    offset += length;
+  }
+  return true;
+}
+
 int XexModule::ApplyPatch(XexModule* module) {
   if (!is_patch()) {
     // This isn't a XEX2 patch.
@@ -470,6 +510,13 @@ int XexModule::ApplyPatch(XexModule* module) {
 
     p += block_data_size;
     cur_block = next_block;
+  }
+
+  // A patch made for other code can apply without an error and still build an
+  // image other than the one it was made to build.
+  if (!result_code && !module->PageDigestsMatch()) {
+    XELOGE("XEX patch built an image its headers don't describe");
+    result_code = 10;
   }
 
   if (!result_code) {
