@@ -307,6 +307,15 @@ int XexModule::ApplyPatch(XexModule* module) {
 
   uint32_t new_image_size = module->image_size();
 
+  // Unload releases only the allocation at the base, not the range the image
+  // grew into.
+  uint32_t grown_address = 0;
+  auto release_growth = [&]() {
+    if (grown_address) {
+      memory()->LookupHeap(grown_address)->Release(grown_address);
+    }
+  };
+
   // Check if we need to alloc new memory for the patched xex
   if (base_moved || new_image_size > original_image_size) {
     uint32_t addr_new_mem;
@@ -338,6 +347,9 @@ int XexModule::ApplyPatch(XexModule* module) {
              size_delta);
       assert_always();
       return 6;
+    }
+    if (!base_moved) {
+      grown_address = addr_new_mem;
     }
 
     // Move the image to its new base and free the old allocation.
@@ -374,6 +386,7 @@ int XexModule::ApplyPatch(XexModule* module) {
 
   if (memcmp(test_delta_key, orig_session_key, 0x10) != 0) {
     XELOGE("XEX patch image key doesn't match original XEX!");
+    release_growth();
     return 7;
   }
 
@@ -397,6 +410,7 @@ int XexModule::ApplyPatch(XexModule* module) {
       break;
     default:
       assert_always();
+      release_growth();
       return 8;
   }
 
@@ -485,6 +499,7 @@ int XexModule::ApplyPatch(XexModule* module) {
         target_ver.major, target_ver.minor, target_ver.build, target_ver.qfe);
   } else {
     XELOGE("XEX patch application failed, error code {}", result_code);
+    release_growth();
   }
 
   if (free_input) {

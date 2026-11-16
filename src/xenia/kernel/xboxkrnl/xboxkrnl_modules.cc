@@ -149,7 +149,20 @@ static uint32_t LoadImageReference(
   if (auto module = kernel_state()->GetModule(module_name)) {
     hmodule = module->hmodule_ptr();
   } else if (auto user_module = load_callback()) {
-    kernel_state()->ApplyTitleUpdate(user_module);
+    // A patch that fails part way leaves the module unusable so it's loaded
+    // again and runs without the update.
+    if (XFAILED(kernel_state()->ApplyTitleUpdate(user_module))) {
+      XELOGE("Failed to apply title update, loading {} without it",
+             module_name);
+      kernel_state()->UnloadUserModule(user_module, false);
+      // Its image is freed with its last reference, which has to go before
+      // the reload maps the image at the same address.
+      user_module = nullptr;
+      user_module = load_callback();
+      if (!user_module) {
+        return 0;
+      }
+    }
     kernel_state()->FinishLoadingUserModule(user_module);
     // Give up object ownership, this reference will be released by the last
     // XexUnloadImage call

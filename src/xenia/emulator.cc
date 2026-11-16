@@ -2749,14 +2749,25 @@ X_STATUS Emulator::PrepareLaunch(const std::filesystem::path& path,
     return X_STATUS_NOT_SUPPORTED;
   }
 
-  X_RESULT result = kernel_state_->ApplyTitleUpdate(module);
-  if (XFAILED(result)) {
-    XELOGE("Failed to apply title update! Cannot run module {}",
+  // A patch that fails part way leaves the module unusable so it's loaded
+  // again and runs without the update.
+  if (XFAILED(kernel_state_->ApplyTitleUpdate(module))) {
+    XELOGE("Failed to apply title update, starting {} without it",
            xe::strip_pii(xe::path_to_utf8(path)));
-    return result;
+    kernel_state_->UnloadUserModule(module, false);
+    kernel_state_->content_manager()->CloseContent("UPDATE");
+    // Its image is freed with its last reference, which has to go before the
+    // reload maps the image at the same address.
+    module = nullptr;
+    module = kernel_state_->LoadUserModule(module_path);
+    if (!module) {
+      XELOGE("Failed to load user module {}",
+             xe::strip_pii(xe::path_to_utf8(path)));
+      return X_STATUS_NOT_FOUND;
+    }
   }
 
-  result = kernel_state_->FinishLoadingUserModule(module);
+  X_RESULT result = kernel_state_->FinishLoadingUserModule(module);
   if (XFAILED(result)) {
     XELOGE("Failed to initialize user module {}",
            xe::strip_pii(xe::path_to_utf8(path)));

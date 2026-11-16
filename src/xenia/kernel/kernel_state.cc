@@ -857,6 +857,11 @@ X_RESULT KernelState::ApplyTitleUpdate(
     return X_STATUS_SUCCESS;
   }
 
+  // A module loaded after the executable takes the update it took, if any.
+  if (GetExecutableModule() && !content_manager()->IsRootTaken("UPDATE")) {
+    return X_STATUS_SUCCESS;
+  }
+
   auto patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
   if (!patch_module) {
     return X_STATUS_SUCCESS;
@@ -1012,12 +1017,14 @@ X_RESULT KernelState::ApplyTitleUpdate(
     return X_STATUS_UNSUCCESSFUL;
   }
 
-  X_STATUS result =
+  // ApplyPatch fails with positive codes, which XFAILED reads as success.
+  const int result =
       patch_module->xex_module()->ApplyPatch(title_module->xex_module());
-  if (result != X_STATUS_SUCCESS) {
+  if (result) {
     XELOGE("Failed to apply XEX patch, code: {}", result);
+    return X_STATUS_UNSUCCESSFUL;
   }
-  return result;
+  return X_STATUS_SUCCESS;
 }
 
 void KernelState::UnloadUserModule(const object_ref<UserModule>& module,
