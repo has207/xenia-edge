@@ -196,6 +196,96 @@ uint32_t XexModule::GetProcAddress(const std::string_view name) const {
   return 0;
 }
 
+// Whether |image_key_source| is the base's original key under the key of the
+// patched headers.
+static bool DeltaImageKeyMatches(const uint8_t* patched_session_key,
+                                 const uint8_t* image_key_source,
+                                 const uint8_t* original_session_key) {
+  uint8_t key[0x10];
+  aes_decrypt_buffer(patched_session_key, image_key_source, 0x10, key, 0x10);
+  return std::memcmp(key, original_session_key, 0x10) == 0;
+}
+
+int XexModule::PatchHeaders(const xex2_opt_delta_patch_descriptor& descriptor,
+                            uint32_t window_size,
+                            std::vector<uint8_t>& headers) {
+  const auto* patch_header = &descriptor;
+  uint32_t size =
+      reinterpret_cast<const xex2_header*>(headers.data())->header_size;
+  if (patch_header->delta_headers_source_offset > size) {
+    XELOGE("XEX header patch source is outside base XEX header area");
+    return 2;
+  }
+
+  uint32_t header_size_available =
+      size - patch_header->delta_headers_source_offset;
+  if (patch_header->delta_headers_source_size > header_size_available) {
+    XELOGE("XEX header patch source is too large");
+    return 3;
+  }
+
+  if (patch_header->delta_headers_target_offset >
+      patch_header->size_of_target_headers) {
+    XELOGE("XEX header patch target is outside base XEX header area");
+    return 4;
+  }
+
+  uint32_t delta_target_size = patch_header->size_of_target_headers -
+                               patch_header->delta_headers_target_offset;
+  if (patch_header->delta_headers_source_size > delta_target_size) {
+    return 5;  // ? unsure what the point of this test is, kernel checks for it
+               // though
+  }
+
+  uint32_t header_target_size = patch_header->size_of_target_headers;
+
+  if (!header_target_size) {
+    header_target_size = patch_header->delta_headers_target_offset +
+                         patch_header->delta_headers_source_size;
+  }
+
+  // Increase xex header buffer length if needed
+  if (header_target_size > headers.size()) {
+    headers.resize(header_target_size);
+  }
+
+  auto header_ptr = headers.data();
+
+  // If headers_source_offset is set, copy [source_offset:source_size] to
+  // target_offset
+  if (patch_header->delta_headers_source_offset) {
+    // Same buffer at both ends, so the ranges can overlap - see the note in
+    // lzxdelta_apply_patch.
+    memmove(header_ptr + patch_header->delta_headers_target_offset,
+            header_ptr + patch_header->delta_headers_source_offset,
+            patch_header->delta_headers_source_size);
+  }
+
+  // If new size is smaller than original, null out the difference
+  if (header_target_size < headers.size()) {
+    memset(header_ptr + header_target_size, 0,
+           headers.size() - header_target_size);
+  }
+
+  // Apply header patch...
+  uint32_t headerpatch_size = patch_header->size;
+
+  // lzxdelta_apply_patch only reads the patch.
+  int result_code =
+      lzxdelta_apply_patch(const_cast<xex2_delta_patch*>(&patch_header->info),
+                           headerpatch_size, window_size, header_ptr);
+  if (result_code) {
+    XELOGE("XEX header patch application failed, error code {}", result_code);
+    return result_code;
+  }
+
+  // Decrease xex header buffer length if needed (but only after patching)
+  if (headers.size() > header_target_size) {
+    headers.resize(header_target_size);
+  }
+  return 0;
+}
+
 bool XexModule::PageDigestsMatch() const {
   // Only the XEX2 layout is checked.
   if (xex_format_ != kFormatXex2) {
@@ -236,6 +326,81 @@ bool XexModule::PageDigestsMatch() const {
   return true;
 }
 
+bool XexModule::PatchImageKeyMatches(const XexModule& module) const {
+  return is_patch() && PatchKeyFits(module.xex_header_mem_, xex_header_mem_,
+                                    module.is_dev_kit_);
+}
+
+// Decrypts the AES key at |security_offset| + aes_key in |headers| into
+// |session_key|, false when the headers don't reach it.
+static bool ReadSessionKey(std::span<const uint8_t> headers, bool dev_kit,
+                           uint8_t* session_key) {
+  if (headers.size() < sizeof(xex2_header)) {
+    return false;
+  }
+  const auto* header = reinterpret_cast<const xex2_header*>(headers.data());
+  const size_t key_offset =
+      size_t(header->security_offset) + offsetof(xex2_security_info, aes_key);
+  if (header->magic != kXEX2Signature || key_offset + 0x10 > headers.size()) {
+    return false;
+  }
+  aes_decrypt_buffer(dev_kit ? xe_xex2_devkit_key : xe_xex2_retail_key,
+                     headers.data() + key_offset, 0x10, session_key, 0x10);
+  return true;
+}
+
+bool XexModule::PatchKeyFits(std::span<const uint8_t> base_headers,
+                             std::span<const uint8_t> patch_headers,
+                             bool dev_kit) {
+  // Offsets read here are checked since the headers can come from any file.
+  auto opt_header = [&patch_headers](xex2_header_keys key,
+                                     size_t size) -> const uint8_t* {
+    const auto* header =
+        reinterpret_cast<const xex2_header*>(patch_headers.data());
+    if (patch_headers.size() < sizeof(xex2_header) ||
+        header->magic != kXEX2Signature ||
+        offsetof(xex2_header, headers) +
+                size_t(header->header_count) * sizeof(xex2_opt_header) >
+            patch_headers.size()) {
+      return nullptr;
+    }
+    void* value = nullptr;
+    if (!GetOptHeader(header, key, &value)) {
+      return nullptr;
+    }
+    const auto* p = static_cast<const uint8_t*>(value);
+    return p >= patch_headers.data() &&
+                   size_t(p - patch_headers.data()) + size <=
+                       patch_headers.size()
+               ? p
+               : nullptr;
+  };
+  const auto* format =
+      reinterpret_cast<const xex2_opt_file_format_info*>(opt_header(
+          XEX_HEADER_FILE_FORMAT_INFO, sizeof(xex2_opt_file_format_info)));
+  const auto* descriptor =
+      reinterpret_cast<const xex2_opt_delta_patch_descriptor*>(
+          opt_header(XEX_HEADER_DELTA_PATCH_DESCRIPTOR,
+                     sizeof(xex2_opt_delta_patch_descriptor)));
+  if (!format || !descriptor ||
+      !opt_header(XEX_HEADER_DELTA_PATCH_DESCRIPTOR, descriptor->size)) {
+    return false;
+  }
+  uint8_t original_key[0x10];
+  if (!ReadSessionKey(base_headers, dev_kit, original_key) ||
+      reinterpret_cast<const xex2_header*>(base_headers.data())->header_size >
+          base_headers.size()) {
+    return false;
+  }
+  std::vector<uint8_t> headers(base_headers.begin(), base_headers.end());
+  uint8_t patched_key[0x10];
+  return !PatchHeaders(*descriptor, format->compression_info.normal.window_size,
+                       headers) &&
+         ReadSessionKey(headers, dev_kit, patched_key) &&
+         DeltaImageKeyMatches(patched_key, descriptor->image_key_source,
+                              original_key);
+}
+
 int XexModule::ApplyPatch(XexModule* module) {
   if (!is_patch()) {
     // This isn't a XEX2 patch.
@@ -255,83 +420,15 @@ int XexModule::ApplyPatch(XexModule* module) {
     return 1;
   }
 
-  uint32_t size = module->xex_header()->header_size;
-  if (patch_header->delta_headers_source_offset > size) {
-    XELOGE("XEX header patch source is outside base XEX header area");
-    return 2;
-  }
-
-  uint32_t header_size_available =
-      size - patch_header->delta_headers_source_offset;
-  if (patch_header->delta_headers_source_size > header_size_available) {
-    XELOGE("XEX header patch source is too large");
-    return 3;
-  }
-
-  if (patch_header->delta_headers_target_offset >
-      patch_header->size_of_target_headers) {
-    XELOGE("XEX header patch target is outside base XEX header area");
-    return 4;
-  }
-
-  uint32_t delta_target_size = patch_header->size_of_target_headers -
-                               patch_header->delta_headers_target_offset;
-  if (patch_header->delta_headers_source_size > delta_target_size) {
-    return 5;  // ? unsure what the point of this test is, kernel checks for it
-               // though
-  }
-
   // Patch base XEX header
   uint32_t original_image_size = module->image_size();
-  uint32_t header_target_size = patch_header->size_of_target_headers;
-
-  if (!header_target_size) {
-    header_target_size = patch_header->delta_headers_target_offset +
-                         patch_header->delta_headers_source_size;
-  }
-
-  size_t mem_size = module->xex_header_mem_.size();
-
-  // Increase xex header buffer length if needed
-  if (header_target_size > module->xex_header_mem_.size()) {
-    module->xex_header_mem_.resize(header_target_size);
-  }
-
-  auto header_ptr = (uint8_t*)module->xex_header();
-
-  // If headers_source_offset is set, copy [source_offset:source_size] to
-  // target_offset
-  if (patch_header->delta_headers_source_offset) {
-    // Same buffer at both ends, so the ranges can overlap - see the note in
-    // lzxdelta_apply_patch.
-    memmove(header_ptr + patch_header->delta_headers_target_offset,
-            header_ptr + patch_header->delta_headers_source_offset,
-            patch_header->delta_headers_source_size);
-  }
-
-  // If new size is smaller than original, null out the difference
-  if (header_target_size < module->xex_header_mem_.size()) {
-    memset(header_ptr + header_target_size, 0,
-           module->xex_header_mem_.size() - header_target_size);
-  }
-
   auto file_format_header = opt_file_format_info();
   assert_not_null(file_format_header);
-
-  // Apply header patch...
-  uint32_t headerpatch_size = patch_header->size;
-
-  int result_code = lzxdelta_apply_patch(
-      &patch_header->info, headerpatch_size,
-      file_format_header->compression_info.normal.window_size, header_ptr);
+  int result_code = PatchHeaders(
+      *patch_header, file_format_header->compression_info.normal.window_size,
+      module->xex_header_mem_);
   if (result_code) {
-    XELOGE("XEX header patch application failed, error code {}", result_code);
     return result_code;
-  }
-
-  // Decrease xex header buffer length if needed (but only after patching)
-  if (module->xex_header_mem_.size() > header_target_size) {
-    module->xex_header_mem_.resize(header_target_size);
   }
 
   // Update security info context with latest security info data
@@ -420,11 +517,8 @@ int XexModule::ApplyPatch(XexModule* module) {
   // Test delta key against our decrypted keys
   // (kernel doesn't seem to check this, but it's the one use for the
   // image_key_source field I can think of...)
-  uint8_t test_delta_key[0x10];
-  aes_decrypt_buffer(module->session_key_, patch_header->image_key_source, 0x10,
-                     test_delta_key, 0x10);
-
-  if (memcmp(test_delta_key, orig_session_key, 0x10) != 0) {
+  if (!DeltaImageKeyMatches(module->session_key_,
+                            patch_header->image_key_source, orig_session_key)) {
     XELOGE("XEX patch image key doesn't match original XEX!");
     release_growth();
     return 7;

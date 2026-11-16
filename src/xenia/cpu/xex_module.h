@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <span>
 #include <string>
 #include <vector>
 #include "xenia/base/mapped_memory.h"
@@ -227,6 +228,16 @@ class XexModule : public xe::cpu::Module {
   uint32_t GetProcAddress(const std::string_view name) const;
 
   int ApplyPatch(XexModule* module);
+  // Whether this patch's image key fits |module|, the check ApplyPatch makes
+  // once the headers are patched. A region's own headers change the base's
+  // signature but not its key so this also passes for the same build released
+  // elsewhere.
+  bool PatchImageKeyMatches(const XexModule& module) const;
+  // The same check on headers read from files, |dev_kit| naming the key the
+  // base is encrypted with.
+  static bool PatchKeyFits(std::span<const uint8_t> base_headers,
+                           std::span<const uint8_t> patch_headers,
+                           bool dev_kit);
   bool Load(const std::string_view name, const std::string_view path,
             const void* xex_addr, size_t xex_length);
   bool LoadContinue();
@@ -274,6 +285,10 @@ class XexModule : public xe::cpu::Module {
   std::vector<uint32_t> PreanalyzeCode();
   friend struct XexInfoCache;
   void ReadSecurityInfo();
+  // Applies a patch's header delta to |headers|, the base's own or a copy.
+  // Returns 0 or ApplyPatch's error code.
+  static int PatchHeaders(const xex2_opt_delta_patch_descriptor& descriptor,
+                          uint32_t window_size, std::vector<uint8_t>& headers);
   // Whether the image matches the page digest chain. section_digest hashes
   // the first page region with its descriptor and each data_digest hashes the
   // next region with its descriptor.

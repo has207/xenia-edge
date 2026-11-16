@@ -40,9 +40,6 @@
 #include "third_party/mbedtls/include/mbedtls/sha1.h"
 
 DEFINE_bool(apply_title_update, true, "Apply title updates.", "Kernel");
-DEFINE_bool(allow_incompatible_title_update, false,
-            "Allow title updates with mismatched signatures to be applied.",
-            "Kernel");
 
 DEFINE_uint32(kernel_build_version, 17559, "Define current kernel version",
               "Kernel");
@@ -857,54 +854,95 @@ X_RESULT KernelState::ApplyTitleUpdate(
     return X_STATUS_SUCCESS;
   }
 
-  // A module loaded after the executable takes the update it took, if any.
-  if (GetExecutableModule() && !content_manager()->IsRootTaken("UPDATE")) {
-    return X_STATUS_SUCCESS;
-  }
+  // How an update fits the module: made for it, made for the same code under
+  // another release's headers, which the encryption key tells and ApplyPatch's
+  // page digest check then confirms, or not at all.
+  enum class Fit { kNone, kKey, kSignature };
+  auto fit_of = [&](const object_ref<UserModule>& patch_module) {
+    if (!patch_module || !patch_module->xex_module()->is_patch()) {
+      return Fit::kNone;
+    }
+    if (IsPatchSignatureProper(title_module, patch_module)) {
+      return Fit::kSignature;
+    }
+    return patch_module->xex_module()->PatchImageKeyMatches(
+               *title_module->xex_module())
+               ? Fit::kKey
+               : Fit::kNone;
+  };
 
-  auto patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
-  if (!patch_module) {
-    return X_STATUS_SUCCESS;
-  }
-
-  if (!patch_module->xex_module()->is_patch()) {
-    return X_STATUS_UNSUCCESSFUL;
-  }
-
-  if (!IsPatchSignatureProper(title_module, patch_module)) {
-    if (!cvars::allow_incompatible_title_update) {
-      XELOGW(
-          "Skipping incompatible title update for {} due to signature mismatch",
-          title_module->name());
-      if (!GetExecutableModule()) {
-        emulator_->display_window()->app_context().CallInUIThread([&]() {
-          new xe::ui::HostNotificationWindow(
-              emulator_->imgui_drawer(), "Warning!",
-              "Title Update signature doesn't match. Skipping its application!",
-              0);
-        });
-      }
+  object_ref<UserModule> patch_module;
+  Fit fit = Fit::kNone;
+  if (GetExecutableModule()) {
+    // A module loaded after the executable takes the update it took, if any.
+    if (!content_manager()->IsRootTaken("UPDATE")) {
       return X_STATUS_SUCCESS;
     }
+    patch_module = LoadTitleUpdate(&title_updates.front(), title_module);
+    if (!patch_module) {
+      return X_STATUS_SUCCESS;
+    }
+    fit = fit_of(patch_module);
+  } else {
+    // The best fit, then the newest by the version it patches to, since every
+    // update of a release has the release's version in its header.
+    const xam::XCONTENT_AGGREGATE_DATA* best = nullptr;
+    uint32_t best_version = 0;
+    bool any_patch = false;
+    for (const auto& title_update : title_updates) {
+      {
+        auto candidate = LoadTitleUpdate(&title_update, title_module);
+        any_patch = any_patch || candidate;
+        const Fit candidate_fit = fit_of(candidate);
+        xex2_opt_delta_patch_descriptor* descriptor = nullptr;
+        if (candidate_fit != Fit::kNone) {
+          candidate->GetOptHeader(XEX_HEADER_DELTA_PATCH_DESCRIPTOR,
+                                  reinterpret_cast<void**>(&descriptor));
+        }
+        const uint32_t version =
+            descriptor ? uint32_t(descriptor->target_version_value) : 0;
+        if (candidate_fit > fit ||
+            (candidate_fit != Fit::kNone && candidate_fit == fit &&
+             version > best_version)) {
+          best = &title_update;
+          fit = candidate_fit;
+          best_version = version;
+        }
+      }
+      content_manager()->CloseContent("UPDATE");
+    }
+    // None of the installed updates patches this module.
+    if (!any_patch) {
+      return X_STATUS_SUCCESS;
+    }
+    if (best) {
+      patch_module = LoadTitleUpdate(best, title_module);
+    }
+  }
 
-    XELOGW(
-        "Applying incompatible title update for {} due to enabled "
-        "allow_incompatible_title_update config option!",
-        title_module->name());
-
+  if (fit == Fit::kNone) {
+    XELOGW("No installed title update fits {}", title_module->name());
     // First module that is loaded is always main executable. That way we can
     // prevent random message spam in case of loading/unloading.
     if (!GetExecutableModule()) {
       emulator_->display_window()->app_context().CallInUIThread([&]() {
         new xe::ui::HostNotificationWindow(
             emulator_->imgui_drawer(), "Warning!",
-            "Title Update signature doesn't match. This can cause unexpected "
-            "issues or crashes!",
+            "Title Update signature doesn't match. Skipping its application!",
             0);
       });
     }
+    return X_STATUS_SUCCESS;
   }
-
+  if (!patch_module) {
+    return X_STATUS_SUCCESS;
+  }
+  if (fit == Fit::kKey) {
+    XELOGI(
+        "Title update for {} was made for another release of it, applying it "
+        "since its encryption key fits",
+        title_module->name());
+  }
   return ApplyTitleUpdate(title_module, patch_module);
 }
 
@@ -994,14 +1032,7 @@ bool KernelState::IsPatchSignatureProper(
       title_module->xex_module()->xex_security_info()->rsa_signature);
   mbedtls_sha1(signature, 0x100, digest);
 
-  if (memcmp(digest, patch_header->digest_source, 0x14) != 0) {
-    XELOGW(
-        "XEX patch signature hash doesn't match base XEX signature hash, patch "
-        "will likely fail!");
-
-    return false;
-  }
-  return true;
+  return memcmp(digest, patch_header->digest_source, 0x14) == 0;
 }
 
 X_RESULT KernelState::ApplyTitleUpdate(
