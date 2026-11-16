@@ -44,6 +44,7 @@
 
 #include "xenia/app/emulator_window.h"
 #include "xenia/app/game_library.h"
+#include "xenia/app/title_update_check.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/platform.h"
 #include "xenia/base/string.h"
@@ -61,6 +62,7 @@
 #include "xenia/ui/game_config_panel_wx.h"
 #include "xenia/ui/icon_decode.h"
 #include "xenia/ui/patches_panel_wx.h"
+#include "xenia/ui/title_update_dialog_wx.h"
 #include "xenia/ui/wx_locale.h"
 #include "xenia/vfs/devices/xcontent_container_device.h"
 #include "xenia/vfs/xbox_original_data.h"
@@ -863,6 +865,11 @@ void GameInfoPanel::ImportContent(
   if (!profiles || locations.empty()) {
     return;
   }
+  // The title update dialog picks a file too, besides downloading one.
+  if (locations.front().content_type == XContentType::kInstaller &&
+      AddTitleUpdate()) {
+    return;
+  }
   wxFileDialog picker(wxGetTopLevelParent(this), _("Select content packages"),
                       wxString(), wxString(), _("All Files (*.*)|*.*"),
                       wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
@@ -905,18 +912,18 @@ void GameInfoPanel::ImportContent(
           wxString::Format(_("%s is a different kind of content."), name));
       continue;
     }
-    // A title update's header describes the release it patches rather than
-    // itself, so its version names that release the same way ours does. Media
-    // id cannot: a set has one per disc, and the update carries only the disc
-    // it was built against. An unknown on either side skips the check rather
-    // than refusing on missing information.
-    const uint32_t version =
-        header->content_metadata.execution_info.version_value;
-    if (data.content_type == XContentType::kInstaller && key_.version &&
-        version && version != key_.version) {
-      rejected.Add(wxString::Format(
-          _("%s is for a different release of this game."), name));
-      continue;
+    if (data.content_type == XContentType::kInstaller) {
+      const LibraryEntry* entry = Entry();
+      const wxString problem = CheckTitleUpdatePackage(
+          wxGetTopLevelParent(this), source, name,
+          header->content_metadata.execution_info.version_value,
+          entry && !entry->paths.empty() ? entry->default_path().path
+                                         : std::filesystem::path(),
+          key_.version);
+      if (!problem.empty()) {
+        rejected.Add(problem);
+        continue;
+      }
     }
 
     const auto root = profiles->GetProfileContentPath(
@@ -940,9 +947,31 @@ void GameInfoPanel::ImportContent(
                  wxOK | wxICON_WARNING, wxGetTopLevelParent(this));
   }
   if (added) {
-    // Deferred: this runs from the Add button, which the rebuild destroys.
-    CallAfter([this]() { Rebuild(); });
+    Rebuild();
   }
+}
+
+bool GameInfoPanel::AddTitleUpdate() {
+  auto* profiles = profile_manager();
+  const LibraryEntry* entry = Entry();
+  if (!profiles || !entry || entry->paths.empty() ||
+      kernel::IsSystemTitle(key_.title_id)) {
+    return false;
+  }
+  const LibraryPath& disc = entry->default_path();
+  const auto release = LibraryTitleUpdateRelease(*entry, disc);
+  if (!release) {
+    return false;
+  }
+  const auto folder = profiles->GetProfileContentPath(0, release->title_id,
+                                                      XContentType::kInstaller);
+  if (ShowTitleUpdateDialog(
+          wxGetTopLevelParent(this), *release,
+          InstalledTitleUpdateNumber(folder, release->version), disc.path,
+          wxString::FromUTF8(entry->name), folder, /*at_launch=*/false)) {
+    Rebuild();
+  }
+  return true;
 }
 
 wxStaticText* GameInfoPanel::AddSectionHeader(
@@ -958,8 +987,10 @@ wxStaticText* GameInfoPanel::AddSectionHeader(
   if (!import_locations.empty() && !open_path.empty()) {
     auto* add = new wxButton(parent, wxID_ANY, _("Add..."), wxDefaultPosition,
                              wxDefaultSize, wxBU_EXACTFIT);
+    // Deferred: a rebuild while its dialogs are open destroys this button.
     add->Bind(wxEVT_BUTTON, [this, import_locations](wxCommandEvent&) {
-      ImportContent(import_locations);
+      CallAfter(
+          [this, import_locations]() { ImportContent(import_locations); });
     });
     row->Add(add, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 8);
   }

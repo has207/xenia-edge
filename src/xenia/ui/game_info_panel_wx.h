@@ -140,6 +140,9 @@ class GameInfoPanel : public wxPanel {
   // Vets picked packages against this title and moves each good one into the
   // location its own content type names. Rejects are reported together.
   void ImportContent(const std::vector<ContentLocation>& locations);
+  // Runs the title update dialog for the default disc's release, false when
+  // there's none to run it for.
+  bool AddTitleUpdate();
   // An original Xbox game keeps its saves and downloads where XeFu puts them,
   // not in a profile.
   void BuildXboxOriginalSaves(wxWindow* parent, wxBoxSizer* sizer);

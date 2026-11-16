@@ -12,6 +12,7 @@
 #include "xenia/app/discord/discord_presence.h"
 #include "xenia/app/game_compat_db.h"
 #include "xenia/app/game_title_db.h"
+#include "xenia/app/title_update_check.h"
 #include "xenia/ui/advanced_settings_dialog_wx.h"
 #include "xenia/ui/cover_art_downloader.h"
 #include "xenia/ui/game_list_panel_wx.h"
@@ -152,6 +153,7 @@
 #include "xenia/ui/immediate_drawer.h"
 #include "xenia/ui/menu_item_wx.h"
 #include "xenia/ui/presenter.h"
+#include "xenia/ui/title_update_dialog_wx.h"
 #include "xenia/ui/ui_event.h"
 #include "xenia/ui/virtual_key.h"
 #include "xenia/ui/window_wx.h"
@@ -313,6 +315,9 @@ DEFINE_bool(disable_game_window_mouse, false,
             "Disables mouse interactions in the game window, including "
             "double-click to fullscreen, the right-click context menu and "
             "mouse input to the dashboard.",
+            "General");
+DEFINE_bool(offer_title_updates, false,
+            "Offers to install a title update for a game when it's launched.",
             "General");
 
 namespace xe {
@@ -919,6 +924,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
               AddLaunchedTitleToLibrary(title_id, name);
               UpdateTitle();
               ApplyContentVisibility();
+              NoteMissingTitleUpdate(title_id);
             });
       });
   // Sign-in changes come from the title, the ImGui profiles menu and the wx
@@ -4092,6 +4098,85 @@ void EmulatorWindow::LaunchTitleInNewProcess(
   app_context_.QuitFromUIThread();
 }
 
+void EmulatorWindow::NoteMissingTitleUpdate(uint32_t title_id) {
+  auto* kernel_state = emulator_->kernel_state();
+  auto* profiles =
+      kernel_state ? kernel_state->xam_state()->profile_manager() : nullptr;
+  if (!profiles || !imgui_drawer() || kernel::IsSystemTitle(title_id) ||
+      GetTitleUpdateDownloads(title_id).empty()) {
+    return;
+  }
+  const auto folder =
+      profiles->GetProfileContentPath(0, title_id, XContentType::kInstaller);
+  std::error_code ec;
+  if (std::filesystem::exists(folder, ec) &&
+      !std::filesystem::is_empty(folder, ec)) {
+    return;
+  }
+  new ui::HostNotificationWindow(
+      imgui_drawer(), "Title Update",
+      "An update exists for this game but none is installed.", 0);
+}
+
+void EmulatorWindow::OfferTitleUpdate(const std::filesystem::path& path) {
+  auto* kernel_state = emulator_->kernel_state();
+  auto* profiles =
+      kernel_state ? kernel_state->xam_state()->profile_manager() : nullptr;
+  if (!cvars::offer_title_updates || !profiles) {
+    return;
+  }
+  // A release the library lists is known without reading its file.
+  const LibraryEntry* entry = nullptr;
+  std::optional<TitleUpdateRelease> release;
+  if (game_library_) {
+    for (const auto& candidate : game_library_->entries()) {
+      const auto disc =
+          std::ranges::find(candidate.paths, path, &LibraryPath::path);
+      if (disc != candidate.paths.end()) {
+        entry = &candidate;
+        release = LibraryTitleUpdateRelease(candidate, *disc);
+        break;
+      }
+    }
+  }
+  if (!entry) {
+    release = ReadTitleUpdateRelease(path);
+  }
+  if (!release || kernel::IsSystemTitle(release->title_id)) {
+    return;
+  }
+  const auto& archived = GetTitleUpdateDownloads(release->title_id);
+  if (archived.empty()) {
+    return;
+  }
+  const auto folder = profiles->GetProfileContentPath(0, release->title_id,
+                                                      XContentType::kInstaller);
+  const uint32_t installed =
+      InstalledTitleUpdateNumber(folder, release->version);
+  // A title archived for other releases only is offered too while none is
+  // installed, since another source can have one for this release.
+  std::error_code ec;
+  if (!FindNewerTitleUpdate(archived, *release, installed) &&
+      std::filesystem::exists(folder, ec) &&
+      !std::filesystem::is_empty(folder, ec)) {
+    return;
+  }
+
+  std::string name;
+  if (entry) {
+    name = entry->name;
+  } else if (const auto* info = GetGameTitleInfo(release->title_id)) {
+    name = info->name;
+  }
+  if (name.empty()) {
+    name = fmt::format("{:08X}", release->title_id);
+  }
+  auto* wx_window = dynamic_cast<ui::WxWindow*>(window_.get());
+  ShowTitleUpdateDialog(wx_window ? wx_window->frame() : nullptr, *release,
+                        installed, path, wxString::FromUTF8(name), folder,
+                        /*at_launch=*/true);
+}
+
 xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
                                       bool boot_animation) {
   std::error_code ec = {};
@@ -4135,6 +4220,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
     auto abs_path = std::filesystem::absolute(path_to_file);
     config::ReloadConfig();
     config::LoadGameConfigForFile(abs_path);
+    OfferTitleUpdate(abs_path);
     {
       auto res = xe::gpu::GraphicsSystem::GetInternalDisplayResolution();
       window_->SetDesiredLogicalSize(res.first, res.second);
@@ -4224,6 +4310,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
     // cvars.
     config::ReloadConfig();
     config::LoadGameConfigForFile(abs_path);
+    OfferTitleUpdate(abs_path);
     LaunchTitleInNewProcess(abs_path, boot_animation);
     return X_STATUS_SUCCESS;
   }
@@ -4235,6 +4322,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(const std::filesystem::path& path_to_file,
   emulator_->ShutdownSubsystems();
   config::ReloadConfig();
   config::LoadGameConfigForFile(abs_path);
+  OfferTitleUpdate(abs_path);
   // Backend switches in-process leave residual driver/loader state behind, so
   // when the gpu/apu cvar (after per-game overrides) doesn't match the live
   // backend, restart the process cleanly via the spawn path.

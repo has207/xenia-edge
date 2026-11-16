@@ -236,5 +236,13 @@ xe_embed_compressed_bundle(xenia-app
     "${PROJECT_SOURCE_DIR}/assets/xdb/games.json"
     xbox_db)
 
+# Bake the title update index (made from archive.org's xbox_360_title_updates
+# by tools/tu-index.py). Regenerating it re-runs configure.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${PROJECT_SOURCE_DIR}/assets/title_updates/title_updates.json")
+xe_embed_compressed_bundle(xenia-app
+    "${PROJECT_SOURCE_DIR}/assets/title_updates/title_updates.json"
+    title_update_db)
+
 target_include_directories(xenia-app PRIVATE
     "${PROJECT_SOURCE_DIR}/third_party/rapidjson/include")
