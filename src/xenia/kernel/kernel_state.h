@@ -469,10 +469,19 @@ class KernelState {
   // KDPCs queued on the dispatch thread that haven't started.
   std::vector<uint32_t> dispatch_dpcs_;
 
+  struct QueuedDpc {
+    uint32_t dpc_ptr;
+    uint32_t arg1;
+    uint32_t arg2;
+  };
   // DPCs queued to each guest processor and the thread that runs them there.
   struct ProcessorDpcs {
+    // Never held across a guest memory access, which can fault into the watch
+    // handler while KeInsertQueueDpc holds the global region and waits here.
     std::mutex lock;
-    std::deque<uint32_t> queue;
+    std::deque<QueuedDpc> queue;
+    // Under lock.
+    std::deque<QueuedDpc>::iterator Find(uint32_t dpc_ptr);
     object_ref<XEvent> event;
     object_ref<XHostThread> thread;
     std::atomic<bool> started{false};

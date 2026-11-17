@@ -1659,20 +1659,27 @@ void KernelState::StartProcessorDpcThread(uint8_t cpu) {
   dpcs.started.store(true, std::memory_order_release);
 }
 
+std::deque<KernelState::QueuedDpc>::iterator KernelState::ProcessorDpcs::Find(
+    uint32_t dpc_ptr) {
+  return std::find_if(
+      queue.begin(), queue.end(),
+      [dpc_ptr](const QueuedDpc& entry) { return entry.dpc_ptr == dpc_ptr; });
+}
+
 bool KernelState::QueueProcessorDpc(uint8_t cpu, uint32_t dpc_ptr,
                                     uint32_t arg1, uint32_t arg2) {
   auto& dpcs = processor_dpcs_[cpu];
   {
     std::lock_guard lock(dpcs.lock);
-    if (std::find(dpcs.queue.begin(), dpcs.queue.end(), dpc_ptr) !=
-        dpcs.queue.end()) {
+    if (dpcs.Find(dpc_ptr) != dpcs.queue.end()) {
       return false;
     }
-    auto dpc = memory()->TranslateVirtual<XDPC*>(dpc_ptr);
-    dpc->arg1 = arg1;
-    dpc->arg2 = arg2;
-    dpcs.queue.push_back(dpc_ptr);
+    dpcs.queue.push_back({dpc_ptr, arg1, arg2});
   }
+  // Only the guest's copy, the runner takes the arguments from the queue.
+  auto dpc = memory()->TranslateVirtual<XDPC*>(dpc_ptr);
+  dpc->arg1 = arg1;
+  dpc->arg2 = arg2;
   dpcs.event->Set(0, false);
   return true;
 }
@@ -1683,14 +1690,13 @@ bool KernelState::IsProcessorDpcQueued(uint8_t cpu, uint32_t dpc_ptr) {
     return false;
   }
   std::lock_guard lock(dpcs.lock);
-  return std::find(dpcs.queue.begin(), dpcs.queue.end(), dpc_ptr) !=
-         dpcs.queue.end();
+  return dpcs.Find(dpc_ptr) != dpcs.queue.end();
 }
 
 bool KernelState::RemoveProcessorDpc(uint32_t dpc_ptr) {
   for (auto& dpcs : processor_dpcs_) {
     std::lock_guard lock(dpcs.lock);
-    auto it = std::find(dpcs.queue.begin(), dpcs.queue.end(), dpc_ptr);
+    auto it = dpcs.Find(dpc_ptr);
     if (it != dpcs.queue.end()) {
       dpcs.queue.erase(it);
       return true;
@@ -1709,19 +1715,16 @@ void KernelState::RunProcessorDpcs(uint8_t cpu) {
     while (true) {
       // Its arguments are taken as it leaves the queue, so KeInsertQueueDpc
       // may queue it again before it runs.
-      uint32_t dpc_ptr, arg1, arg2;
+      QueuedDpc entry;
       {
         std::lock_guard lock(dpcs.lock);
         if (dpcs.queue.empty()) {
           break;
         }
-        dpc_ptr = dpcs.queue.front();
+        entry = dpcs.queue.front();
         dpcs.queue.pop_front();
-        auto dpc = memory()->TranslateVirtual<XDPC*>(dpc_ptr);
-        arg1 = dpc->arg1;
-        arg2 = dpc->arg2;
       }
-      xboxkrnl::xeRunDpc(context, dpc_ptr, arg1, arg2);
+      xboxkrnl::xeRunDpc(context, entry.dpc_ptr, entry.arg1, entry.arg2);
     }
     EndDPCImpersonation(context, dpc_scope);
   }
