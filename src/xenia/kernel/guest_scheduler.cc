@@ -906,6 +906,12 @@ void GuestScheduler::SwitchTo(XThread* next) {
     std::lock_guard<std::mutex> lock(lock_);
     links.running = false;
     cpus_[t_current_cpu].current_thread = nullptr;
+    // A bump that reached it while parking is moot but would head-queue it
+    // when its wait ends.
+    if (links.blocked) {
+      links.preempted = false;
+      links.repoll_preempt = false;
+    }
   }
   XThread::SetCurrentThread(nullptr);
 }
