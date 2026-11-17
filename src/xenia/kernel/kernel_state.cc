@@ -22,6 +22,7 @@
 #include "xenia/kernel/title_id_utils.h"
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
+#include "xenia/kernel/xam/xam_module.h"
 #include "xenia/kernel/xam/xam_state.h"
 #include "xenia/kernel/xam/xam_system_link.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
@@ -105,6 +106,12 @@ KernelState::~KernelState() {
   for (auto& dpcs : processor_dpcs_) {
     dpcs.thread.reset();
     dpcs.event.reset();
+  }
+
+  // The object table reset below would otherwise join the System Link worker
+  // under the global critical region, which the worker's callbacks need.
+  if (auto xam = GetKernelModule<xam::XamModule>("xam.xex")) {
+    xam->ShutdownSystemLink();
   }
 
   executable_module_.reset();

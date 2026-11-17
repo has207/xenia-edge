@@ -52,6 +52,9 @@ class XamModule : public KernelModule {
 
   // Started on first use, see GetSystemLink.
   std::shared_ptr<net::SystemLink> system_link();
+  // Stops System Link for good, joining its worker, whose callbacks into the
+  // kernel take the global critical region.
+  void ShutdownSystemLink();
   // Moves System Link to the resolved UDP |port|, or picks the port it starts
   // on when it hasn't started yet.
   uint32_t SetSystemLinkPort(uint16_t port);

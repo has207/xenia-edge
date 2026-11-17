@@ -79,6 +79,16 @@ std::shared_ptr<net::SystemLink> XamModule::system_link() {
   return system_link_;
 }
 
+void XamModule::ShutdownSystemLink() {
+  // Destroyed once the mutex is released, as that joins the worker.
+  std::shared_ptr<net::SystemLink> link;
+  {
+    std::lock_guard lock(system_link_mutex_);
+    system_link_started_ = true;
+    link = std::move(system_link_);
+  }
+}
+
 uint32_t XamModule::SetSystemLinkPort(uint16_t port) {
   std::lock_guard lock(system_link_mutex_);
   if (system_link_) {
