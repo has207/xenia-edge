@@ -10,8 +10,7 @@
 #ifndef XENIA_KERNEL_XEVENT_H_
 #define XENIA_KERNEL_XEVENT_H_
 
-#include <mutex>
-
+#include "xenia/base/mutex.h"
 #include "xenia/base/threading.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/xbox.h"
@@ -62,10 +61,12 @@ class XEvent : public XObject {
   bool manual_reset_ = false;
   std::unique_ptr<xe::threading::Event> event_;
   // Guards the guest header, the mirror below and the host event together, so
-  // a reconcile never samples a kernel write half done.
-  std::mutex state_lock_;
+  // a reconcile never samples a kernel write half done. A private mutex would
+  // deadlock, since SyncFromGuest runs under the global region and a header
+  // access can fault into the watch handler, which takes it too.
+  xe::global_critical_region global_critical_region_;
   // Last signal_state this kernel wrote, so SyncFromGuest can tell a guest
-  // write from one of ours. Guarded by state_lock_.
+  // write from one of ours. Guarded by global_critical_region_.
   bool host_signaled_ = false;
   // Parked cooperative waiters, so Pulse knows one will consume a set.
   CooperativeWaiterFifo waiters_;
