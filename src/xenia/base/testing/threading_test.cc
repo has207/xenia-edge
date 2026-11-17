@@ -413,6 +413,60 @@ TEST_CASE("Reset Event", "[event]") {
   REQUIRE(result == WaitResult::kSuccess);
 }
 
+TEST_CASE("Pulse Event", "[event]") {
+  for (bool manual_reset : {false, true}) {
+    INFO("manual_reset: " << manual_reset);
+    auto evt = manual_reset ? Event::CreateManualResetEvent(false)
+                            : Event::CreateAutoResetEvent(false);
+    REQUIRE(evt);
+
+    // With nobody waiting the pulse is lost.
+    evt->Pulse();
+    REQUIRE(Wait(evt.get(), false, 50ms) == WaitResult::kTimeout);
+
+    auto other = Event::CreateAutoResetEvent(false);
+    REQUIRE(other);
+    std::atomic_uint started(0);
+    std::atomic_uint released(0);
+    auto threads = std::array<std::thread, 2>{
+        std::thread([&] {
+          set_name("Pulse waiter");
+          started++;
+          if (Wait(evt.get(), false, 2s) == WaitResult::kSuccess) {
+            released++;
+          }
+        }),
+        std::thread([&] {
+          set_name("Pulse multi waiter");
+          started++;
+          auto res = WaitAny({evt.get(), other.get()}, false, 2s);
+          if (res.first == WaitResult::kSuccess && res.second == 0) {
+            released++;
+          }
+        }),
+    };
+    REQUIRE(spin_wait_for(1s, [&] { return started == threads.size(); }));
+    // Nothing reports a thread parked, so give both time to reach the wait.
+    Sleep(100ms);
+
+    // Every waiter for a manual-reset event, one for an auto-reset event.
+    evt->Pulse();
+    const unsigned expected = manual_reset ? 2 : 1;
+    REQUIRE(spin_wait_for(1s, [&] { return released == expected; }));
+    Sleep(50ms);
+    REQUIRE(released.load() == expected);
+    if (!manual_reset) {
+      evt->Pulse();
+      REQUIRE(spin_wait_for(1s, [&] { return released == 2; }));
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+    REQUIRE(released.load() == 2);
+    REQUIRE(Wait(evt.get(), false, 50ms) == WaitResult::kTimeout);
+  }
+}
+
 TEST_CASE("Wait on Multiple Events", "[event]") {
   auto events = std::array<std::unique_ptr<Event>, 4>{
       Event::CreateAutoResetEvent(false),
