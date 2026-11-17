@@ -1875,14 +1875,6 @@ msgstr "&Fermer"
 msgid "&Not Now"
 msgstr "&Pas maintenant"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "Une mise à jour du titre pour %s est disponible sur %s (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "Vérifier sur xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1899,14 +1891,6 @@ msgstr "Copie de la mise à jour du titre…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Ne plus demander pour ce jeu"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "Télécharger depuis archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "Télécharger depuis xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1949,10 +1933,6 @@ msgstr "La mise à jour du titre n'a pas pu être enregistrée."
 msgid "Title Update"
 msgstr "Mise à jour du titre"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "La mise à jour du titre %u pour %s est disponible sur %s (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "Impossible de joindre xboxunity.net."
@@ -1964,3 +1944,27 @@ msgstr "La réponse de xboxunity.net n'a pas pu être lue."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "La réponse de xboxunity.net n'a pas pu être enregistrée."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "La mise à jour du titre %u pour %s est disponible (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "Une mise à jour du titre pour %s est disponible (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "Une mise à jour du titre est peut-être disponible pour %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "Aucune mise à jour du titre plus récente n'est connue pour cette version de %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Rechercher des mises à jour"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "Télécharger"

@@ -1871,14 +1871,6 @@ msgstr "За&крити"
 msgid "&Not Now"
 msgstr "&Не зараз"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "Оновлення для гри %s доступне на сайті %s (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "Перевірити xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1895,14 +1887,6 @@ msgstr "Триває копіювання оновлення гри…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Більше не питати для цієї гри"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "Завантажити з archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "Завантажити з xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1945,10 +1929,6 @@ msgstr "Не вдалося зберегти оновлення гри."
 msgid "Title Update"
 msgstr "Оновлення гри"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "Оновлення %u для гри %s доступне на сайті %s (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "Не вдалося підключитися до xboxunity.net."
@@ -1960,3 +1940,27 @@ msgstr "Не вдалося прочитати відповідь xboxunity.net.
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "Не вдалося зберегти відповідь xboxunity.net."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "Оновлення %u для гри %s доступне (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "Оновлення для гри %s доступне (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "Для гри %s може бути доступне оновлення."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "Для цього випуску гри %s новіші оновлення невідомі."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Перевірити оновлення"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "Завантажити"

@@ -1862,14 +1862,6 @@ msgstr "关闭(&C)"
 msgid "&Not Now"
 msgstr "暂不(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "%s 有可用的游戏更新，可从 %s 下载 (%s)。"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "检查 xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1886,14 +1878,6 @@ msgstr "正在复制游戏更新…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "此游戏不再询问"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "从 archive.org 下载"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "从 xboxunity.net 下载"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1936,10 +1920,6 @@ msgstr "无法保存游戏更新。"
 msgid "Title Update"
 msgstr "游戏更新"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "游戏更新 %u 适用于 %s，可从 %s 下载 (%s)。"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "无法连接到 xboxunity.net。"
@@ -1951,3 +1931,27 @@ msgstr "无法读取 xboxunity.net 的响应。"
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "无法保存 xboxunity.net 的响应。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "游戏更新 %u 适用于 %s，可供下载 (%s)。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "%s 有可用的游戏更新，可供下载 (%s)。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "%s 可能有可用的游戏更新。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "没有已知的适用于此版本 %s 的较新游戏更新。"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "检查更新"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "下载"

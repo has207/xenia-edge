@@ -1868,14 +1868,6 @@ msgstr "بستن(&C)"
 msgid "&Not Now"
 msgstr "اکنون نه(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "یک به‌روزرسانی برای %s از %s (%s) در دسترس است."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "جستجو در xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1892,14 +1884,6 @@ msgstr "در حال کپی به‌روزرسانی بازی…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "برای این بازی دیگر سؤال نشود"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "دانلود از archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "دانلود از xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1942,10 +1926,6 @@ msgstr "ذخیرهٔ به‌روزرسانی بازی ممکن نشد."
 msgid "Title Update"
 msgstr "به‌روزرسانی بازی"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "به‌روزرسانی شمارهٔ %u برای %s از %s (%s) در دسترس است."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "دسترسی به xboxunity.net ممکن نشد."
@@ -1957,3 +1937,27 @@ msgstr "خواندن پاسخ xboxunity.net ممکن نشد."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "ذخیرهٔ پاسخ xboxunity.net ممکن نشد."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "به‌روزرسانی شمارهٔ %u برای %s (%s) در دسترس است."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "یک به‌روزرسانی برای %s (%s) در دسترس است."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "ممکن است به‌روزرسانی‌ای برای %s در دسترس باشد."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "به‌روزرسانی جدیدتری برای این نسخهٔ %s شناخته نشده است."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "جستجوی به‌روزرسانی‌ها"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "دانلود"

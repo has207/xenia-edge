@@ -2,8 +2,9 @@
 
 # Copyright 2026 Ben Vanik. All Rights Reserved.
 
-"""Builds assets/title_updates/title_updates.json from the Xbox 360 title
-updates archived at https://archive.org/details/xbox_360_title_updates.
+"""Builds assets/title_updates/title_updates.json, the Xbox 360 title updates
+known to exist, from the ones archived at
+https://archive.org/details/xbox_360_title_updates.
 
   python3 tools/tu-index.py assets/title_updates/title_updates.json [--cache DIR]
 
@@ -19,8 +20,8 @@ apart since archive.org bans addresses that hammer it. --cache keeps listings
 and patch versions so a rerun only fetches what's missing or changed.
 
 The output maps title id -> media id -> the updates for that release, each
-with its TU number, the version of the release it applies to, its size and
-download URL, sorted by release version, then TU number.
+with its TU number and the version of the release it applies to, sorted by
+release version, then TU number. It has no download links.
 """
 
 import argparse
@@ -39,7 +40,7 @@ ITEM = "xbox_360_title_updates"
 USER_AGENT = "xenia-tu-index/1.0"
 ROW = re.compile(
     r'<tr><td><a href="(?P<href>[^"]+)">(?P<path>[^<]+)</a><td>[^<]*<td>'
-    r'[^<]*<td id="size">(?P<size>\d+)</tr>')
+    r'[^<]*<td id="size">\d+</tr>')
 ZIP_NAME = re.compile(r"^.*_(?P<title_id>[0-9A-Fa-f]{8})\.zip$")
 MEDIA_ID = re.compile(r"^[0-9A-Fa-f]{8}$")
 UPDATE_FOLDER = re.compile(
@@ -214,7 +215,6 @@ def main():
             update = {"tu": tu} if tu else {}
             update.update({
                 "base_version": folder["version"],
-                "size": int(row["size"]),
                 "url": urllib.parse.urljoin("https://archive.org/",
                                             html.unescape(row["href"])),
             })
@@ -247,7 +247,10 @@ def main():
         for updates in medias.values():
             updates.sort(key=lambda u: (version_key(u["base_version"]),
                                         u.get("tu", -1)))
-    titles = {title_id: {media_id: titles[title_id][media_id]
+    titles = {title_id: {media_id: [{key: value
+                                     for key, value in update.items()
+                                     if key != "url"}
+                                    for update in titles[title_id][media_id]]
                          for media_id in sorted(titles[title_id])}
               for title_id in sorted(titles)}
     with open(args.output, "w", encoding="utf-8", newline="\n") as f:

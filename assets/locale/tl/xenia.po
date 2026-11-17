@@ -1873,14 +1873,6 @@ msgstr "&Isara"
 msgid "&Not Now"
 msgstr "&Hindi Ngayon"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "May title update para sa %s na makukuha mula sa %s (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "Tingnan ang xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1897,14 +1889,6 @@ msgstr "Kinokopya ang title update…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Huwag nang magtanong muli para sa larong ito"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "I-download mula sa archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "I-download mula sa xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1947,10 +1931,6 @@ msgstr "Hindi ma-save ang title update."
 msgid "Title Update"
 msgstr "Title Update"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "Makukuha ang title update %u para sa %s mula sa %s (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "Hindi makakonekta sa xboxunity.net."
@@ -1962,3 +1942,27 @@ msgstr "Hindi mabasa ang sagot ng xboxunity.net."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "Hindi ma-save ang sagot ng xboxunity.net."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "Makukuha ang title update %u para sa %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "May title update para sa %s na makukuha (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "Maaaring may title update para sa %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "Walang alam na mas bagong title update para sa bersyong ito ng %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Tingnan kung may Update"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "I-download"

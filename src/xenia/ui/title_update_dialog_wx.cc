@@ -42,27 +42,25 @@ namespace app {
 
 namespace {
 
-constexpr char kArchive[] = "archive.org";
 constexpr char kXboxUnity[] = "xboxunity.net";
 // Far more than any title's list of updates takes.
 constexpr size_t kMaxUpdateListSize = 1024 * 1024;
 
-wxString AvailableText(const TitleUpdateDownload& update, const wxString& name,
-                       const char* source) {
+wxString AvailableText(const TitleUpdateDownload& update,
+                       const wxString& name) {
   const wxString size =
       wxFileName::GetHumanReadableSize(wxULongLong(update.size));
   return update.tu
-             ? wxString::Format(_("Title update %u for %s is available from "
-                                  "%s (%s)."),
-                                update.tu, name, source, size)
-             : wxString::Format(
-                   _("A title update for %s is available from %s (%s)."), name,
-                   source, size);
+             ? wxString::Format(_("Title update %u for %s is available (%s)."),
+                                update.tu, name, size)
+             : wxString::Format(_("A title update for %s is available (%s)."),
+                                name, size);
 }
 
-wxString NoneText(const wxString& name, const char* source) {
+wxString NoneText(const wxString& name) {
   return wxString::Format(
-      _("%s has no newer title update for this release of %s."), source, name);
+      _("%s has no newer title update for this release of %s."), kXboxUnity,
+      name);
 }
 
 // The file's text, empty when it can't be read or is longer than |limit|.
@@ -141,7 +139,6 @@ class TitleUpdateDialog : public wxDialog {
   std::filesystem::path game_;
   wxString name_;
   std::filesystem::path folder_;
-  const TitleUpdateDownload* archive_update_;
   TitleUpdateDownloads unity_downloads_;
   const TitleUpdateDownload* unity_update_ = nullptr;
   wxStaticText* unity_text_;
@@ -158,30 +155,31 @@ TitleUpdateDialog::TitleUpdateDialog(
       installed_(installed),
       game_(game),
       name_(name),
-      folder_(folder),
-      archive_update_(FindNewerTitleUpdate(
-          GetTitleUpdateDownloads(release.title_id), release, installed)) {
+      folder_(folder) {
   const int gap = FromDIP(8);
   const int wrap = FromDIP(440);
   auto* sizer = new wxBoxSizer(wxVERTICAL);
 
-  auto* archive_text = new wxStaticText(
+  // The launch offer comes up for a title known for other releases too.
+  const bool maybe_available =
+      at_launch || FindNewerTitleUpdate(GetKnownTitleUpdates(release.title_id),
+                                        release, installed);
+  auto* known_text = new wxStaticText(
       this, wxID_ANY,
-      archive_update_ ? AvailableText(*archive_update_, name_, kArchive)
-                      : NoneText(name_, kArchive));
-  archive_text->Wrap(wrap);
-  sizer->Add(archive_text, 0, wxLEFT | wxRIGHT | wxTOP, gap * 2);
+      maybe_available
+          ? wxString::Format(_("A title update may be available for %s."),
+                             name_)
+          : wxString::Format(
+                _("No newer title update is known for this release of %s."),
+                name_));
+  known_text->Wrap(wrap);
+  sizer->Add(known_text, 0, wxLEFT | wxRIGHT | wxTOP, gap * 2);
   unity_text_ = new wxStaticText(this, wxID_ANY, wxString());
   sizer->Add(unity_text_, 0, wxLEFT | wxRIGHT | wxTOP, gap * 2);
   unity_text_->Hide();
 
   auto* sources = new wxBoxSizer(wxHORIZONTAL);
-  auto* archive = new wxButton(this, wxID_ANY, _("Download from archive.org"));
-  archive->Enable(archive_update_ != nullptr);
-  archive->Bind(wxEVT_BUTTON,
-                [this](wxCommandEvent&) { Download(*archive_update_); });
-  sources->Add(archive);
-  unity_button_ = new wxButton(this, wxID_ANY, _("Check xboxunity.net"));
+  unity_button_ = new wxButton(this, wxID_ANY, _("Check for Updates"));
   unity_button_->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     if (unity_update_) {
       Download(*unity_update_);
@@ -189,7 +187,7 @@ TitleUpdateDialog::TitleUpdateDialog(
       CheckXboxUnity();
     }
   });
-  sources->Add(unity_button_, 0, wxLEFT, gap);
+  sources->Add(unity_button_);
   auto* file = new wxButton(this, wxID_ANY, _("Install from File..."));
   file->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { InstallFromFile(); });
   sources->Add(file, 0, wxLEFT, gap);
@@ -206,7 +204,7 @@ TitleUpdateDialog::TitleUpdateDialog(
       new wxButton(this, wxID_CANCEL, at_launch ? _("&Not Now") : _("&Close")));
   sizer->Add(bottom, 0, wxEXPAND | wxALL, gap * 2);
 
-  (archive_update_ ? archive : unity_button_)->SetDefault();
+  unity_button_->SetDefault();
   SetSizerAndFit(sizer);
   CentreOnParent();
 }
@@ -251,10 +249,10 @@ void TitleUpdateDialog::CheckXboxUnity() {
     unity_update_ =
         FindNewerTitleUpdate(unity_downloads_, release_, installed_);
     if (unity_update_) {
-      text = AvailableText(*unity_update_, name_, kXboxUnity);
-      unity_button_->SetLabel(_("Download from xboxunity.net"));
+      text = AvailableText(*unity_update_, name_);
+      unity_button_->SetLabel(_("Download"));
     } else {
-      text = NoneText(name_, kXboxUnity);
+      text = NoneText(name_);
       unity_button_->Disable();
     }
   }

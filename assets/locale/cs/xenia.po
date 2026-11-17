@@ -1867,14 +1867,6 @@ msgstr "Za&vřít"
 msgid "&Not Now"
 msgstr "&Teď ne"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "Aktualizace titulu pro hru %s je k dispozici na webu %s (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "Zkontrolovat xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1891,14 +1883,6 @@ msgstr "Probíhá kopírování aktualizace titulu…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Pro tuto hru se už neptat"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "Stáhnout z archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "Stáhnout z xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1941,10 +1925,6 @@ msgstr "Aktualizaci titulu se nepodařilo uložit."
 msgid "Title Update"
 msgstr "Aktualizace titulu"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "Aktualizace titulu %u pro hru %s je k dispozici na webu %s (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "Nepodařilo se připojit k xboxunity.net."
@@ -1956,3 +1936,27 @@ msgstr "Odpověď z xboxunity.net se nepodařilo přečíst."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "Odpověď z xboxunity.net se nepodařilo uložit."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "Aktualizace titulu %u pro hru %s je k dispozici (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "Aktualizace titulu pro hru %s je k dispozici (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "Pro hru %s může být k dispozici aktualizace titulu."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "Pro tuto verzi hry %s není známa žádná novější aktualizace titulu."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Zkontrolovat aktualizace"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "Stáhnout"

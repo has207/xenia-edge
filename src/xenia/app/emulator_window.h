@@ -106,10 +106,10 @@ class EmulatorWindow {
                                bool boot_animation = false);
   xe::X_STATUS RunTitle(const std::filesystem::path& path_to_file,
                         bool boot_animation = false);
-  // Offers the title update dialog before the game at |path| starts when
-  // archive.org has a newer update for its release, or has some for its other
-  // releases while none is installed. The game's config has to be loaded
-  // first, since it can turn the offer off.
+  // Offers the title update dialog before the game at |path| starts when a
+  // newer update is known for its release, or some are for its other releases
+  // while none is installed. The game's config has to be loaded first, since it
+  // can turn the offer off.
   void OfferTitleUpdate(const std::filesystem::path& path);
   // Notes a title the update index lists while none of its updates is
   // installed, whether or not the offer is on.

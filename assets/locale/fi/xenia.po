@@ -1871,14 +1871,6 @@ msgstr "&Sulje"
 msgid "&Not Now"
 msgstr "&Ei nyt"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "Pelille %s on saatavilla nimikepäivitys sivustolta %s (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "Tarkista sivustolta xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1895,14 +1887,6 @@ msgstr "Kopioidaan nimikepäivitystä…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Älä kysy uudelleen tästä pelistä"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "Lataa sivustolta archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "Lataa sivustolta xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1945,10 +1929,6 @@ msgstr "Nimikepäivitystä ei voitu tallentaa."
 msgid "Title Update"
 msgstr "Nimikepäivitys"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "Nimikepäivitys %u pelille %s on saatavilla sivustolta %s (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "Sivustoon xboxunity.net ei saatu yhteyttä."
@@ -1960,3 +1940,27 @@ msgstr "Sivuston xboxunity.net vastausta ei voitu lukea."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "Sivuston xboxunity.net vastausta ei voitu tallentaa."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "Nimikepäivitys %u pelille %s on saatavilla (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "Pelille %s on saatavilla nimikepäivitys (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "Pelille %s saattaa olla saatavilla nimikepäivitys."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "Tähän pelin %s julkaisuun ei tunneta uudempaa nimikepäivitystä."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Tarkista päivitykset"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "Lataa"

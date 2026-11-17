@@ -1864,14 +1864,6 @@ msgstr "बंद करें(&C)"
 msgid "&Not Now"
 msgstr "अभी नहीं(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "%s के लिए एक टाइटल अपडेट %s पर उपलब्ध है (%s)।"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "xboxunity.net पर जाँचें"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1888,14 +1880,6 @@ msgstr "टाइटल अपडेट कॉपी किया जा रह�
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "इस गेम के लिए फिर से न पूछें"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "archive.org से डाउनलोड करें"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "xboxunity.net से डाउनलोड करें"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1938,10 +1922,6 @@ msgstr "टाइटल अपडेट सहेजा नहीं जा स�
 msgid "Title Update"
 msgstr "टाइटल अपडेट"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "टाइटल अपडेट %u, %s के लिए %s पर उपलब्ध है (%s)।"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "xboxunity.net तक नहीं पहुँचा जा सका।"
@@ -1953,3 +1933,27 @@ msgstr "xboxunity.net का उत्तर पढ़ा नहीं जा �
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "xboxunity.net का उत्तर सहेजा नहीं जा सका।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "टाइटल अपडेट %u, %s के लिए उपलब्ध है (%s)।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "%s के लिए एक टाइटल अपडेट उपलब्ध है (%s)।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "%s के लिए एक टाइटल अपडेट उपलब्ध हो सकता है।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "%s के इस संस्करण के लिए कोई नया टाइटल अपडेट ज्ञात नहीं है।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "अपडेट जाँचें"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "डाउनलोड करें"

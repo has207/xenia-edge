@@ -1870,14 +1870,6 @@ msgstr "மூடு(&C)"
 msgid "&Not Now"
 msgstr "இப்போது இல்லை(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "%s-க்கான தலைப்பு புதுப்பிப்பு ஒன்று %s-இலிருந்து கிடைக்கிறது (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "xboxunity.net-இல் சரிபார்"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1894,14 +1886,6 @@ msgstr "தலைப்பு புதுப்பிப்பு நகலெ�
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "இந்த விளையாட்டுக்கு மீண்டும் கேட்க வேண்டாம்"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "archive.org-இலிருந்து பதிவிறக்கு"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "xboxunity.net-இலிருந்து பதிவிறக்கு"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1944,10 +1928,6 @@ msgstr "தலைப்பு புதுப்பிப்பைச் சே�
 msgid "Title Update"
 msgstr "தலைப்பு புதுப்பிப்பு"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "தலைப்பு புதுப்பிப்பு %u, %s-க்கு %s-இலிருந்து கிடைக்கிறது (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "xboxunity.net-ஐ அணுக முடியவில்லை."
@@ -1959,3 +1939,27 @@ msgstr "xboxunity.net-இன் பதிலைப் படிக்க மு�
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "xboxunity.net-இன் பதிலைச் சேமிக்க முடியவில்லை."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "தலைப்பு புதுப்பிப்பு %u, %s-க்குக் கிடைக்கிறது (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "%s-க்கான தலைப்பு புதுப்பிப்பு ஒன்று கிடைக்கிறது (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "%s-க்கான தலைப்பு புதுப்பிப்பு ஒன்று கிடைக்கக்கூடும்."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "%s-இன் இந்தப் பதிப்புக்குப் புதிய தலைப்பு புதுப்பிப்பு எதுவும் அறியப்படவில்லை."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "புதுப்பிப்புகளைச் சரிபார்"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "பதிவிறக்கு"

@@ -1868,14 +1868,6 @@ msgstr "닫기(&C)"
 msgid "&Not Now"
 msgstr "지금 안 함(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "%s용 게임 업데이트를 %s에서 다운로드할 수 있습니다 (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "xboxunity.net 확인"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1892,14 +1884,6 @@ msgstr "게임 업데이트 복사 중…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "이 게임에 대해 다시 묻지 않음"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "archive.org에서 다운로드"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "xboxunity.net에서 다운로드"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1942,10 +1926,6 @@ msgstr "게임 업데이트를 저장하지 못했습니다."
 msgid "Title Update"
 msgstr "게임 업데이트"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "게임 업데이트 %u (%s용)을(를) %s에서 다운로드할 수 있습니다 (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "xboxunity.net에 연결하지 못했습니다."
@@ -1957,3 +1937,27 @@ msgstr "xboxunity.net의 응답을 읽지 못했습니다."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "xboxunity.net의 응답을 저장하지 못했습니다."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "게임 업데이트 %u (%s용)을(를) 다운로드할 수 있습니다 (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "%s용 게임 업데이트를 다운로드할 수 있습니다 (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "%s용 게임 업데이트가 있을 수 있습니다."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "이 버전의 %s용 새 게임 업데이트는 알려져 있지 않습니다."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "업데이트 확인"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "다운로드"

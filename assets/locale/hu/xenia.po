@@ -1872,14 +1872,6 @@ msgstr "&Bezárás"
 msgid "&Not Now"
 msgstr "&Most nem"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "A(z) %s játékhoz címfrissítés érhető el a(z) %s webhelyen (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "Keresés az xboxunity.net webhelyen"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1896,14 +1888,6 @@ msgstr "A címfrissítés másolása folyamatban…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Ne kérdezzen rá többé ennél a játéknál"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "Letöltés az archive.org webhelyről"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "Letöltés az xboxunity.net webhelyről"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1946,10 +1930,6 @@ msgstr "A címfrissítést nem sikerült menteni."
 msgid "Title Update"
 msgstr "Címfrissítés"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "A(z) %u. címfrissítés a(z) %s játékhoz elérhető a(z) %s webhelyen (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "Az xboxunity.net nem érhető el."
@@ -1961,3 +1941,27 @@ msgstr "Az xboxunity.net válaszát nem sikerült beolvasni."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "Az xboxunity.net válaszát nem sikerült menteni."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "A(z) %u. címfrissítés a(z) %s játékhoz elérhető (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "A(z) %s játékhoz címfrissítés érhető el (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "Lehet, hogy elérhető címfrissítés a(z) %s játékhoz."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "A(z) %s játék ezen kiadásához nem ismert újabb címfrissítés."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Frissítések keresése"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "Letöltés"

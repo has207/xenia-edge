@@ -1871,14 +1871,6 @@ msgstr "&Kapat"
 msgid "&Not Now"
 msgstr "&Şimdi Değil"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "%s için bir oyun güncellemesi %s üzerinden indirilebilir (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "xboxunity.net'i Kontrol Et"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1895,14 +1887,6 @@ msgstr "Oyun güncellemesi kopyalanıyor…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Bu oyun için bir daha sorma"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "archive.org'dan İndir"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "xboxunity.net'ten İndir"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1945,10 +1929,6 @@ msgstr "Oyun güncellemesi kaydedilemedi."
 msgid "Title Update"
 msgstr "Oyun Güncellemesi"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "Oyun güncellemesi %u, %s için %s üzerinden indirilebilir (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "xboxunity.net'e ulaşılamadı."
@@ -1960,3 +1940,27 @@ msgstr "xboxunity.net'in yanıtı okunamadı."
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "xboxunity.net'in yanıtı kaydedilemedi."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "Oyun güncellemesi %u, %s için indirilebilir (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "%s için bir oyun güncellemesi indirilebilir (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "%s için bir oyun güncellemesi mevcut olabilir."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "%s oyununun bu sürümü için bilinen daha yeni bir oyun güncellemesi yok."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Güncellemeleri Kontrol Et"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "İndir"

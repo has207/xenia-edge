@@ -1864,14 +1864,6 @@ msgstr "ปิด(&C)"
 msgid "&Not Now"
 msgstr "ไม่ใช่ตอนนี้(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "มีอัปเดตเกมสำหรับ %s ให้ดาวน์โหลดจาก %s (%s)"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "ตรวจสอบที่ xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1888,14 +1880,6 @@ msgstr "กำลังคัดลอกอัปเดตเกม…"
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "ไม่ต้องถามอีกสำหรับเกมนี้"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "ดาวน์โหลดจาก archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "ดาวน์โหลดจาก xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1938,10 +1922,6 @@ msgstr "ไม่สามารถบันทึกอัปเดตเกม
 msgid "Title Update"
 msgstr "อัปเดตเกม"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "มีอัปเดตเกม %u สำหรับ %s ให้ดาวน์โหลดจาก %s (%s)"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "ไม่สามารถเชื่อมต่อกับ xboxunity.net ได้"
@@ -1953,3 +1933,27 @@ msgstr "ไม่สามารถอ่านการตอบกลับจ
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "ไม่สามารถบันทึกการตอบกลับจาก xboxunity.net ได้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "มีอัปเดตเกม %u สำหรับ %s ให้ดาวน์โหลด (%s)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "มีอัปเดตเกมสำหรับ %s ให้ดาวน์โหลด (%s)"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "อาจมีอัปเดตเกมสำหรับ %s"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "ไม่พบข้อมูลอัปเดตเกมที่ใหม่กว่าสำหรับ %s เวอร์ชันนี้"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "ตรวจหาอัปเดต"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "ดาวน์โหลด"

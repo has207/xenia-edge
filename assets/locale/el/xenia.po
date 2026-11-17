@@ -1874,14 +1874,6 @@ msgstr "Κλείσιμο(&C)"
 msgid "&Not Now"
 msgstr "Όχι τώρα(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "Υπάρχει διαθέσιμη ενημέρωση τίτλου για το %s από το %s (%s)."
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "Έλεγχος στο xboxunity.net"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1898,14 +1890,6 @@ msgstr "Γίνεται αντιγραφή της ενημέρωσης τίτλο
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "Να μην ερωτηθώ ξανά για αυτό το παιχνίδι"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "Λήψη από το archive.org"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "Λήψη από το xboxunity.net"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1948,10 +1932,6 @@ msgstr "Δεν ήταν δυνατή η αποθήκευση της ενημέρ
 msgid "Title Update"
 msgstr "Ενημέρωση τίτλου"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "Η ενημέρωση τίτλου %u για το %s είναι διαθέσιμη από το %s (%s)."
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "Δεν ήταν δυνατή η σύνδεση με το xboxunity.net."
@@ -1963,3 +1943,27 @@ msgstr "Δεν ήταν δυνατή η ανάγνωση της απάντηση
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "Δεν ήταν δυνατή η αποθήκευση της απάντησης του xboxunity.net."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "Η ενημέρωση τίτλου %u για το %s είναι διαθέσιμη (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "Υπάρχει διαθέσιμη ενημέρωση τίτλου για το %s (%s)."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "Ενδέχεται να υπάρχει διαθέσιμη ενημέρωση τίτλου για το %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "Δεν είναι γνωστή νεότερη ενημέρωση τίτλου για αυτήν την έκδοση του %s."
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "Έλεγχος για ενημερώσεις"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "Λήψη"

@@ -1867,14 +1867,6 @@ msgstr "বন্ধ করুন(&C)"
 msgid "&Not Now"
 msgstr "এখন নয়(&N)"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:59
-msgid "A title update for %s is available from %s (%s)."
-msgstr "%s-এর জন্য একটি টাইটেল আপডেট %s থেকে পাওয়া যাচ্ছে (%s)।"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:184
-msgid "Check xboxunity.net"
-msgstr "xboxunity.net-এ পরীক্ষা করুন"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:308
 #: src/xenia/ui/title_update_dialog_wx.cc:435
 msgid "Checking the title update..."
@@ -1891,14 +1883,6 @@ msgstr "টাইটেল আপডেট কপি করা হচ্ছে�
 #: src/xenia/ui/title_update_dialog_wx.cc:201
 msgid "Don't ask again for this game"
 msgstr "এই গেমের জন্য আর জিজ্ঞাসা করবেন না"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:179
-msgid "Download from archive.org"
-msgstr "archive.org থেকে ডাউনলোড করুন"
-
-#: src/xenia/ui/title_update_dialog_wx.cc:255
-msgid "Download from xboxunity.net"
-msgstr "xboxunity.net থেকে ডাউনলোড করুন"
 
 #: src/xenia/ui/title_update_dialog_wx.cc:276
 msgid "Downloading the title update..."
@@ -1941,10 +1925,6 @@ msgstr "টাইটেল আপডেট সংরক্ষণ করা য�
 msgid "Title Update"
 msgstr "টাইটেল আপডেট"
 
-#: src/xenia/ui/title_update_dialog_wx.cc:55
-msgid "Title update %u for %s is available from %s (%s)."
-msgstr "টাইটেল আপডেট %u, %s-এর জন্য %s থেকে পাওয়া যাচ্ছে (%s)।"
-
 #: src/xenia/ui/title_update_dialog_wx.cc:246
 msgid "xboxunity.net couldn't be reached."
 msgstr "xboxunity.net-এ পৌঁছানো যায়নি।"
@@ -1956,3 +1936,27 @@ msgstr "xboxunity.net-এর উত্তর পড়া যায়নি।"
 #: src/xenia/ui/title_update_dialog_wx.cc:243
 msgid "xboxunity.net's answer couldn't be saved."
 msgstr "xboxunity.net-এর উত্তর সংরক্ষণ করা যায়নি।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:54
+msgid "Title update %u for %s is available (%s)."
+msgstr "টাইটেল আপডেট %u, %s-এর জন্য পাওয়া যাচ্ছে (%s)।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:56
+msgid "A title update for %s is available (%s)."
+msgstr "%s-এর জন্য একটি টাইটেল আপডেট পাওয়া যাচ্ছে (%s)।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:170
+msgid "A title update may be available for %s."
+msgstr "%s-এর জন্য একটি টাইটেল আপডেট পাওয়া যেতে পারে।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:173
+msgid "No newer title update is known for this release of %s."
+msgstr "%s-এর এই সংস্করণের জন্য কোনো নতুন টাইটেল আপডেটের কথা জানা নেই।"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:182
+msgid "Check for Updates"
+msgstr "আপডেট পরীক্ষা করুন"
+
+#: src/xenia/ui/title_update_dialog_wx.cc:253
+msgid "Download"
+msgstr "ডাউনলোড করুন"

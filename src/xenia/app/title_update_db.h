@@ -20,14 +20,15 @@
 namespace xe {
 namespace app {
 
-// A title update a download source lists: archive.org's
-// xbox_360_title_updates, from the embedded assets/title_updates/
-// title_updates.json made by tools/tu-index.py, or xboxunity.net.
+// A title update a source lists: the embedded assets/title_updates/
+// title_updates.json made by tools/tu-index.py, which only says it exists, or
+// xboxunity.net, which has it to download.
 struct TitleUpdateDownload {
   // The TU number, 0 when it's unknown.
   uint32_t tu = 0;
   // The version of the release the update applies to, as an xex2_version.
   uint32_t base_version = 0;
+  // xboxunity.net's only.
   uint64_t size = 0;
   std::string url;
 };
@@ -36,9 +37,9 @@ struct TitleUpdateDownload {
 using TitleUpdateDownloads =
     std::unordered_map<uint32_t, std::vector<TitleUpdateDownload>>;
 
-// The updates archived for the title, empty when there are none. The reference
-// is stable for the lifetime of the process.
-const TitleUpdateDownloads& GetTitleUpdateDownloads(uint32_t title_id);
+// The updates known to exist for the title, empty when there are none. The
+// reference is stable for the lifetime of the process.
+const TitleUpdateDownloads& GetKnownTitleUpdates(uint32_t title_id);
 
 // Where xboxunity.net lists the updates for a title.
 std::string XboxUnityTitleUpdatesUrl(uint32_t title_id);

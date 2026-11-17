@@ -39,10 +39,10 @@ wxString CheckTitleUpdatePackage(wxWindow* parent,
                                  uint32_t version);
 
 // Offers to install a title update for |release|, the game at |game| called
-// |name|, into |folder|, which holds the update numbered |installed|:
-// archive.org's newest when it has a newer one, xboxunity.net's, looked up only
-// when asked, or a package from disk. At launch it can also stop the offers
-// for the game. True when one got installed.
+// |name|, into |folder|, which holds the update numbered |installed|, saying
+// whether a newer one is known to exist: xboxunity.net's, looked up only when
+// asked, or a package from disk. At launch it can also stop the offers for the
+// game. True when one got installed.
 bool ShowTitleUpdateDialog(wxWindow* parent, const TitleUpdateRelease& release,
                            uint32_t installed,
                            const std::filesystem::path& game,

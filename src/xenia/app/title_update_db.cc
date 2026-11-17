@@ -111,11 +111,7 @@ std::optional<TitleUpdateDownload> ParseUpdate(const rapidjson::Value& entry) {
     return std::nullopt;
   }
   auto base_version = entry.FindMember("base_version");
-  auto size = entry.FindMember("size");
-  auto url = entry.FindMember("url");
-  if (base_version == entry.MemberEnd() || !base_version->value.IsString() ||
-      size == entry.MemberEnd() || !size->value.IsUint64() ||
-      url == entry.MemberEnd() || !url->value.IsString()) {
+  if (base_version == entry.MemberEnd() || !base_version->value.IsString()) {
     return std::nullopt;
   }
   TitleUpdateDownload update;
@@ -125,8 +121,6 @@ std::optional<TitleUpdateDownload> ParseUpdate(const rapidjson::Value& entry) {
     return std::nullopt;
   }
   update.base_version = *version;
-  update.size = size->value.GetUint64();
-  update.url.assign(url->value.GetString(), url->value.GetStringLength());
   auto tu = entry.FindMember("tu");
   if (tu != entry.MemberEnd() && tu->value.IsUint()) {
     update.tu = tu->value.GetUint();
@@ -180,7 +174,7 @@ const UpdateIndex& GetUpdateIndex() {
 
 }  // namespace
 
-const TitleUpdateDownloads& GetTitleUpdateDownloads(uint32_t title_id) {
+const TitleUpdateDownloads& GetKnownTitleUpdates(uint32_t title_id) {
   static const TitleUpdateDownloads none;
   const auto& index = GetUpdateIndex();
   const auto it = index.find(title_id);

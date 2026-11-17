@@ -4103,7 +4103,7 @@ void EmulatorWindow::NoteMissingTitleUpdate(uint32_t title_id) {
   auto* profiles =
       kernel_state ? kernel_state->xam_state()->profile_manager() : nullptr;
   if (!profiles || !imgui_drawer() || kernel::IsSystemTitle(title_id) ||
-      GetTitleUpdateDownloads(title_id).empty()) {
+      GetKnownTitleUpdates(title_id).empty()) {
     return;
   }
   const auto folder =
@@ -4145,18 +4145,18 @@ void EmulatorWindow::OfferTitleUpdate(const std::filesystem::path& path) {
   if (!release || kernel::IsSystemTitle(release->title_id)) {
     return;
   }
-  const auto& archived = GetTitleUpdateDownloads(release->title_id);
-  if (archived.empty()) {
+  const auto& known = GetKnownTitleUpdates(release->title_id);
+  if (known.empty()) {
     return;
   }
   const auto folder = profiles->GetProfileContentPath(0, release->title_id,
                                                       XContentType::kInstaller);
   const uint32_t installed =
       InstalledTitleUpdateNumber(folder, release->version);
-  // A title archived for other releases only is offered too while none is
-  // installed, since another source can have one for this release.
+  // A title known for other releases only is offered too while none is
+  // installed, since xboxunity.net can have one for this release.
   std::error_code ec;
-  if (!FindNewerTitleUpdate(archived, *release, installed) &&
+  if (!FindNewerTitleUpdate(known, *release, installed) &&
       std::filesystem::exists(folder, ec) &&
       !std::filesystem::is_empty(folder, ec)) {
     return;
