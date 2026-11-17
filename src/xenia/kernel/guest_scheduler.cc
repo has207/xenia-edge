@@ -1534,12 +1534,32 @@ void GuestScheduler::RereadyBlocked(int cpu_index) {
     XThread* kept_head = nullptr;
     XThread* kept_tail = nullptr;
     int kept_max_prio = -1;
+    // Waiters only their deadline released, readied after the walk by earliest
+    // deadline with the last to block first on a tie so two threads sleeping
+    // in step on one CPU take turns.
+    XThread* expired_head = nullptr;
+    // Backstop re-polls, readied last so none can run ahead of an expiry.
+    XThread* backstop_head = nullptr;
+    XThread* backstop_tail = nullptr;
+    auto ready_waiter = [&](XThread* t) {
+      auto& links = t->scheduler_links();
+      links.blocked = false;
+      links.queued = true;
+      stats_.rereadied.fetch_add(1, std::memory_order_relaxed);
+      // Its current guest CPU, not the one it blocked on, since
+      // KeSetAffinityThread may have moved it while blocked.
+      int target = CpuOf(t);
+      links.cpu = target;
+      LinkReadyLocked(cpus_[target], t, TakeHeadRequeue(links));
+      if (target != cpu_index) {
+        wake_mask |= uint32_t(1) << target;
+      }
+    };
     XThread* t = cpu.blocked_head;
     while (t) {
       auto& links = t->scheduler_links();
       XThread* next = links.ready_next;
-      // Skip a gated waiter whose wait cannot have resolved yet.
-      if (links.wait_gated && !force_all) {
+      if (links.wait_gated) {
         // Three gate kinds: a single object's epoch, a multi-wait's summed
         // epoch, or (neither) a pure timed sleep that only the deadline below
         // can resolve.
@@ -1553,9 +1573,28 @@ void GuestScheduler::RereadyBlocked(int cpu_index) {
               t->cooperative_wait_set_epoch() != links.wait_epoch;
         }
         if (!may_have_resolved &&
-            !(links.wait_deadline_ms && now_ms >= links.wait_deadline_ms) &&
             !(links.wait_alertable && t->HasPendingUserApc()) &&
             !(links.wait_interruptible && t->HasDeliverableKernelApc())) {
+          if (links.wait_deadline_ms && now_ms >= links.wait_deadline_ms) {
+            XThread** link = &expired_head;
+            while (*link && (*link)->scheduler_links().wait_deadline_ms <
+                                links.wait_deadline_ms) {
+              link = &(*link)->scheduler_links().ready_next;
+            }
+            links.ready_next = *link;
+            *link = t;
+            t = next;
+            continue;
+          }
+          // A pure sleep has no epoch bump for the backstop to catch and the
+          // checks above cover everything else that ends one.
+          if (force_all && (obj || links.wait_gate_count)) {
+            links.ready_next = nullptr;
+            LinkTailLocked(backstop_head, backstop_tail, t);
+            t = next;
+            continue;
+          }
+          // Skip a gated waiter whose wait cannot have resolved yet.
           links.ready_next = nullptr;
           LinkTailLocked(kept_head, kept_tail, t);
           int prio = ClampPriority(t->priority());
@@ -1573,18 +1612,15 @@ void GuestScheduler::RereadyBlocked(int cpu_index) {
           continue;
         }
       }
-      links.blocked = false;
-      links.queued = true;
-      stats_.rereadied.fetch_add(1, std::memory_order_relaxed);
-      // Its current guest CPU, not the one it blocked on, since
-      // KeSetAffinityThread may have moved it while blocked.
-      int target = CpuOf(t);
-      links.cpu = target;
-      LinkReadyLocked(cpus_[target], t, TakeHeadRequeue(links));
-      if (target != cpu_index) {
-        wake_mask |= uint32_t(1) << target;
-      }
+      ready_waiter(t);
       t = next;
+    }
+    for (XThread* list : {expired_head, backstop_head}) {
+      for (t = list; t;) {
+        XThread* next = t->scheduler_links().ready_next;
+        ready_waiter(t);
+        t = next;
+      }
     }
     cpu.blocked_head = kept_head;
     cpu.blocked_tail = kept_tail;

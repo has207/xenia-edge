@@ -187,7 +187,7 @@ class GuestScheduler {
   // and the APC check of alertable waiters. Quiet gated waiters do not tick
   // at this rate, they wake on signals, deadlines and the backstop.
   static constexpr uint64_t kPollBackoffMs = 1;
-  // At least this often every blocked fiber re-polls regardless of the epoch
+  // At least this often every epoch-gated waiter re-polls regardless of its
   // gate, so a missed epoch bump costs a latency blip, not a hang.
   static constexpr uint64_t kRepollBackstopMs = 64;
   // Floor on the watchdog's wake period. Below this the wakeups cost more than
