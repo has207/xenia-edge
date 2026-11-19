@@ -373,8 +373,8 @@ int InstrEmit_frspx(PPCHIRBuilder& f, const InstrData& i) {
   // frD <- Round_single(frB)
   Value* b = f.LoadFPR(i.X.RB);
   f.BeginFPSCRUpdate(i.X.Rc);
-  Value* v = f.Convert(b, FLOAT32_TYPE, ROUND_DYNAMIC);
-  v = f.Convert(v, FLOAT64_TYPE);
+  // Unlike the conversions lfs and stfs use, this quiets an SNaN
+  Value* v = f.ToSingle(b);
   f.StoreFPR(i.X.RT, v);
   f.UpdateFPSCR({b}, i.X.Rc);
   return 0;
