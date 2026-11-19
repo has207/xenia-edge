@@ -32,10 +32,8 @@ test_vlogefp128_4:
 
 test_vlogefp128_5:
   # log2(x) for values slightly above 1.0
-  # Expectations are xenia's estimate output, not a hardware capture. Hardware
-  # gives 3F160000 for the second lane; the rest are unverified.
   #_ REGISTER_IN v4 [3FB504F3, 3FC00000, 3FD744FD, 3FECCCCD]
   vlogefp128 v5, v4
   blr
   #_ REGISTER_OUT v4 [3FB504F3, 3FC00000, 3FD744FD, 3FECCCCD]
-  #_ REGISTER_OUT v5 [3F000000, 3F15C000, 3F400000, 3F634000]
+  #_ REGISTER_OUT v5 [3F000000, 3F160000, 3F40A000, 3F630000]

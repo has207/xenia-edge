@@ -16,13 +16,11 @@ test_vexptefp128_2:
 
 test_vexptefp128_3:
   # 2^x estimate for small x = [0.5, 0.25, 0.125, 0.0625]
-  # Expectations are xenia's estimate output, not a hardware capture. The
-  # first lane is known to match hardware; the rest are unverified.
   #_ REGISTER_IN v4 [3F000000, 3E800000, 3E000000, 3D800000]
   vexptefp128 v5, v4
   blr
   #_ REGISTER_OUT v4 [3F000000, 3E800000, 3E000000, 3D800000]
-  #_ REGISTER_OUT v5 [3FB50000, 3F983000, 3F8B9000, 3F85B000]
+  #_ REGISTER_OUT v5 [3FB50000, 3F980000, 3F8C0000, 3F860000]
 
 test_vexptefp128_4:
   # 2^x estimate for larger values

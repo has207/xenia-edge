@@ -94,8 +94,6 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   // not report: x64 clamps the operand before converting.
   void UpdateFPSCRForConvertToInteger(Value* b, hir::RoundMode round_mode,
                                       bool to_int64, bool update_cr1);
-  // For the paths whose answer is invalid and nothing else.
-  void SetFPSCRInvalid(bool update_cr1);
   void CopyFPSCRToCR1();
   Value* LoadXER();
   void StoreXER(Value* value);

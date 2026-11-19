@@ -129,13 +129,9 @@ int InstrEmit_fmulsx(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_fresx(PPCHIRBuilder& f, const InstrData& i) {
-  // frD <- 1.0 / (frB)
-
-  // this actually does seem to require single precision, oddly
-  // more research is needed
+  // frD <- estimate of 1.0 / (frB), as single precision
   Value* b = f.LoadFPR(i.A.FRB);
-  Value* v = f.Recip(f.Convert(b, FLOAT32_TYPE));
-  v = f.Convert(v, FLOAT64_TYPE);  // f.ToSingle(v);
+  Value* v = f.Recip(b);
   f.StoreFPR(i.A.FRT, v);
   f.UpdateFPSCRForEstimate(b, /*is_sqrt_estimate=*/false, i.A.Rc);
   return 0;
@@ -331,22 +327,13 @@ int InstrEmit_fcfidx(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_fctidxx_(PPCHIRBuilder& f, const InstrData& i,
                        RoundMode round_mode) {
-  auto end = f.NewLabel();
-  auto isnan = f.NewLabel();
+  // The conversion saturates, and gives 0x8000000000000000 for a NaN, so it
+  // needs no branch (which would end the block)
   f.BeginFPSCRUpdate(i.X.Rc);
-  f.BranchTrue(f.IsNan(f.LoadFPR(i.X.RB)), isnan);
   Value* b = f.LoadFPR(i.X.RB);
   f.StoreFPR(i.X.RT,
              f.Cast(f.Convert(b, INT64_TYPE, round_mode), FLOAT64_TYPE));
   f.UpdateFPSCRForConvertToInteger(b, round_mode, /*to_int64=*/true, i.X.Rc);
-  f.Branch(end);
-  f.MarkLabel(isnan);
-  // A NaN answers with the most negative value, and is invalid and nothing
-  // else.
-  f.StoreFPR(i.X.RT,
-             f.Cast(f.LoadConstantUint64(0x8000000000000000ull), FLOAT64_TYPE));
-  f.SetFPSCRInvalid(i.X.Rc);
-  f.MarkLabel(end);
   return 0;
 }
 
@@ -361,22 +348,14 @@ int InstrEmit_fctidzx(PPCHIRBuilder& f, const InstrData& i) {
 
 int InstrEmit_fctiwxx_(PPCHIRBuilder& f, const InstrData& i,
                        RoundMode round_mode) {
-  auto end = f.NewLabel();
-  auto isnan = f.NewLabel();
+  // The conversion saturates, and gives 0x80000000 for a NaN, so it needs no
+  // branch (which would end the block)
   f.BeginFPSCRUpdate(i.X.Rc);
-  f.BranchTrue(f.IsNan(f.LoadFPR(i.X.RB)), isnan);
   Value* b = f.LoadFPR(i.X.RB);
   f.StoreFPR(i.X.RT, f.Cast(f.SignExtend(f.Convert(b, INT32_TYPE, round_mode),
                                          INT64_TYPE),
                             FLOAT64_TYPE));
   f.UpdateFPSCRForConvertToInteger(b, round_mode, /*to_int64=*/false, i.X.Rc);
-  f.Branch(end);
-  f.MarkLabel(isnan);
-  // The most negative value, sign extended as the conversion result is.
-  f.StoreFPR(i.X.RT,
-             f.Cast(f.LoadConstantUint64(0xFFFFFFFF80000000ull), FLOAT64_TYPE));
-  f.SetFPSCRInvalid(i.X.Rc);
-  f.MarkLabel(end);
   return 0;
 }
 

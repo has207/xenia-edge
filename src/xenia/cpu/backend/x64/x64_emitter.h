@@ -172,18 +172,26 @@ enum XmmConst {
   XMMXOPDwordShiftMask,
   XMMVSRShlByteshuf,
   XMMVSRMask,
-  // vexptefp/vlogefp. The guest ops are 11-bit estimates, so the results get
-  // snapped to a 2^-11 grid; these polynomials only have to beat that.
-  XMMExp2Poly,                    // 6 entries, 2^f minimax on [0,1)
-  XMMLog2Poly = XMMExp2Poly + 6,  // 7 entries, log2(1+u) minimax on [0,1]
-  XMMEstScale = XMMLog2Poly + 7,  // 2048.0f
-  XMMEstUnscale,                  // 1.0f / 2048.0f
-  XMMExp2Max,                     // 128.0f, at or above this 2^x is inf
-  XMMExp2Min,                     // -126.0f, below this 2^x is flushed to 0
-  XMMQuietBit,                    // 0x00400000
-  XMMFloatNegInf,                 // 0xFF800000
-  XMMMantissaMask,                // 0x007FFFFF
-  XMMVRsqrteTableStart,
+  XMMQuietBit,  // 0x00400000
+  // For the inline vrefp, see RECIP_V128
+  XMMVRefpStepMask,
+  XMMVRefpSlopeMask,
+  XMMVRefpMantissaMask,
+  XMMVRefpExponentBias,
+  XMMVRefpLargeLimit,
+  XMMVRefpSmallestNormal,
+  // For the inline vlogefp and vexptefp, see LOG2_V128 and POW2_V128
+  XMMEstimateIndexMask,
+  XMMEstimateExponentMask,
+  XMMVLogeExponentBias,
+  XMMVLogeScale,
+  XMMVLogeZeroResult,
+  XMMVExpteShiftBase,
+  XMMVExpteExponentBias,
+  XMMVExpteSmallestExponent,
+  XMMVExpteLargestInputExponent,
+  XMMVRefpTable,
+  XMMVRsqrteTableStart = XMMVRefpTable + (32 / 4),
   XMMVRsqrteTableBase =
       XMMVRsqrteTableStart +
       (32 /

@@ -20,18 +20,15 @@ test_vlogefp_3:
   #_ REGISTER_OUT v5 [BF800000, C0000000, C0400000, C0800000]
 
 test_vlogefp_4:
-  # Expectations are xenia's estimate output, not a hardware capture. Hardware
-  # gives 3FCB0000, 40148000, 40258000 for the first three lanes.
   #_ REGISTER_IN v4 [40400000, 40A00000, 40C00000, 40E00000]
   vlogefp v5, v4
   blr
   #_ REGISTER_OUT v4 [40400000, 40A00000, 40C00000, 40E00000]
-  #_ REGISTER_OUT v5 [3FCAE000, 40149800, 40257000, 4033A800]
+  #_ REGISTER_OUT v5 [3FCB0000, 40148000, 40258000, 4033F800]
 
 test_vlogefp_5:
-  # Expectations are xenia's estimate output, not a hardware capture.
   #_ REGISTER_IN v4 [42C80000, 43480000, 43C80000, 44480000]
   vlogefp v5, v4
   blr
   #_ REGISTER_OUT v4 [42C80000, 43480000, 43C80000, 44480000]
-  #_ REGISTER_OUT v5 [40D49C00, 40F49C00, 410A4E00, 411A4E00]
+  #_ REGISTER_OUT v5 [40D4BC00, 40F4BC00, 410A5E00, 411A5E00]
