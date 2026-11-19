@@ -3889,30 +3889,7 @@ struct SHL_I64 : Sequence<SHL_I64, I<OPCODE_SHL, I64Op, I64Op, I8Op>> {
     EmitShlXX<SHL_I64, Reg64>(e, i);
   }
 };
-struct SHL_V128 : Sequence<SHL_V128, I<OPCODE_SHL, V128Op, V128Op, I8Op>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    // The words run from most to least significant, so each one's low bits come
-    // from the top of the word in the next lane. A count of 32 gives 0.
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    e.vpsrldq(e.xmm1, src1, 4);
-    if (i.src2.is_constant) {
-      uint8_t shamt = i.src2.constant() & 0x7;
-      e.vpslld(e.xmm0, src1, shamt);
-      e.vpsrld(e.xmm1, e.xmm1, 32 - shamt);
-    } else {
-      e.movzx(e.eax, i.src2);
-      e.and_(e.eax, 0x7);
-      e.vmovd(e.xmm2, e.eax);
-      e.vpslld(e.xmm0, src1, e.xmm2);
-      e.neg(e.eax);
-      e.add(e.eax, 32);
-      e.vmovd(e.xmm2, e.eax);
-      e.vpsrld(e.xmm1, e.xmm1, e.xmm2);
-    }
-    e.vpor(i.dest, e.xmm0, e.xmm1);
-  }
-};
-EMITTER_OPCODE_TABLE(OPCODE_SHL, SHL_I8, SHL_I16, SHL_I32, SHL_I64, SHL_V128);
+EMITTER_OPCODE_TABLE(OPCODE_SHL, SHL_I8, SHL_I16, SHL_I32, SHL_I64);
 
 // ============================================================================
 // OPCODE_SHR
@@ -3963,30 +3940,7 @@ struct SHR_I64 : Sequence<SHR_I64, I<OPCODE_SHR, I64Op, I64Op, I8Op>> {
     EmitShrXX<SHR_I64, Reg64>(e, i);
   }
 };
-struct SHR_V128 : Sequence<SHR_V128, I<OPCODE_SHR, V128Op, V128Op, I8Op>> {
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    // As SHL_V128: each word's high bits come from the bottom of the word in
-    // the previous lane.
-    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-    e.vpslldq(e.xmm1, src1, 4);
-    if (i.src2.is_constant) {
-      uint8_t shamt = i.src2.constant() & 0x7;
-      e.vpsrld(e.xmm0, src1, shamt);
-      e.vpslld(e.xmm1, e.xmm1, 32 - shamt);
-    } else {
-      e.movzx(e.eax, i.src2);
-      e.and_(e.eax, 0x7);
-      e.vmovd(e.xmm2, e.eax);
-      e.vpsrld(e.xmm0, src1, e.xmm2);
-      e.neg(e.eax);
-      e.add(e.eax, 32);
-      e.vmovd(e.xmm2, e.eax);
-      e.vpslld(e.xmm1, e.xmm1, e.xmm2);
-    }
-    e.vpor(i.dest, e.xmm0, e.xmm1);
-  }
-};
-EMITTER_OPCODE_TABLE(OPCODE_SHR, SHR_I8, SHR_I16, SHR_I32, SHR_I64, SHR_V128);
+EMITTER_OPCODE_TABLE(OPCODE_SHR, SHR_I8, SHR_I16, SHR_I32, SHR_I64);
 
 // ============================================================================
 // OPCODE_SHA

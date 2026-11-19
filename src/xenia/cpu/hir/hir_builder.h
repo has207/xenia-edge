@@ -294,6 +294,9 @@ class HIRBuilder {
   Value* Shr(Value* value1, Value* value2);
   Value* Shr(Value* value1, int8_t value2);
   Value* VectorShr(Value* value1, Value* value2, TypeName part_type);
+  // vsl and vsr: each byte shifted by the low 3 bits of its byte of counts
+  Value* VectorShlBits(Value* value, Value* counts);
+  Value* VectorShrBits(Value* value, Value* counts);
   Value* Sha(Value* value1, Value* value2);
   Value* Sha(Value* value1, int8_t value2);
   Value* VectorSha(Value* value1, Value* value2, TypeName part_type);

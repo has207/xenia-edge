@@ -749,6 +749,110 @@ struct VECTOR_SHR_V128
 EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHR, VECTOR_SHR_V128);
 
 // ============================================================================
+// OPCODE_VECTOR_SHL_BITS, OPCODE_VECTOR_SHR_BITS
+// ============================================================================
+// The whole vector shifted by count bits, for counts that agree: each word's
+// own shift ORed with the bits of the word next to it, as the guest bytes of a
+// word run from most to least significant.
+static void EmitShiftBitsUniform(A64Emitter& e, int d, int s, bool left,
+                                 uint8_t count) {
+  if (!count) {
+    if (d != s) {
+      e.mov(VReg(d).b16, VReg(s).b16);
+    }
+    return;
+  }
+  if (s < 4) {
+    // A constant landed in the scratch bank the shifts below clobber.
+    e.mov(VReg(3).b16, VReg(s).b16);
+    s = 3;
+  }
+  // The neighbour's bits first, as d may be s
+  if (left) {
+    e.ushr(VReg(0).s4, VReg(s).s4, 32 - count);
+    e.shl(VReg(d).s4, VReg(s).s4, count);
+    e.movi(VReg(1).s4, 0);
+    e.ext(VReg(0).b16, VReg(0).b16, VReg(1).b16, 4);
+  } else {
+    e.shl(VReg(0).s4, VReg(s).s4, 32 - count);
+    e.ushr(VReg(d).s4, VReg(s).s4, count);
+    e.movi(VReg(1).s4, 0);
+    e.ext(VReg(0).b16, VReg(1).b16, VReg(0).b16, 12);
+  }
+  e.orr(VReg(d).b16, VReg(d).b16, VReg(0).b16);
+}
+
+// Each byte by its own count: the byte shifted by it, ORed with its neighbour
+// shifted the other way by 8 - count. ushl shifts right for a negative count
+// and gives 0 for a count of 8. tbl fetches the neighbours, and an index past
+// the end gives the 0 beyond the first or last byte.
+template <typename ARGS>
+static void EmitShiftBitsPerByte(A64Emitter& e, const ARGS& i, bool left) {
+  const int s = SrcVReg(e, i.src1, 0);
+  const int c = SrcVReg(e, i.src2, 1);
+  const int d = i.dest.reg().getIdx();
+  vec128_t neighbours;
+  for (int h = 0; h < 16; ++h) {
+    const int g = (h ^ 3) + (left ? 1 : -1);
+    neighbours.u8[h] = g >= 0 && g < 16 ? uint8_t(g ^ 3) : 0xFF;
+  }
+  e.movi(VReg(2).b16, 7);
+  e.and_(VReg(2).b16, VReg(c).b16, VReg(2).b16);
+  LoadV128Const(e, 3, neighbours);
+  e.tbl(VReg(3).b16, VReg(s).b16, 1, VReg(3).b16);
+  if (left) {
+    e.ushl(VReg(1).b16, VReg(s).b16, VReg(2).b16);
+    e.movi(VReg(0).b16, 8);
+    e.sub(VReg(2).b16, VReg(2).b16, VReg(0).b16);
+  } else {
+    e.neg(VReg(1).b16, VReg(2).b16);
+    e.ushl(VReg(1).b16, VReg(s).b16, VReg(1).b16);
+    e.movi(VReg(0).b16, 8);
+    e.sub(VReg(2).b16, VReg(0).b16, VReg(2).b16);
+  }
+  e.ushl(VReg(3).b16, VReg(3).b16, VReg(2).b16);
+  e.orr(VReg(d).b16, VReg(1).b16, VReg(3).b16);
+}
+
+// Counts known to agree take the whole-vector shift; the rest the per-byte
+// one, which is as fast for counts known only at run time.
+template <typename ARGS>
+static void EmitShiftBits(A64Emitter& e, const ARGS& i, bool left) {
+  if (i.src2.is_constant) {
+    const vec128_t counts = i.src2.constant();
+    const uint8_t count = counts.u8[0] & 7;
+    bool uniform = true;
+    for (int k = 1; k < 16; ++k) {
+      uniform &= (counts.u8[k] & 7) == count;
+    }
+    if (uniform) {
+      EmitShiftBitsUniform(e, i.dest.reg().getIdx(), SrcVReg(e, i.src1, 0),
+                           left, count);
+      return;
+    }
+  }
+  EmitShiftBitsPerByte(e, i, left);
+}
+
+struct VECTOR_SHL_BITS_V128
+    : Sequence<VECTOR_SHL_BITS_V128,
+               I<OPCODE_VECTOR_SHL_BITS, V128Op, V128Op, V128Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    EmitShiftBits(e, i, true);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHL_BITS, VECTOR_SHL_BITS_V128);
+
+struct VECTOR_SHR_BITS_V128
+    : Sequence<VECTOR_SHR_BITS_V128,
+               I<OPCODE_VECTOR_SHR_BITS, V128Op, V128Op, V128Op>> {
+  static void Emit(A64Emitter& e, const EmitArgType& i) {
+    EmitShiftBits(e, i, false);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHR_BITS, VECTOR_SHR_BITS_V128);
+
+// ============================================================================
 // OPCODE_VECTOR_SHA (arithmetic right shift)
 // ============================================================================
 struct VECTOR_SHA_V128

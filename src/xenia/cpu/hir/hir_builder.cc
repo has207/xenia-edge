@@ -2025,6 +2025,18 @@ Value* HIRBuilder::VectorShl(Value* value1, Value* value2, TypeName part_type) {
   return i->dest;
 }
 
+Value* HIRBuilder::VectorShlBits(Value* value, Value* counts) {
+  ASSERT_VECTOR_TYPE(value);
+  ASSERT_VECTOR_TYPE(counts);
+
+  Instr* i =
+      AppendInstr(OPCODE_VECTOR_SHL_BITS_info, 0, AllocValue(VEC128_TYPE));
+  i->set_src1(value);
+  i->set_src2(counts);
+  i->src3.value = NULL;
+  return i->dest;
+}
+
 Value* HIRBuilder::Shr(Value* value1, Value* value2) {
   ASSERT_NON_FLOAT_TYPE(value1);
   ASSERT_INTEGER_TYPE(value2);
@@ -2054,6 +2066,18 @@ Value* HIRBuilder::VectorShr(Value* value1, Value* value2, TypeName part_type) {
       AppendInstr(OPCODE_VECTOR_SHR_info, part_type, AllocValue(value1->type));
   i->set_src1(value1);
   i->set_src2(value2);
+  i->src3.value = NULL;
+  return i->dest;
+}
+
+Value* HIRBuilder::VectorShrBits(Value* value, Value* counts) {
+  ASSERT_VECTOR_TYPE(value);
+  ASSERT_VECTOR_TYPE(counts);
+
+  Instr* i =
+      AppendInstr(OPCODE_VECTOR_SHR_BITS_info, 0, AllocValue(VEC128_TYPE));
+  i->set_src1(value);
+  i->set_src2(counts);
   i->src3.value = NULL;
   return i->dest;
 }

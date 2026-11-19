@@ -1691,6 +1691,25 @@ static constinit const vec128_t xmm_consts[] = {
     vec128s(15),
     /*XMMXOPDwordShiftMask*/
     vec128i(31),
+    // XMMShiftBitsPowers: 2^count by count
+    v128_setr_bytes(1, 2, 4, 8, 16, 32, 64, 128, 0, 0, 0, 0, 0, 0, 0, 0),
+    // XMMShiftBitsInversePowers: 2^(7 - count) by count
+    v128_setr_bytes(128, 64, 32, 16, 8, 4, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0),
+    // XMMShlBitsEvenWindows: guest byte 2k high, 2k + 1 low, in word k. Also
+    // vsr's odd windows.
+    v128_setr_bytes(2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13),
+    // XMMShlBitsOddWindows: guest byte 2k + 1 high, 2k + 2 low
+    v128_setr_bytes(1, 2, 7, 0, 5, 6, 11, 4, 9, 10, 15, 8, 13, 14, 0x80, 12),
+    // XMMShrBitsEvenWindows: guest byte 2k - 1 high, 2k low
+    v128_setr_bytes(3, 0x80, 1, 2, 7, 0, 5, 6, 11, 4, 9, 10, 15, 8, 13, 14),
+    // XMMShiftBitsEvenCounts: guest byte 2k in word k, zero-extended
+    v128_setr_bytes(3, 0x80, 1, 0x80, 7, 0x80, 5, 0x80, 11, 0x80, 9, 0x80, 15,
+                    0x80, 13, 0x80),
+    // XMMShiftBitsOddCounts: guest byte 2k + 1 in word k, zero-extended
+    v128_setr_bytes(2, 0x80, 0, 0x80, 6, 0x80, 4, 0x80, 10, 0x80, 8, 0x80, 14,
+                    0x80, 12, 0x80),
+    // XMMShiftBitsHighBytes
+    vec128s(0xFF00),
     // XMMQuietBit
     vec128i(0x00400000u),
     // XMMDoubleToSingleTruncateMask

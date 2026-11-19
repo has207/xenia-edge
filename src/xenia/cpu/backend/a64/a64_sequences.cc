@@ -2320,46 +2320,7 @@ struct SHL_I64 : Sequence<SHL_I64, I<OPCODE_SHL, I64Op, I64Op, I8Op>> {
     }
   }
 };
-struct SHL_V128 : Sequence<SHL_V128, I<OPCODE_SHL, V128Op, V128Op, I8Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    // PPC 128-bit SHL by N bits (0-7). The value is stored as 4 word-swapped
-    // 32-bit lanes. Carries flow from higher NEON lanes to lower:
-    //   lane[i] = (lane[i] << N) | (lane[i+1] >> (32-N))
-    int s = SrcVReg(e, i.src1, 0);
-    int d = i.dest.reg().getIdx();
-    if (s < 4) {
-      // A constant landed in the scratch bank the shifts below clobber.
-      e.mov(VReg(3).b16, VReg(s).b16);
-      s = 3;
-    }
-    if (i.src2.is_constant) {
-      uint8_t sh = i.src2.constant() & 0x7;
-      if (sh == 0) {
-        if (d != s) {
-          e.mov(VReg(d).b16, VReg(s).b16);
-        }
-        return;
-      }
-      // Read carry before writing result (handles dest==src aliasing).
-      e.ushr(VReg(0).s4, VReg(s).s4, 32 - sh);
-      e.shl(VReg(d).s4, VReg(s).s4, sh);
-    } else {
-      // Variable shift: mask to 0-7, splat, use ushl.
-      e.and_(e.w0, WReg(i.src2.reg().getIdx()), 7);
-      e.dup(VReg(1).s4, e.w0);
-      e.movi(VReg(2).s4, 32);
-      e.sub(VReg(2).s4, VReg(2).s4, VReg(1).s4);   // 32-N
-      e.neg(VReg(2).s4, VReg(2).s4);               // -(32-N) for right shift
-      e.ushl(VReg(0).s4, VReg(s).s4, VReg(2).s4);  // carry: lane >> (32-N)
-      e.ushl(VReg(d).s4, VReg(s).s4, VReg(1).s4);  // result: lane << N
-    }
-    // Shift carries from lane i+1 to lane i; lane 3 gets zero.
-    e.movi(VReg(1).s4, 0);
-    e.ext(VReg(0).b16, VReg(0).b16, VReg(1).b16, 4);
-    e.orr(VReg(d).b16, VReg(d).b16, VReg(0).b16);
-  }
-};
-EMITTER_OPCODE_TABLE(OPCODE_SHL, SHL_I8, SHL_I16, SHL_I32, SHL_I64, SHL_V128);
+EMITTER_OPCODE_TABLE(OPCODE_SHL, SHL_I8, SHL_I16, SHL_I32, SHL_I64);
 
 // ============================================================================
 // OPCODE_SHR (logical shift right)
@@ -2462,46 +2423,7 @@ struct SHR_I64 : Sequence<SHR_I64, I<OPCODE_SHR, I64Op, I64Op, I8Op>> {
     }
   }
 };
-struct SHR_V128 : Sequence<SHR_V128, I<OPCODE_SHR, V128Op, V128Op, I8Op>> {
-  static void Emit(A64Emitter& e, const EmitArgType& i) {
-    // PPC 128-bit SHR by N bits (0-7). Carries flow from lower NEON lanes
-    // to higher:
-    //   lane[i] = (lane[i] >> N) | (lane[i-1] << (32-N))
-    int s = SrcVReg(e, i.src1, 0);
-    int d = i.dest.reg().getIdx();
-    if (s < 4) {
-      // A constant landed in the scratch bank the shifts below clobber.
-      e.mov(VReg(3).b16, VReg(s).b16);
-      s = 3;
-    }
-    if (i.src2.is_constant) {
-      uint8_t sh = i.src2.constant() & 0x7;
-      if (sh == 0) {
-        if (d != s) {
-          e.mov(VReg(d).b16, VReg(s).b16);
-        }
-        return;
-      }
-      // Read carry before writing result (handles dest==src aliasing).
-      e.shl(VReg(0).s4, VReg(s).s4, 32 - sh);
-      e.ushr(VReg(d).s4, VReg(s).s4, sh);
-    } else {
-      // Variable shift: mask to 0-7, splat, use ushl.
-      e.and_(e.w0, WReg(i.src2.reg().getIdx()), 7);
-      e.dup(VReg(1).s4, e.w0);
-      e.movi(VReg(2).s4, 32);
-      e.sub(VReg(2).s4, VReg(2).s4, VReg(1).s4);   // 32-N
-      e.ushl(VReg(0).s4, VReg(s).s4, VReg(2).s4);  // carry: lane << (32-N)
-      e.neg(VReg(1).s4, VReg(1).s4);               // -N for right shift
-      e.ushl(VReg(d).s4, VReg(s).s4, VReg(1).s4);  // result: lane >> N
-    }
-    // Shift carries from lane i-1 to lane i; lane 0 gets zero.
-    e.movi(VReg(1).s4, 0);
-    e.ext(VReg(0).b16, VReg(1).b16, VReg(0).b16, 12);
-    e.orr(VReg(d).b16, VReg(d).b16, VReg(0).b16);
-  }
-};
-EMITTER_OPCODE_TABLE(OPCODE_SHR, SHR_I8, SHR_I16, SHR_I32, SHR_I64, SHR_V128);
+EMITTER_OPCODE_TABLE(OPCODE_SHR, SHR_I8, SHR_I16, SHR_I32, SHR_I64);
 
 // ============================================================================
 // OPCODE_SHA (arithmetic shift right)

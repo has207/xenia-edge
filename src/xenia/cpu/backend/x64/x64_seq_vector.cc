@@ -1640,6 +1640,118 @@ struct VECTOR_SHR_V128
 EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHR, VECTOR_SHR_V128);
 
 // ============================================================================
+// OPCODE_VECTOR_SHL_BITS, OPCODE_VECTOR_SHR_BITS
+// ============================================================================
+// The whole vector shifted by count bits, for counts that agree: each word's
+// own shift ORed with the bits of the word next to it, as the guest bytes of a
+// word run from most to least significant. A shift by 32 gives 0.
+static void EmitShiftBitsUniform(X64Emitter& e, const Xmm& dest, const Xmm& src,
+                                 bool left, uint8_t count) {
+  if (!count) {
+    if (dest.getIdx() != src.getIdx()) {
+      e.vmovdqa(dest, src);
+    }
+    return;
+  }
+  if (left) {
+    e.vpsrldq(e.xmm1, src, 4);
+    e.vpslld(e.xmm0, src, count);
+    e.vpsrld(e.xmm1, e.xmm1, 32 - count);
+  } else {
+    e.vpslldq(e.xmm1, src, 4);
+    e.vpsrld(e.xmm0, src, count);
+    e.vpslld(e.xmm1, e.xmm1, 32 - count);
+  }
+  e.vpor(dest, e.xmm0, e.xmm1);
+}
+
+// Each byte by its own count. A byte and its neighbour make a 16-bit window,
+// the byte high, and the byte's result is the window's high byte after a left
+// shift: by the count for vsl, whose neighbour is the next byte, and for vsr,
+// whose neighbour is the previous one, by 8 - count, as 1 and then 7 - count.
+// The windows of the even and the odd guest bytes each fill eight words, and
+// vpmullw by a power of two does the shifts.
+template <typename ARGS>
+static void EmitShiftBitsPerByte(X64Emitter& e, const ARGS& i, bool left) {
+  // The windows first, as xmm0 and xmm1 take the powers
+  Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm3);
+  e.vpshufb(
+      e.xmm2, src,
+      e.GetXmmConstPtr(left ? XMMShlBitsEvenWindows : XMMShrBitsEvenWindows));
+  e.vpshufb(
+      e.xmm3, src,
+      e.GetXmmConstPtr(left ? XMMShlBitsOddWindows : XMMShlBitsEvenWindows));
+  if (i.src2.is_constant) {
+    const vec128_t counts = i.src2.constant();
+    vec128_t even{}, odd{};
+    for (int k = 0; k < 8; ++k) {
+      const unsigned even_count = counts.u8[(2 * k) ^ 3] & 7;
+      const unsigned odd_count = counts.u8[(2 * k + 1) ^ 3] & 7;
+      even.u16[k] = uint16_t(1 << (left ? even_count : 7 - even_count));
+      odd.u16[k] = uint16_t(1 << (left ? odd_count : 7 - odd_count));
+    }
+    e.LoadConstantXmm(e.xmm0, even);
+    e.LoadConstantXmm(e.xmm1, odd);
+  } else {
+    e.vpand(e.xmm0, i.src2, e.GetXmmConstPtr(XMMXOPByteShiftMask));
+    e.vmovdqa(e.xmm1, e.GetXmmConstPtr(left ? XMMShiftBitsPowers
+                                            : XMMShiftBitsInversePowers));
+    e.vpshufb(e.xmm0, e.xmm1, e.xmm0);
+    e.vpshufb(e.xmm1, e.xmm0, e.GetXmmConstPtr(XMMShiftBitsOddCounts));
+    e.vpshufb(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMShiftBitsEvenCounts));
+  }
+  if (!left) {
+    e.vpsllw(e.xmm2, e.xmm2, 1);
+    e.vpsllw(e.xmm3, e.xmm3, 1);
+  }
+  e.vpmullw(e.xmm2, e.xmm2, e.xmm0);
+  e.vpmullw(e.xmm3, e.xmm3, e.xmm1);
+  // The even bytes' results to the low bytes, the odd ones' stay high
+  e.vpsrlw(e.xmm2, e.xmm2, 8);
+  e.vpand(e.xmm3, e.xmm3, e.GetXmmConstPtr(XMMShiftBitsHighBytes));
+  e.vpor(e.xmm2, e.xmm2, e.xmm3);
+  e.vpshufb(i.dest, e.xmm2, e.GetXmmConstPtr(XMMByteSwapMask));
+}
+
+// Counts known to agree take the whole-vector shift; the rest the per-byte
+// one, which is as fast for counts known only at run time.
+template <typename ARGS>
+static void EmitShiftBits(X64Emitter& e, const ARGS& i, bool left) {
+  if (i.src2.is_constant) {
+    const vec128_t counts = i.src2.constant();
+    const uint8_t count = counts.u8[0] & 7;
+    bool uniform = true;
+    for (int k = 1; k < 16; ++k) {
+      uniform &= (counts.u8[k] & 7) == count;
+    }
+    if (uniform) {
+      EmitShiftBitsUniform(e, i.dest, GetInputRegOrConstant(e, i.src1, e.xmm0),
+                           left, count);
+      return;
+    }
+  }
+  EmitShiftBitsPerByte(e, i, left);
+}
+
+struct VECTOR_SHL_BITS_V128
+    : Sequence<VECTOR_SHL_BITS_V128,
+               I<OPCODE_VECTOR_SHL_BITS, V128Op, V128Op, V128Op>> {
+  static void Emit(X64Emitter& e, const EmitArgType& i) {
+    EmitShiftBits(e, i, true);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHL_BITS, VECTOR_SHL_BITS_V128);
+
+struct VECTOR_SHR_BITS_V128
+    : Sequence<VECTOR_SHR_BITS_V128,
+               I<OPCODE_VECTOR_SHR_BITS, V128Op, V128Op, V128Op>> {
+  static void Emit(X64Emitter& e, const EmitArgType& i) {
+    EmitShiftBits(e, i, false);
+  }
+};
+EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHR_BITS, VECTOR_SHR_BITS_V128);
+
+// ============================================================================
 // OPCODE_VECTOR_SHA
 // ============================================================================
 struct VECTOR_SHA_V128

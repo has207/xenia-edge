@@ -322,6 +322,10 @@ enum Opcode {
   OPCODE_LOAD_BARRIER,
   OPCODE_CHECK_PREEMPT,
   OPCODE_SINGLE_RANGE_QUIRK,
+  // vsl and vsr: the whole vector shifted by bits, each byte by the low 3 bits
+  // of its byte of src2, taking bits from the byte next to it
+  OPCODE_VECTOR_SHL_BITS,
+  OPCODE_VECTOR_SHR_BITS,
 
   __OPCODE_MAX_VALUE,  // Keep at end.
 };
