@@ -333,7 +333,9 @@ bool X64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
   PopStackpoint();
   ret();
   // todo: do some kind of sorting by alignment?
-  for (auto&& tail_item : tail_code_) {
+  // By index, so tails that a tail's callback adds are emitted too
+  for (size_t i = 0; i < tail_code_.size(); i++) {
+    TailEmitter& tail_item = tail_code_[i];
     if (tail_item.alignment) {
       align(tail_item.alignment);
     }
@@ -1695,11 +1697,31 @@ static constinit const vec128_t xmm_consts[] = {
     vec128b(1),
     // XMMQuietBit
     vec128i(0x00400000u),
+    // XMMDoubleToSingleTruncateMask
+    vec128q(0xFFFFFFFFE0000000ull),
     // XMMSingleRangeBias: takes a double's bits without the sign, shifted up
     // by one, from 2^-149 up to the smallest signed value
     vec128q(0x12C0000000000000ull),
     // XMMSingleRangeLimit: the last of them below 2^128
     vec128q(0xA29FFFFFFFFFFFFFull),
+    // XMMVmsumInverseGridBase: 1023 + 28 + 254, the biased exponent of the
+    // inverse grid plus the exponent sum
+    vec128i(1305),
+    // XMMVmsumGridSum: the grid's and the inverse grid's exponent fields add
+    // up to 2046
+    vec128q(2046ull << 52),
+    // XMMVmsum3Adjust and XMMVmsum4Adjust: -s * k and -s, for s the majority
+    // sign and k the number of products of the other sign, by the number of
+    // negative products
+    vec128q(0x8000000000000000ull, 0xBFF0000000000000ull),  // -0, -1
+    vec128q(0xBFF0000000000000ull, 0xBFF0000000000000ull),  // -1, -1
+    vec128q(0x3FF0000000000000ull, 0x3FF0000000000000ull),  // 1, 1
+    vec128q(0x8000000000000000ull, 0x3FF0000000000000ull),  // -0, 1
+    vec128q(0x8000000000000000ull, 0xBFF0000000000000ull),  // -0, -1
+    vec128q(0xBFF0000000000000ull, 0xBFF0000000000000ull),  // -1, -1
+    vec128q(0xC000000000000000ull, 0xBFF0000000000000ull),  // -2, -1
+    vec128q(0x3FF0000000000000ull, 0x3FF0000000000000ull),  // 1, 1
+    vec128q(0x8000000000000000ull, 0x3FF0000000000000ull),  // -0, 1
     // XMMVRefpStepMask
     vec128i(0x1FF),
     // XMMVRefpSlopeMask
