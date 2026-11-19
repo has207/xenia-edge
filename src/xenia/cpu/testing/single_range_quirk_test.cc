@@ -317,6 +317,63 @@ TEST_CASE("SINGLE_RANGE_FLAG", "[instr]") {
   }
 }
 
+// Operands known to be in the range, here rounded to single, aren't tested, but
+// an infinite or NaN one still takes precedence over another out of range.
+TEST_CASE("SINGLE_RANGE_FLAG_KNOWN_OPERANDS", "[instr]") {
+  struct Case {
+    uint64_t f1, f2, f3;
+    uint64_t sum, fused;  // sum = single(f1) + f2, fused = f2 * f3 + single(f1)
+  };
+  const Case cases[] = {
+      {kOne, kOne, kOne, 0x4000000000000000ull, 0x4000000000000000ull},
+      {kOne, k128, kOne, kNaN, kNaN},
+      {kOne, kOne, k128, 0x4000000000000000ull, kNaN},
+      {kOne, kBelowSingle, kOne, kNaN, kNaN},
+      {kOne, kSmallestSingle, kOne, kOne, kOne},
+      {kInf, k128, kOne, kInf, kInf},
+      {kNaN, k128, kOne, kNaN, kNaN},
+  };
+  struct Op {
+    void (*build)(HIRBuilder& b);
+    uint64_t Case::* expected;
+  };
+  const Op ops[] = {
+      {[](HIRBuilder& b) {
+         StoreFPR(b, 0,
+                  b.Add(b.ToSingle(LoadFPR(b, 1)), LoadFPR(b, 2),
+                        ARITHMETIC_SINGLE_RANGE));
+         b.Return();
+       },
+       &Case::sum},
+      {[](HIRBuilder& b) {
+         StoreFPR(
+             b, 0,
+             b.MulAdd(LoadFPR(b, 2), LoadFPR(b, 3), b.ToSingle(LoadFPR(b, 1)),
+                      false, ARITHMETIC_SINGLE_RANGE));
+         b.Return();
+       },
+       &Case::fused},
+  };
+  // One function at a time: each installs the process-wide MMIO handler.
+  for (const Op& op : ops) {
+    TestFunction test(op.build);
+    for (const Case& c : cases) {
+      INFO("operands 0x" << std::hex << c.f1 << " 0x" << c.f2 << " 0x" << c.f3);
+      test.Run(
+          [&](PPCContext* ctx) {
+            SetF64Bits(ctx, 1, c.f1);
+            SetF64Bits(ctx, 2, c.f2);
+            SetF64Bits(ctx, 3, c.f3);
+          },
+          [&](PPCContext* ctx) {
+            uint64_t bits;
+            std::memcpy(&bits, &ctx->f[0], sizeof(bits));
+            REQUIRE(bits == c.*op.expected);
+          });
+    }
+  }
+}
+
 // The proof follows a widened single through a guest FPR across blocks.
 TEST_CASE("SINGLE_RANGE_QUIRK_FOLD_ACROSS_BLOCKS", "[instr]") {
   REQUIRE(SimplifiesAway([](HIRBuilder& b) {

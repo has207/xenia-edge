@@ -16,6 +16,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/byte_order.h"
 #include "xenia/base/math.h"
+#include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/hir/hir_builder.h"
 #include "xenia/cpu/ppc/ppc_estimates.h"
 namespace xe {
@@ -1812,6 +1813,45 @@ hir::Instr* Value::GetDefSkipAssigns() {
     return def->GetDestDefSkipAssigns();
   } else {
     return nullptr;
+  }
+}
+bool Value::IsInSingleRange(int depth) const {
+  if (type != FLOAT64_TYPE) {
+    return false;
+  }
+  if (IsConstant()) {
+    const uint64_t magnitude = constant.u64 & 0x7FFFFFFFFFFFFFFFull;
+    return !magnitude ||
+           (magnitude >= 0x36A0000000000000ull &&
+            magnitude < 0x47F0000000000000ull) ||
+           magnitude >= 0x7FF0000000000000ull;
+  }
+  if (flags & VALUE_IN_SINGLE_RANGE) {
+    return true;
+  }
+  const Instr* def_instr = const_cast<Value*>(this)->GetDefSkipAssigns();
+  if (!def_instr || depth <= 0) {
+    return false;
+  }
+  auto in_range = [depth](const Value* value) {
+    return value && value->IsInSingleRange(depth - 1);
+  };
+  switch (def_instr->GetOpcodeNum()) {
+    case OPCODE_TO_SINGLE:
+      // Under --no_round_to_single the x64 TO_SINGLE is an identity.
+      return !cvars::no_round_to_single;
+    case OPCODE_UNPACK_SINGLE:
+      return true;
+    case OPCODE_CONVERT:
+      return def_instr->src1.value &&
+             def_instr->src1.value->type == FLOAT32_TYPE;
+    case OPCODE_SELECT:
+      return in_range(def_instr->src2.value) && in_range(def_instr->src3.value);
+    case OPCODE_NEG:
+    case OPCODE_ABS:
+      return in_range(def_instr->src1.value);
+    default:
+      return false;
   }
 }
 hir::Instr* Value::GetDefTunnelMovs(unsigned int* tunnel_flags) {

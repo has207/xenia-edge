@@ -607,6 +607,9 @@ class Value {
   void CountLeadingZeros(const Value* other);
   bool Compare(Opcode opcode, Value* other);
   hir::Instr* GetDefSkipAssigns();
+  // Whether a double can never set off the single-precision quirk: zero, a
+  // magnitude in [2^-149, 2^128), infinity or a NaN. Every single is one.
+  bool IsInSingleRange(int depth = 4) const;
   // tunnel_flags is updated to the kinds we actually traversed
   hir::Instr* GetDefTunnelMovs(unsigned int* tunnel_flags);
 
