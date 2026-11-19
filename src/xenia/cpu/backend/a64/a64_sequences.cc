@@ -808,20 +808,35 @@ static void BranchIfOutsideSingleRange(A64Emitter& e, const DReg* operands,
 // ARITHMETIC_SINGLE_RANGE, ahead of the operation: the default QNaN if an
 // operand is nonzero and outside [2^-149, 2^128) and none is infinite or NaN,
 // see PPCHIRBuilder::SingleOutOfRangeOperand. A branch rather than a select
-// keeps the check out of the result's dependency chain. Returns a label to bind
-// after the operation, if one's needed. The tail makes no call, so both labels
-// keep the remap bound.
+// keeps the check out of the result's dependency chain. Only the operands that
+// might be out of range are tested, and none at all when every one is known to
+// be in it: an infinite or NaN operand only matters once another is out of
+// range, and the tail tests all of them for that. operands are instr's sources
+// in order. Returns a label to bind after the operation, if one's needed. The
+// tail makes no call, so both labels keep the remap bound.
 static Xbyak_aarch64::Label* EmitSingleRangeCheck(
-    A64Emitter& e, uint32_t flags, DReg dest,
+    A64Emitter& e, const hir::Instr* instr, DReg dest,
     std::initializer_list<DReg> operands) {
-  if (!(flags & ARITHMETIC_SINGLE_RANGE)) {
+  if (!(instr->flags & ARITHMETIC_SINGLE_RANGE)) {
+    return nullptr;
+  }
+  std::vector<DReg> regs(operands);
+  const hir::Value* sources[3] = {
+      instr->src1.value, instr->src2.value,
+      regs.size() > 2 ? instr->src3.value : nullptr};
+  std::vector<DReg> unknown;
+  for (size_t n = 0; n < regs.size(); ++n) {
+    if (!sources[n]->IsInSingleRange()) {
+      unknown.push_back(regs[n]);
+    }
+  }
+  if (unknown.empty()) {
     return nullptr;
   }
   // Ahead of the branch, as the quirk skips the operation that would do this
   e.ChangeFpcrMode(FPCRMode::Fpu);
   auto& done = e.NewCachedLabel();
   auto& resume = e.NewCachedLabel();
-  std::vector<DReg> regs(operands);
   auto& out_of_range = e.AddToTail(
       [dest, regs, &done, &resume](A64Emitter& e, Xbyak_aarch64::Label& tail) {
         // An infinite or NaN operand takes precedence
@@ -836,7 +851,7 @@ static Xbyak_aarch64::Label* EmitSingleRangeCheck(
         e.fmov(dest, e.x0);
         e.b(done);
       });
-  BranchIfOutsideSingleRange(e, regs.data(), regs.size(), out_of_range);
+  BranchIfOutsideSingleRange(e, unknown.data(), unknown.size(), out_of_range);
   e.LKeepingRemapBound(resume);
   return &done;
 }
@@ -943,8 +958,7 @@ struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
-    auto* range_done =
-        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
+    auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Add);
     if (range_done) {
       e.LKeepingRemapBound(*range_done);
@@ -1261,8 +1275,7 @@ struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
-    auto* range_done =
-        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
+    auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Sub);
     if (range_done) {
       e.LKeepingRemapBound(*range_done);
@@ -1511,8 +1524,7 @@ struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
-    auto* range_done =
-        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
+    auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Mul);
     if (range_done) {
       e.LKeepingRemapBound(*range_done);
@@ -4410,8 +4422,7 @@ struct MUL_ADD_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
-    auto* range_done =
-        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2, s3});
+    auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan(e, i.dest, s1, s2, s3, /*is_sub=*/false,
                       i.instr->flags & ARITHMETIC_NEGATE_RESULT);
     if (range_done) {
@@ -4521,8 +4532,7 @@ struct MUL_SUB_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
-    auto* range_done =
-        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2, s3});
+    auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan(e, i.dest, s1, s2, s3, /*is_sub=*/true,
                       i.instr->flags & ARITHMETIC_NEGATE_RESULT);
     if (range_done) {
