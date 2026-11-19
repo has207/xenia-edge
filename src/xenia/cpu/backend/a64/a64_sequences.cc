@@ -3417,13 +3417,14 @@ EMITTER_OPCODE_TABLE(OPCODE_CAST, CAST_I32_F32, CAST_I64_F64, CAST_F32_I32,
 // ============================================================================
 struct DID_SATURATE
     : Sequence<DID_SATURATE, I<OPCODE_DID_SATURATE, I8Op, V128Op>> {
+  // The PPC front end passes the lanes that saturated (see SetSatIfAny) so
+  // this is whether any is nonzero
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    // TODO(has207): Implement saturation tracking. ARM64 NEON saturating
-    // ops (sqadd/uqadd/etc.) set FPSR.QC — clear it before the saturating
-    // op, then read it here with mrs. Requires coordinating with all
-    // ARITHMETIC_SATURATE vector paths. Always returns 0 for now (same as
-    // x64 backend).
-    e.mov(i.dest, 0);
+    int s = SrcVReg(e, i.src1, 0);
+    e.umaxv(SReg(0), VReg(s).s4);
+    e.umov(e.w0, VReg(0).s4[0]);
+    e.cmp(e.w0, 0);
+    e.cset(i.dest, Xbyak_aarch64::NE);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_DID_SATURATE, DID_SATURATE);
