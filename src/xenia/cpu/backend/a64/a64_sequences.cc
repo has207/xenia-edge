@@ -9,6 +9,7 @@
 
 #include "xenia/cpu/backend/a64/a64_sequences.h"
 
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -28,6 +29,7 @@
 #include "xenia/cpu/cpu_flags.h"
 #include "xenia/cpu/hir/instr.h"
 #include "xenia/cpu/ppc/ppc_context.h"
+#include "xenia/cpu/ppc/ppc_estimates.h"
 
 namespace xe {
 namespace cpu {
@@ -4546,44 +4548,47 @@ EMITTER_OPCODE_TABLE(OPCODE_MUL_SUB, MUL_SUB_F64, MUL_SUB_V128);
 // ============================================================================
 // OPCODE_POW2
 // ============================================================================
-static void LoadEstConst(A64Emitter& e, int vreg_idx, int const_idx) {
-  e.ldr(QReg(vreg_idx),
-        ptr(e.GetBackendCtxReg(),
-            static_cast<int32_t>(offsetof(A64BackendContext, est_consts) +
-                                 const_idx * 16)));
-}
-
-// Horner in v2/v3 with the variable in v1, alternating so each fmla has its
-// accumulator in the other register. Returns the register holding the result.
-static int EmitEstPoly(A64Emitter& e, int first, int count) {
-  int acc = 2;
-  LoadEstConst(e, acc, first + count - 1);
-  for (int k = count - 2; k >= 0; k--) {
-    const int next = acc ^ 1;  // 2 <-> 3
-    LoadEstConst(e, next, first + k);
-    e.fmla(VReg(next).s4, VReg(acc).s4, VReg(1).s4);
-    acc = next;
+// vrefp, vexptefp and vlogefp are table driven, and NEON has no gather. Each
+// lane's index (width bits from lsb) comes out through x17 (lanes 0 and 1) and
+// x0 (lanes 2 and 3); its entry, from the table at x16, is loaded into a GPR,
+// paired with its neighbor and moved into v1. Only v1 is written, so v0 can
+// carry a value across. Their only FP op is the NaN test, which no FPCR mode
+// changes, so the mode is left alone.
+static void GatherEstimateEntries(A64Emitter& e, int lsb, int width) {
+  for (int half = 0; half < 2; ++half) {
+    const XReg& lanes = half ? e.x0 : e.x17;
+    e.ubfx(e.x1, lanes, lsb, width);
+    e.ldr(e.w2, ptr(e.x16, e.x1, LSL, 2));
+    e.ubfx(e.x1, lanes, 32 + lsb, width);
+    e.ldr(e.w3, ptr(e.x16, e.x1, LSL, 2));
+    e.orr(e.x2, e.x2, e.x3, LSL, 32);
+    if (half) {
+      e.ins(VReg(1).d2[1], e.x2);
+    } else {
+      e.fmov(DReg(1), e.x2);
+    }
   }
-  return acc;
 }
 
-// Snap onto the guest's 2^-11 estimate grid. Not cosmetic: it is what keeps
-// 2^0 == 1.0 and log2(2^n) == n exact once the math is a polynomial.
-static void EmitEstGridSnap(A64Emitter& e, int r, int tmp) {
-  LoadEstConst(e, tmp, kEstScale);
-  e.fmul(VReg(r).s4, VReg(r).s4, VReg(tmp).s4);
-  e.frintn(VReg(r).s4, VReg(r).s4);
-  LoadEstConst(e, tmp, kEstUnscale);
-  e.fmul(VReg(r).s4, VReg(r).s4, VReg(tmp).s4);
+template <uint32_t (*Estimate)(uint32_t)>
+static void LoadEstimateConstant(A64Emitter& e, int d, vec128_t value) {
+  for (int k = 0; k < 4; ++k) {
+    value.u32[k] = Estimate(value.u32[k]);
+  }
+  LoadV128Const(e, d, value);
 }
 
-// NaN in, quieted NaN out. Consumes the source and writes the destination.
-static void EmitEstQuietNan(A64Emitter& e, int r, int s, int d) {
-  e.fcmeq(VReg(0).s4, VReg(s).s4, VReg(s).s4);  // all-ones where NOT NaN
-  LoadEstConst(e, 1, kEstQuietBit);
-  e.orr(VReg(1).b16, VReg(s).b16, VReg(1).b16);
-  e.bif(VReg(r).b16, VReg(1).b16, VReg(0).b16);
-  e.mov(VReg(d).b16, VReg(r).b16);
+static void LoadInfinity(A64Emitter& e, int r) {
+  e.movi(VReg(r).s4, 0x7F, LSL, 24);
+  e.orr(VReg(r).s4, 0x80, LSL, 16);
+}
+
+// v[d] = v[s] | 0x00400000 where v[s] is a NaN. Clobbers v1 and v2.
+static void QuietNanLanes(A64Emitter& e, int d, int s) {
+  e.fcmeq(VReg(1).s4, VReg(s).s4, VReg(s).s4);
+  e.movi(VReg(2).s4, 0x40, LSL, 16);
+  e.orr(VReg(2).b16, VReg(s).b16, VReg(2).b16);
+  e.bif(VReg(d).b16, VReg(2).b16, VReg(1).b16);
 }
 
 struct POW2_F32 : Sequence<POW2_F32, I<OPCODE_POW2, F32Op, F32Op>> {
@@ -4596,41 +4601,57 @@ struct POW2_F64 : Sequence<POW2_F64, I<OPCODE_POW2, F64Op, F64Op>> {
     assert_always("POW2_F64 should not be emitted");
   }
 };
+// vexptefp, as ppc::EstimatePow2: the input as fixed point with 11 fraction
+// bits, floored, whose integer part is the result's exponent and whose
+// fraction indexes the table
 struct POW2_V128 : Sequence<POW2_V128, I<OPCODE_POW2, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    EmitWithVmxFpcr(e, [&] {
-      const int d = i.dest.reg().getIdx();
-      int s = SrcVReg(e, i.src1, 0);
-      if (s < 4) {
-        // A constant landed in the scratch bank, which the math below needs.
-        e.mov(VReg(d).b16, VReg(s).b16);
-        s = d;
-      }
-      // 2^x = 2^floor(x) * 2^frac(x). Splitting on floor rather than nearest
-      // puts the second factor in [1,2), so it lands on the grid directly.
-      e.frintm(VReg(0).s4, VReg(s).s4);
-      e.fsub(VReg(1).s4, VReg(s).s4, VReg(0).s4);
-      e.fcvtzs(VReg(0).s4, VReg(0).s4);
-      e.shl(VReg(0).s4, VReg(0).s4, 23);
-      LoadEstConst(e, 2, kEstOne);
-      e.add(VReg(0).s4, VReg(0).s4, VReg(2).s4);  // (127 + n) << 23
-      const int r = EmitEstPoly(e, kEstExp2Poly, 6);
-      EmitEstGridSnap(e, r, r ^ 1);
-      e.fmul(VReg(r).s4, VReg(r).s4, VReg(0).s4);
+    const int d = i.dest.reg().getIdx();
+    if (i.src1.is_constant) {
+      LoadEstimateConstant<ppc::EstimatePow2>(e, d, i.src1.constant());
+      return;
+    }
+    const int s = i.src1.reg().getIdx();
 
-      // Out-of-range and non-finite inputs never reached the guest's
-      // estimator. Denormals need no case of their own: floor is 0 either way,
-      // so the grid snap returns exactly 1.0.
-      LoadEstConst(e, 0, kEstExp2Max);
-      e.fcmge(VReg(0).s4, VReg(s).s4, VReg(0).s4);
-      LoadEstConst(e, 1, kEstPosInf);
-      e.bit(VReg(r).b16, VReg(1).b16, VReg(0).b16);
-      LoadEstConst(e, 0, kEstExp2Min);
-      e.fcmgt(VReg(0).s4, VReg(0).s4, VReg(s).s4);
-      e.movi(VReg(1).s4, 0);
-      e.bit(VReg(r).b16, VReg(1).b16, VReg(0).b16);
-      EmitEstQuietNan(e, r, s, d);
-    });
+    // Fixed point with 15 fraction bits, truncated and negated if negative:
+    // the mantissa with its implicit bit, shifted right by 135 - exponent
+    e.shl(VReg(0).s4, VReg(s).s4, 8);
+    e.orr(VReg(0).s4, 0x80, LSL, 24);
+    e.shl(VReg(1).s4, VReg(s).s4, 1);
+    e.ushr(VReg(1).s4, VReg(1).s4, 24);
+    e.movi(VReg(2).s4, 143);
+    e.sub(VReg(1).s4, VReg(1).s4, VReg(2).s4);
+    e.ushl(VReg(0).s4, VReg(0).s4, VReg(1).s4);
+    e.sshr(VReg(1).s4, VReg(s).s4, 31);
+    e.eor(VReg(0).b16, VReg(0).b16, VReg(1).b16);
+    e.sub(VReg(0).s4, VReg(0).s4, VReg(1).s4);
+    e.ldr(e.x16,
+          e.BackendCtxPtr(offsetof(A64BackendContext, vexptefp_table_address)));
+    e.umov(e.x17, VReg(0).d2[0]);
+    e.umov(e.x0, VReg(0).d2[1]);
+    GatherEstimateEntries(e, 4, 11);
+
+    // The integer part plus 126, as the entry carries the implicit bit into
+    // the exponent. Below -126 the result is zero.
+    e.sshr(VReg(0).s4, VReg(0).s4, 15);
+    e.movi(VReg(2).s4, 126);
+    e.add(VReg(0).s4, VReg(0).s4, VReg(2).s4);
+    e.cmlt(VReg(2).s4, VReg(0).s4, 0);
+    e.shl(VReg(0).s4, VReg(0).s4, 23);
+    e.add(VReg(0).s4, VReg(0).s4, VReg(1).s4);
+    e.bic(VReg(0).b16, VReg(0).b16, VReg(2).b16);
+
+    // From 128 up (and infinity): infinity, or zero if negative
+    e.shl(VReg(1).s4, VReg(s).s4, 1);
+    e.ushr(VReg(1).s4, VReg(1).s4, 24);
+    e.movi(VReg(2).s4, 133);
+    e.cmhi(VReg(1).s4, VReg(1).s4, VReg(2).s4);
+    LoadInfinity(e, 2);
+    e.sshr(VReg(3).s4, VReg(s).s4, 31);
+    e.bic(VReg(2).b16, VReg(2).b16, VReg(3).b16);
+    e.bit(VReg(0).b16, VReg(2).b16, VReg(1).b16);
+    QuietNanLanes(e, 0, s);
+    e.mov(VReg(d).b16, VReg(0).b16);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_POW2, POW2_F32, POW2_F64, POW2_V128);
@@ -4648,44 +4669,48 @@ struct LOG2_F64 : Sequence<LOG2_F64, I<OPCODE_LOG2, F64Op, F64Op>> {
     assert_always("LOG2_F64 should not be emitted");
   }
 };
+// vlogefp, as ppc::EstimateLog2: the exponent less 127, plus the table entry
+// for the top 11 mantissa bits, in 2048ths
 struct LOG2_V128 : Sequence<LOG2_V128, I<OPCODE_LOG2, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    EmitWithVmxFpcr(e, [&] {
-      const int d = i.dest.reg().getIdx();
-      int s = SrcVReg(e, i.src1, 0);
-      if (s < 4) {
-        e.mov(VReg(d).b16, VReg(s).b16);
-        s = d;
-      }
-      // log2(x) = exponent(x) + log2(mantissa(x)). Negatives are masked off
-      // below, so the sign bit can ride along in the exponent shift.
-      e.ushr(VReg(0).s4, VReg(s).s4, 23);
-      LoadEstConst(e, 2, kEstInt127);
-      e.sub(VReg(0).s4, VReg(0).s4, VReg(2).s4);
-      e.scvtf(VReg(0).s4, VReg(0).s4);
-      LoadEstConst(e, 1, kEstMantissaMask);
-      e.and_(VReg(1).b16, VReg(s).b16, VReg(1).b16);
-      LoadEstConst(e, 2, kEstOne);
-      e.orr(VReg(1).b16, VReg(1).b16, VReg(2).b16);  // mantissa in [1,2)
-      e.fsub(VReg(1).s4, VReg(1).s4, VReg(2).s4);
-      const int r = EmitEstPoly(e, kEstLog2Poly, 7);
-      e.fadd(VReg(r).s4, VReg(r).s4, VReg(0).s4);
-      EmitEstGridSnap(e, r, r ^ 1);
+    const int d = i.dest.reg().getIdx();
+    if (i.src1.is_constant) {
+      LoadEstimateConstant<ppc::EstimateLog2>(e, d, i.src1.constant());
+      return;
+    }
+    const int s = i.src1.reg().getIdx();
 
-      LoadEstConst(e, 1, kEstPosInf);
-      e.fcmeq(VReg(0).s4, VReg(s).s4, VReg(1).s4);
-      e.bit(VReg(r).b16, VReg(1).b16, VReg(0).b16);
-      e.sshr(VReg(0).s4, VReg(s).s4, 31);
-      LoadEstConst(e, 1, kEstQNaN);
-      e.bit(VReg(r).b16, VReg(1).b16, VReg(0).b16);
-      // Zero and denormal both reach the estimator as zero, so both give -inf.
-      LoadEstConst(e, 0, kEstPosInf);
-      e.and_(VReg(0).b16, VReg(s).b16, VReg(0).b16);
-      e.cmeq(VReg(0).s4, VReg(0).s4, 0);
-      LoadEstConst(e, 1, kEstNegInf);
-      e.bit(VReg(r).b16, VReg(1).b16, VReg(0).b16);
-      EmitEstQuietNan(e, r, s, d);
-    });
+    e.ldr(e.x16,
+          e.BackendCtxPtr(offsetof(A64BackendContext, vlogefp_table_address)));
+    e.umov(e.x17, VReg(s).d2[0]);
+    e.umov(e.x0, VReg(s).d2[1]);
+    GatherEstimateEntries(e, 12, 11);
+
+    // ((exponent - 127) << 11) + entry is exact as a float, and so is
+    // dividing it by 2048
+    e.shl(VReg(0).s4, VReg(s).s4, 1);
+    e.ushr(VReg(0).s4, VReg(0).s4, 24);
+    e.movi(VReg(2).s4, 127);
+    e.sub(VReg(0).s4, VReg(0).s4, VReg(2).s4);
+    e.shl(VReg(0).s4, VReg(0).s4, 11);
+    e.add(VReg(0).s4, VReg(0).s4, VReg(1).s4);
+    e.scvtf(VReg(0).s4, VReg(0).s4, 11);
+
+    // A negative input gives the default NaN, infinity gives infinity, and
+    // zero and denormals give -infinity (even when negative)
+    e.sshr(VReg(1).s4, VReg(s).s4, 31);
+    e.movi(VReg(2).s4, 0x7F, LSL, 24);
+    e.orr(VReg(2).s4, 0xC0, LSL, 16);
+    e.bit(VReg(0).b16, VReg(2).b16, VReg(1).b16);
+    LoadInfinity(e, 2);
+    e.cmeq(VReg(1).s4, VReg(s).s4, VReg(2).s4);
+    e.bit(VReg(0).b16, VReg(2).b16, VReg(1).b16);
+    e.and_(VReg(1).b16, VReg(s).b16, VReg(2).b16);
+    e.cmeq(VReg(1).s4, VReg(1).s4, 0);
+    e.mvni(VReg(2).s4, 0x7F, MSL, 16);
+    e.bit(VReg(0).b16, VReg(2).b16, VReg(1).b16);
+    QuietNanLanes(e, 0, s);
+    e.mov(VReg(d).b16, VReg(0).b16);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
@@ -4926,44 +4951,114 @@ struct RECIP_F32 : Sequence<RECIP_F32, I<OPCODE_RECIP, F32Op, F32Op>> {
     e.fdiv(i.dest, e.s2, src);
   }
 };
+// fres. While the result is a normal single (an input exponent from 895 to
+// 1148) it is exact: its mantissa comes from the table, and its exponent is
+// 2045 less the input's. Anything else (denormal and overflowing results,
+// zero, infinity, NaNs and denormal inputs) calls
+// ppc::EstimateReciprocalSingle from tail code. Neither path needs an FPCR
+// mode.
 struct RECIP_F64 : Sequence<RECIP_F64, I<OPCODE_RECIP, F64Op, F64Op>> {
+  static uint64_t EmulateFres(void*, uint64_t bits) {
+    return std::bit_cast<uint64_t>(
+        ppc::EstimateReciprocalSingle(std::bit_cast<double>(bits)));
+  }
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    e.ChangeFpcrMode(FPCRMode::Fpu);
-    DReg src = i.src1.is_constant ? e.d0 : DReg(i.src1.reg().getIdx());
+    const DReg dest = i.dest;
     if (i.src1.is_constant) {
-      union {
-        double d;
-        uint64_t u;
-      } c;
-      c.d = i.src1.constant();
-      e.mov(e.x0, c.u);
-      e.fmov(e.d0, e.x0);
+      e.mov(e.x0, std::bit_cast<uint64_t>(
+                      ppc::EstimateReciprocalSingle(i.src1.constant())));
+      e.fmov(dest, e.x0);
+      return;
     }
-    e.fmov(e.d2, 1.0);
-    e.fdiv(i.dest, e.d2, src);
+    const DReg src(i.src1.reg().getIdx());
+
+    // The thunk returns in the Fpu mode, while the hot path may hold a VMX one
+    const FPCRMode held_mode = e.fpcr_mode();
+    Xbyak_aarch64::Label& done = e.NewCachedLabel();
+    Xbyak_aarch64::Label& call = e.AddToTail(
+        [src, dest, held_mode, &done](A64Emitter& e, Xbyak_aarch64::Label&) {
+          e.fmov(e.x1, src);
+          e.mov(e.x0, reinterpret_cast<uint64_t>(&EmulateFres));
+          e.ldr(e.x9, e.BackendCtxPtr(offsetof(A64BackendContext,
+                                               guest_to_host_thunk_address)));
+          e.blr(e.x9);
+          e.NoteCallClobbersRemapBound();
+          e.fmov(dest, e.x0);
+          if (held_mode != FPCRMode::Unknown && held_mode != FPCRMode::Fpu) {
+            e.ReloadFpcrMode(held_mode);
+          }
+          e.b(done);
+        });
+
+    e.fmov(e.x0, src);
+    e.ubfx(e.x1, e.x0, 52, 11);
+    e.sub(e.w2, e.w1, 895);
+    e.cmp(e.w2, 1148 - 895);
+    e.b(HI, call);
+
+    // Sign | (2045 - exponent) << 52 | the table's mantissa
+    e.ldr(e.x16,
+          e.BackendCtxPtr(offsetof(A64BackendContext, fres_table_address)));
+    e.ubfx(e.x2, e.x0, 45, 7);
+    e.ldr(e.x2, ptr(e.x16, e.x2, LSL, 3));
+    e.mov(e.w3, 2045);
+    e.sub(e.x1, e.x3, e.x1);
+    e.and_(e.x0, e.x0, 0x8000000000000000ull);
+    e.orr(e.x0, e.x0, e.x1, LSL, 52);
+    e.orr(e.x0, e.x0, e.x2);
+    e.fmov(dest, e.x0);
+    e.L(done);
   }
 };
+// vrefp, as ppc::EstimateReciprocal: the top 5 mantissa bits pick a segment
+// from vrefp_table, and the result mantissa is its base minus its slope times
+// the next 9 bits
 struct RECIP_V128 : Sequence<RECIP_V128, I<OPCODE_RECIP, V128Op, V128Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    EmitWithVmxFpcr(e, [&] {
-      if (i.src1.is_constant) {
-        LoadV128Const(e, 1, i.src1.constant());
-      } else {
-        e.mov(VReg(1).b16, VReg(i.src1.reg().getIdx()).b16);
-      }
-      // Flush input denormals.
-      if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
-        FlushDenormals_V128(e, 1);  // scratch v2, v3
-      }
-      auto d = VReg(i.dest.reg().getIdx()).s4;
-      // Load 1.0f vector.
-      e.fmov(VReg(0).s4, 1.0f);
-      e.fdiv(d, VReg(0).s4, VReg(1).s4);
-      // Flush output denormals.
-      if (!e.IsFeatureEnabled(xe::arm64::kA64FZFlushesInputs)) {
-        FlushDenormals_V128(e, i.dest.reg().getIdx(), 0, 1);
-      }
-    });
+    const int d = i.dest.reg().getIdx();
+    if (i.src1.is_constant) {
+      LoadEstimateConstant<ppc::EstimateReciprocal>(e, d, i.src1.constant());
+      return;
+    }
+    const int s = i.src1.reg().getIdx();
+
+    e.add(e.x16, e.GetBackendCtxReg(),
+          static_cast<uint32_t>(offsetof(A64BackendContext, vrefp_table)));
+    e.umov(e.x17, VReg(s).d2[0]);
+    e.umov(e.x0, VReg(s).d2[1]);
+    GatherEstimateEntries(e, 18, 5);
+
+    // Mantissa, with the implicit bit: base - slope * step
+    e.shl(VReg(2).s4, VReg(s).s4, 14);
+    e.ushr(VReg(2).s4, VReg(2).s4, 23);
+    e.ushr(VReg(3).s4, VReg(1).s4, 16);
+    e.shl(VReg(1).s4, VReg(1).s4, 16);
+    e.ushr(VReg(1).s4, VReg(1).s4, 7);
+    e.mls(VReg(1).s4, VReg(3).s4, VReg(2).s4);
+
+    // Exponent: 253 - the input's, less the implicit bit the mantissa adds
+    e.shl(VReg(2).s4, VReg(s).s4, 1);
+    e.ushr(VReg(2).s4, VReg(2).s4, 24);
+    e.movi(VReg(3).s4, 252);
+    e.sub(VReg(3).s4, VReg(3).s4, VReg(2).s4);
+    e.shl(VReg(3).s4, VReg(3).s4, 23);
+    e.add(VReg(1).s4, VReg(1).s4, VReg(3).s4);
+    e.movi(VReg(3).s4, 0x80, LSL, 24);
+    e.and_(VReg(0).b16, VReg(s).b16, VReg(3).b16);
+    e.orr(VReg(1).b16, VReg(1).b16, VReg(0).b16);
+
+    // An exponent from 253 up (and infinity) gives a signed zero, zero and
+    // denormals a signed infinity, and a NaN comes back quiet
+    e.movi(VReg(3).s4, 253);
+    e.cmhs(VReg(3).s4, VReg(2).s4, VReg(3).s4);
+    e.bit(VReg(1).b16, VReg(0).b16, VReg(3).b16);
+    e.cmeq(VReg(3).s4, VReg(2).s4, 0);
+    e.orr(VReg(0).s4, 0x7F, LSL, 24);
+    e.orr(VReg(0).s4, 0x80, LSL, 16);
+    e.bit(VReg(1).b16, VReg(0).b16, VReg(3).b16);
+    e.mov(VReg(0).b16, VReg(1).b16);
+    QuietNanLanes(e, 0, s);
+    e.mov(VReg(d).b16, VReg(0).b16);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);

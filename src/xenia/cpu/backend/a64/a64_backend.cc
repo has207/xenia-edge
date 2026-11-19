@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <cstddef>
 #include <cstring>
 #include <utility>
@@ -42,6 +43,7 @@
 #include "xenia/cpu/breakpoint.h"
 #include "xenia/cpu/mmio_handler.h"
 #include "xenia/cpu/ppc/ppc_context.h"
+#include "xenia/cpu/ppc/ppc_estimates.h"
 #include "xenia/cpu/processor.h"
 #include "xenia/cpu/stack_walker.h"
 #include "xenia/cpu/thread_state.h"
@@ -1939,6 +1941,32 @@ void A64Backend::UninstallBreakpoint(Breakpoint* breakpoint) {
 static_assert(sizeof(A64BackendContext) < 4096,
               "A64BackendContext must fit in the granule before the context");
 
+// The vexptefp, vlogefp and fres tables, read back from ppc_estimates.cc:
+// vexptefp of i/2048 less the exponent of 2^0's, which leaves the implicit bit
+// at bit 23, vlogefp of 1 + i/2048 in 2048ths, and the mantissa of fres of
+// 1 + i/128
+struct EstimateTables {
+  uint32_t pow2[2048];
+  uint32_t log2[2048];
+  uint64_t fres[128];
+
+  EstimateTables() {
+    for (uint32_t i = 0; i < 2048; ++i) {
+      pow2[i] = ppc::EstimatePow2(std::bit_cast<uint32_t>(i / 2048.0f)) -
+                (126u << 23);
+      log2[i] = static_cast<uint32_t>(
+          std::bit_cast<float>(ppc::EstimateLog2(0x3F800000 | (i << 12))) *
+          2048.0f);
+    }
+    for (uint32_t i = 0; i < 128; ++i) {
+      fres[i] = std::bit_cast<uint64_t>(
+                    ppc::EstimateReciprocalSingle(1.0 + i / 128.0)) &
+                0x000FFFFFFFFFFFFFull;
+    }
+  }
+};
+static const EstimateTables estimate_tables;
+
 void A64Backend::InitializeBackendContext(void* ctx) {
   auto* a64_ctx = BackendContextForGuestContext(ctx);
   std::memset(a64_ctx, 0, sizeof(A64BackendContext));
@@ -1972,44 +2000,24 @@ void A64Backend::InitializeBackendContext(void* ctx) {
   a64_ctx->preempt_yield_handler_address =
       reinterpret_cast<uint64_t>(&preempt_yield_handler);
 
-  auto set_est = [&](int index, float value) {
-    uint32_t bits;
-    std::memcpy(&bits, &value, sizeof(bits));
-    for (int lane = 0; lane < 4; lane++) {
-      a64_ctx->est_consts[index][lane] = bits;
-    }
-  };
-  auto set_est_bits = [&](int index, uint32_t bits) {
-    for (int lane = 0; lane < 4; lane++) {
-      a64_ctx->est_consts[index][lane] = bits;
-    }
-  };
-  // 2^f on [0,1), max relative error 7.7e-08.
-  set_est(kEstExp2Poly + 0, 0.9999999266823865f);
-  set_est(kEstExp2Poly + 1, 0.6931530239113992f);
-  set_est(kEstExp2Poly + 2, 0.24015381838022493f);
-  set_est(kEstExp2Poly + 3, 0.055826172900559086f);
-  set_est(kEstExp2Poly + 4, 0.008989127362479102f);
-  set_est(kEstExp2Poly + 5, 0.0018777841277241077f);
-  // log2(1+u) on [0,1], max absolute error 1.85e-06.
-  set_est(kEstLog2Poly + 0, 1.8456866772102942e-06f);
-  set_est(kEstLog2Poly + 1, 1.4424953159391898f);
-  set_est(kEstLog2Poly + 2, -0.7177910762015521f);
-  set_est(kEstLog2Poly + 3, 0.4565216600899004f);
-  set_est(kEstLog2Poly + 4, -0.2765407398023532f);
-  set_est(kEstLog2Poly + 5, 0.12100223739860312f);
-  set_est(kEstLog2Poly + 6, -0.025691088797142478f);
-  set_est(kEstScale, 2048.0f);
-  set_est(kEstUnscale, 1.0f / 2048.0f);
-  set_est(kEstExp2Max, 128.0f);
-  set_est(kEstExp2Min, -126.0f);
-  set_est_bits(kEstOne, 0x3F800000u);
-  set_est_bits(kEstInt127, 127u);
-  set_est_bits(kEstPosInf, 0x7F800000u);
-  set_est_bits(kEstNegInf, 0xFF800000u);
-  set_est_bits(kEstQNaN, 0x7FC00000u);
-  set_est_bits(kEstMantissaMask, 0x007FFFFFu);
-  set_est_bits(kEstQuietBit, 0x00400000u);
+  a64_ctx->vexptefp_table_address =
+      reinterpret_cast<uint64_t>(estimate_tables.pow2);
+  a64_ctx->vlogefp_table_address =
+      reinterpret_cast<uint64_t>(estimate_tables.log2);
+  a64_ctx->fres_table_address =
+      reinterpret_cast<uint64_t>(estimate_tables.fres);
+
+  // Each segment's base and slope, read back from ppc::EstimateReciprocal at
+  // the segment's first two steps. The base always has bit 23 set, so the
+  // masked mantissas differ by exactly the slope.
+  for (uint32_t segment = 0; segment < 32; ++segment) {
+    uint32_t first = 0x3F800000 | (segment << 18);
+    uint32_t mantissa = ppc::EstimateReciprocal(first) & 0x7FFFFF;
+    uint32_t next = ppc::EstimateReciprocal(first | (1 << 9)) & 0x7FFFFF;
+    uint32_t base = 0x800000 | mantissa;
+    assert_zero(base & 0x1FF);
+    a64_ctx->vrefp_table[segment] = ((mantissa - next) << 16) | (base >> 9);
+  }
 
   a64_ctx->stackpoints = AllocStackpoints();
   a64_ctx->dynamic_call_cache = nullptr;
