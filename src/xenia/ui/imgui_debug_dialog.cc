@@ -1420,9 +1420,7 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
           if (MatchesFilter("log_guest_driven_gpu_register_written_values")) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::BeginDisabled(is_release_build);
-            DrawLabelCell("log_guest_driven_gpu_register_written_values",
-                          "[Debug build only]");
+            DrawLabelCell("log_guest_driven_gpu_register_written_values");
             ImGui::TableSetColumnIndex(1);
             if (RightAlignedCheckbox(
                     "##log_guest_driven_gpu_register_written_values",
@@ -1431,7 +1429,6 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
                                "log_guest_driven_gpu_register_written_values",
                                log_guest_driven_gpu_register_written_values_);
             }
-            ImGui::EndDisabled();
           }
 
           if (MatchesFilter("log_ringbuffer_kickoff_initiator_bts")) {
