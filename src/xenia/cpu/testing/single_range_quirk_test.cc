@@ -259,22 +259,6 @@ TEST_CASE("SINGLE_RANGE_FLAG_FOLD", "[instr]") {
 // The operations' own check: the default QNaN for an operand outside the range,
 // unless an operand is infinite or NaN, and the plain result otherwise.
 TEST_CASE("SINGLE_RANGE_FLAG", "[instr]") {
-  TestFunction add([](HIRBuilder& b) {
-    StoreFPR(b, 3,
-             b.Add(LoadFPR(b, 1), LoadFPR(b, 2), ARITHMETIC_SINGLE_RANGE));
-    b.Return();
-  });
-  TestFunction mul([](HIRBuilder& b) {
-    StoreFPR(b, 3,
-             b.Mul(LoadFPR(b, 1), LoadFPR(b, 2), ARITHMETIC_SINGLE_RANGE));
-    b.Return();
-  });
-  TestFunction mul_add([](HIRBuilder& b) {
-    StoreFPR(b, 3,
-             b.MulAdd(LoadFPR(b, 1), LoadFPR(b, 2), LoadFPR(b, 0), false,
-                      ARITHMETIC_SINGLE_RANGE));
-    b.Return();
-  });
   struct Case {
     uint64_t a, b;
     uint64_t sum, product, fused;  // fused = a * b + 1
@@ -288,22 +272,48 @@ TEST_CASE("SINGLE_RANGE_FLAG", "[instr]") {
       {kZero, kZero, kZero, kZero, kOne},
       {k128, kInf, kInf, kInf, kInf},
   };
-  for (const Case& c : cases) {
-    INFO("operands 0x" << std::hex << c.a << " 0x" << c.b);
-    auto setup = [&](PPCContext* ctx) {
-      SetF64Bits(ctx, 0, kOne);
-      SetF64Bits(ctx, 1, c.a);
-      SetF64Bits(ctx, 2, c.b);
-    };
-    auto result = [](PPCContext* ctx) {
-      uint64_t bits;
-      std::memcpy(&bits, &ctx->f[3], sizeof(bits));
-      return bits;
-    };
-    add.Run(setup, [&](PPCContext* ctx) { REQUIRE(result(ctx) == c.sum); });
-    mul.Run(setup, [&](PPCContext* ctx) { REQUIRE(result(ctx) == c.product); });
-    mul_add.Run(setup,
-                [&](PPCContext* ctx) { REQUIRE(result(ctx) == c.fused); });
+  struct Op {
+    void (*build)(HIRBuilder& b);
+    uint64_t Case::* expected;
+  };
+  const Op ops[] = {
+      {[](HIRBuilder& b) {
+         StoreFPR(b, 3,
+                  b.Add(LoadFPR(b, 1), LoadFPR(b, 2), ARITHMETIC_SINGLE_RANGE));
+         b.Return();
+       },
+       &Case::sum},
+      {[](HIRBuilder& b) {
+         StoreFPR(b, 3,
+                  b.Mul(LoadFPR(b, 1), LoadFPR(b, 2), ARITHMETIC_SINGLE_RANGE));
+         b.Return();
+       },
+       &Case::product},
+      {[](HIRBuilder& b) {
+         StoreFPR(b, 3,
+                  b.MulAdd(LoadFPR(b, 1), LoadFPR(b, 2), LoadFPR(b, 0), false,
+                           ARITHMETIC_SINGLE_RANGE));
+         b.Return();
+       },
+       &Case::fused},
+  };
+  // One function at a time: each installs the process-wide MMIO handler.
+  for (const Op& op : ops) {
+    TestFunction test(op.build);
+    for (const Case& c : cases) {
+      INFO("operands 0x" << std::hex << c.a << " 0x" << c.b);
+      test.Run(
+          [&](PPCContext* ctx) {
+            SetF64Bits(ctx, 0, kOne);
+            SetF64Bits(ctx, 1, c.a);
+            SetF64Bits(ctx, 2, c.b);
+          },
+          [&](PPCContext* ctx) {
+            uint64_t bits;
+            std::memcpy(&bits, &ctx->f[3], sizeof(bits));
+            REQUIRE(bits == c.*op.expected);
+          });
+    }
   }
 }
 
