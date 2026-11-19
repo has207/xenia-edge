@@ -1405,12 +1405,14 @@ Value* HIRBuilder::Max(Value* value1, Value* value2) {
   return i->dest;
 }
 
-// quirk = (any operand denormal) && (all operands finite), as i8 0/1. Unused
-// slots repeat an operand.
-Value* HIRBuilder::DenormalQuirk(Value* value1, Value* value2, Value* value3) {
+// quirk = (any operand nonzero and outside [2^-149, 2^128)) && (all operands
+// finite), as i8 0/1. Unused slots repeat an operand.
+Value* HIRBuilder::SingleRangeQuirk(Value* value1, Value* value2,
+                                    Value* value3) {
   assert_true(value1->type == FLOAT64_TYPE && value2->type == FLOAT64_TYPE &&
               value3->type == FLOAT64_TYPE);
-  Instr* i = AppendInstr(OPCODE_DENORMAL_QUIRK_info, 0, AllocValue(INT8_TYPE));
+  Instr* i =
+      AppendInstr(OPCODE_SINGLE_RANGE_QUIRK_info, 0, AllocValue(INT8_TYPE));
   i->set_src1(value1);
   i->set_src2(value2);
   i->set_src3(value3);
@@ -1783,13 +1785,14 @@ Value* HIRBuilder::Div(Value* value1, Value* value2,
 }
 
 Value* HIRBuilder::MulAdd(Value* value1, Value* value2, Value* value3,
-                          bool negate_result) {
+                          bool negate_result, uint32_t arithmetic_flags) {
   ASSERT_TYPES_EQUAL(value1, value2);
   ASSERT_TYPES_EQUAL(value1, value3);
 
-  Instr* i = AppendInstr(OPCODE_MUL_ADD_info,
-                         negate_result ? ARITHMETIC_NEGATE_RESULT : 0,
-                         AllocValue(value1->type));
+  Instr* i = AppendInstr(
+      OPCODE_MUL_ADD_info,
+      (negate_result ? ARITHMETIC_NEGATE_RESULT : 0) | arithmetic_flags,
+      AllocValue(value1->type));
   i->set_src1(value1);
   i->set_src2(value2);
   i->set_src3(value3);
@@ -1797,13 +1800,14 @@ Value* HIRBuilder::MulAdd(Value* value1, Value* value2, Value* value3,
 }
 
 Value* HIRBuilder::MulSub(Value* value1, Value* value2, Value* value3,
-                          bool negate_result) {
+                          bool negate_result, uint32_t arithmetic_flags) {
   ASSERT_TYPES_EQUAL(value1, value2);
   ASSERT_TYPES_EQUAL(value1, value3);
 
-  Instr* i = AppendInstr(OPCODE_MUL_SUB_info,
-                         negate_result ? ARITHMETIC_NEGATE_RESULT : 0,
-                         AllocValue(value1->type));
+  Instr* i = AppendInstr(
+      OPCODE_MUL_SUB_info,
+      (negate_result ? ARITHMETIC_NEGATE_RESULT : 0) | arithmetic_flags,
+      AllocValue(value1->type));
   i->set_src1(value1);
   i->set_src2(value2);
   i->set_src3(value3);

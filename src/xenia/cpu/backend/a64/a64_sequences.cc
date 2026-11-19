@@ -13,7 +13,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <type_traits>
+#include <vector>
 
 #include "xenia/base/byte_order.h"
 #include "xenia/base/clock.h"
@@ -783,6 +785,61 @@ static void EmitFpBinOpWithPpcNan(A64Emitter& e, const hir::Instr* instr,
   e.b(VS, nan_result);
   e.LKeepingRemapBound(done);
 }
+// Branches to target if an operand is nonzero and outside [2^-149, 2^128), or
+// infinite or NaN: the bits are compared without the sign, shifted up by one.
+// Clobbers x0-x2.
+static void BranchIfOutsideSingleRange(A64Emitter& e, const DReg* operands,
+                                       size_t count,
+                                       Xbyak_aarch64::Label& target) {
+  e.mov(e.x1, static_cast<uint64_t>(0x6D40000000000000ull));  // 2^-149
+  e.mov(e.x2, static_cast<uint64_t>(0x22A0000000000000ull));  // To 2^128
+  for (size_t k = 0; k < count; ++k) {
+    auto& next = e.NewCachedLabel();
+    e.fmov(e.x0, operands[k]);
+    e.add(e.x0, e.x0, e.x0);
+    e.cbz(e.x0, next);
+    e.sub(e.x0, e.x0, e.x1);
+    e.cmp(e.x0, e.x2);
+    e.b(HS, target);
+    e.LKeepingRemapBound(next);
+  }
+}
+
+// ARITHMETIC_SINGLE_RANGE, ahead of the operation: the default QNaN if an
+// operand is nonzero and outside [2^-149, 2^128) and none is infinite or NaN,
+// see PPCHIRBuilder::SingleOutOfRangeOperand. A branch rather than a select
+// keeps the check out of the result's dependency chain. Returns a label to bind
+// after the operation, if one's needed. The tail makes no call, so both labels
+// keep the remap bound.
+static Xbyak_aarch64::Label* EmitSingleRangeCheck(
+    A64Emitter& e, uint32_t flags, DReg dest,
+    std::initializer_list<DReg> operands) {
+  if (!(flags & ARITHMETIC_SINGLE_RANGE)) {
+    return nullptr;
+  }
+  // Ahead of the branch, as the quirk skips the operation that would do this
+  e.ChangeFpcrMode(FPCRMode::Fpu);
+  auto& done = e.NewCachedLabel();
+  auto& resume = e.NewCachedLabel();
+  std::vector<DReg> regs(operands);
+  auto& out_of_range = e.AddToTail(
+      [dest, regs, &done, &resume](A64Emitter& e, Xbyak_aarch64::Label& tail) {
+        // An infinite or NaN operand takes precedence
+        e.mov(e.x1, static_cast<uint64_t>(0xFFE0000000000000ull));
+        for (const DReg& reg : regs) {
+          e.fmov(e.x0, reg);
+          e.add(e.x0, e.x0, e.x0);
+          e.cmp(e.x0, e.x1);
+          e.b(HS, resume);
+        }
+        e.mov(e.x0, static_cast<uint64_t>(0x7FF8000000000000ull));
+        e.fmov(dest, e.x0);
+        e.b(done);
+      });
+  BranchIfOutsideSingleRange(e, regs.data(), regs.size(), out_of_range);
+  e.LKeepingRemapBound(resume);
+  return &done;
+}
 
 // PPC FMA NaN selection (PowerISA 4.6.7.2):
 // The first NaN operand by position (frA=s1, frB=s3, frC=s2 — the HIR
@@ -886,7 +943,12 @@ struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Add);
+    if (range_done) {
+      e.LKeepingRemapBound(*range_done);
+    }
   }
 };
 struct ADD_V128 : Sequence<ADD_V128, I<OPCODE_ADD, V128Op, V128Op, V128Op>> {
@@ -1199,7 +1261,12 @@ struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Sub);
+    if (range_done) {
+      e.LKeepingRemapBound(*range_done);
+    }
   }
 };
 struct SUB_V128 : Sequence<SUB_V128, I<OPCODE_SUB, V128Op, V128Op, V128Op>> {
@@ -1444,7 +1511,12 @@ struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Mul);
+    if (range_done) {
+      e.LKeepingRemapBound(*range_done);
+    }
   }
 };
 struct MUL_V128 : Sequence<MUL_V128, I<OPCODE_MUL, V128Op, V128Op, V128Op>> {
@@ -3491,12 +3563,13 @@ struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
 EMITTER_OPCODE_TABLE(OPCODE_MAX, MAX_F32, MAX_F64, MAX_V128);
 
 // ============================================================================
-// OPCODE_DENORMAL_QUIRK
+// OPCODE_SINGLE_RANGE_QUIRK
 // ============================================================================
-// quirk = (any operand denormal) && (all operands finite), as i8 0/1.
-struct DENORMAL_QUIRK
-    : Sequence<DENORMAL_QUIRK,
-               I<OPCODE_DENORMAL_QUIRK, I8Op, F64Op, F64Op, F64Op>> {
+// quirk = (any operand nonzero and outside [2^-149, 2^128)) && (all operands
+// finite), as i8 0/1.
+struct SINGLE_RANGE_QUIRK
+    : Sequence<SINGLE_RANGE_QUIRK,
+               I<OPCODE_SINGLE_RANGE_QUIRK, I8Op, F64Op, F64Op, F64Op>> {
   template <typename SRC>
   static int CollectOperands(A64Emitter& e, const SRC& s1, const SRC& s2,
                              const SRC& s3, DReg* out) {
@@ -3567,26 +3640,14 @@ struct DENORMAL_QUIRK
           emit_finite_check(e);
         });
 
-    // Once LO, ccmp writes NZCV = 0 (still LO), so the verdict sticks.
-    e.mov(e.x1, 0x000FFFFFFFFFFFFFull);
-    for (int k = 0; k < n; ++k) {
-      e.fmov(e.x0, ops[k]);
-      e.and_(e.x0, e.x0, 0x7FFFFFFFFFFFFFFFull);
-      e.sub(e.x0, e.x0, 1);
-      if (k == 0) {
-        e.cmp(e.x0, e.x1);
-      } else {
-        e.ccmp(e.x0, e.x1, 0, HS);
-      }
-    }
-    // The tail can sit beyond b.cond's reach; b() emits the range-safe form.
-    e.b(LO, slow_path);
+    // Infinities and NaNs take the slow path too, which sorts them out.
+    BranchIfOutsideSingleRange(e, ops, n, slow_path);
     // movz form: mov(dest, WReg(31)) would assemble as the SP-alias ADD.
     e.mov(i.dest, uint64_t(0));
     e.LKeepingRemapBound(done);
   }
 };
-EMITTER_OPCODE_TABLE(OPCODE_DENORMAL_QUIRK, DENORMAL_QUIRK);
+EMITTER_OPCODE_TABLE(OPCODE_SINGLE_RANGE_QUIRK, SINGLE_RANGE_QUIRK);
 
 // MIN has signed semantics (HIR builder constant-folds using CompareSLT).
 // I8/I16 need sign-extension; all need signed condition code (LT not LO).
@@ -4427,8 +4488,13 @@ struct MUL_ADD_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan(e, i.dest, s1, s2, s3, /*is_sub=*/false,
                       i.instr->flags & ARITHMETIC_NEGATE_RESULT);
+    if (range_done) {
+      e.LKeepingRemapBound(*range_done);
+    }
   }
 };
 // Picks FixupVmxNan_V128_Fma's scratch registers: tmp is live across the
@@ -4533,8 +4599,13 @@ struct MUL_SUB_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
+    auto* range_done =
+        EmitSingleRangeCheck(e, i.instr->flags, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan(e, i.dest, s1, s2, s3, /*is_sub=*/true,
                       i.instr->flags & ARITHMETIC_NEGATE_RESULT);
+    if (range_done) {
+      e.LKeepingRemapBound(*range_done);
+    }
   }
 };
 struct MUL_SUB_V128

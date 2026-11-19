@@ -768,7 +768,7 @@ DEFINE_OPCODE(
     OPCODE_FLAG_VOLATILE)
 
 DEFINE_OPCODE(
-    OPCODE_DENORMAL_QUIRK,
-    "denormal_quirk",
+    OPCODE_SINGLE_RANGE_QUIRK,
+    "single_range_quirk",
     OPCODE_SIG_V_V_V_V,
     0)

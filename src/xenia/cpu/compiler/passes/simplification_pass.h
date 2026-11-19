@@ -29,7 +29,7 @@ class SimplificationPass : public ConditionalGroupSubpass {
   bool CheckTruncate(hir::Instr* i);
   bool CheckByteSwap(hir::Instr* i);
 
-  bool PropagateGuestFPRDenormalProof(hir::HIRBuilder* builder);
+  bool PropagateGuestFPRSingleRangeProof(hir::HIRBuilder* builder);
 
   bool SimplifyAssignments(hir::HIRBuilder* builder);
   hir::Value* CheckValue(hir::Value* value, bool& result);

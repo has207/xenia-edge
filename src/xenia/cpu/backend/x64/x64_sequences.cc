@@ -702,32 +702,36 @@ struct MAX_V128 : Sequence<MAX_V128, I<OPCODE_MAX, V128Op, V128Op, V128Op>> {
 EMITTER_OPCODE_TABLE(OPCODE_MAX, MAX_F32, MAX_F64, MAX_V128);
 
 // ============================================================================
-// OPCODE_DENORMAL_QUIRK
+// OPCODE_SINGLE_RANGE_QUIRK
 // ============================================================================
-// quirk = (any operand denormal) && (all operands finite), as i8 0/1.
-struct DENORMAL_QUIRK
-    : Sequence<DENORMAL_QUIRK,
-               I<OPCODE_DENORMAL_QUIRK, I8Op, F64Op, F64Op, F64Op>> {
+// quirk = (any operand nonzero and outside [2^-149, 2^128)) && (all operands
+// finite), as i8 0/1.
+struct SINGLE_RANGE_QUIRK
+    : Sequence<SINGLE_RANGE_QUIRK,
+               I<OPCODE_SINGLE_RANGE_QUIRK, I8Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     const Xmm ops[3] = {GetInputRegOrConstant(e, i.src1, e.xmm0),
                         GetInputRegOrConstant(e, i.src2, e.xmm1),
                         GetInputRegOrConstant(e, i.src3, e.xmm2)};
-    // rcx = min(|op| - 1): below 0x000FFFFFFFFFFFFF iff some operand is
-    // denormal. Subtracting one wraps a zero up to the top.
+    // rcx = max(bits - 2^-149's bits), both without the sign and shifted up by
+    // one, a zero taken as 2^-149: below 2^128's the same way iff every
+    // operand is zero or in range. Infinities and NaNs land above it too.
+    e.mov(e.rdx, 0x6D40000000000000ull);
     for (int k = 0; k < 3; ++k) {
       const auto& gp = (k == 0) ? e.rcx : e.rax;
       e.vmovq(gp, ops[k]);
-      e.btr(gp, 63);
-      e.sub(gp, 1);
+      e.add(gp, gp);  // Discard the sign bit.
+      e.cmovz(gp, e.rdx);
+      e.sub(gp, e.rdx);
       if (k != 0) {
         e.cmp(e.rax, e.rcx);
-        e.cmovb(e.rcx, e.rax);
+        e.cmova(e.rcx, e.rax);
       }
     }
-    e.mov(e.rax, 0x000FFFFFFFFFFFFFull);
+    e.mov(e.rax, 0x22A0000000000000ull);
     e.cmp(e.rcx, e.rax);
     Xbyak::Label slow, done;
-    e.jb(slow);
+    e.jae(slow);
     e.xor_(i.dest.reg().cvt32(), i.dest.reg().cvt32());
     e.jmp(done);
 
@@ -748,7 +752,7 @@ struct DENORMAL_QUIRK
     e.L(done);
   }
 };
-EMITTER_OPCODE_TABLE(OPCODE_DENORMAL_QUIRK, DENORMAL_QUIRK);
+EMITTER_OPCODE_TABLE(OPCODE_SINGLE_RANGE_QUIRK, SINGLE_RANGE_QUIRK);
 
 // ============================================================================
 // OPCODE_MIN
@@ -1582,6 +1586,65 @@ struct DID_SATURATE
 };
 EMITTER_OPCODE_TABLE(OPCODE_DID_SATURATE, DID_SATURATE);
 
+// Marks the lanes of two packed doubles, in lanes, that are nonzero and outside
+// [2^-149, 2^128), infinities and NaNs among them. Clobbers temp.
+static void EmitSingleRangeBadLanes(X64Emitter& e, const Xmm& lanes,
+                                    const Xmm& temp) {
+  e.vpaddq(lanes, lanes, lanes);  // Discard the sign bit.
+  e.vpaddq(temp, lanes, e.GetXmmConstPtr(XMMSingleRangeBias));
+  e.vpcmpgtq(temp, temp, e.GetXmmConstPtr(XMMSingleRangeLimit));
+  e.vpcmpeqq(lanes, lanes, e.GetXmmConstPtr(XMMZero));
+  e.vpandn(lanes, lanes, temp);
+}
+
+// ARITHMETIC_SINGLE_RANGE, ahead of the operation. A branch rather than a
+// select keeps the check out of the result's dependency chain, and operands are
+// almost never outside the range. The tail gives the default QNaN unless an
+// operand is infinite or NaN, which takes precedence, and goes back to the
+// operation then. Returns a label to place after the operation, if one's
+// needed.
+template <int operands, typename ARGS>
+static Xbyak::Label* EmitSingleRangeCheck(X64Emitter& e, const ARGS& i) {
+  if (!(i.instr->flags & ARITHMETIC_SINGLE_RANGE)) {
+    return nullptr;
+  }
+  Xbyak::Label& done = e.NewCachedLabel();
+  Xbyak::Label& resume = e.NewCachedLabel();
+  Xbyak::Label& out_of_range =
+      e.AddToTail([i, &done, &resume](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        auto resume_if_nonfinite = [&e, &resume](const Xmm& operand) {
+          e.vmovq(e.rax, operand);
+          e.add(e.rax, e.rax);  // Discard the sign bit.
+          e.mov(e.rcx, 0xFFE0000000000000ull);
+          e.cmp(e.rax, e.rcx);
+          e.jae(resume, X64Emitter::T_NEAR);
+        };
+        resume_if_nonfinite(GetInputRegOrConstant(e, i.src1, e.xmm0));
+        resume_if_nonfinite(GetInputRegOrConstant(e, i.src2, e.xmm0));
+        if constexpr (operands == 3) {
+          resume_if_nonfinite(GetInputRegOrConstant(e, i.src3, e.xmm0));
+        }
+        e.mov(e.rax, 0x7FF8000000000000ull);
+        e.vmovq(i.dest, e.rax);
+        e.jmp(done, X64Emitter::T_NEAR);
+      });
+  Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+  Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
+  e.vunpcklpd(e.xmm2, src1, src2);
+  EmitSingleRangeBadLanes(e, e.xmm2, e.xmm3);
+  if constexpr (operands == 3) {
+    Xmm src3 = GetInputRegOrConstant(e, i.src3, e.xmm0);
+    e.vunpcklpd(e.xmm0, src3, src3);
+    EmitSingleRangeBadLanes(e, e.xmm0, e.xmm1);
+    e.vpor(e.xmm2, e.xmm2, e.xmm0);
+  }
+  e.vptest(e.xmm2, e.xmm2);
+  e.jnz(out_of_range, X64Emitter::T_NEAR);
+  e.L(resume);
+  return &done;
+}
+
 // An invalid operation with no NaN operand answers with the default QNaN, and
 // x86's is negative where PPC's is positive. Only a NaN result can need the
 // fixup, so the test stays off the result's dependency chain and the work goes
@@ -1677,10 +1740,14 @@ struct ADD_F32 : Sequence<ADD_F32, I<OPCODE_ADD, F32Op, F32Op, F32Op>> {
 struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
     EmitBinaryFpWithPpcDefaultNan_F64(
         e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
           e.vaddsd(dest, s1, s2);
         });
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct ADD_V128 : Sequence<ADD_V128, I<OPCODE_ADD, V128Op, V128Op, V128Op>> {
@@ -1798,12 +1865,16 @@ struct SUB_F32 : Sequence<SUB_F32, I<OPCODE_SUB, F32Op, F32Op, F32Op>> {
 };
 struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_true(!i.instr->flags);
+    assert_true(!(i.instr->flags & ~ARITHMETIC_SINGLE_RANGE));
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
     EmitBinaryFpWithPpcDefaultNan_F64(
         e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
           e.vsubsd(dest, s1, s2);
         });
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct SUB_V128 : Sequence<SUB_V128, I<OPCODE_SUB, V128Op, V128Op, V128Op>> {
@@ -1945,12 +2016,16 @@ struct MUL_F32 : Sequence<MUL_F32, I<OPCODE_MUL, F32Op, F32Op, F32Op>> {
 };
 struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    assert_true(!i.instr->flags);
+    assert_true(!(i.instr->flags & ~ARITHMETIC_SINGLE_RANGE));
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
     EmitBinaryFpWithPpcDefaultNan_F64(
         e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
           e.vmulsd(dest, s1, s2);
         });
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct MUL_V128 : Sequence<MUL_V128, I<OPCODE_MUL, V128Op, V128Op, V128Op>> {
@@ -2380,6 +2455,7 @@ struct MUL_ADD_F64
     : Sequence<MUL_ADD_F64, I<OPCODE_MUL_ADD, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<3>(e, i);
 
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
@@ -2395,6 +2471,9 @@ struct MUL_ADD_F64
     }
     EmitPpcFmaResult_F64(e, i,
                          (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct MUL_ADD_V128
@@ -2460,6 +2539,7 @@ struct MUL_SUB_F64
     : Sequence<MUL_SUB_F64, I<OPCODE_MUL_SUB, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    Xbyak::Label* range_done = EmitSingleRangeCheck<3>(e, i);
 
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
@@ -2475,6 +2555,9 @@ struct MUL_SUB_F64
     }
     EmitPpcFmaResult_F64(e, i,
                          (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
+    if (range_done) {
+      e.L(*range_done);
+    }
   }
 };
 struct MUL_SUB_V128

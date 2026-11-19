@@ -79,7 +79,7 @@ enum ValueFlags {
   VALUE_IS_CONSTANT = (1 << 1),
   VALUE_IS_ALLOCATED = (1 << 2),  // Used by backends. Do not set.
   // Magnitude is zero, at least 2^-1022, or non-finite.
-  VALUE_NEVER_F64_DENORMAL = (1 << 3),
+  VALUE_IN_SINGLE_RANGE = (1 << 3),
 };
 
 struct RegAssignment {
