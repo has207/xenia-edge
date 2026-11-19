@@ -10,6 +10,7 @@
 #ifndef XENIA_CPU_BACKEND_A64_A64_EMITTER_H_
 #define XENIA_CPU_BACKEND_A64_A64_EMITTER_H_
 
+#include <deque>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
@@ -206,6 +207,8 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
     return (feature_flags_ & feature_flag) == feature_flag;
   }
 
+  // The label stays valid for the whole function, even as more tails are
+  // added, and a tail's callback may add tails of its own.
   Xbyak_aarch64::Label& AddToTail(TailEmitCallback callback,
                                   uint32_t alignment = 0);
   Xbyak_aarch64::Label& NewCachedLabel();
@@ -445,7 +448,8 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
   static const uint32_t gpr_reg_map_[GPR_COUNT];
   static const uint32_t vec_reg_map_[VEC_COUNT];
 
-  std::vector<TailEmitter> tail_code_;
+  // A deque, so adding a tail doesn't move the labels already handed out
+  std::deque<TailEmitter> tail_code_;
   std::vector<Xbyak_aarch64::Label*> label_cache_;
 
   // v128 constants needing a literal, with labels owned by label_cache_.
