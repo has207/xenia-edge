@@ -718,16 +718,16 @@ void PPCHIRBuilder::CopyFPSCRToCR1() {
                And(Truncate(Shr(fpscr, 28), INT8_TYPE), LoadConstantInt8(1)));
 }
 
-// SO is bit 31, OV bit 30, CA bit 29, with no byte count modelled.
+// SO is bit 31, OV bit 30, CA bit 29 and the byte count bits 0-6.
 Value* PPCHIRBuilder::LoadXER() {
   Value* v = Shl(ZeroExtend(LoadCA(), INT64_TYPE), 29);
   v = Or(v, Shl(ZeroExtend(LoadContext(offsetof(PPCContext, xer_ov), INT8_TYPE),
                            INT64_TYPE),
                 30));
-  return Or(v,
-            Shl(ZeroExtend(LoadContext(offsetof(PPCContext, xer_so), INT8_TYPE),
+  v = Or(v, Shl(ZeroExtend(LoadContext(offsetof(PPCContext, xer_so), INT8_TYPE),
                            INT64_TYPE),
                 31));
+  return Or(v, LoadXERCount());
 }
 
 void PPCHIRBuilder::StoreXER(Value* value) {
@@ -736,6 +736,13 @@ void PPCHIRBuilder::StoreXER(Value* value) {
                Truncate(And(Shr(value, 30), LoadConstantInt64(1)), INT8_TYPE));
   StoreContext(offsetof(PPCContext, xer_so),
                Truncate(And(Shr(value, 31), LoadConstantInt64(1)), INT8_TYPE));
+  StoreContext(offsetof(PPCContext, xer_count),
+               Truncate(And(value, LoadConstantInt64(0x7F)), INT8_TYPE));
+}
+
+Value* PPCHIRBuilder::LoadXERCount() {
+  return ZeroExtend(LoadContext(offsetof(PPCContext, xer_count), INT8_TYPE),
+                    INT64_TYPE);
 }
 
 void PPCHIRBuilder::StoreOV(Value* value) {
