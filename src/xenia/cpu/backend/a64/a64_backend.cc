@@ -121,8 +121,8 @@ A64HelperEmitter::A64HelperEmitter(A64Backend* backend,
 
 void A64HelperEmitter::EmitEnterHostFpcr() {
   // Host C code runs with the AAPCS64 default FPCR (round to nearest, no
-  // flush-to-zero), not the guest's scalar mode: mtfsf can put rounding
-  // controls or FPSCR.NI (FZ) in fpcr_fpu, which host code must not inherit.
+  // flush-to-zero), not the guest's: mtfsf can put rounding controls in
+  // fpcr_fpu and the VMX modes flush to zero, which host code must not inherit.
   Xbyak_aarch64::Label host_fpcr_ready;
   mrs(x11, 3, 3, 4, 4, 0);  // mrs x11, FPCR
   cbz(x11, host_fpcr_ready);
@@ -866,9 +866,7 @@ void* A64HelperEmitter::EmitFrsqrteHelper() {
   L(exp_nonmax);
   cbnz(x1, check_negative);
   cbz(x2, signed_inf);  // +-0 -> +-inf
-  // Denormal. Non-IEEE mode flushes it to +-0 and takes the same path.
-  ldr(w3, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
-  tbnz(w3, kA64BackendNonIEEEMode, signed_inf);
+  // Denormal
   tbnz(x0, 63, ret_qnan);
   // Renormalize; the implicit 1 lands at bit 52 and the index masks it off.
   clz(x3, x2);
@@ -2198,7 +2196,7 @@ std::string A64Backend::FormatSequenceKey(uint64_t key) const {
 
 void A64Backend::SetGuestRoundingMode(void* ctx, unsigned int mode) {
   A64BackendContext* bctx = BackendContextForGuestContext(ctx);
-  uint32_t control = mode & 7;
+  uint32_t control = mode & 3;
   uint32_t fpcr_val = kGuestFpcrTable[control];
 #if XE_COMPILER_MSVC
   // MSVC ARM64 intrinsic: ARM64_FPCR = register ID 0x5A20.
@@ -2207,14 +2205,8 @@ void A64Backend::SetGuestRoundingMode(void* ctx, unsigned int mode) {
   __asm__ volatile("msr fpcr, %0" : : "r"(static_cast<uint64_t>(fpcr_val)));
 #endif
   bctx->fpcr_fpu = fpcr_val;
-  if (control & 0b100) {
-    bctx->flags |= (1u << kA64BackendNonIEEEMode);
-  } else {
-    bctx->flags &= ~(1u << kA64BackendNonIEEEMode);
-  }
   auto ppc_context = reinterpret_cast<ppc::PPCContext*>(ctx);
   ppc_context->fpscr.bits.rn = control;
-  ppc_context->fpscr.bits.ni = control >> 2;
 }
 
 bool A64Backend::PopulatePseudoStacktrace(GuestPseudoStackTrace* st) {

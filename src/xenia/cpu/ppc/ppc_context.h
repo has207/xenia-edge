@@ -331,7 +331,7 @@ typedef struct alignas(64) PPCContext_s {
                             //                      01 = toward zero
                             //                      10 = toward +infinity
                             //                      11 = toward -infinity
-      uint32_t ni : 1;      // Floating-point non-IEEE mode
+      uint32_t ni : 1;      // Non-IEEE mode, not implemented: reads 0
       uint32_t xe : 1;      // IEEE floating-point inexact exception enable
       uint32_t ze : 1;      // IEEE floating-point zero divide exception enable
       uint32_t ue : 1;      // IEEE floating-point underflow exception enable

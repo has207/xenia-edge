@@ -731,15 +731,14 @@ TEST_CASE("FPCR_PRESERVED_ACROSS_HOST_CALLBACK", "[backend]") {
   auto* builtin_fn = processor->DefineBuiltin(
       "FpcrClobber", FpcrClobberingBuiltin, nullptr, nullptr);
 
-  // Set rounding to toward-+inf with FPSCR.NI (mode 6; NI is FPCR.FZ on
-  // arm64), call the host callback (which clobbers FPCR to round-to-nearest),
-  // then do a scalar add. If the thunk restores FPCR properly, the add uses
-  // toward-+inf.
+  // Set rounding to toward-+inf, call the host callback (which clobbers FPCR
+  // to round-to-nearest), then do a scalar add. If the thunk restores FPCR
+  // properly, the add uses toward-+inf.
   auto module = std::make_unique<TestModule>(
       processor.get(), "Test",
       [](uint32_t address) { return address == 0x80000000; },
       [builtin_fn](HIRBuilder& b) {
-        b.SetRoundingMode(b.LoadConstantInt32(6));  // toward +inf, NI
+        b.SetRoundingMode(b.LoadConstantInt32(2));  // toward +inf
         b.CallExtern(builtin_fn);
         // Scalar add after the host call.
         auto a = b.Convert(LoadFPR(b, 4), FLOAT32_TYPE);

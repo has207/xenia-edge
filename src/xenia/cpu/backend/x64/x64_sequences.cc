@@ -3922,39 +3922,18 @@ struct SET_ROUNDING_MODE_I32
     : Sequence<SET_ROUNDING_MODE_I32,
                I<OPCODE_SET_ROUNDING_MODE, VoidOp, I32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
-    // removed the And with 7 and hoisted that and into the InstrEmit_'s that
-    // generate OPCODE_SET_ROUNDING_MODE so that it can be constant folded and
-    // backends dont have to worry about it
-    auto flags_ptr = e.GetBackendFlagsPtr();
+    // The InstrEmit_'s that generate OPCODE_SET_ROUNDING_MODE mask it to RN
+    // so that it can be constant folded
     if (i.src1.is_constant) {
       unsigned constant_value = i.src1.constant();
       e.mov(e.eax, mxcsr_table[constant_value]);
-
-      if (constant_value & 4) {
-        e.or_(flags_ptr, 1U << kX64BackendNonIEEEMode);
-      } else {
-        e.btr(flags_ptr, kX64BackendNonIEEEMode);
-      }
       e.mov(e.dword[e.rsp + StackLayout::GUEST_SCRATCH], e.eax);
       e.mov(e.GetBackendCtxPtr(offsetof(X64BackendContext, mxcsr_fpu)), e.eax);
       e.vldmxcsr(e.dword[e.rsp + StackLayout::GUEST_SCRATCH]);
 
     } else {
-      // can andnot, but this is a very infrequently used opcode
-      e.mov(e.eax, 1U << kX64BackendNonIEEEMode);
-      e.mov(e.edx, e.eax);
-      e.not_(e.edx);
-      e.mov(e.ecx, flags_ptr);
-      // edx = flags w/ non ieee cleared
-      e.and_(e.edx, e.ecx);
-      // eax = flags w/ non ieee set
-      e.or_(e.eax, e.ecx);
-      e.bt(i.src1, 2);
-
       e.mov(e.ecx, i.src1);
-      e.cmovc(e.edx, e.eax);
       e.mov(e.rax, uintptr_t(mxcsr_table));
-      e.mov(flags_ptr, e.edx);
       e.mov(e.edx, e.ptr[e.rax + e.rcx * 4]);
       // this was not here
       e.mov(e.GetBackendCtxPtr(offsetof(X64BackendContext, mxcsr_fpu)), e.edx);

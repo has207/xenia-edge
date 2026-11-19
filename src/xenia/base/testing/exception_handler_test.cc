@@ -29,8 +29,8 @@ namespace test {
 
 namespace {
 
-// Round toward +inf with flush-to-zero: what a guest with FPSCR RN=2 and NI
-// set leaves in the FP control register.
+// Round toward +inf with flush-to-zero. Guest code leaves either in the FP
+// control register (FPSCR RN and the VMX modes), so the handler undoes both.
 #if XE_ARCH_AMD64
 constexpr uint64_t kGuestLikeFpControl = 0xDF80;
 #elif XE_ARCH_ARM64

@@ -99,8 +99,6 @@ enum : uint32_t {
   kX64BackendHasReserveBit = 1,
   kX64BackendNJMOn =
       2,  // non-java mode bit is currently set. for use in software fp routines
-  kX64BackendNonIEEEMode =
-      3,  // non-ieee mode is currently enabled for scalar fpu.
   kX64BackendMXCSRDazBit =
       4,  // when the mode bit says vmx, the loaded mxcsr is mxcsr_vmx_daz
 };
@@ -181,7 +179,7 @@ constexpr unsigned int DEFAULT_VMX_MXCSR =
     0x0040 | (_MM_MASK_MASK);  // default rounding mode for vmx
 
 constexpr unsigned int DEFAULT_FPU_MXCSR = 0x1F80;
-extern const uint32_t mxcsr_table[8];
+extern const uint32_t mxcsr_table[4];
 class X64Backend : public Backend {
  public:
   static constexpr uint32_t kForceReturnAddress = 0x9FFF0000u;

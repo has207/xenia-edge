@@ -1526,11 +1526,8 @@ void* X64HelperEmitter::EmitFrsqrteHelper() {
   code_offsets.tail = getSize();
   code_offsets.prolog = getSize();
 
-  Xbyak::Label L2, L7, L6, L9, L1, L12, L24, L3, L25, frsqrte_table2, LC1;
-  bt(GetBackendFlagsPtr(), kX64BackendNonIEEEMode);
+  Xbyak::Label L7, L6, L9, L1, L12, L3, L25, frsqrte_table2, LC1;
   vmovq(rax, xmm0);
-  jc(L24, CodeGenerator::T_NEAR);
-  L(L2);
   mov(rcx, rax);
   add(rcx, rcx);
   je(L3, CodeGenerator::T_NEAR);
@@ -1598,16 +1595,6 @@ void* X64HelperEmitter::EmitFrsqrteHelper() {
   vmovsd(xmm1, qword[rip + LC1]);
   vmovapd(xmm0, xmm1);
   ret();
-
-  L(L24);
-  mov(r8, rax);
-  sal(r8, 12);
-  je(L2);
-  mov(rdx, 0x7ff0000000000000);
-  test(rax, rdx);
-  jne(L2);
-  mov(rdx, 0x8000000000000000ULL);
-  and_(rax, rdx);
 
   L(L3);
   mov(rdx, 0x8000000000000000ULL);
@@ -2123,19 +2110,16 @@ void X64Backend::SwapStackpointState(void* ctx, void* state) {
   bctx->unwind_stackpoint_depth = 0;
 }
 
-constexpr uint32_t mxcsr_table[8] = {
-    0x1F80, 0x7F80, 0x5F80, 0x3F80, 0x9F80, 0xFF80, 0xDF80, 0xBF80,
-};
+constexpr uint32_t mxcsr_table[4] = {0x1F80, 0x7F80, 0x5F80, 0x3F80};
 
 void X64Backend::SetGuestRoundingMode(void* ctx, unsigned int mode) {
   X64BackendContext* bctx = BackendContextForGuestContext(ctx);
 
-  uint32_t control = mode & 7;
+  uint32_t control = mode & 3;
   _mm_setcsr(mxcsr_table[control]);
   bctx->mxcsr_fpu = mxcsr_table[control];
   auto ppc_context = ((ppc::PPCContext*)ctx);
   ppc_context->fpscr.bits.rn = control;
-  ppc_context->fpscr.bits.ni = control >> 2;
 }
 
 bool X64Backend::PopulatePseudoStacktrace(GuestPseudoStackTrace* st) {

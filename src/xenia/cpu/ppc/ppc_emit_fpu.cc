@@ -511,9 +511,9 @@ static int InstrEmit_mtfsb(PPCHIRBuilder& f, const InstrData& i, bool value) {
       v = f.And(fpscr, f.LoadConstantInt32(~mask));
     }
     f.StoreFPSCR(UpdateFPSCRSummaryBits(f, v));
-    // Update the system rounding mode.
-    if (mask & 0x7) {
-      f.SetRoundingMode(f.And(v, f.LoadConstantInt32(7)));
+    // Update the system rounding mode. NI isn't implemented.
+    if (mask & 0x3) {
+      f.SetRoundingMode(f.And(v, f.LoadConstantInt32(3)));
     }
   }
   if (i.X.Rc) {
@@ -555,9 +555,9 @@ int InstrEmit_mtfsfx(PPCHIRBuilder& f, const InstrData& i) {
     }
     f.StoreFPSCR(UpdateFPSCRSummaryBits(f, v));
 
-    // Update the system rounding mode.
-    if (mask & 0x7) {
-      f.SetRoundingMode(f.And(v, f.LoadConstantInt32(7)));
+    // Update the system rounding mode. NI isn't implemented.
+    if (mask & 0x3) {
+      f.SetRoundingMode(f.And(v, f.LoadConstantInt32(3)));
     }
   }
   if (i.XFL.Rc) {
@@ -578,9 +578,9 @@ int InstrEmit_mtfsfix(PPCHIRBuilder& f, const InstrData& i) {
   fpscr = f.Or(fpscr, f.LoadConstantInt32(value));
   f.StoreFPSCR(UpdateFPSCRSummaryBits(f, fpscr));
 
-  // Update the system rounding mode.
-  if (mask & 0x7) {
-    f.SetRoundingMode(f.And(fpscr, f.LoadConstantInt32(7)));
+  // Update the system rounding mode. NI isn't implemented.
+  if (mask & 0x3) {
+    f.SetRoundingMode(f.And(fpscr, f.LoadConstantInt32(3)));
   }
 
   if (i.X.Rc) {

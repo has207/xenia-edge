@@ -181,8 +181,8 @@ void RunGuestCallbackFpMode(bool vmx_last) {
             StoreVR(b, 9, b.Add(LoadVR(b, 10), LoadVR(b, 11)));
           }
         } else {
-          // Toward +inf with NI, which is FZ on arm64.
-          b.SetRoundingMode(b.LoadConstantInt32(6));
+          // Toward +inf
+          b.SetRoundingMode(b.LoadConstantInt32(2));
           if (vmx_last) {
             StoreFPR(b, 12, RoundingProbe(b, 4, 5));
             StoreVR(b, 3, b.Add(LoadVR(b, 10), LoadVR(b, 11)));

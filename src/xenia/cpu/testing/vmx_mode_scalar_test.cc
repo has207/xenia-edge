@@ -24,7 +24,7 @@ using xe::cpu::ppc::PPCContext;
 
 // Scalar ops that a backend may run in whatever FPCR mode a VMX op left,
 // rather than switching back to the scalar one, must give what they give
-// after no VMX op at all: for every FPSCR rounding mode and NI, with VSCR NJ
+// after no VMX op at all: for every FPSCR rounding mode, with VSCR NJ
 // on and off, and for operands at every edge FZ or rounding could move.
 
 namespace {
@@ -70,7 +70,7 @@ void RequireSameInAnyMode(std::function<void(HIRBuilder&)> op,
           const std::function<void(size_t, const uint64_t*)>& check) {
         auto test = MakeTest(before, njm, op);
         size_t n = 0;
-        for (unsigned int mode = 0; mode < 8; ++mode) {
+        for (unsigned int mode = 0; mode < 4; ++mode) {
           for (const Operands& in : operands) {
             test->Run(
                 [&](PPCContext* ctx) {

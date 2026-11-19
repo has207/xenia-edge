@@ -107,7 +107,6 @@ enum : uint32_t {
   kA64BackendFPCRModeBit = 0,
   kA64BackendHasReserveBit = 1,
   kA64BackendNJMOn = 2,
-  kA64BackendNonIEEEMode = 3,
 };
 
 // Located prior to the context register (x20) in memory.
@@ -179,17 +178,12 @@ struct A64BackendContext {
 constexpr unsigned int DEFAULT_FPU_FPCR = 0;
 // Default FPCR for VMX mode (flush to zero, preserve NaN payloads).
 constexpr unsigned int DEFAULT_VMX_FPCR = (1 << 24);  // FZ
-// PPC rounding control (RN in bits 0-1, NI in bit 2) to FPCR. RMode is bits
-// 23:22, and NI maps to FZ (bit 24).
-inline constexpr uint32_t kGuestFpcrTable[8] = {
-    (0b00 << 22),              // PPC 0: nearest, IEEE
-    (0b11 << 22),              // PPC 1: toward zero, IEEE
-    (0b01 << 22),              // PPC 2: toward +inf, IEEE
-    (0b10 << 22),              // PPC 3: toward -inf, IEEE
-    (0b00 << 22) | (1 << 24),  // PPC 4: nearest, flush-to-zero
-    (0b11 << 22) | (1 << 24),  // PPC 5: toward zero, flush-to-zero
-    (0b01 << 22) | (1 << 24),  // PPC 6: toward +inf, flush-to-zero
-    (0b10 << 22) | (1 << 24),  // PPC 7: toward -inf, flush-to-zero
+// PPC rounding control (RN) to FPCR RMode (bits 23:22)
+inline constexpr uint32_t kGuestFpcrTable[4] = {
+    (0b00 << 22),  // PPC 0: nearest
+    (0b11 << 22),  // PPC 1: toward zero
+    (0b01 << 22),  // PPC 2: toward +inf
+    (0b10 << 22),  // PPC 3: toward -inf
 };
 // The NaN fixups rely on FPCR.DN (bit 25) and FPCR.AH (bit 1) being clear in
 // every FPCR the guest runs with. SET_NJM only toggles FZ.
