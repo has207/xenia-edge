@@ -689,7 +689,6 @@ struct VECTOR_ADD
           switch (part_type) {
             case INT8_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpaddusb(dest, src1, src2);
                 } else {
@@ -701,7 +700,6 @@ struct VECTOR_ADD
               break;
             case INT16_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpaddusw(dest, src1, src2);
                 } else {
@@ -808,7 +806,6 @@ struct VECTOR_SUB
           switch (part_type) {
             case INT8_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpsubusb(dest, src1, src2);
                 } else {
@@ -820,7 +817,6 @@ struct VECTOR_SUB
               break;
             case INT16_TYPE:
               if (saturate) {
-                // TODO(benvanik): trace DID_SATURATE
                 if (is_unsigned) {
                   e.vpsubusw(dest, src1, src2);
                 } else {
@@ -968,8 +964,6 @@ struct VECTOR_SHL_V128
   }
 
   static void EmitInt8(X64Emitter& e, const EmitArgType& i) {
-    // TODO(benvanik): native version (with shift magic).
-
     // gf2p8mulb's "x8 + x4 + x3 + x + 1"-polynomial-reduction only
     // applies when the multiplication overflows. Masking away any bits
     // that would have overflowed turns the polynomial-multiplication into
@@ -2356,8 +2350,6 @@ struct EXTRACT_I32
         vec128b(15, 14, 13, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
     };
     if (i.src2.is_constant) {
-      // TODO(gibbed): add support to constant propagation pass for
-      // OPCODE_EXTRACT.
       Xmm src1;
       if (i.src1.is_constant) {
         src1 = e.xmm0;
@@ -2571,7 +2563,7 @@ struct PERMUTE_I32
     }
   }
 };
-// todo: use this on const src1
+// A constant control, swapped and masked when the code is emitted
 static vec128_t FixupConstantShuf8(vec128_t input) {
   for (uint32_t i = 0; i < 16; ++i) {
     input.u8[i] ^= 0x03;
@@ -2595,8 +2587,7 @@ struct PERMUTE_V128
       } else {
         // Control mask needs to be shuffled.
         if (i.src1.is_constant) {
-          e.LoadConstantXmm(e.xmm0, i.src1.constant());
-          e.vxorps(e.xmm0, e.xmm0, e.GetXmmConstPtr(XMMSwapWordMask));
+          e.LoadConstantXmm(e.xmm0, FixupConstantShuf8(i.src1.constant()));
         } else {
           e.vxorps(e.xmm0, i.src1, e.GetXmmConstPtr(XMMSwapWordMask));
         }
@@ -2615,7 +2606,9 @@ struct PERMUTE_V128
           return;
         }
 
-        e.vpand(e.xmm0, e.GetXmmConstPtr(XMMPermuteByteMask));
+        if (!i.src1.is_constant) {
+          e.vpand(e.xmm0, e.GetXmmConstPtr(XMMPermuteByteMask));
+        }
 
         if (i.src2.is_constant) {
           e.LoadConstantXmm(i.dest, i.src2.constant());
@@ -2631,13 +2624,11 @@ struct PERMUTE_V128
     } else {
       // General permute.
       // Control mask needs to be shuffled.
-      // TODO(benvanik): do constants here instead of in generated code.
       if (e.IsFeatureEnabled(kX64EmitAVX512Ortho | kX64EmitAVX512BW |
                              kX64EmitAVX512VBMI)) {
         Xmm table_idx = e.xmm0;
         if (i.src1.is_constant) {
-          e.LoadConstantXmm(table_idx, i.src1.constant());
-          e.vxorps(table_idx, table_idx, e.GetXmmConstPtr(XMMSwapWordMask));
+          e.LoadConstantXmm(table_idx, FixupConstantShuf8(i.src1.constant()));
         } else {
           e.vxorps(table_idx, i.src1, e.GetXmmConstPtr(XMMSwapWordMask));
         }
@@ -2828,7 +2819,7 @@ static void emit_fast_f16_unpack(X64Emitter& e, const Inst& i,
   auto src1 = i.src1;
 
   e.vpshufb(i.dest, src1, e.GetXmmConstPtr(initial_shuffle));
-  e.vpmovsxwd(e.xmm1, i.dest);
+  e.vpmovzxwd(e.xmm1, i.dest);
 
   // Zero-extend for the exponent, or a negative half's sign extension leaks
   // past the mask and no denormal ever compares equal to zero below.
@@ -2856,15 +2847,8 @@ static void emit_fast_f16_unpack(X64Emitter& e, const Inst& i,
 template <typename Inst>
 static void emit_fast_f16_pack(X64Emitter& e, const Inst& i,
                                XmmConst final_shuffle) {
-  // XMMF16PackLCPI0 includes bias (0x08000000) + round-half-down (0xFFF).
-  // For round-to-nearest-even, also add the tie-breaker: bit 13 of src.
-  // Bit 13 of (src + bias) == bit 13 of src since the bias doesn't affect
-  // bits 0-26.
+  // Rebias the exponent. The console truncates the mantissa.
   e.vpaddd(e.xmm1, i.src1, e.GetXmmConstPtr(XMMF16PackLCPI0));
-  e.vpsrld(e.xmm0, i.src1, 13);
-  e.vpslld(e.xmm0, e.xmm0, 31);
-  e.vpsrld(e.xmm0, e.xmm0, 31);
-  e.vpaddd(e.xmm1, e.xmm1, e.xmm0);
 
   e.vpand(e.xmm2, i.src1, e.GetXmmConstPtr(XMMAbsMaskPS));
   e.vmovdqa(e.xmm3, e.GetXmmConstPtr(XMMF16PackLCPI2));
@@ -2983,80 +2967,30 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     //     ((src1.uy & 0xFF) << 8) | (src1.uz & 0xFF)
     e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackD3DCOLOR));
   }
-  static __m128i EmulateFLOAT16_2(void*, __m128 src1) {
-    alignas(16) float a[4];
-    alignas(16) uint16_t b[8];
-    _mm_store_ps(a, src1);
-    std::memset(b, 0, sizeof(b));
-
-    for (int i = 0; i < 2; i++) {
-      b[7 - i] = float_to_xenos_half(a[i]);
-    }
-
-    return _mm_load_si128(reinterpret_cast<__m128i*>(b));
-  }
   static void EmitFLOAT16_2(X64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->IsConstantZero());
-    // http://blogs.msdn.com/b/chuckw/archive/2012/09/11/directxmath-f16c-and-fma.aspx
     // dest = [(src1.x | src1.y), 0, 0, 0]
-
-    auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-
-#if XE_PLATFORM_WIN32
-    // Windows x64 ABI: __m128 is passed by implicit pointer
-    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-    // Linux/Mac System V ABI: __m128 passed in xmm0, return in xmm0
-    e.vmovaps(e.xmm0, src1);
-#endif
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_2));
-    e.vmovaps(i.dest, e.xmm0);
-  }
-
-  static __m128i EmulateFLOAT16_4_RoundToEven(void*, __m128 src1) {
-    alignas(16) uint16_t b[8] = {0};
-
-    // Extract and convert all 4 floats
-    float f0 = _mm_cvtss_f32(src1);
-    float f1 =
-        _mm_cvtss_f32(_mm_shuffle_ps(src1, src1, _MM_SHUFFLE(1, 1, 1, 1)));
-    float f2 =
-        _mm_cvtss_f32(_mm_shuffle_ps(src1, src1, _MM_SHUFFLE(2, 2, 2, 2)));
-    float f3 =
-        _mm_cvtss_f32(_mm_shuffle_ps(src1, src1, _MM_SHUFFLE(3, 3, 3, 3)));
-
-    // Convert to float16 with round-to-nearest-even
-    // Index calculation: 7 - (i ^ 2) where ^ is XOR
-    b[5] = float_to_xenos_half(f0, false, true);  // 7 - (0 ^ 2) = 7 - 2 = 5
-    b[4] = float_to_xenos_half(f1, false, true);  // 7 - (1 ^ 2) = 7 - 3 = 4
-    b[7] = float_to_xenos_half(f2, false, true);  // 7 - (2 ^ 2) = 7 - 0 = 7
-    b[6] = float_to_xenos_half(f3, false, true);  // 7 - (3 ^ 2) = 7 - 1 = 6
-
-    return _mm_load_si128(reinterpret_cast<const __m128i*>(b));
+    if (i.src1.is_constant) {
+      vec128_t result = vec128b(0);
+      for (unsigned idx = 0; idx < 2; ++idx) {
+        result.u16[7 - idx] = float_to_xenos_half(i.src1.constant().f32[idx]);
+      }
+      e.LoadConstantXmm(i.dest, result);
+    } else {
+      emit_fast_f16_pack(e, i, XMMPackFLOAT16_2);
+    }
   }
 
   static void EmitFLOAT16_4(X64Emitter& e, const EmitArgType& i) {
-    if (!i.src1.is_constant) {
-#if XE_ARCH_AMD64
-      emit_fast_f16_pack(e, i, XMMPackFLOAT16_4);
-#else
-      auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-#if XE_PLATFORM_WIN32
-      e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
-#else
-      e.vmovaps(e.xmm0, src1);
-#endif
-      e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_4_RoundToEven));
-      e.vmovdqa(i.dest, e.xmm0);
-#endif
-    } else {
+    if (i.src1.is_constant) {
       vec128_t result = vec128b(0);
       for (unsigned idx = 0; idx < 4; ++idx) {
         result.u16[(7 - (idx ^ 2))] =
-            float_to_xenos_half(i.src1.constant().f32[idx], false, true);
+            float_to_xenos_half(i.src1.constant().f32[idx]);
       }
-
       e.LoadConstantXmm(i.dest, result);
+    } else {
+      emit_fast_f16_pack(e, i, XMMPackFLOAT16_4);
     }
   }
   static void EmitSHORT_2(X64Emitter& e, const EmitArgType& i) {
@@ -3152,33 +3086,24 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     e.vorps(i.dest, e.xmm0);
   }
   static void Emit8_IN_16(X64Emitter& e, const EmitArgType& i, uint32_t flags) {
-    // TODO(benvanik): handle src2 (or src1) being constant zero
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     if (IsPackInUnsigned(flags)) {
       if (IsPackOutUnsigned(flags)) {
+        // Words of at most 0xFF, which vpackuswb leaves as they are
+        e.vpcmpeqw(e.xmm2, e.xmm2, e.xmm2);
+        e.vpsrlw(e.xmm2, e.xmm2, 8);
         if (IsPackOutSaturate(flags)) {
-          // vpackuswb saturates from signed words: clamp to 255 first so the
-          // pack is exact. Only xmm0-xmm3 are scratch and all four are in play
-          // here.
-          auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-          e.vpcmpeqb(e.xmm2, e.xmm2, e.xmm2);  // 0x00FF per word, no
-          e.vpsrlw(e.xmm2, e.xmm2, 8);         // constant load needed
+          // unsigned -> unsigned + saturate
           e.vpminuw(e.xmm0, src1, e.xmm2);
           e.vpminuw(e.xmm1, src2, e.xmm2);
-          e.vpackuswb(i.dest, e.xmm0, e.xmm1);
-          e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
         } else {
-          // unsigned -> unsigned (modulo): mask to the low byte so the pack is
-          // exact.
-          auto src1 = GetInputRegOrConstant(e, i.src1, e.xmm3);
-          auto src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
-          e.vpcmpeqb(e.xmm2, e.xmm2, e.xmm2);
-          e.vpsrlw(e.xmm2, e.xmm2, 8);
+          // unsigned -> unsigned
           e.vpand(e.xmm0, src1, e.xmm2);
           e.vpand(e.xmm1, src2, e.xmm2);
-          e.vpackuswb(i.dest, e.xmm0, e.xmm1);
-          e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
         }
+        e.vpackuswb(i.dest, e.xmm0, e.xmm1);
+        e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
       } else {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> signed + saturate
@@ -3193,16 +3118,6 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // signed -> unsigned + saturate
           // PACKUSWB / SaturateSignedWordToUnsignedByte
-          Xbyak::Xmm src1 = i.src1.is_constant ? e.xmm0 : i.src1;
-          if (i.src1.is_constant) {
-            e.LoadConstantXmm(src1, i.src1.constant());
-          }
-
-          Xbyak::Xmm src2 = i.src2.is_constant ? e.xmm1 : i.src2;
-          if (i.src2.is_constant) {
-            e.LoadConstantXmm(src2, i.src2.constant());
-          }
-
           e.vpackuswb(i.dest, src1, src2);
           e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
         } else {
@@ -3213,8 +3128,6 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // signed -> signed + saturate
           // PACKSSWB / SaturateSignedWordToSignedByte
-          Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-          Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
           e.vpacksswb(i.dest, src1, src2);
           e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
         } else {
@@ -3227,52 +3140,25 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
   // Pack 2 32-bit vectors into a 16-bit vector.
   static void Emit16_IN_32(X64Emitter& e, const EmitArgType& i,
                            uint32_t flags) {
-    // TODO(benvanik): handle src2 (or src1) being constant zero
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
     if (IsPackInUnsigned(flags)) {
       if (IsPackOutUnsigned(flags)) {
+        // Dwords of at most 0xFFFF, which vpackusdw leaves as they are
+        e.vpcmpeqd(e.xmm2, e.xmm2, e.xmm2);
+        e.vpsrld(e.xmm2, e.xmm2, 16);
         if (IsPackOutSaturate(flags)) {
           // unsigned -> unsigned + saturate
-          // Construct a saturation max value
-          e.mov(e.eax, 0xFFFFu);
-          e.vmovd(e.xmm0, e.eax);
-          e.vpshufd(e.xmm0, e.xmm0, 0b00000000);
-
-          // xmm0 holds the clamp, so a constant loads into xmm1 or xmm2.
-          Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm1);
-          e.vpminud(e.xmm1, src1, e.xmm0);  // Saturate src1
-          e.vpshuflw(e.xmm1, e.xmm1, 0b00100010);
-          e.vpshufhw(e.xmm1, e.xmm1, 0b00100010);
-          e.vpshufd(e.xmm1, e.xmm1, 0b00001000);
-
-          Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm2);
-          e.vpminud(i.dest, src2, e.xmm0);  // Saturate src2
-          e.vpshuflw(i.dest, i.dest, 0b00100010);
-          e.vpshufhw(i.dest, i.dest, 0b00100010);
-          e.vpshufd(i.dest, i.dest, 0b10000000);
-
-          e.vpblendw(i.dest, i.dest, e.xmm1, 0b00001111);
+          e.vpminud(e.xmm0, src1, e.xmm2);
+          e.vpminud(e.xmm1, src2, e.xmm2);
         } else {
           // unsigned -> unsigned
-          if (i.src1.is_constant) {
-            e.LoadConstantXmm(e.xmm0, i.src1.constant());
-          } else {
-            e.vmovaps(e.xmm0, i.src1);
-          }
-          e.vpshuflw(e.xmm0, e.xmm0, 0b00100010);
-          e.vpshufhw(e.xmm0, e.xmm0, 0b00100010);
-          e.vpshufd(e.xmm0, e.xmm0, 0b00001000);
-
-          if (i.src2.is_constant) {
-            e.LoadConstantXmm(i.dest, i.src2.constant());
-          } else {
-            e.vmovaps(i.dest, i.src2);
-          }
-          e.vpshuflw(i.dest, i.dest, 0b00100010);
-          e.vpshufhw(i.dest, i.dest, 0b00100010);
-          e.vpshufd(i.dest, i.dest, 0b10000000);
-
-          e.vpblendw(i.dest, i.dest, e.xmm0, 0b00001111);
+          e.vpand(e.xmm0, src1, e.xmm2);
+          e.vpand(e.xmm1, src2, e.xmm2);
         }
+        e.vpackusdw(i.dest, e.xmm0, e.xmm1);
+        e.vpshuflw(i.dest, i.dest, 0b10110001);
+        e.vpshufhw(i.dest, i.dest, 0b10110001);
       } else {
         if (IsPackOutSaturate(flags)) {
           // unsigned -> signed + saturate
@@ -3289,8 +3175,6 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
           // PACKUSDW
           // TMP[15:0] <- (DEST[31:0] < 0) ? 0 : DEST[15:0];
           // DEST[15:0] <- (DEST[31:0] > FFFFH) ? FFFFH : TMP[15:0];
-          Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-          Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
           e.vpackusdw(i.dest, src1, src2);
           e.vpshuflw(i.dest, i.dest, 0b10110001);
           e.vpshufhw(i.dest, i.dest, 0b10110001);
@@ -3302,8 +3186,6 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         if (IsPackOutSaturate(flags)) {
           // signed -> signed + saturate
           // PACKSSDW / SaturateSignedDwordToSignedWord
-          Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
-          Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm1);
           e.vpackssdw(i.dest, src1, src2);
           e.vpshuflw(i.dest, i.dest, 0b10110001);
           e.vpshufhw(i.dest, i.dest, 0b10110001);

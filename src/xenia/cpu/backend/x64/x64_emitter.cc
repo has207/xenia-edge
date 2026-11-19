@@ -1670,8 +1670,8 @@ static constinit const vec128_t xmm_consts[] = {
         */
     vec128q(0x7fe000007fe000ULL),
 
-    /* XMMF16PackLCPI0 (bias + round-half-down) */
-    vec128i(0x8000FFF),
+    /* XMMF16PackLCPI0 (exponent bias) */
+    vec128i(0x8000000),
     /*XMMF16PackLCPI2*/
     vec128i(0x47ffe000),
     /*XMMF16PackLCPI3*/
@@ -2098,8 +2098,6 @@ void X64Emitter::LoadConstantXmm(Xbyak::Xmm dest, const vec128_t& v) {
       return;
     }
 
-    // TODO(benvanik): see what other common values are.
-    // TODO(benvanik): build constant table - 99% are reused.
     MovMem64(rsp + kStashOffset, v.low);
     MovMem64(rsp + kStashOffset + 8, v.high);
     vmovdqa(dest, ptr[rsp + kStashOffset]);
@@ -2126,8 +2124,6 @@ void X64Emitter::LoadConstantXmm(Xbyak::Xmm dest, float v) {
         return;
       }
     }
-    // TODO(benvanik): see what other common values are.
-    // TODO(benvanik): build constant table - 99% are reused.
     mov(eax, x.i);
     vmovd(dest, eax);
   }
@@ -2153,8 +2149,6 @@ void X64Emitter::LoadConstantXmm(Xbyak::Xmm dest, double v) {
         return;
       }
     }
-    // TODO(benvanik): see what other common values are.
-    // TODO(benvanik): build constant table - 99% are reused.
     mov(rax, x.i);
     vmovq(dest, rax);
   }
