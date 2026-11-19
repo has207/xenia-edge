@@ -1417,14 +1417,13 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
   }
   // Inline Xenos float→half conversion for 4 float32 lanes in v0.
   // Xenos half saturates to 0x7FFF instead of producing IEEE inf/NaN.
-  // Denormals flush to zero (preserve_denormal=false).
-  // If round_to_even is true, applies round-to-nearest-even before truncation.
+  // Denormals flush to zero (preserve_denormal=false) and the mantissa is
+  // truncated.
   // Result: 4 halfwords in the low 16 bits of each 32-bit lane in v1.
   // Clobbers v0-v3, w0 and `tmp`, which holds the sign across the conversion
   // because v0-v3 are all in use. The caller's dest serves: it is written only
   // once the conversion is done.
-  static void EmitFloatToXenosHalf4(A64Emitter& e, bool round_to_even,
-                                    int tmp) {
+  static void EmitFloatToXenosHalf4(A64Emitter& e, int tmp) {
     // v0 = input float32 bits.  Extract sign, compute abs.
     e.ushr(VReg(tmp).s4, VReg(0).s4, 31);
     e.shl(VReg(tmp).s4, VReg(tmp).s4, 15);  // tmp = sign at bit 15
@@ -1437,16 +1436,6 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     // result = abs + 0xC8000000 (subtract 112 from float exponent, unsigned)
     LoadV128Const(e, 2, vec128i(0xC8000000u));
     e.add(VReg(2).s4, VReg(0).s4, VReg(2).s4);  // v2 = rebiased
-
-    if (round_to_even) {
-      // Round to nearest even: result += 0xFFF + ((result >> 13) & 1)
-      e.ushr(VReg(3).s4, VReg(2).s4, 13);
-      e.movi(VReg(1).s4, 1);
-      e.and_(VReg(3).b16, VReg(3).b16, VReg(1).b16);  // (result>>13)&1
-      LoadV128Const(e, 1, vec128i(0xFFFu));
-      e.add(VReg(3).s4, VReg(3).s4, VReg(1).s4);  // 0xFFF + bit
-      e.add(VReg(2).s4, VReg(2).s4, VReg(3).s4);  // rounded
-    }
 
     // Shift and mask to 15 bits.
     e.ushr(VReg(2).s4, VReg(2).s4, 13);
@@ -1481,7 +1470,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     int s = i.src1.reg().getIdx();
     int d = i.dest.reg().getIdx();
     e.mov(VReg(0).b16, VReg(s).b16);
-    EmitFloatToXenosHalf4(e, false, d);
+    EmitFloatToXenosHalf4(e, d);
     // v1 has halfs in s[0..3].  FLOAT16_2 uses only lanes 0,1.
     // Output: h[7]=half(f32[0]), h[6]=half(f32[1]), rest=0.
     // Narrow to halfwords, swap within word pairs, place at top of vector.
@@ -1496,7 +1485,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
       vec128_t result = {};
       for (int idx = 0; idx < 4; ++idx) {
         result.u16[7 - (idx ^ 2)] =
-            float_to_xenos_half(i.src1.constant().f32[idx], false, true);
+            float_to_xenos_half(i.src1.constant().f32[idx]);
       }
       LoadV128Const(e, i.dest.reg().getIdx(), result);
       return;
@@ -1504,7 +1493,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     int s = i.src1.reg().getIdx();
     int d = i.dest.reg().getIdx();
     e.mov(VReg(0).b16, VReg(s).b16);
-    EmitFloatToXenosHalf4(e, true, d);
+    EmitFloatToXenosHalf4(e, d);
     // v1 has halfs in s[0..3].  Output mapping:
     //   idx0→h[5], idx1→h[4], idx2→h[7], idx3→h[6]
     // = upper 64 bits with within-word swap, lower 64 bits zero.
