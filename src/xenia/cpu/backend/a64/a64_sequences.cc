@@ -4790,12 +4790,21 @@ EMITTER_OPCODE_TABLE(OPCODE_LOG2, LOG2_F32, LOG2_F64, LOG2_V128);
 // ============================================================================
 // OPCODE_DOT_PRODUCT_3
 // ============================================================================
+// The double sum of the products in d1, truncated to single in s0, as x64's
+// use_fast_dot_product. With the bits below single precision cleared, a sum in
+// float32's normal range is exactly a float32, so the conversion rounds toward
+// zero.
+//
 // The guest returns QNaN when the double sum overflows on the narrowing to
 // float32, but preserves an infinity that came from an infinite input. Both
 // leave an infinite result; only the overflow leaves a finite sum behind, so
 // the second test only has to run once the first one says the result is
-// infinite. Takes the result in s0 and the sum in d1; clobbers v2, v3 and x17.
+// infinite. Clobbers v2, v3 and x17.
 static void EmitDotProductResult(A64Emitter& e, int dest_idx) {
+  e.mov(e.x17, 0xFFFFFFFFE0000000ull);
+  e.fmov(DReg(3), e.x17);
+  e.and_(VReg(1).b8, VReg(1).b8, VReg(3).b8);
+  e.fcvt(SReg(0), DReg(1));
   auto& done = e.NewCachedLabel();
   e.fabs(SReg(2), SReg(0));
   e.mov(e.w17, 0x7F800000u);  // +inf
@@ -4832,11 +4841,11 @@ struct DOT_PRODUCT_3_V128
       e.fcvtl(VReg(0).d2, VReg(s1).s2);            // v0 = {s1[0], s1[1]} as f64
       e.fcvtl(VReg(1).d2, VReg(s2).s2);            // v1 = {s2[0], s2[1]} as f64
       e.fmul(VReg(0).d2, VReg(0).d2, VReg(1).d2);  // v0 = {a0*b0, a1*b1}
-      // Sum: d0 = v0[0] + v0[1] + v2[0] (skip v2[1] = element 3).
-      e.faddp(DReg(1), VReg(0).d2);
-      e.fadd(DReg(1), DReg(1), DReg(2));
-      // Convert back to float.
-      e.fcvt(SReg(0), DReg(1));
+      // Sum in x64's order: d1 = (v0[0] + v2[0]) + v0[1] (skip v2[1] =
+      // element 3).
+      e.fadd(DReg(1), DReg(0), DReg(2));
+      e.dup(DReg(3), VReg(0).d[1]);
+      e.fadd(DReg(1), DReg(1), DReg(3));
       EmitDotProductResult(e, d);
     });
   }
@@ -4866,8 +4875,6 @@ struct DOT_PRODUCT_4_V128
       // Sum all 4 products: v0 = {a0*b0+a2*b2, a1*b1+a3*b3}
       e.fadd(VReg(0).d2, VReg(0).d2, VReg(2).d2);
       e.faddp(DReg(1), VReg(0).d2);
-      // Convert back to float.
-      e.fcvt(SReg(0), DReg(1));
       EmitDotProductResult(e, d);
     });
   }
