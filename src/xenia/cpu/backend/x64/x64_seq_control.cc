@@ -97,16 +97,17 @@ static void EmitConditionalJump(X64Emitter& e, BranchCondition condition,
 }
 
 // Gets the condition of the integer compare whose flags the branch can reuse,
-// skipping markers that leave the flags alone. A constant src1 swaps the
-// operands, so only EQ and NE fuse then. Float compares never fuse.
-static bool GetFusableCondition(X64Emitter& e, const hir::Instr* branch,
+// skipping markers that leave the flags alone. SOURCE_OFFSET's coverage counter
+// keeps the flags too. A constant src1 swaps the operands, so only EQ and NE
+// fuse then. Float compares never fuse.
+static bool GetFusableCondition(const hir::Instr* branch,
                                 const hir::Value* condition_value,
                                 BranchCondition* out_condition) {
   const hir::Instr* producer = branch->prev;
   while (producer) {
     const auto opcode = producer->opcode->num;
     if (opcode == OPCODE_CONTEXT_BARRIER || opcode == OPCODE_NOP ||
-        (opcode == OPCODE_SOURCE_OFFSET && e.SourceOffsetsPreserveFlags())) {
+        opcode == OPCODE_SOURCE_OFFSET) {
       producer = producer->prev;
       continue;
     }
@@ -170,7 +171,7 @@ static void EmitFusedBranch(X64Emitter& e, const T& i, bool branch_if_true) {
   std::string label = i.src2.value->GetIdString();
 
   BranchCondition condition;
-  if (GetFusableCondition(e, i.instr, i.src1.value, &condition)) {
+  if (GetFusableCondition(i.instr, i.src1.value, &condition)) {
     EmitConditionalJump(e,
                         branch_if_true ? condition : InvertCondition(condition),
                         std::move(label));
