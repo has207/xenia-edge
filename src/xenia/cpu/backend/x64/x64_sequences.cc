@@ -397,7 +397,8 @@ struct CONVERT_F32_F64
     : Sequence<CONVERT_F32_F64, I<OPCODE_CONVERT, F32Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    e.vcvtsd2ss(i.dest, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    Xbyak::Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vcvtsd2ss(i.dest, src, src);
   }
 };
 struct CONVERT_F64_I64
@@ -410,14 +411,18 @@ struct CONVERT_F64_I64
       input = e.rax;
       e.mov(input, (uintptr_t)i.src1.constant());
     }
-    e.vcvtsi2sd(i.dest, input);
+
+    // A zeroed merge source keeps dest's old value out of the dependency chain.
+    e.vxorpd(e.xmm0, e.xmm0, e.xmm0);
+    e.vcvtsi2sd(i.dest, e.xmm0, input);
   }
 };
 struct CONVERT_F64_F32
     : Sequence<CONVERT_F64_F32, I<OPCODE_CONVERT, F64Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
-    e.vcvtss2sd(i.dest, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    Xbyak::Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vcvtss2sd(i.dest, src, src);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_CONVERT, CONVERT_I32_F32, CONVERT_I32_F64,
@@ -441,8 +446,8 @@ struct TOSINGLE_F64_F64
          i compared the results for this cvtss/cvtsd to results generated
          on actual hardware, it looks good to me
       */
-      e.vcvtsd2ss(e.xmm0, srcreg);
-      e.vcvtss2sd(i.dest, e.xmm0);
+      e.vcvtsd2ss(e.xmm0, srcreg, srcreg);
+      e.vcvtss2sd(i.dest, e.xmm0, e.xmm0);
     }
   }
 };
@@ -525,20 +530,20 @@ struct ROUND_F64 : Sequence<ROUND_F64, I<OPCODE_ROUND, F64Op, F64Op>> {
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
     switch (i.instr->flags) {
       case ROUND_TO_ZERO:
-        e.vroundsd(i.dest, src1, 0b00000011);
+        e.vroundsd(i.dest, src1, src1, 0b00000011);
         break;
       case ROUND_TO_NEAREST:
-        e.vroundsd(i.dest, src1, 0b00000000);
+        e.vroundsd(i.dest, src1, src1, 0b00000000);
         break;
       case ROUND_TO_MINUS_INFINITY:
-        e.vroundsd(i.dest, src1, 0b00000001);
+        e.vroundsd(i.dest, src1, src1, 0b00000001);
         break;
       case ROUND_TO_POSITIVE_INFINITY:
-        e.vroundsd(i.dest, src1, 0b00000010);
+        e.vroundsd(i.dest, src1, src1, 0b00000010);
         break;
       case ROUND_DYNAMIC:
         // Bit 2 takes the mode from MXCSR, which carries the guest's.
-        e.vroundsd(i.dest, src1, 0b00000100);
+        e.vroundsd(i.dest, src1, src1, 0b00000100);
         break;
     }
   }
@@ -2715,7 +2720,8 @@ struct SQRT_F32 : Sequence<SQRT_F32, I<OPCODE_SQRT, F32Op, F32Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
 
-    e.vsqrtss(i.dest, GetInputRegOrConstant(e, i.src1, e.xmm0));
+    Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
+    e.vsqrtss(i.dest, src1, src1);
   }
 };
 struct SQRT_F64 : Sequence<SQRT_F64, I<OPCODE_SQRT, F64Op, F64Op>> {
@@ -2742,7 +2748,7 @@ struct SQRT_F64 : Sequence<SQRT_F64, I<OPCODE_SQRT, F64Op, F64Op>> {
           e.vmovapd(i.dest, e.xmm1);
           e.jmp(done, X64Emitter::T_NEAR);
         });
-    e.vsqrtsd(e.xmm1, src);
+    e.vsqrtsd(e.xmm1, src, src);
     e.vucomisd(e.xmm1, e.xmm1);
     e.jp(invalid, X64Emitter::T_NEAR);
     e.vmovapd(i.dest, e.xmm1);
@@ -3213,7 +3219,7 @@ template <typename EmitArgType>
 static void EmitDotProductRoundTowardZero(X64Emitter& e, const EmitArgType& i) {
   if (!e.IsFeatureEnabled(kX64EmitAVX512F)) {
     e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    e.vcvtsd2ss(e.xmm1, e.xmm2, e.xmm2);
     EmitDotProductResult(e, i);
     return;
   }
@@ -3223,7 +3229,7 @@ static void EmitDotProductRoundTowardZero(X64Emitter& e, const EmitArgType& i) {
                                                 Xbyak::Label& masked) {
     e.L(masked);
     e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
-    e.vcvtsd2ss(e.xmm1, e.xmm2);
+    e.vcvtsd2ss(e.xmm1, e.xmm2, e.xmm2);
     Xbyak::Label finite;
     e.vmovd(e.eax, e.xmm1);
     e.add(e.eax, e.eax);  // Discard the sign bit.
@@ -3429,7 +3435,7 @@ static void EmitVectorMultiplySum(X64Emitter& e, const EmitArgType& i,
   e.vpsubq(e.xmm3, e.xmm3, e.xmm1);
   e.vmulsd(e.xmm2, e.xmm2, e.xmm3);
   e.vandpd(e.xmm2, e.xmm2, e.GetXmmConstPtr(XMMDoubleToSingleTruncateMask));
-  e.vcvtsd2ss(e.xmm1, e.xmm2);
+  e.vcvtsd2ss(e.xmm1, e.xmm2, e.xmm2);
   // An all-ones exponent. From a finite sum (xmm2, truncated), an overflow: a
   // QNaN keeping the sign and the truncated mantissa. Otherwise an operand was
   // infinite or NaN: the IEEE sum, with a NaN made the default QNaN.
@@ -3473,7 +3479,7 @@ static void EmitVectorMultiplySum(X64Emitter& e, const EmitArgType& i,
         e.vmovaps(e.xmm1, e.GetXmmConstPtr(XMMQNaN));
         e.jmp(done, X64Emitter::T_NEAR);
         e.L(not_nan);
-        e.vcvtsd2ss(e.xmm1, e.xmm0);
+        e.vcvtsd2ss(e.xmm1, e.xmm0, e.xmm0);
         e.jmp(done, X64Emitter::T_NEAR);
       });
   e.vmovd(e.eax, e.xmm1);
