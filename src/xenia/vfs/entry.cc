@@ -135,7 +135,9 @@ bool Entry::Delete(Entry* entry) {
 }
 
 bool Entry::Delete() {
-  assert_not_null(parent_);
+  if (!parent_) {
+    return false;
+  }
   return parent_->Delete(this);
 }
 

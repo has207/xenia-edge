@@ -442,9 +442,15 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
     }
   }
   if (!entry) {
-    // Create if needed (either new or as a replacement).
-    entry = CreatePath(
-        path, !is_directory ? kFileAttributeNormal : kFileAttributeDirectory);
+    // Create if needed (either new or as a replacement), under the parent
+    // resolved above. CreatePath resolves from the top, which a name relative
+    // to a root handle isn't.
+    const uint32_t attributes =
+        !is_directory ? kFileAttributeNormal : kFileAttributeDirectory;
+    entry = parent_entry
+                ? parent_entry->CreateEntry(
+                      xe::utf8::find_name_from_guest_path(path), attributes)
+                : CreatePath(path, attributes);
     if (!entry) {
       return X_STATUS_ACCESS_DENIED;
     }

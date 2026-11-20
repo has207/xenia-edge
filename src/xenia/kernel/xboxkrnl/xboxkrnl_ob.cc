@@ -757,7 +757,7 @@ dword_result_t ObDeleteSymbolicLink_entry(pointer_t<X_ANSI_STRING> path_ptr) {
   auto path =
       xeObSymbolicLinkName(util::TranslateAnsiPath(kernel_memory(), path_ptr));
   if (!kernel_state()->file_system()->UnregisterSymbolicLink(path)) {
-    return X_STATUS_UNSUCCESSFUL;
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
   }
 
   return X_STATUS_SUCCESS;

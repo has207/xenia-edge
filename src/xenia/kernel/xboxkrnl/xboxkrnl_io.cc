@@ -827,7 +827,7 @@ dword_result_t NtOpenSymbolicLinkObject_entry(
   std::string link_path;
   if (!kernel_state()->file_system()->FindSymbolicLink(target_path,
                                                        link_path)) {
-    return X_STATUS_NO_SUCH_FILE;
+    return X_STATUS_OBJECT_NAME_NOT_FOUND;
   }
 
   object_ref<XSymbolicLink> symlink(new XSymbolicLink(kernel_state()));

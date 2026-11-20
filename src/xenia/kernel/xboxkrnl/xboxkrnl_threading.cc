@@ -771,6 +771,7 @@ DECLARE_XBOXKRNL_EXPORT2(NtClearEvent, kThreading, kImplemented,
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff552150(v=vs.85).aspx
 void KeInitializeSemaphore_entry(pointer_t<X_KSEMAPHORE> semaphore_ptr,
                                  dword_t count, dword_t limit) {
+  semaphore_ptr.Zero();
   semaphore_ptr->header.type = SemaphoreObject;
   semaphore_ptr->header.signal_state = (uint32_t)count;
   semaphore_ptr->limit = (uint32_t)limit;
@@ -862,7 +863,7 @@ dword_result_t NtReleaseSemaphore_entry(dword_t sem_handle,
   } else {
     result = X_STATUS_INVALID_HANDLE;
   }
-  if (previous_count_ptr) {
+  if (previous_count_ptr && XSUCCEEDED(result)) {
     *previous_count_ptr = (uint32_t)previous_count;
   }
 
@@ -927,6 +928,9 @@ dword_result_t NtCreateTimer_entry(
     lpdword_t handle_ptr, pointer_t<X_OBJECT_ATTRIBUTES> obj_attributes_ptr,
     dword_t timer_type) {
   // timer_type = NotificationTimer (0) or SynchronizationTimer (1)
+  if (timer_type > 1) {
+    return X_STATUS_INVALID_PARAMETER;
+  }
 
   // Check for an existing timer with the same name.
   if (X_STATUS result = OpenNamedObject<XTimer>(kernel_state(),
@@ -1321,9 +1325,8 @@ DECLARE_XBOXKRNL_EXPORT3(KeAcquireSpinLockAtRaisedIrql, kThreading,
 
 dword_result_t KeTryToAcquireSpinLockAtRaisedIrql_entry(
     pointer_t<X_KSPINLOCK> lock_ptr, const ppc_context_t& ppc_ctx) {
-  // Lock.
+  // A lock that's held, even by this processor, is refused with 0.
   auto lock = reinterpret_cast<uint32_t*>(lock_ptr.host_address());
-  assert_true(lock_ptr->prcb_of_owner != static_cast<uint32_t>(ppc_ctx->r[13]));
   PrefetchForCAS(lock);
   if (!ppc_ctx->processor->GuestAtomicCAS32(
           ppc_ctx, 0, static_cast<uint32_t>(ppc_ctx->r[13]),
@@ -2029,6 +2032,8 @@ void ExReleaseReadWriteLock_entry(pointer_t<X_ERWLOCK> lock_ptr,
   }
 
   if (!lock_ptr->readers_entry_count) {
+    // The exclusive owner is releasing, so hand the lock to the waiting
+    // readers, or else to a waiting writer.
     auto readers_waiting_count = lock_ptr->readers_waiting_count;
     if (readers_waiting_count) {
       lock_ptr->readers_waiting_count = 0;
@@ -2038,10 +2043,8 @@ void ExReleaseReadWriteLock_entry(pointer_t<X_ERWLOCK> lock_ptr,
                            readers_waiting_count, 0);
       return;
     }
-  }
-
-  auto readers_entry_count = --lock_ptr->readers_entry_count;
-  if (readers_entry_count) {
+  } else if (--lock_ptr->readers_entry_count) {
+    // Other readers still hold the lock.
     xeKeKfReleaseSpinLock(ppc_context, &lock_ptr->spin_lock, old_irql);
     return;
   }
