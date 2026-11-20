@@ -52,8 +52,9 @@ DEFINE_path(custom_font_path, "",
 UPDATE_from_path(custom_font_path, 2026, 5, 1, 0,
                  "assets/font/Inter-VariableFont_opsz,wght.ttf");
 
-DEFINE_uint32(font_size, 13, "Allows user to set custom font size.", "UI");
+DEFINE_uint32(font_size, 20, "Allows user to set custom font size.", "UI");
 UPDATE_from_uint32(font_size, 2024, 8, 31, 20, 12);
+UPDATE_from_uint32(font_size, 2026, 11, 20, 6, 13);
 
 namespace xe {
 namespace ui {
