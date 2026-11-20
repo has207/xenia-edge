@@ -41,10 +41,8 @@
 
 #include "xenia/kernel/xam/ui/create_profile_ui.h"
 #include "xenia/kernel/xam/ui/game_achievements_ui.h"
-#include "xenia/kernel/xam/ui/gamercard_ui.h"
 #include "xenia/kernel/xam/ui/passcode_ui.h"
 #include "xenia/kernel/xam/ui/signin_ui.h"
-#include "xenia/kernel/xam/ui/title_info_ui.h"
 
 DEFINE_bool(storage_selection_dialog, false,
             "Show storage device selection dialog when the game requests it.",
@@ -1318,43 +1316,24 @@ dword_result_t XamShowAchievementsUI_entry(dword_t user_index,
 }
 DECLARE_XAM_EXPORT1(XamShowAchievementsUI, kUserProfiles, kImplemented);
 
-dword_result_t XamShowGamerCardUI_entry(dword_t user_index) {
-  auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
+// Profiles are edited in the host UI, so the gamercard and profile editor only
+// open and close the system UI for the title.
+static X_RESULT xeXamShowProfileUI(uint32_t user_index) {
+  if (!kernel_state()->xam_state()->GetUserProfile(user_index)) {
     return X_ERROR_ACCESS_DENIED;
   }
-
-  xe::ui::ImGuiDrawer* imgui_drawer =
-      kernel_state()->emulator()->imgui_drawer();
-
-  auto close = [](ui::GamercardUI* dialog) -> void {};
-  return xeXamDispatchDialogAsync<ui::GamercardUI>(
-      [&]() {
-        return new ui::GamercardUI(kernel_state()->emulator()->display_window(),
-                                   imgui_drawer, kernel_state(), user->xuid());
-      },
-      close);
+  return xeXamDispatchWithoutDialog([]() { return X_ERROR_SUCCESS; }, 0);
 }
-DECLARE_XAM_EXPORT1(XamShowGamerCardUI, kUserProfiles, kImplemented);
+
+dword_result_t XamShowGamerCardUI_entry(dword_t user_index) {
+  return xeXamShowProfileUI(user_index);
+}
+DECLARE_XAM_EXPORT1(XamShowGamerCardUI, kUserProfiles, kStub);
 
 dword_result_t XamShowEditProfileUI_entry(dword_t user_index) {
-  auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
-    return X_ERROR_ACCESS_DENIED;
-  }
-
-  xe::ui::ImGuiDrawer* imgui_drawer =
-      kernel_state()->emulator()->imgui_drawer();
-
-  auto close = [](ui::GamercardUI* dialog) -> void {};
-  return xeXamDispatchDialogAsync<ui::GamercardUI>(
-      [&]() {
-        return new ui::GamercardUI(kernel_state()->emulator()->display_window(),
-                                   imgui_drawer, kernel_state(), user->xuid());
-      },
-      close);
+  return xeXamShowProfileUI(user_index);
 }
-DECLARE_XAM_EXPORT1(XamShowEditProfileUI, kUserProfiles, kImplemented);
+DECLARE_XAM_EXPORT1(XamShowEditProfileUI, kUserProfiles, kStub);
 
 // UI
 dword_result_t XamShowNuiTroubleshooterUI_entry(dword_t user_index,
