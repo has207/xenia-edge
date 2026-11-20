@@ -208,6 +208,17 @@ XboxkrnlModule::XboxkrnlModule(Emulator* emulator, KernelState* kernel_state)
   std::memcpy(lpXboxKrnlVersion, kernel_state_->GetKernelVersion(),
               sizeof(KernelVersion));
 
+  // XboxKrnlBaseVersion (8b)
+  // The base kernel the updates apply to, 2.0.1888.0 whatever XboxKrnlVersion
+  // is.
+  uint32_t pXboxKrnlBaseVersion =
+      memory_->SystemHeapAlloc(sizeof(KernelVersion));
+  export_resolver_->SetVariableMapping(
+      "xboxkrnl.exe", ordinals::XboxKrnlBaseVersion, pXboxKrnlBaseVersion);
+  const KernelVersion base_version(kBaseKernelBuildVersion);
+  std::memcpy(memory_->TranslateVirtual(pXboxKrnlBaseVersion), &base_version,
+              sizeof(KernelVersion));
+
   export_resolver_->SetVariableMapping("xboxkrnl.exe",
                                        ordinals::KeTimeStampBundle,
                                        kernel_state->GetKeTimestampBundle());
