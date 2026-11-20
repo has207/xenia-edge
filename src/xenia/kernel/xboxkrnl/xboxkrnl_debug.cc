@@ -1995,7 +1995,7 @@ void KeBugCheckEx_entry(dword_t code, dword_t param1, dword_t param2,
                   static_cast<uint32_t>(param2), static_cast<uint32_t>(param3),
                   static_cast<uint32_t>(param4));
   XELOGE("{}", msg);
-  fflush(stdout);
+  xe::FlushLog();
 
   if (xe::debugging::IsDebuggerAttached()) {
     xe::debugging::Break();
