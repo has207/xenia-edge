@@ -9,6 +9,7 @@
 
 #include "xenia/kernel/xam/ui/gamercard_ui.h"
 #include "xenia/base/png_utils.h"
+#include "xenia/emulator.h"
 #include "xenia/kernel/xam/xam_state.h"
 #include "xenia/ui/file_picker.h"
 
@@ -209,7 +210,7 @@ constexpr std::array<UserSettingId, 19> UserSettingsToLoad = {
 GamercardUI::GamercardUI(xe::ui::Window* window,
                          xe::ui::ImGuiDrawer* imgui_drawer,
                          KernelState* kernel_state, uint64_t xuid)
-    : XamDialog(imgui_drawer),
+    : XamGamepadDialog(imgui_drawer, kernel_state->emulator()->input_system()),
       window_(window),
       kernel_state_(kernel_state),
       xuid_(xuid),

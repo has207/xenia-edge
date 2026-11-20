@@ -17,9 +17,10 @@ namespace xam {
 namespace ui {
 
 SigninUI::SigninUI(xe::ui::ImGuiDrawer* imgui_drawer,
+                   xe::hid::InputSystem* input_system,
                    ProfileManager* profile_manager, uint32_t last_used_slot,
                    uint32_t users_needed)
-    : XamDialog(imgui_drawer),
+    : XamGamepadDialog(imgui_drawer, input_system),
       profile_manager_(profile_manager),
       last_user_(last_used_slot),
       users_needed_(users_needed),

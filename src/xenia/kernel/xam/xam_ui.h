@@ -29,29 +29,8 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
-class XamDialog : public xe::ui::ImGuiDialog {
- public:
-  void set_close_callback(std::function<void()> close_callback) {
-    close_callback_ = close_callback;
-  }
-
- protected:
-  XamDialog(xe::ui::ImGuiDrawer* imgui_drawer)
-      : xe::ui::ImGuiDialog(imgui_drawer) {}
-
-  virtual ~XamDialog() {};
-
-  void OnClose() override {
-    if (close_callback_) {
-      close_callback_();
-    }
-  }
-
- private:
-  std::function<void()> close_callback_ = nullptr;
-};
-
-// XamDialog with gamepad support for game-triggered dialogs
+// XAM dialog for a title. Holds the title's input while open and hides the
+// buttons held when it closes until they're released.
 class XamGamepadDialog : public xe::ui::ImGuiGamepadDialog {
  public:
   void set_close_callback(std::function<void()> close_callback) {

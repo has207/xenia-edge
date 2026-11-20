@@ -42,7 +42,7 @@ struct GamercardSettings {
   xe::ui::ImmediateTexture* icon_texture;
 };
 
-class GamercardUI final : public XamDialog {
+class GamercardUI final : public XamGamepadDialog {
  public:
   GamercardUI(xe::ui::Window* window, xe::ui::ImGuiDrawer* imgui_drawer,
               KernelState* kernel_state, uint64_t xuid);

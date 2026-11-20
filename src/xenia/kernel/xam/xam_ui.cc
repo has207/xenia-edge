@@ -458,8 +458,8 @@ static dword_result_t XamShowMessageBoxUi(
 
     result = xeXamDispatchDialog<ui::ProfilePasscodeUI>(
         [&]() {
-          return new ui::ProfilePasscodeUI(imgui_drawer, title, text,
-                                           result_ptr);
+          return new ui::ProfilePasscodeUI(imgui_drawer, input_system, title,
+                                           text, result_ptr);
         },
         close, overlapped);
   } else {
@@ -1205,9 +1205,10 @@ X_RESULT xeXamShowSigninUI(uint32_t user_index, uint32_t users_needed,
   xe::ui::ImGuiDrawer* imgui_drawer = emulator->imgui_drawer();
   return xeXamDispatchDialogAsync<ui::SigninUI>(
       [&]() {
-        return new ui::SigninUI(
-            imgui_drawer, kernel_state()->xam_state()->profile_manager(),
-            emulator->input_system()->GetLastUsedSlot(), users_needed);
+        return new ui::SigninUI(imgui_drawer, emulator->input_system(),
+                                kernel_state()->xam_state()->profile_manager(),
+                                emulator->input_system()->GetLastUsedSlot(),
+                                users_needed);
       },
       close);
 }

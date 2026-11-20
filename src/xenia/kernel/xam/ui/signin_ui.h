@@ -18,9 +18,10 @@ namespace kernel {
 namespace xam {
 namespace ui {
 
-class SigninUI final : public XamDialog {
+class SigninUI final : public XamGamepadDialog {
  public:
-  SigninUI(xe::ui::ImGuiDrawer* imgui_drawer, ProfileManager* profile_manager,
+  SigninUI(xe::ui::ImGuiDrawer* imgui_drawer,
+           xe::hid::InputSystem* input_system, ProfileManager* profile_manager,
            uint32_t last_used_slot, uint32_t users_needed);
 
   ~SigninUI() = default;

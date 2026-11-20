@@ -16,6 +16,13 @@ namespace kernel {
 namespace xam {
 namespace ui {
 
+CreateProfileUI::CreateProfileUI(xe::ui::ImGuiDrawer* imgui_drawer,
+                                 Emulator* emulator)
+    : XamGamepadDialog(imgui_drawer, emulator->input_system()),
+      emulator_(emulator) {
+  memset(gamertag_, 0, sizeof(gamertag_));
+}
+
 void CreateProfileUI::OnDraw(ImGuiIO& io) {
   if (!has_opened_) {
     ImGui::OpenPopup("Create Profile");

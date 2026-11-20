@@ -17,9 +17,10 @@ namespace kernel {
 namespace xam {
 namespace ui {
 
-class ProfilePasscodeUI final : public XamDialog {
+class ProfilePasscodeUI final : public XamGamepadDialog {
  public:
-  ProfilePasscodeUI(xe::ui::ImGuiDrawer* imgui_drawer, std::string_view title,
+  ProfilePasscodeUI(xe::ui::ImGuiDrawer* imgui_drawer,
+                    xe::hid::InputSystem* input_system, std::string_view title,
                     std::string_view description,
                     MESSAGEBOX_RESULT* result_ptr);
   ~ProfilePasscodeUI() = default;

@@ -24,7 +24,8 @@ namespace ui {
 TitleListUI::TitleListUI(xe::ui::ImGuiDrawer* imgui_drawer,
                          const ImVec2 drawing_position,
                          const UserProfile* profile)
-    : XamDialog(imgui_drawer),
+    : XamGamepadDialog(imgui_drawer,
+                       kernel_state()->emulator()->input_system()),
       drawing_position_(drawing_position),
       profile_(profile),
       profile_manager_(kernel_state()->xam_state()->profile_manager()),

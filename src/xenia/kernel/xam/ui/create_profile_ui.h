@@ -17,12 +17,9 @@ namespace kernel {
 namespace xam {
 namespace ui {
 
-class CreateProfileUI final : public XamDialog {
+class CreateProfileUI final : public XamGamepadDialog {
  public:
-  CreateProfileUI(xe::ui::ImGuiDrawer* imgui_drawer, Emulator* emulator)
-      : XamDialog(imgui_drawer), emulator_(emulator) {
-    memset(gamertag_, 0, sizeof(gamertag_));
-  }
+  CreateProfileUI(xe::ui::ImGuiDrawer* imgui_drawer, Emulator* emulator);
 
   ~CreateProfileUI() = default;
 

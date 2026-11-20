@@ -19,7 +19,7 @@ namespace kernel {
 namespace xam {
 namespace ui {
 
-class TitleListUI final : public XamDialog {
+class TitleListUI final : public XamGamepadDialog {
  public:
   TitleListUI(xe::ui::ImGuiDrawer* imgui_drawer, const ImVec2 drawing_position,
               const UserProfile* profile);

@@ -15,10 +15,11 @@ namespace xam {
 namespace ui {
 
 ProfilePasscodeUI::ProfilePasscodeUI(xe::ui::ImGuiDrawer* imgui_drawer,
+                                     xe::hid::InputSystem* input_system,
                                      std::string_view title,
                                      std::string_view description,
                                      MESSAGEBOX_RESULT* result_ptr)
-    : XamDialog(imgui_drawer),
+    : XamGamepadDialog(imgui_drawer, input_system),
       title_(title),
       description_(description),
       result_ptr_(result_ptr) {
