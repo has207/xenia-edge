@@ -462,6 +462,42 @@ class CodeCacheBase : public CodeCache {
     }
   }
 
+  // Points the slots of [guest_low, guest_high] back at the default (the
+  // resolve thunk), so the next indirect branch there compiles what the guest
+  // has since written: a function dropped by an instruction cache sweep keeps
+  // its slot otherwise, and a patched stub in a module's code would keep
+  // running its old translation. Only committed chunks can hold a target.
+  void ResetIndirectionRange(uint32_t guest_low, uint32_t guest_high) {
+    if (!indirection_table_base_ || guest_high < guest_low ||
+        guest_high < kIndirectionTableBase) {
+      return;
+    }
+    guest_low = std::max<uint32_t>(guest_low, uint32_t(kIndirectionTableBase));
+    const size_t start_offset =
+        static_cast<size_t>(guest_low - kIndirectionTableBase) & ~size_t(3);
+    const size_t end_offset = std::min(
+        kIndirectionTableSize,
+        (static_cast<size_t>(guest_high - kIndirectionTableBase) & ~size_t(3)) +
+            4);
+    auto global_lock = global_critical_region_.Acquire();
+    if (indirection_committed_.empty()) {
+      return;
+    }
+    for (size_t offset = start_offset; offset < end_offset;) {
+      const size_t chunk = offset / kIndirectionChunkSize;
+      const size_t chunk_end =
+          std::min(end_offset, (chunk + 1) * kIndirectionChunkSize);
+      if (indirection_committed_[chunk / 64] & (uint64_t(1) << (chunk % 64))) {
+        uint32_t* p =
+            reinterpret_cast<uint32_t*>(indirection_table_base_ + offset);
+        for (size_t i = 0; i < (chunk_end - offset) / 4; i++) {
+          p[i] = indirection_default_value_;
+        }
+      }
+      offset = chunk_end;
+    }
+  }
+
   // Commits the chunk of the table a fault landed in. Code no module commits a
   // range for, like code the guest writes at runtime, reaches its slots this
   // way. Returns whether the access can run again.
