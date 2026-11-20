@@ -468,7 +468,7 @@ struct UNPACK_SINGLE
       e.mov(e.eax, i.src1);
     }
     e.vmovd(e.xmm0, e.eax);
-    e.vcvtss2sd(i.dest, e.xmm0);
+    e.vcvtss2sd(i.dest, e.xmm0, e.xmm0);
 
     Xbyak::Label done;
     // An all-ones exponent is a NaN or an infinity; an infinity's bit 51 is
@@ -497,7 +497,7 @@ struct PACK_SINGLE
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
     Xbyak::Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm1);
-    e.vcvtsd2ss(e.xmm0, src);
+    e.vcvtsd2ss(e.xmm0, src, src);
     e.vmovd(i.dest, e.xmm0);
 
     Xbyak::Label done;
