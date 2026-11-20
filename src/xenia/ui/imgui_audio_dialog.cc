@@ -9,8 +9,6 @@
 
 #include "xenia/ui/imgui_audio_dialog.h"
 
-#include <cfloat>
-
 #include "third_party/imgui/imgui.h"
 #include "xenia/apu/apu_flags.h"
 #include "xenia/config.h"
@@ -54,13 +52,13 @@ void ImGuiAudioDialog::OnDraw(ImGuiIO& io) {
   ImVec2 center = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
   ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 
-  // Ensure window has reasonable minimum width
+  // A set width for the full-width slider, which would otherwise keep the
+  // window from shrinking.
   float title_width = ImGui::CalcTextSize("Audio").x;
-  float min_width = (title_width + ImGui::GetStyle().WindowPadding.x * 2 +
-                     ImGui::GetFrameHeight()) *
-                    3.0f;
-  ImGui::SetNextWindowSizeConstraints(ImVec2(min_width, 0),
-                                      ImVec2(FLT_MAX, FLT_MAX));
+  float window_width = (title_width + ImGui::GetStyle().WindowPadding.x * 2 +
+                        ImGui::GetFrameHeight()) *
+                       3.0f;
+  ImGui::SetNextWindowSize(ImVec2(window_width, 0.0f), ImGuiCond_Always);
 
   bool is_open = true;
   if (ImGui::Begin("Audio", &is_open,

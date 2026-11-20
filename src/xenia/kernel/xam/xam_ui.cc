@@ -1110,11 +1110,11 @@ bool xeDrawProfileContent(xe::ui::ImGuiDrawer* imgui_drawer,
                           uint64_t* selected_xuid) {
   const ImVec2 start_position = ImGui::GetCursorPos();
 
-  // Calculate the size for the selectable based on icon + text
+  // Width 0 fills the row without widening the window, which then fits the
+  // icon and text.
   const float text_height = ImGui::GetTextLineHeight() * 3;  // 3 lines of text
   const ImVec2 content_size =
-      ImVec2(ImGui::GetContentRegionAvail().x,
-             std::max(xe::ui::default_image_icon_size.y, text_height));
+      ImVec2(0.0f, std::max(xe::ui::default_image_icon_size.y, text_height));
 
   // Draw selectable first as background
   bool clicked = false;
