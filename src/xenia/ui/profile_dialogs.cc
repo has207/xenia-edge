@@ -88,9 +88,10 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
 
   auto profiles = profile_manager->GetAccounts();
 
-  // Center the window on screen
-  ImVec2 center = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
-  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  // Center every frame, from the size the profile list settles at.
+  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always,
+                          ImVec2(0.5f, 0.5f));
 
   // Style like Xbox - white background, black text, Xbox green highlights
   const ImVec4 xbox_green(0.063f, 0.486f, 0.063f, 1.0f);
@@ -150,15 +151,17 @@ void ProfileConfigDialog::OnDraw(ImGuiIO& io) {
       ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x + 20.f,
              ImGui::GetWindowPos().y);
 
-  // Scroll instead of running off the window, keeping Create Profile visible.
-  const ImGuiViewport* viewport = ImGui::GetMainViewport();
+  // Scroll instead of running off the screen, keeping Create Profile visible.
+  // The limit leaves room for the title bar above the list and the button
+  // below it, wherever the window is.
   const ImGuiStyle& style = ImGui::GetStyle();
+  const float above_list_height =
+      ImGui::GetCursorScreenPos().y - ImGui::GetWindowPos().y;
   const float reserved_height = style.ItemSpacing.y * 2.0f +
                                 ImGui::GetFrameHeightWithSpacing() +
                                 style.WindowPadding.y;
   const float max_list_height =
-      std::max(viewport->WorkPos.y + viewport->WorkSize.y -
-                   ImGui::GetCursorScreenPos().y - reserved_height,
+      std::max(viewport->WorkSize.y - above_list_height - reserved_height,
                ui::default_image_icon_size.y * 1.5f);
   ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f),
                                       ImVec2(FLT_MAX, max_list_height));
