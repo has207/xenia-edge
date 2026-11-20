@@ -35,9 +35,9 @@ void SigninUI::OnDraw(ImGuiIO& io) {
     ReloadProfiles(true);
   }
 
-  // Center the window on screen
+  // Center every frame so the window follows resizes.
   ImVec2 center = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
-  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
   ImGui::SetNextWindowSizeConstraints(ImVec2(400, 0), ImVec2(600, 500));
 
   // Style like Xbox - white background, black text, Xbox green highlights

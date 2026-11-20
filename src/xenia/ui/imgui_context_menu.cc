@@ -169,8 +169,9 @@ void ImGuiContextMenu::OnDraw(ImGuiIO& io) {
 
   // Position the popup
   if (center_on_screen_) {
+    // Every frame so the menu follows resizes.
     ImVec2 center = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
   } else {
     ImGui::SetNextWindowPos(ImVec2(position_x_, position_y_),
                             ImGuiCond_Appearing);

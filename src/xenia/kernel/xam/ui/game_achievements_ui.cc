@@ -207,10 +207,10 @@ void GameAchievementsUI::OnDraw(ImGuiIO& io) {
 
   const auto xenia_window_size = ImGui::GetMainViewport()->Size;
 
-  // Center the window on screen
+  // Center every frame so the window follows resizes.
   ImVec2 center =
       ImVec2(xenia_window_size.x * 0.5f, xenia_window_size.y * 0.5f);
-  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 
   // Fixed size: 600px wide, max 500px tall
   ImGui::SetNextWindowSizeConstraints(ImVec2(600, 200), ImVec2(600, 500));

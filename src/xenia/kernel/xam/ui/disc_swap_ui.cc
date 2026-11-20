@@ -53,9 +53,9 @@ void DiscSwapUI::OnDraw(ImGuiIO& io) {
     has_opened_ = true;
   }
 
-  // Center the window on screen
+  // Center every frame so the window follows resizes.
   ImVec2 center = ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
-  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
   // Size constraints leave an auto-resize popup a pixel short of its contents
   const float font_size = ImGui::GetFontSize();
   ImGui::SetNextWindowSize(ImVec2(font_size * 36.0f, 0.0f), ImGuiCond_Always);
