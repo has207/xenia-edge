@@ -98,7 +98,7 @@ class KeyboardInputDialog : public XamGamepadDialog {
         title_(title),
         description_(description),
         default_text_(default_text),
-        max_length_(max_length),
+        max_chars_(max_length ? max_length - 1 : 0),
         text_buffer_() {
     if (!title_.size()) {
       if (!description_.size()) {
@@ -109,7 +109,8 @@ class KeyboardInputDialog : public XamGamepadDialog {
       }
     }
     text_ = default_text;
-    text_buffer_.resize(std::max<size_t>(max_length, 1));
+    // A UTF-16 code unit takes at most 3 bytes of UTF-8.
+    text_buffer_.resize(max_chars_ * 3 + 1);
     CopyText(default_text_);
   }
   virtual ~KeyboardInputDialog() {}
@@ -120,7 +121,7 @@ class KeyboardInputDialog : public XamGamepadDialog {
   void OnDraw(ImGuiIO& io) override;
 
  private:
-  // Copies the whole characters of |text| that fit in the text box.
+  // Copies the whole characters of |text| that fit in the title's buffer.
   void CopyText(std::string_view text);
 
   bool has_opened_ = false;
@@ -128,7 +129,8 @@ class KeyboardInputDialog : public XamGamepadDialog {
   std::string title_;
   std::string description_;
   std::string default_text_;
-  size_t max_length_ = 0;
+  // UTF-16 code units the title's buffer holds, without the terminator.
+  size_t max_chars_ = 0;
   std::vector<char> text_buffer_;
   std::string text_ = "";
   bool cancelled_ = true;

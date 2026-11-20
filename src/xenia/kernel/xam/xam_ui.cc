@@ -287,15 +287,37 @@ void MessageBoxDialog::OnDraw(ImGuiIO& io) {
   }
 }
 
+// The byte length of the longest prefix of UTF-8 |text| that fits in
+// |max_units| UTF-16 code units. A 4-byte character is a surrogate pair.
+static size_t FitUtf16Length(std::string_view text, size_t max_units) {
+  size_t units = 0;
+  for (size_t i = 0; i < text.size(); ++i) {
+    const uint8_t byte = uint8_t(text[i]);
+    if ((byte & 0xC0) == 0x80) {
+      continue;
+    }
+    const size_t width = byte >= 0xF0 ? 2 : 1;
+    if (units + width > max_units) {
+      return i;
+    }
+    units += width;
+  }
+  return text.size();
+}
+
+// Cuts typed or pasted text to the UTF-16 length in UserData.
+static int LimitKeyboardText(ImGuiInputTextCallbackData* data) {
+  const size_t max_units = *static_cast<const size_t*>(data->UserData);
+  const int keep = static_cast<int>(
+      FitUtf16Length(std::string_view(data->Buf, data->BufTextLen), max_units));
+  if (keep < data->BufTextLen) {
+    data->DeleteChars(keep, data->BufTextLen - keep);
+  }
+  return 0;
+}
+
 void KeyboardInputDialog::CopyText(std::string_view text) {
-  if (text_buffer_.empty()) {
-    return;
-  }
-  size_t length = std::min(text.size(), text_buffer_.size() - 1);
-  while (length && length < text.size() &&
-         (uint8_t(text[length]) & 0xC0) == 0x80) {
-    --length;
-  }
+  const size_t length = FitUtf16Length(text, max_chars_);
   std::memcpy(text_buffer_.data(), text.data(), length);
   text_buffer_[length] = '\0';
 }
@@ -349,9 +371,10 @@ void KeyboardInputDialog::OnDraw(ImGuiIO& io) {
       ImGui::SetKeyboardFocusHere();
       focus_set_ = true;
     }
-    bool input_submitted =
-        ImGui::InputText("##body", text_buffer_.data(), text_buffer_.size(),
-                         ImGuiInputTextFlags_EnterReturnsTrue);
+    bool input_submitted = ImGui::InputText(
+        "##body", text_buffer_.data(), text_buffer_.size(),
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackEdit,
+        LimitKeyboardText, &max_chars_);
     // Context menu for paste functionality
     if (ImGui::BeginPopupContextItem("input_context_menu")) {
       if (ImGui::MenuItem("Paste")) {
