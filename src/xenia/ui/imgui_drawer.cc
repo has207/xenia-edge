@@ -87,6 +87,9 @@ void ImGuiDrawer::AddDialog(ImGuiDialog* dialog) {
     return;
   }
   ResetFrameTimeIfIdle();
+  if (dialogs_.empty()) {
+    gamepad_buttons_held_pending_ = true;
+  }
   if (dialogs_.empty() && !IsDrawingDialogs()) {
     // First dialog added. !IsDrawingDialogs() is also checked because in a
     // situation of removing the only dialog, then adding a dialog, from within
@@ -1047,17 +1050,28 @@ void ImGuiDrawer::UpdateGamepads() {
     }
   }
   if (controller_to_poke == XUserIndexNone) {
+    gamepad_buttons_held_ = 0;
+    gamepad_buttons_held_pending_ = false;
     io.ClearInputKeys();
     return;
   }
 
   io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
   hid::X_INPUT_GAMEPAD& gamepad = gamepad_state.gamepad;
+  // A button held over from before the dialog opened, such as the B that
+  // closed the previous one, would otherwise be a press on the first frame.
+  const uint16_t down = gamepad.buttons;
+  if (gamepad_buttons_held_pending_) {
+    gamepad_buttons_held_ = down;
+    gamepad_buttons_held_pending_ = false;
+  }
+  gamepad_buttons_held_ = static_cast<uint16_t>(gamepad_buttons_held_ & down);
+  const uint16_t buttons = static_cast<uint16_t>(down & ~gamepad_buttons_held_);
 
 #define IM_SATURATE(V) (V < 0.0f ? 0.0f : V > 1.0f ? 1.0f : V)
-#define MAP_BUTTON(KEY_NO, BUTTON_ENUM)                           \
-  {                                                               \
-    io.AddKeyEvent(KEY_NO, (gamepad.buttons & BUTTON_ENUM) != 0); \
+#define MAP_BUTTON(KEY_NO, BUTTON_ENUM)                   \
+  {                                                       \
+    io.AddKeyEvent(KEY_NO, (buttons & BUTTON_ENUM) != 0); \
   }
 #define MAP_ANALOG(KEY_NO, VALUE, V0, V1)                      \
   {                                                            \

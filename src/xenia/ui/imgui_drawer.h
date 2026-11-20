@@ -176,6 +176,10 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   uint32_t mouse_buttons_held_ = 0;
   // Keys pressed while attached.
   std::unordered_set<VirtualKey> keys_down_;
+  // Gamepad buttons already held when the first dialog opened, which aren't
+  // presses until released. Taken on the next poll after that.
+  uint16_t gamepad_buttons_held_ = 0;
+  bool gamepad_buttons_held_pending_ = true;
 
   // Dialogs force the cursor visible since it auto-hides during gameplay
   Window::CursorVisibility cursor_visibility_before_dialogs_ =
