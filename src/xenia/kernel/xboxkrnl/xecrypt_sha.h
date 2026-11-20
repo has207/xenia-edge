@@ -40,12 +40,13 @@ struct XECRYPT_SHA256_STATE {
   uint8_t buffer[64];         // 0x24
 };
 
-// TODO: Size of this struct hasn't been confirmed yet.
 struct XECRYPT_SHA512_STATE {
-  xe::be<uint64_t> count;     // 0x0
+  xe::be<uint32_t> count;     // 0x0
+  uint32_t pad;               // 0x4, left alone
   xe::be<uint64_t> state[8];  // 0x8
   uint8_t buffer[128];        // 0x48
 };
+static_assert_size(XECRYPT_SHA512_STATE, 0xC8);
 
 struct XECRYPT_HMACSHA_STATE {
   XECRYPT_SHA_STATE sha_state[2];
@@ -209,7 +210,7 @@ inline mbedtls_sha512_context LoadSha512(const XECRYPT_SHA512_STATE& state) {
 
 inline void StoreSha512(const mbedtls_sha512_context& context,
                         XECRYPT_SHA512_STATE& state) {
-  state.count = context.MBEDTLS_PRIVATE(total)[0];
+  state.count = static_cast<uint32_t>(context.MBEDTLS_PRIVATE(total)[0]);
   std::ranges::copy(context.MBEDTLS_PRIVATE(state), state.state);
   std::ranges::copy(context.MBEDTLS_PRIVATE(buffer), state.buffer);
 }
@@ -230,10 +231,9 @@ inline void XeCryptSha512Update(XECRYPT_SHA512_STATE* state,
 
 inline void XeCryptSha512Final(XECRYPT_SHA512_STATE* state, uint8_t* out,
                                uint32_t out_size) {
-  const uint64_t count = state->count;
+  const uint32_t count = state->count;
   auto context = LoadSha512(*state);
-  PadShaContext<128>(context, static_cast<uint32_t>(count),
-                     mbedtls_sha512_update);
+  PadShaContext<128>(context, count, mbedtls_sha512_update);
   StoreSha512(context, *state);
   state->count = count;
 

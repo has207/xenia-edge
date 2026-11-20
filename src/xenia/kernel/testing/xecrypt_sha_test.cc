@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstring>
 #include <numeric>
 #include <string>
@@ -295,6 +296,24 @@ TEST_CASE("XeCryptSha512Update_streams_across_blocks", "[crypt]") {
       FromHex<Digest512>(
           "e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973eb"
           "de0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b"));
+}
+
+// A 32-bit byte count at 0x0, then 4 bytes nothing writes, as in the 17559
+// kernel's Init (stw to 0x0 only) and Final (lwz from 0x0).
+TEST_CASE("XeCryptSha512_state_layout", "[crypt]") {
+  REQUIRE(sizeof(XECRYPT_SHA512_STATE) == 0xC8);
+  REQUIRE(offsetof(XECRYPT_SHA512_STATE, state) == 0x8);
+  REQUIRE(offsetof(XECRYPT_SHA512_STATE, buffer) == 0x48);
+
+  XECRYPT_SHA512_STATE state;
+  std::memset(&state, 0xCD, sizeof(state));
+  XeCryptSha512Init(&state);
+  XeCryptSha512Update(&state, Bytes("abc"), 3);
+  Final512(state);
+  const auto* bytes = reinterpret_cast<const uint8_t*>(&state);
+  const std::array<uint8_t, 8> head{0x00, 0x00, 0x00, 0x03,
+                                    0xCD, 0xCD, 0xCD, 0xCD};
+  REQUIRE(std::memcmp(bytes, head.data(), head.size()) == 0);
 }
 
 TEST_CASE("XeCryptSha512Final_keeps_count_and_last_block", "[crypt]") {
