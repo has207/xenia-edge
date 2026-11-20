@@ -251,6 +251,19 @@ std::unique_ptr<ImmediateTexture> MetalImmediateDrawer::CreateTexture(uint32_t w
   return std::move(texture);
 }
 
+bool MetalImmediateDrawer::UpdateTexture(ImmediateTexture* texture, uint32_t x, uint32_t y,
+                                         uint32_t width, uint32_t height, const uint8_t* data,
+                                         size_t data_pitch) {
+  MTL::Texture* metal_texture = static_cast<MetalImmediateTexture*>(texture)->texture;
+  // The CPU can't write private textures, like ones from CreateTextureFromMetal.
+  if (!metal_texture || metal_texture->storageMode() == MTL::StorageModePrivate) {
+    return false;
+  }
+  // Dear ImGui only updates newly packed space, which frames still on the GPU don't read.
+  metal_texture->replaceRegion(MTL::Region(x, y, 0, width, height, 1), 0, data, data_pitch);
+  return true;
+}
+
 std::unique_ptr<ImmediateTexture> MetalImmediateDrawer::CreateTextureFromMetal(
     MTL::Texture* texture, MTL::SamplerState* sampler) {
   if (!texture) {

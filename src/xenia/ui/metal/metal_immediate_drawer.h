@@ -41,6 +41,9 @@ class MetalImmediateDrawer : public ImmediateDrawer {
                                                   ImmediateTextureFilter filter,
                                                   bool repeat,
                                                   const uint8_t* data) override;
+  bool UpdateTexture(ImmediateTexture* texture, uint32_t x, uint32_t y,
+                     uint32_t width, uint32_t height, const uint8_t* data,
+                     size_t data_pitch) override;
   std::unique_ptr<ImmediateTexture> CreateTextureFromMetal(
       MTL::Texture* texture, MTL::SamplerState* sampler);
 
