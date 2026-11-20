@@ -52,7 +52,9 @@ DEFINE_bool(storage_selection_dialog, false,
 
 DECLARE_int32(license_mask);
 
-constexpr std::chrono::milliseconds kUIDelayMillis(200);
+// From a request's completion to XN_SYS_UI false. The UI counts as active
+// until then and refuses a new request.
+constexpr std::chrono::milliseconds kUIDelayMillis(300);
 
 namespace xe {
 namespace kernel {
@@ -117,12 +119,12 @@ X_RESULT xeXamDispatchDialog(std::function<T*()> create_dialog,
   };
   auto run = [completion]() -> X_RESULT {
     GuestScheduler::WaitOnFence(completion->closed);
-    kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
     return completion->result;
   };
   auto post = []() {
     std::jthread t([] {
       xe::threading::Sleep(kUIDelayMillis);
+      kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
       kernel_state()->BroadcastNotification(kXNotificationSystemUI, false);
     });
     t.detach();
@@ -167,13 +169,13 @@ X_RESULT xeXamDispatchDialogEx(
   auto run = [completion](uint32_t& extended_error,
                           uint32_t& length) -> X_RESULT {
     GuestScheduler::WaitOnFence(completion->closed);
-    kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
     extended_error = completion->extended_error;
     length = completion->length;
     return completion->result;
   };
   auto post = []() {
     xe::threading::Sleep(kUIDelayMillis);
+    kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
     kernel_state()->BroadcastNotification(kXNotificationSystemUI, false);
   };
   if (!overlapped) {
@@ -222,10 +224,9 @@ X_RESULT xeXamDispatchDialogAsync(std::function<T*()> create_dialog,
   auto on_close = [close_callback](T* dialog) {
     close_callback(dialog);
 
-    kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
-
     auto run = []() -> void {
       xe::threading::Sleep(kUIDelayMillis);
+      kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
       kernel_state()->BroadcastNotification(kXNotificationSystemUI, false);
     };
 
@@ -465,7 +466,6 @@ static dword_result_t XamShowMessageBoxUi(
     auto close = [result_ptr](MessageBoxDialog* dialog,
                               uint32_t& extended_error,
                               uint32_t& length) -> X_RESULT {
-      kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
       length = 0;
       // B fails the request, with no button and the cancel in the extended
       // error.
@@ -1295,6 +1295,12 @@ dword_result_t XamShowAchievementsUI_entry(dword_t user_index,
   if (!info) {
     return X_ERROR_NO_SUCH_USER;
   }
+
+  if (kernel_state()->xam_state()->IsUIActive()) {
+    return X_ERROR_ACCESS_DENIED;
+  }
+
+  kernel_state()->xam_state()->is_xam_dialog_present_.store(true);
 
   xe::ui::ImGuiDrawer* imgui_drawer =
       kernel_state()->emulator()->imgui_drawer();
