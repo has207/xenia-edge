@@ -310,16 +310,15 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
   if (!base_path.empty()) {
     parent_entry = !root_entry ? ResolvePath(base_path)
                                : root_entry->ResolvePath(base_path);
-    if (!parent_entry) {
-      *out_action = FileAction::kDoesNotExist;
-      return X_STATUS_OBJECT_PATH_NOT_FOUND;
+    if (parent_entry) {
+      auto file_name = xe::utf8::find_name_from_guest_path(path);
+      entry = parent_entry->GetChild(file_name);
     }
-
-    auto file_name = xe::utf8::find_name_from_guest_path(path);
-    entry = parent_entry->GetChild(file_name);
-    // A device mounted on a folder of a host device is what the folder's path
-    // names. A raw partition's stand-in in a NullDevice stays what it is.
-    if (!root_entry && dynamic_cast<HostPathEntry*>(parent_entry)) {
+    // A device mounted on a folder of a host device, or on a path whose parent
+    // no device holds, is what the path names. A raw partition's stand-in in a
+    // NullDevice stays what it is.
+    if (!root_entry &&
+        (!parent_entry || dynamic_cast<HostPathEntry*>(parent_entry))) {
       if (Entry* mount_root = ResolveMountRoot(path)) {
         // Replacing it would delete the whole device.
         if (creation_disposition == FileDisposition::kSuperscede ||
@@ -330,6 +329,10 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry,
         }
         entry = mount_root;
       }
+    }
+    if (!parent_entry && !entry) {
+      *out_action = FileAction::kDoesNotExist;
+      return X_STATUS_OBJECT_PATH_NOT_FOUND;
     }
   } else if (path.empty() && root_entry) {
     // An empty relative path is the root entry itself. Replacing it would
