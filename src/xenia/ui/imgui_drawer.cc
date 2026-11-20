@@ -671,7 +671,8 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   io.DisplaySize.y =
       std::round(window_->GetActualPhysicalHeight() * physical_to_logical);
 
-  // Scale based on display resolution (baseline: 1280x720) and font_size cvar
+  // Text scales with the display resolution (baseline: 1280x720). Spacing also
+  // scales with the font_size cvar.
   constexpr float kBaseWidth = 1280.f;
   constexpr float kBaseHeight = 720.f;
   constexpr float kBaseFontSize = 14.f;
@@ -696,8 +697,8 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
     style.ScaleAllSizes(combined_scale);
   }
 
-  // Apply font scaling
-  style.FontScaleMain = combined_scale;
+  // Fonts are built at font_size and only follow the resolution here.
+  style.FontScaleMain = resolution_scale;
 
   if (!dialogs_.empty()) {
     UpdateGamepads();

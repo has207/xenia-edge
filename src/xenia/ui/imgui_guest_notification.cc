@@ -100,7 +100,7 @@ void AchievementNotificationWindow::OnDraw(ImGuiIO& io) {
       std::fminf(screen_size.x / default_drawing_resolution.x,
                  screen_size.y / default_drawing_resolution.y);
   // The notification's own text scale. The global font scale already follows
-  // the window size and the font_size cvar.
+  // the window size.
   const float font_size =
       GetDrawer()->GetFontSize() * default_notification_text_scale;
   ImGui::PushFont(nullptr, font_size);
@@ -180,7 +180,7 @@ void XNotifyWindow::OnDraw(ImGuiIO& io) {
       std::fminf(screen_size.x / default_drawing_resolution.x,
                  screen_size.y / default_drawing_resolution.y);
   // The notification's own text scale. The global font scale already follows
-  // the window size and the font_size cvar.
+  // the window size.
   const float font_size =
       GetDrawer()->GetFontSize() * default_notification_text_scale;
   ImGui::PushFont(nullptr, font_size);
