@@ -226,7 +226,7 @@ void MessageBoxDialog::OnDraw(ImGuiIO& io) {
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     // Handle keyboard escape or gamepad B/Back to cancel
     if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ShouldCloseFromGamepad()) {
-      chosen_button_ = default_button_;
+      cancelled_ = true;
       ImGui::CloseCurrentPopup();
       Close();
     }
@@ -427,13 +427,24 @@ static dword_result_t XamShowMessageBoxUi(
         new ui::ProfilePasscodeUI(imgui_drawer, title, text, result_ptr), close,
         overlapped);
   } else {
-    auto close = [result_ptr](MessageBoxDialog* dialog) -> X_RESULT {
-      result_ptr->ButtonPressed = dialog->chosen_button();
+    auto close = [result_ptr](MessageBoxDialog* dialog,
+                              uint32_t& extended_error,
+                              uint32_t& length) -> X_RESULT {
       kernel_state()->xam_state()->is_xam_dialog_present_.store(false);
+      length = 0;
+      // B fails the request, with no button and the cancel in the extended
+      // error.
+      if (dialog->cancelled()) {
+        result_ptr->ButtonPressed = 0xFFFFFFFF;
+        extended_error = X_ERROR_CANCELLED;
+        return X_ERROR_FUNCTION_FAILED;
+      }
+      result_ptr->ButtonPressed = dialog->chosen_button();
+      extended_error = X_ERROR_SUCCESS;
       return X_ERROR_SUCCESS;
     };
 
-    result = xeXamDispatchDialog<MessageBoxDialog>(
+    result = xeXamDispatchDialogEx<MessageBoxDialog>(
         new MessageBoxDialog(imgui_drawer, input_system, title, text, buttons,
                              static_cast<uint32_t>(active_button)),
         close, overlapped);
@@ -614,7 +625,7 @@ dword_result_t XamShowDeviceSelectorUI_entry(
 
   auto close = [device_id_ptr, devices](MessageBoxDialog* dialog) -> X_RESULT {
     uint32_t button = dialog->chosen_button();
-    if (button >= devices.size()) {
+    if (dialog->cancelled() || button >= devices.size()) {
       return X_ERROR_CANCELLED;
     }
 
@@ -746,7 +757,7 @@ dword_result_t XamShowMarketplaceUIEx_entry(dword_t user_index, dword_t ui_type,
 
   auto close = [ui_type,
                 is_xbla_unlock_offer](MessageBoxDialog* dialog) -> void {
-    if (ui_type == 1 && is_xbla_unlock_offer) {
+    if (ui_type == 1 && is_xbla_unlock_offer && !dialog->cancelled()) {
       uint32_t button = dialog->chosen_button();
       if (button == 0) {
         cvars::license_mask = 1;

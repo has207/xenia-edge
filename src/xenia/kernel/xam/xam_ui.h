@@ -93,6 +93,8 @@ class MessageBoxDialog : public XamGamepadDialog {
   }
 
   uint32_t chosen_button() const { return chosen_button_; }
+  // Closed with B or Escape, without choosing a button
+  bool cancelled() const { return cancelled_; }
 
   void OnDraw(ImGuiIO& io) override;
   virtual ~MessageBoxDialog() {}
@@ -104,6 +106,7 @@ class MessageBoxDialog : public XamGamepadDialog {
   std::vector<std::string> buttons_;
   uint32_t default_button_ = 0;
   uint32_t chosen_button_ = 0;
+  bool cancelled_ = false;
 };
 
 class KeyboardInputDialog : public XamGamepadDialog {
