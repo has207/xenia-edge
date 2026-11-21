@@ -929,16 +929,15 @@ X_RESULT KernelState::ApplyTitleUpdate(
 
   if (fit == Fit::kNone) {
     XELOGW("No installed title update fits {}", title_module->name());
-    // First module that is loaded is always main executable. That way we can
-    // prevent random message spam in case of loading/unloading.
-    if (!GetExecutableModule()) {
-      emulator_->display_window()->app_context().CallInUIThread([&]() {
-        new xe::ui::HostNotificationWindow(
-            emulator_->imgui_drawer(), "Warning!",
-            "Title Update signature doesn't match. Skipping its application!",
-            0);
-      });
+    // The executable took the update, which this module would run without.
+    if (GetExecutableModule()) {
+      return X_STATUS_UNSUCCESSFUL;
     }
+    emulator_->display_window()->app_context().CallInUIThread([&]() {
+      new xe::ui::HostNotificationWindow(
+          emulator_->imgui_drawer(), "Warning!",
+          "Title Update signature doesn't match. Skipping its application!", 0);
+    });
     return X_STATUS_SUCCESS;
   }
   if (!patch_module) {
