@@ -1,5 +1,6 @@
 """APC corpus: what the routines of an APC queued to the executor's own thread
-are called with, and when they run.
+are called with, and when they run, and an alertable wait on a signalled
+event with a user APC queued.
 
 Every scenario removes its APC at the end, since the next scenario lays its
 arena over it.
@@ -9,6 +10,7 @@ import struct
 
 KERNEL_MODE = 0
 USER_MODE = 1
+NOTIFICATION = 0
 CURRENT_THREAD = 0xFFFFFFFE
 KAPC_SIZE = 0x28
 CONTEXT = 0x3333
@@ -62,3 +64,19 @@ def build(corpus):
            capture=[normal.log])
     s.call('KeDelayExecutionThread', USER_MODE, 1, interval(s, 10),
            name='alertable wait', capture=[normal.log])
+
+    # The signalled event satisfies the alertable wait, which leaves the APC
+    # queued for the next alertable wait to run.
+    s = corpus.scenario('alertable wait on a signalled event')
+    normal = s.recorder('normal routine', args=3)
+    event_slot = s.alloc(4, 'event')
+    event = s.variable('event')
+    s.call('NtCreateEvent', event_slot, 0, NOTIFICATION, 1,
+           store=[(event, event_slot)])
+    s.call('NtQueueApcThread', CURRENT_THREAD, normal, CONTEXT, ARG1, ARG2,
+           capture=[normal.log])
+    s.call('NtWaitForSingleObjectEx', event, USER_MODE, 1, interval(s, 10),
+           name='alertable wait', capture=[normal.log])
+    s.call('KeDelayExecutionThread', USER_MODE, 1, interval(s, 10),
+           name='alertable delay', capture=[normal.log])
+    s.call('NtClose', event)

@@ -1,6 +1,6 @@
 {
  "corpus": "apc",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-25",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-21",
  "steps": [
   {
    "scenario": "user apc",
@@ -276,6 +276,109 @@
     {
      "pointer": "interval",
      "offset": 32
+    }
+   ]
+  },
+  {
+   "scenario": "alertable wait on a signalled event",
+   "name": "NtCreateEvent",
+   "export": "NtCreateEvent",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "event",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "alertable wait on a signalled event",
+   "name": "NtQueueApcThread",
+   "export": "NtQueueApcThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "normal routine": "0000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "value": 4294967294
+    },
+    {
+     "recorder": "normal routine"
+    },
+    {
+     "value": 13107
+    },
+    {
+     "value": 4369
+    },
+    {
+     "value": 8738
+    }
+   ]
+  },
+  {
+   "scenario": "alertable wait on a signalled event",
+   "name": "alertable wait",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "capture": {
+    "normal routine": "0000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "variable": "event"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "interval",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "alertable wait on a signalled event",
+   "name": "alertable delay",
+   "export": "KeDelayExecutionThread",
+   "r3": "00000000000000C0",
+   "capture": {
+    "normal routine": "0000000100000000000000000000333300000000000011110000000000002222"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 1
+    },
+    {
+     "pointer": "interval",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "alertable wait on a signalled event",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "event"
     }
    ]
   }
