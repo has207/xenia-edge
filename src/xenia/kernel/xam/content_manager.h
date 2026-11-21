@@ -305,6 +305,11 @@ class ContentManager {
   // What any request for the content fails with because of its file name.
   X_RESULT CheckPackageName(const uint64_t xuid,
                             const XCONTENT_AGGREGATE_DATA& data);
+  // Where the package is or would be stored, under the content root and with
+  // backslashes, as XamContentCreate stores it.
+  X_RESULT ResolvePackageRelativePath(const uint64_t xuid,
+                                      const XCONTENT_AGGREGATE_DATA& data,
+                                      std::string& relative_path);
   bool ContentExists(const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data);
   X_RESULT WriteContentHeaderFile(const uint64_t xuid,
                                   XCONTENT_AGGREGATE_DATA data);

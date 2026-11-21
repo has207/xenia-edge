@@ -82,13 +82,53 @@ dword_result_t XamContentGetLicenseMask_entry(lpdword_t mask_ptr,
 }
 DECLARE_XAM_EXPORT2(XamContentGetLicenseMask, kContent, kStub, kHighFrequency);
 
+// xam refuses root names with these characters after an optional
+// \??\ or \System??\ prefix in any case.
+static bool ValidRootName(std::string_view name) {
+  if (name.empty()) {
+    return false;
+  }
+  for (std::string_view prefix : {"\\??\\", "\\System??\\"}) {
+    if (xe::utf8::starts_with_case(name, prefix)) {
+      name.remove_prefix(prefix.size());
+      break;
+    }
+  }
+  return name.find_first_of(":;<=>?@!\"#$%&'()*+,-./[\\]") ==
+         std::string_view::npos;
+}
+
+// Content requests look the user up as they run and use the user's XUID for the
+// four user indices and XUID 0 for any other.
+static X_RESULT ContentXuid(uint32_t user_index, uint64_t& xuid) {
+  if (user_index >= XUserMaxUserCount) {
+    return X_ERROR_SUCCESS;
+  }
+  const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
+  if (!user) {
+    return X_ERROR_NO_SUCH_USER;
+  }
+  xuid = user->xuid();
+  return X_ERROR_SUCCESS;
+}
+
 dword_result_t xeXamContentResolve(
     dword_t user_index, lpvoid_t content_data_ptr, dword_t content_data_size,
     lpstring_t path_ptr, dword_t path_size, dword_t create_directory,
     lpstring_t root_name_ptr, pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // A root name xam won't take is refused before the request is queued.
+  std::string root_name;
+  if (root_name_ptr) {
+    root_name = root_name_ptr.value();
+    if (!ValidRootName(root_name)) {
+      return X_ERROR_ACCESS_DENIED;
+    }
+  }
+
   auto run = [user_index, content_data_ptr, content_data_size, path_ptr,
-              path_size, create_directory, root_name_ptr](
-                 uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+              path_size, create_directory, root_name,
+              overlapped = bool(overlapped_ptr)](uint32_t& extended_error,
+                                                 uint32_t& length) -> X_RESULT {
     XCONTENT_AGGREGATE_DATA content_data;
     if (content_data_size == sizeof(XCONTENT_DATA)) {
       content_data = *content_data_ptr.as<XCONTENT_DATA*>();
@@ -100,53 +140,77 @@ dword_result_t xeXamContentResolve(
       assert_always();
       return X_ERROR_INVALID_PARAMETER;
     }
-    uint64_t xuid = 0;
-    if (user_index < XUserMaxUserCount) {
-      const auto profile =
-          kernel_state()->xam_state()->profile_manager()->GetProfile(
-              static_cast<uint8_t>(user_index));
-      if (profile && content_data.content_type == XContentType::kSavedGame) {
-        xuid = profile->xuid();
+    // The device the content is on and the content's path on it.
+    std::string device_path;
+    std::string content_path;
+    X_RESULT result = X_ERROR_SUCCESS;
+    if (content_data.device_id == static_cast<uint32_t>(DummyDeviceId::HDD)) {
+      // The user's XUID for any type, where XamContentCreate stores it.
+      uint64_t xuid = 0;
+      result = ContentXuid(user_index, xuid);
+      std::string relative_path;
+      if (!result) {
+        result = kernel_state()->content_manager()->ResolvePackageRelativePath(
+            xuid, content_data, relative_path);
       }
-    }
-
-    std::string root_device_path = "";
-
-    if (root_name_ptr) {
-      // Check if root_name is valid.
-      // root_device_path = std::string(root_name_ptr);
-      // Unsupported for now.
-      return X_ERROR_INVALID_PARAMETER;
+      device_path = "\\Device\\Harddisk0\\Partition1";
+      content_path = "Content\\" + relative_path;
+    } else if (content_data.device_id ==
+               static_cast<uint32_t>(DummyDeviceId::ODD)) {
+      uint64_t xuid = 0;
+      if (user_index < XUserMaxUserCount) {
+        const auto profile =
+            kernel_state()->xam_state()->profile_manager()->GetProfile(
+                static_cast<uint8_t>(user_index));
+        if (profile && content_data.content_type == XContentType::kSavedGame) {
+          xuid = profile->xuid();
+        }
+      }
+      device_path = kernel_state()->title_mount_path_;
+      content_path =
+          fmt::format("content\\{:016X}\\{:08X}\\{:08X}\\{}", xuid,
+                      kernel_state()->title_id(),
+                      static_cast<uint32_t>(content_data.content_type.get()),
+                      content_data.file_name());
     } else {
-      if (content_data.device_id == static_cast<uint32_t>(DummyDeviceId::HDD)) {
-        root_device_path = "\\Device\\Harddisk0\\Partition1\\Content\\";
-      } else if (content_data.device_id ==
-                 static_cast<uint32_t>(DummyDeviceId::ODD)) {
-        root_device_path = kernel_state()->title_mount_path_ + "\\content\\";
-      } else {
-        return X_ERROR_INVALID_PARAMETER;
+      result = X_ERROR_INVALID_PARAMETER;
+    }
+
+    if (!result) {
+      // The caller creates the package file itself, so the directory must
+      // exist.
+      const std::string content_dir =
+          xe::utf8::find_base_guest_path(device_path + "\\" + content_path);
+      if (create_directory && !kernel_state()->file_system()->CreatePath(
+                                  content_dir, vfs::kFileAttributeDirectory)) {
+        XELOGW("XamContentResolve: Cannot create content directory {}",
+               content_dir);
+      }
+
+      // A root name links to the device and starts the path. The path is
+      // handed out before the link is made, so a root that's taken still gets
+      // it.
+      string_util::copy_truncating(
+          path_ptr,
+          (root_name.empty() ? device_path : root_name + ':') + "\\" +
+              content_path,
+          path_size);
+      if (!root_name.empty()) {
+        auto file_system = kernel_state()->file_system();
+        if (file_system->IsSymbolicLinkRegistered(root_name + ':')) {
+          result = X_ERROR_ALREADY_EXISTS;
+        } else {
+          file_system->RegisterSymbolicLink(root_name + ':', device_path);
+        }
       }
     }
 
-    const std::string relative_dir =
-        fmt::format("{:016X}\\{:08X}\\{:08X}", xuid, kernel_state()->title_id(),
-                    static_cast<uint32_t>(content_data.content_type.get()));
-    const std::string content_dir = root_device_path + relative_dir;
-
-    // The caller creates the package file itself, so the directory must exist.
-    if (create_directory && !kernel_state()->file_system()->CreatePath(
-                                content_dir, vfs::kFileAttributeDirectory)) {
-      XELOGW("XamContentResolve: Cannot create content directory {}",
-             content_dir);
+    extended_error = X_HRESULT_FROM_WIN32(result);
+    length = 0;
+    if (result && overlapped) {
+      result = X_ERROR_FUNCTION_FAILED;
     }
-
-    string_util::copy_truncating(
-        path_ptr, content_dir + "\\" + content_data.file_name(), path_size);
-
-    // Check if it exists and try to mount that package
-    // Result of buffer_ptr is sent to RtlInitAnsiString.
-    // buffer_size is usually 260 (max path).
-    return X_ERROR_SUCCESS;
+    return result;
   };
 
   if (!overlapped_ptr) {
@@ -295,22 +359,6 @@ DECLARE_XAM_EXPORT1(XamContentCreateEnumerator, kContent, kImplemented);
 
 enum class kDispositionState : uint32_t { Unknown = 0, Create = 1, Open = 2 };
 
-// xam refuses root names with these characters after an optional
-// \??\ or \System??\ prefix in any case.
-static bool ValidRootName(std::string_view name) {
-  if (name.empty()) {
-    return false;
-  }
-  for (std::string_view prefix : {"\\??\\", "\\System??\\"}) {
-    if (xe::utf8::starts_with_case(name, prefix)) {
-      name.remove_prefix(prefix.size());
-      break;
-    }
-  }
-  return name.find_first_of(":;<=>?@!\"#$%&'()*+,-./[\\]") ==
-         std::string_view::npos;
-}
-
 // xam takes an ASCII file name but lets its first byte have the top bit set.
 static bool ValidFileName(const XCONTENT_DATA& content_data) {
   const auto& name = content_data.file_name_raw;
@@ -324,20 +372,6 @@ static bool ValidFileName(const XCONTENT_DATA& content_data) {
     }
   }
   return true;
-}
-
-// Content requests look the user up as they run and use the user's XUID for the
-// four user indices and XUID 0 for any other.
-static X_RESULT ContentXuid(uint32_t user_index, uint64_t& xuid) {
-  if (user_index >= XUserMaxUserCount) {
-    return X_ERROR_SUCCESS;
-  }
-  const auto& user = kernel_state()->xam_state()->GetUserProfile(user_index);
-  if (!user) {
-    return X_ERROR_NO_SUCH_USER;
-  }
-  xuid = user->xuid();
-  return X_ERROR_SUCCESS;
 }
 
 // A request with an overlapped completes it with ERROR_FUNCTION_FAILED and its

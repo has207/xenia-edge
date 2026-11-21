@@ -352,6 +352,18 @@ X_RESULT ContentManager::CheckPackageName(const uint64_t xuid,
   return ResolvePackagePath(xuid, data, path);
 }
 
+X_RESULT ContentManager::ResolvePackageRelativePath(
+    const uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data,
+    std::string& relative_path) {
+  std::filesystem::path path;
+  if (const X_RESULT result = ResolvePackagePath(xuid, data, path)) {
+    return result;
+  }
+  relative_path = xe::path_to_utf8(path.lexically_relative(root_path_));
+  std::replace(relative_path.begin(), relative_path.end(), '/', '\\');
+  return X_ERROR_SUCCESS;
+}
+
 static std::filesystem::path PackageHeaderPath(
     const std::filesystem::path& package_path) {
   // Header path:
