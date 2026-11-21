@@ -10,6 +10,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 
 #include <algorithm>
+#include <atomic>
 #include <utility>
 #include <vector>
 
@@ -1381,8 +1382,7 @@ void xeKfLowerIrql(PPCContext* ctx, unsigned char new_irql) {
   }
   kpcr->current_irql = new_irql;
   if (new_irql < 2) {
-    // the called function does a ton of other stuff including changing the
-    // irql and interrupt_related
+    xeRunPendingDpcs(ctx);
   }
 }
 // irql is supposed to be per thread afaik...
@@ -1770,10 +1770,14 @@ void KeInitializeDpc_entry(pointer_t<XDPC> dpc, lpvoid_t routine,
 }
 DECLARE_XBOXKRNL_EXPORT2(KeInitializeDpc, kThreading, kImplemented, kSketchy);
 
-// DPCs queued while a DPC routine runs, with the guest thread running it, as
-// {thread id, DPC}. They run after it returns, as the console drains its DPC
-// queue, instead of nesting. Guarded with the global lock.
+// DPCs queued while a DPC routine runs or at DISPATCH_LEVEL and above, with
+// the guest thread that queued them, as {thread id, DPC}. They run once the
+// routine returns or the thread's IRQL drops below DISPATCH_LEVEL, as the
+// console drains its DPC queue, instead of nesting. Guarded with the global
+// lock.
 static std::vector<std::pair<uint32_t, uint32_t>> deferred_dpcs;
+// Lets an IRQL drop skip the lock when nothing waits.
+static std::atomic<uint32_t> deferred_dpc_count{0};
 
 static bool IsDeferredDpc(uint32_t dpc_ptr) {
   return std::find_if(deferred_dpcs.begin(), deferred_dpcs.end(),
@@ -1814,19 +1818,40 @@ void xeRunDeferredDpcs(PPCContext* ctx) {
       }
       dpc_ptr = it->second;
       deferred_dpcs.erase(it);
+      --deferred_dpc_count;
     }
     auto dpc = kernel_memory()->TranslateVirtual<XDPC*>(dpc_ptr);
     xeRunDpc(ctx, dpc_ptr, dpc->arg1, dpc->arg2);
   }
 }
 
+void xeRunPendingDpcs(PPCContext* ctx) {
+  if (!deferred_dpc_count.load(std::memory_order_relaxed)) {
+    return;
+  }
+  auto kpcr = ctx->TranslateVirtualGPR<X_KPCR*>(ctx->r[13]);
+  if (kpcr->prcb_data.dpc_active || kpcr->current_irql >= 2) {
+    return;
+  }
+  {
+    auto global_lock = xe::global_critical_region::AcquireDirect();
+    if (std::none_of(deferred_dpcs.begin(), deferred_dpcs.end(),
+                     [ctx](const auto& deferred) {
+                       return deferred.first == ctx->thread_id;
+                     })) {
+      return;
+    }
+  }
+  DPCImpersonationScope dpc_scope{};
+  kernel_state()->BeginDPCImpersonation(ctx, dpc_scope);
+  xeRunDeferredDpcs(ctx);
+  kernel_state()->EndDPCImpersonation(ctx, dpc_scope);
+}
+
 dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
                                       dword_t arg2) {
-  uint32_t list_entry_ptr = dpc.guest_address() + 4;
-
   // Lock dispatcher.
   auto global_lock = xe::global_critical_region::AcquireDirect();
-  auto dpc_list = kernel_state()->dpc_list();
 
   // A DPC still waiting to run is not queued again.
   if (IsDeferredDpc(dpc.guest_address())) {
@@ -1860,8 +1885,6 @@ dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
   dpc->arg1 = (uint32_t)arg1;
   dpc->arg2 = (uint32_t)arg2;
 
-  dpc_list->Insert(list_entry_ptr);
-
   // Otherwise it runs inline on the calling thread: it targets the calling
   // processor, or no scheduler can run it elsewhere.
   uint32_t routine = dpc->routine;
@@ -1873,9 +1896,12 @@ dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
 
       // Inside a DPC routine (reentrant KeInsertQueueDpc), the DPC waits
       // for the running one to return. A routine that queues itself again
-      // would otherwise recurse until the host stack overflows.
-      if (kpcr->prcb_data.dpc_active) {
+      // would otherwise recurse until the host stack overflows. At
+      // DISPATCH_LEVEL or above it waits for the IRQL to drop, as the caller
+      // may hold a spinlock the routine takes.
+      if (kpcr->prcb_data.dpc_active || kpcr->current_irql >= 2) {
         deferred_dpcs.emplace_back(ppc_context->thread_id, dpc.guest_address());
+        ++deferred_dpc_count;
         return 1;
       }
 
@@ -1890,17 +1916,11 @@ dword_result_t KeInsertQueueDpc_entry(pointer_t<XDPC> dpc, dword_t arg1,
 }
 DECLARE_XBOXKRNL_EXPORT2(KeInsertQueueDpc, kThreading, kImplemented, kSketchy);
 
+// Whether the DPC was still waiting to run.
 dword_result_t KeRemoveQueueDpc_entry(pointer_t<XDPC> dpc) {
   bool result = false;
 
-  uint32_t list_entry_ptr = dpc.guest_address() + 4;
-
   auto global_lock = xe::global_critical_region::AcquireDirect();
-  auto dpc_list = kernel_state()->dpc_list();
-  if (dpc_list->IsQueued(list_entry_ptr)) {
-    dpc_list->Remove(list_entry_ptr);
-    result = true;
-  }
   if (kernel_state()->RemoveDpc(dpc.guest_address())) {
     result = true;
   }
@@ -1910,6 +1930,7 @@ dword_result_t KeRemoveQueueDpc_entry(pointer_t<XDPC> dpc) {
   for (auto it = deferred_dpcs.begin(); it != deferred_dpcs.end(); ++it) {
     if (it->second == dpc.guest_address()) {
       deferred_dpcs.erase(it);
+      --deferred_dpc_count;
       result = true;
       break;
     }

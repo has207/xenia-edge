@@ -81,9 +81,12 @@ X_STATUS xeProcessUserApcs(PPCContext* ctx);
 // Returns true if any ran.
 bool xeProcessKernelApcs(PPCContext* ctx);
 
-// Runs the DPCs this guest thread queued while a DPC ran, before it leaves
-// DISPATCH_LEVEL. Called with the DPC still active.
+// Runs the DPCs this guest thread deferred, before it leaves DISPATCH_LEVEL.
+// Called with a DPC active.
 void xeRunDeferredDpcs(PPCContext* ctx);
+// Runs the DPCs the thread queued at DISPATCH_LEVEL or above, once its IRQL is
+// below it and no DPC routine runs.
+void xeRunPendingDpcs(PPCContext* ctx);
 
 // Calls a DPC's routine with |arg1| and |arg2| as its system arguments.
 // Called with the DPC active.

@@ -64,7 +64,6 @@ KernelState::KernelState(Emulator* emulator)
     : emulator_(emulator),
       memory_(emulator->memory()),
       dispatch_thread_running_(false),
-      dpc_list_(emulator->memory()),
       kernel_trampoline_group_(emulator->processor()->backend()) {
   assert_null(shared_kernel_state_);
   shared_kernel_state_ = this;

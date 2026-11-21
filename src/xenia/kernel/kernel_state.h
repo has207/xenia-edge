@@ -310,8 +310,6 @@ class KernelState {
   void UnregisterNotifyListener(XNotifyListener* listener);
   void BroadcastNotification(XNotificationID id, uint32_t data);
 
-  util::NativeList* dpc_list() { return &dpc_list_; }
-
   void CompleteOverlapped(uint32_t overlapped_ptr, X_RESULT result);
   // The completion routine runs on thread_handle, the requester's thread.
   void CompleteOverlappedEx(uint32_t overlapped_ptr, X_RESULT result,
@@ -462,8 +460,6 @@ class KernelState {
 
   std::atomic<bool> dispatch_thread_running_;
   object_ref<XHostThread> dispatch_thread_;
-  // Must be guarded by the global critical region.
-  util::NativeList dpc_list_;
   // Guards the dispatch queue, which a timer expiry pushes to while a timer
   // cancel holding the global lock can be waiting for it.
   std::mutex dispatch_mutex_;

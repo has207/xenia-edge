@@ -583,6 +583,13 @@ X_STATUS XThread::Exit(int exit_code) {
   // Block any racing KeInsertQueueApc from another thread before we drain.
   kthread->may_queue_apcs = 0;
 
+  // DPCs this thread queued at a raised IRQL run once the IRQL drops, which it
+  // never would after the thread has gone, so it drops now.
+  auto kpcr = cpu_context->TranslateVirtualGPR<X_KPCR*>(cpu_context->r[13]);
+  if (!kpcr->prcb_data.dpc_active && kpcr->current_irql >= 2) {
+    xboxkrnl::xeKfLowerIrql(cpu_context, 0);
+  }
+
   // TODO(benvanik): dispatch events? waiters? etc?
   RundownAPCs();
   XMutant::AbandonAllOwnedByThread(kernel_state(), this);
