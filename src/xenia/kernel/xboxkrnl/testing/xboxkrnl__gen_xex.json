@@ -1,0 +1,56 @@
+{
+ "corpus": "xex",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-21",
+ "steps": [
+  {
+   "scenario": "XexLoadImage flags",
+   "name": "no flags",
+   "export": "XexLoadImage",
+   "r3": "FFFFFFFFC0000022",
+   "capture": {
+    "handle": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "pointer": "name",
+     "offset": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "handle",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "XexLoadImage flags",
+   "name": "title process",
+   "export": "XexLoadImage",
+   "r3": "FFFFFFFFC0000022",
+   "capture": {
+    "handle": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "pointer": "name",
+     "offset": 0
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "handle",
+     "offset": 32
+    }
+   ]
+  }
+ ]
+}
