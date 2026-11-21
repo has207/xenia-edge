@@ -42,6 +42,9 @@ class VirtualFileSystem {
   bool FindSymbolicLink(const std::string_view path, std::string& target);
 
   Entry* ResolvePath(const std::string_view path);
+  // What a path that doesn't resolve fails to open with: a missing folder or
+  // link on the way is a missing path, a missing last name a missing name.
+  X_STATUS MissingPathStatus(const std::string_view path);
 
   Entry* CreatePath(const std::string_view path, uint32_t attributes);
   // Moves |entry| to |target_path|, which can be on a device mounted below the

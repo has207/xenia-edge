@@ -741,7 +741,7 @@ void KernelState::LoadKernelModule(object_ref<KernelModule> kernel_module) {
 }
 
 object_ref<UserModule> KernelState::LoadUserModule(
-    const std::string_view raw_name, bool call_entry) {
+    const std::string_view raw_name, bool call_entry, X_STATUS* out_status) {
   // Some games try to load relative to launch module, others specify full path.
   auto name = xe::utf8::find_name_from_guest_path(raw_name);
   std::string path(raw_name);
@@ -777,6 +777,9 @@ object_ref<UserModule> KernelState::LoadUserModule(
     X_STATUS status = module->LoadFromFile(path);
     if (XFAILED(status)) {
       object_table()->ReleaseHandle(module->handle());
+      if (out_status) {
+        *out_status = status;
+      }
       return nullptr;
     }
 

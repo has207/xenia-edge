@@ -715,12 +715,7 @@ dword_result_t NtQueryFullAttributesFile_entry(
           entry->update();
           return;
         }
-        // A missing directory or link before the last component is a missing
-        // path.
-        auto base_path = xe::utf8::find_base_guest_path(target_path);
-        if (!base_path.empty() && !file_system->ResolvePath(base_path)) {
-          missing_status = X_STATUS_OBJECT_PATH_NOT_FOUND;
-        }
+        missing_status = file_system->MissingPathStatus(target_path);
       },
       GuestScheduler::BlockingCallClass::kConcurrent);
   if (entry) {

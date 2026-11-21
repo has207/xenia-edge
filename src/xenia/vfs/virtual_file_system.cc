@@ -167,6 +167,13 @@ bool MountPathMatches(const std::string_view path,
 
 }  // namespace
 
+X_STATUS VirtualFileSystem::MissingPathStatus(const std::string_view path) {
+  const auto base_path = xe::utf8::find_base_guest_path(path);
+  return !base_path.empty() && !ResolvePath(base_path)
+             ? X_STATUS_OBJECT_PATH_NOT_FOUND
+             : X_STATUS_OBJECT_NAME_NOT_FOUND;
+}
+
 Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
   auto global_lock = global_critical_region_.Acquire();
 

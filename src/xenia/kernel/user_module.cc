@@ -100,7 +100,7 @@ X_STATUS UserModule::LoadFromFile(const std::string_view path) {
   auto fs_entry = kernel_state()->file_system()->ResolvePath(path);
   if (!fs_entry) {
     XELOGE("File not found: {}", path);
-    return X_STATUS_NO_SUCH_FILE;
+    return kernel_state()->file_system()->MissingPathStatus(path);
   }
 
   path_ = fs_entry->absolute_path();

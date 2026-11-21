@@ -14,6 +14,7 @@
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/xbox.h"
 
 namespace xe {
@@ -183,7 +184,7 @@ dword_result_t xeXexLoadImage(
     lpstring_t module_name, dword_t module_flags, dword_t min_version,
     lpdword_t hmodule_ptr,
     const std::function<object_ref<UserModule>()>& load_callback,
-    bool isFromMemory) {
+    bool isFromMemory, const X_STATUS* load_status) {
   std::string summary = "Loading Xex Image:";
   uint32_t unused_flag = module_flags;
 
@@ -210,21 +211,38 @@ dword_result_t xeXexLoadImage(
   const uint32_t hmodule =
       LoadImageReference(module_name.value(), load_callback);
   *hmodule_ptr = hmodule;
-  return hmodule ? X_STATUS_SUCCESS : X_STATUS_NO_SUCH_FILE;
+  if (hmodule) {
+    return X_STATUS_SUCCESS;
+  }
+  return load_status ? *load_status : X_STATUS_NO_SUCH_FILE;
 }
 
 dword_result_t XexLoadImage_entry(lpstring_t module_name, dword_t module_flags,
-                                  dword_t min_version, lpdword_t hmodule_ptr) {
+                                  dword_t min_version, lpdword_t hmodule_ptr,
+                                  const ppc_context_t& context) {
   // Only a DLL loads this way, or a load with flag 0x80, which has no name.
   // Anything else is refused before the module is looked for.
   if (!(module_flags & (LOAD_DLL | 0x80))) {
     return X_STATUS_ACCESS_DENIED;
   }
-  auto load_callback = [module_name] {
-    return kernel_state()->LoadUserModule(module_name.value());
+  if (hmodule_ptr) {
+    *hmodule_ptr = 0;
+  }
+  // A module goes into the title process with TITLE_PROCESS and into the
+  // system process without it, which only a thread of that process loads
+  // into.
+  if (!(module_flags & TITLE_PROCESS) &&
+      xeKeGetCurrentProcessType(context) != X_PROCTYPE_SYSTEM) {
+    return X_STATUS_ACCESS_DENIED;
+  }
+  // A module that isn't there fails as opening its file would.
+  X_STATUS load_status = X_STATUS_NO_SUCH_FILE;
+  auto load_callback = [module_name, &load_status] {
+    return kernel_state()->LoadUserModule(module_name.value(), true,
+                                          &load_status);
   };
   return xeXexLoadImage(module_name, module_flags, min_version, hmodule_ptr,
-                        load_callback, false);
+                        load_callback, false, &load_status);
 }
 DECLARE_XBOXKRNL_EXPORT1(XexLoadImage, kModules, kImplemented);
 
@@ -238,16 +256,17 @@ dword_result_t XexLoadImageFromMemory_entry(lpdword_t buffer, dword_t size,
                                                     size);
   };
   return xeXexLoadImage(module_name, module_flags, min_version, hmodule_ptr,
-                        load_callback, true);
+                        load_callback, true, nullptr);
 }
 DECLARE_XBOXKRNL_EXPORT1(XexLoadImageFromMemory, kModules, kImplemented);
 
 dword_result_t XexLoadExecutable_entry(lpstring_t module_name,
                                        dword_t module_flags,
                                        dword_t min_version,
-                                       lpdword_t hmodule_ptr) {
-  return XexLoadImage_entry(module_name, module_flags, min_version,
-                            hmodule_ptr);
+                                       lpdword_t hmodule_ptr,
+                                       const ppc_context_t& context) {
+  return XexLoadImage_entry(module_name, module_flags, min_version, hmodule_ptr,
+                            context);
 }
 DECLARE_XBOXKRNL_EXPORT1(XexLoadExecutable, kModules, kSketchy);
 

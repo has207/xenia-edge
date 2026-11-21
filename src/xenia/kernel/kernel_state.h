@@ -258,8 +258,10 @@ class KernelState {
   object_ref<XThread> LaunchModule(object_ref<UserModule> module);
   object_ref<UserModule> GetExecutableModule();
   void SetExecutableModule(object_ref<UserModule> module);
+  // Stores why a module that can't be loaded failed in |out_status|.
   object_ref<UserModule> LoadUserModule(const std::string_view name,
-                                        bool call_entry = true);
+                                        bool call_entry = true,
+                                        X_STATUS* out_status = nullptr);
   object_ref<UserModule> LoadUserModuleFromMemory(const std::string_view name,
                                                   const void* addr,
                                                   const size_t length);
