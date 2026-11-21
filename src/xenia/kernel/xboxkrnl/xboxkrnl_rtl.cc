@@ -7,6 +7,7 @@
  ******************************************************************************
  */
 
+#include <algorithm>
 #include <cwctype>
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
@@ -302,6 +303,11 @@ void RtlCopyUnicodeString_entry(pointer_t<X_UNICODE_STRING> destination,
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlCopyUnicodeString, kNone, kImplemented);
 
+// A character as an ANSI byte, '?' for one past 0xFF.
+static uint8_t UnicodeCharToAnsi(char16_t c) {
+  return c < 0x100 ? static_cast<uint8_t>(c) : '?';
+}
+
 // https://msdn.microsoft.com/en-us/library/ff562969
 dword_result_t RtlUnicodeStringToAnsiString_entry(
     pointer_t<X_ANSI_STRING> destination_ptr,
@@ -313,7 +319,8 @@ dword_result_t RtlUnicodeStringToAnsiString_entry(
 
   std::u16string unicode_str =
       util::TranslateUnicodeString(kernel_memory(), source_ptr);
-  std::string ansi_str = xe::to_utf8(unicode_str);
+  std::string ansi_str(unicode_str.size(), '\0');
+  std::ranges::transform(unicode_str, ansi_str.begin(), UnicodeCharToAnsi);
   if (ansi_str.size() > 0xFFFF - 1) {
     return X_STATUS_INVALID_PARAMETER_2;
   }
@@ -390,8 +397,7 @@ dword_result_t RtlUnicodeToMultiByteN_entry(pointer_t<uint8_t> destination_ptr,
 
   // TODO(benvanik): maybe use UnicodeToMultiByte on Win32?
   for (uint32_t i = 0; i < copy_len; i++) {
-    uint16_t c = source_ptr[i];
-    destination_ptr[i] = c < 256 ? (uint8_t)c : '?';
+    destination_ptr[i] = UnicodeCharToAnsi(source_ptr[i]);
   }
 
   if (written_ptr.guest_address() != 0) {
