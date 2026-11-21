@@ -444,6 +444,17 @@ int XexModule::ApplyPatch(XexModule* module) {
 
   uint32_t new_image_size = module->image_size();
 
+  // The patched image starts as the original's source range at the target
+  // offset.
+  const uint32_t source_offset = patch_header->delta_image_source_offset;
+  const uint32_t source_size = patch_header->delta_image_source_size;
+  const uint32_t target_offset = patch_header->delta_image_target_offset;
+  if (uint64_t(source_offset) + source_size > original_image_size ||
+      uint64_t(target_offset) + source_size > new_image_size) {
+    XELOGE("XEX patch source range doesn't fit the image");
+    return 11;
+  }
+
   // Unload releases only the allocation at the base, not the range the image
   // grew into.
   uint32_t grown_address = 0;
@@ -457,6 +468,7 @@ int XexModule::ApplyPatch(XexModule* module) {
   if (base_moved || new_image_size > original_image_size) {
     uint32_t addr_new_mem;
     uint32_t size_delta;
+    std::vector<uint8_t> original_image;
     if (base_moved) {
       XELOGW(
           "Patch for module: {} changed base_address from {:08X} to {:08X}, "
@@ -466,6 +478,14 @@ int XexModule::ApplyPatch(XexModule* module) {
       addr_new_mem = new_base_address;
       // Room for the old image, trimmed below if the patched one is smaller.
       size_delta = std::max(original_image_size, new_image_size);
+      // The new range can overlap the old image, which is set aside and freed
+      // first.
+      const uint8_t* original =
+          memory()->TranslateVirtual<const uint8_t*>(original_base_address);
+      original_image.assign(original, original + original_image_size);
+      memory()
+          ->LookupHeap(original_base_address)
+          ->Release(original_base_address);
     } else {
       addr_new_mem = new_base_address + original_image_size;
       size_delta = new_image_size - original_image_size;
@@ -489,13 +509,9 @@ int XexModule::ApplyPatch(XexModule* module) {
       grown_address = addr_new_mem;
     }
 
-    // Move the image to its new base and free the old allocation.
     if (base_moved) {
-      kernel_state_->memory()->Copy(new_base_address, original_base_address,
-                                    original_image_size);
-      memory()
-          ->LookupHeap(original_base_address)
-          ->Release(original_base_address);
+      std::memcpy(memory()->TranslateVirtual(new_base_address),
+                  original_image.data(), original_image_size);
     }
   }
 
@@ -554,25 +570,13 @@ int XexModule::ApplyPatch(XexModule* module) {
   const uint8_t* p = input_buffer;
   uint8_t* base_exe = memory()->TranslateVirtual(module->base_address_);
 
-  // If image_source_offset is set, copy [source_offset:source_size] to
-  // target_offset
-  if (patch_header->delta_image_source_offset) {
-    // Same buffer at both ends, so the ranges can overlap - see the note in
-    // lzxdelta_apply_patch.
-    memmove(base_exe + patch_header->delta_image_target_offset,
-            base_exe + patch_header->delta_image_source_offset,
-            patch_header->delta_image_source_size);
-  }
-
-  // TODO: should we use new_image_size here instead?
-  uint32_t image_target_size = patch_header->delta_image_target_offset +
-                               patch_header->delta_image_source_size;
-
-  // If new size is smaller than original, null out the difference
-  if (image_target_size < original_image_size) {
-    memset(base_exe + image_target_size, 0,
-           original_image_size - image_target_size);
-  }
+  // Same buffer at both ends, so the ranges can overlap - see the note in
+  // lzxdelta_apply_patch. The rest of the image is zeros, which reused pages
+  // don't hold.
+  memmove(base_exe + target_offset, base_exe + source_offset, source_size);
+  std::memset(base_exe, 0, target_offset);
+  std::memset(base_exe + target_offset + source_size, 0,
+              new_image_size - target_offset - source_size);
 
   uint8_t digest[0x14];
   // Now loop through each block and apply the delta patches inside
