@@ -215,6 +215,11 @@ dword_result_t xeXexLoadImage(
 
 dword_result_t XexLoadImage_entry(lpstring_t module_name, dword_t module_flags,
                                   dword_t min_version, lpdword_t hmodule_ptr) {
+  // Only a DLL loads this way, or a load with flag 0x80, which has no name.
+  // Anything else is refused before the module is looked for.
+  if (!(module_flags & (LOAD_DLL | 0x80))) {
+    return X_STATUS_ACCESS_DENIED;
+  }
   auto load_callback = [module_name] {
     return kernel_state()->LoadUserModule(module_name.value());
   };
