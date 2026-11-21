@@ -77,7 +77,7 @@ bool HostPathEntry::Overwrite() {
   return true;
 }
 
-void HostPathEntry::SetOverwrittenSize(size_t size) {
+void HostPathEntry::SetSize(size_t size) {
   size_ = size;
   allocation_size_ = xe::round_up(size, device()->bytes_per_sector());
 }

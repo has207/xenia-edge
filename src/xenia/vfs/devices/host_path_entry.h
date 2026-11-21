@@ -60,7 +60,8 @@ class HostPathEntry : public Entry {
   friend class HostPathDevice;
   friend class HostPathFile;
 
-  void SetOverwrittenSize(size_t size);
+  // Sets the size the entry reports without asking the host.
+  void SetSize(size_t size);
 
   std::unique_ptr<Entry> CreateEntryInternal(const std::string_view name,
                                              uint32_t attributes) override;

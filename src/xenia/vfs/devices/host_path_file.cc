@@ -64,10 +64,12 @@ X_STATUS HostPathFile::WriteSync(std::span<const uint8_t> buffer,
 
   if (file_handle_->Write(byte_offset, buffer.data(), buffer.size(),
                           out_bytes_written)) {
+    // A write past the end grows the size the entry reports, which a
+    // directory listing reads without asking the host.
     auto entry = static_cast<HostPathEntry*>(entry_);
-    if (entry->overwritten_ &&
-        byte_offset + *out_bytes_written > entry->size_) {
-      entry->SetOverwrittenSize(byte_offset + *out_bytes_written);
+    const size_t end = byte_offset + *out_bytes_written;
+    if (end > entry->size_ && !entry->reported_size_fixed_) {
+      entry->SetSize(end);
     }
     return X_STATUS_SUCCESS;
   } else {
@@ -85,7 +87,7 @@ X_STATUS HostPathFile::SetLength(size_t length) {
     // Shrinking the host file to the new size keeps the old bytes below it.
     auto entry = static_cast<HostPathEntry*>(entry_);
     if (entry->overwritten_) {
-      entry->SetOverwrittenSize(length);
+      entry->SetSize(length);
     }
     return X_STATUS_SUCCESS;
   } else {
