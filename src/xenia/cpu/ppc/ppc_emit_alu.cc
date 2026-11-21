@@ -747,7 +747,9 @@ int InstrEmit_orx(PPCHIRBuilder& f, const InstrData& i) {
     // chrispy: this special version of orx is db16cyc and is heavily used in
     // spinlocks. since we do not emit any code for this we end up wasting a ton
     // of power
-    if (i.code == 0x7FFFFB78) {
+    // The low thread priority hint (or r1,r1,r1) heads spin loops the same way,
+    // such as XeFu's mailbox service.
+    if (i.code == 0x7FFFFB78 || i.code == 0x7C210B78) {
       f.DelayExecution();
     } else {
       // Sometimes used as no-op.
