@@ -261,17 +261,16 @@ dword_result_t NtResumeThread_entry(dword_t handle,
 }
 DECLARE_XBOXKRNL_EXPORT1(NtResumeThread, kThreading, kImplemented);
 
+// Returns the suspend count from before the resume.
 dword_result_t KeResumeThread_entry(pointer_t<X_KTHREAD> thread_ptr) {
-  X_STATUS result = X_STATUS_SUCCESS;
+  uint32_t previous_suspend_count = 0;
   auto thread = XObject::GetNativeObject<XThread>(kernel_state(), thread_ptr,
                                                   ThreadObject);
   if (thread) {
-    result = thread->Resume();
-  } else {
-    result = X_STATUS_INVALID_HANDLE;
+    thread->Resume(&previous_suspend_count);
   }
 
-  return result;
+  return previous_suspend_count;
 }
 DECLARE_XBOXKRNL_EXPORT1(KeResumeThread, kThreading, kImplemented);
 
@@ -302,8 +301,7 @@ dword_result_t NtSuspendThread_entry(dword_t handle,
 
         if (is_self_suspend) {
           XELOGD("Thread {:X} self-suspending", thread->handle());
-          suspend_count = thread->SelfSuspend();
-          result = X_STATUS_SUCCESS;
+          result = thread->SelfSuspend(&suspend_count);
           XELOGD("Thread {:X} resumed", thread->handle());
         } else {
           result = thread->Suspend(&suspend_count);
@@ -319,7 +317,8 @@ dword_result_t NtSuspendThread_entry(dword_t handle,
     return X_STATUS_INVALID_HANDLE;
   }
 
-  if (suspend_count_ptr) {
+  // A failed suspend leaves the count unwritten.
+  if (suspend_count_ptr && XSUCCEEDED(result)) {
     *suspend_count_ptr = suspend_count;
   }
 

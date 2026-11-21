@@ -45,7 +45,8 @@ uint32_t ToXdkProtectFlags(uint32_t protect) {
     result = X_PAGE_NOACCESS;
   } else if ((protect & kMemoryProtectRead) &&
              !(protect & kMemoryProtectWrite)) {
-    result = X_PAGE_READONLY;
+    // A page made read-only reports PAGE_USER_READONLY too.
+    result = X_PAGE_READONLY | X_PAGE_USER_READONLY;
   } else {
     result = X_PAGE_READWRITE;
   }
@@ -512,11 +513,16 @@ dword_result_t NtQueryVirtualMemory_entry(
     return X_STATUS_INVALID_PARAMETER;
   }
 
-  memory_basic_information_ptr->base_address = alloc_info.base_address;
+  // The base is the address's 4 KB page whatever the heap's page size, and the
+  // region runs from it.
+  const uint32_t base = base_address & ~0xFFFu;
+  const uint32_t region_end =
+      (base_address & ~(heap->page_size() - 1)) + alloc_info.region_size;
+  memory_basic_information_ptr->base_address = base;
   memory_basic_information_ptr->allocation_base = alloc_info.allocation_base;
   memory_basic_information_ptr->allocation_protect =
       ToXdkProtectFlags(alloc_info.allocation_protect);
-  memory_basic_information_ptr->region_size = alloc_info.region_size;
+  memory_basic_information_ptr->region_size = region_end - base;
   // https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-memory_basic_information
   // State: ... This member can be one of the following values: MEM_COMMIT,
   // MEM_FREE, MEM_RESERVE.
@@ -531,7 +537,9 @@ dword_result_t NtQueryVirtualMemory_entry(
     x_state = X_MEM_FREE;
   }
   memory_basic_information_ptr->state = x_state;
-  memory_basic_information_ptr->protect = ToXdkProtectFlags(alloc_info.protect);
+  // Only committed pages have a protection.
+  memory_basic_information_ptr->protect =
+      x_state == X_MEM_COMMIT ? ToXdkProtectFlags(alloc_info.protect) : 0;
   memory_basic_information_ptr->type = X_MEM_PRIVATE;
 
   return X_STATUS_SUCCESS;
@@ -695,8 +703,10 @@ DECLARE_XBOXKRNL_EXPORT1(MmFreePhysicalMemory, kMemory, kImplemented);
 
 dword_result_t MmQueryAddressProtect_entry(dword_t base_address) {
   auto heap = kernel_state()->memory()->LookupHeap(base_address);
+  // Only committed pages have a protection.
   uint32_t access;
-  if (!heap->QueryProtect(base_address, &access)) {
+  if (!heap || !heap->IsPageCommitted(base_address) ||
+      !heap->QueryProtect(base_address, &access)) {
     access = 0;
   }
   access = !access ? 0 : ToXdkProtectFlags(access);

@@ -392,6 +392,8 @@ class XThread : public XObject, public cpu::Thread {
   static const XObject::Type kObjectType = XObject::Type::Thread;
 
   static constexpr uint32_t kThreadKernelStackSize = 0xF0;
+  // A thread can't be suspended past this count.
+  static constexpr uint8_t kMaxSuspendCount = 0x7F;
 
   struct CreationParams {
     uint32_t stack_size;
@@ -517,9 +519,9 @@ class XThread : public XObject, public cpu::Thread {
 
 #if !XE_PLATFORM_WIN32
   // Performs self-suspension: increments suspend_count and blocks until
-  // another thread calls Resume() and suspend_count reaches 0.
-  // Returns the previous suspend_count value.
-  uint32_t SelfSuspend();
+  // another thread calls Resume() and suspend_count reaches 0. Stores the
+  // previous suspend_count value.
+  X_STATUS SelfSuspend(uint32_t* out_suspend_count);
 #endif
 
   xe::threading::Thread* thread() { return thread_.get(); }

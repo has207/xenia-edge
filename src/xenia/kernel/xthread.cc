@@ -1251,9 +1251,16 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
   if (fiber_) {
     // Bump the guest suspend count and let the dispatcher act on it, at our
     // next pick-up for a self-suspend or the target's next yield otherwise.
-    uint8_t previous =
-        reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count)
-            ->fetch_add(1);
+    // A count at the limit is left as it is.
+    auto* count =
+        reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count);
+    uint8_t previous = count->load();
+    do {
+      if (previous >= kMaxSuspendCount) {
+        return X_STATUS_SUSPEND_COUNT_EXCEEDED;
+      }
+    } while (!count->compare_exchange_weak(previous,
+                                           static_cast<uint8_t>(previous + 1)));
     if (out_suspend_count) {
       *out_suspend_count = previous;
     }
@@ -1286,20 +1293,21 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
 }
 
 #if !XE_PLATFORM_WIN32
-uint32_t XThread::SelfSuspend() {
+X_STATUS XThread::SelfSuspend(uint32_t* out_suspend_count) {
   auto guest_thread = guest_object<X_KTHREAD>();
   if (fiber_) {
     // Waiting on the condition variable would block the whole dispatch thread.
-    uint32_t previous = 0;
-    Suspend(&previous);
-    return previous;
+    return Suspend(out_suspend_count);
   }
   std::unique_lock<std::mutex> lock(suspend_mutex_);
   uint32_t previous = guest_thread->suspend_count;
   guest_thread->suspend_count++;
+  if (out_suspend_count) {
+    *out_suspend_count = previous;
+  }
   suspend_cv_.wait(
       lock, [guest_thread]() { return guest_thread->suspend_count == 0; });
-  return previous;
+  return X_STATUS_SUCCESS;
 }
 #endif  // !XE_PLATFORM_WIN32
 

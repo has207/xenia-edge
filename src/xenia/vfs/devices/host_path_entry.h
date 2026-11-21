@@ -40,6 +40,7 @@ class HostPathEntry : public Entry {
                                            size_t offset,
                                            size_t length) override;
   void update() override;
+  bool is_empty_folder() const override;
   bool has_open_files() const override;
   void RetainFile() override { open_files_.fetch_add(1); }
   void ReleaseFile() override;

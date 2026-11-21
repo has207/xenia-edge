@@ -219,6 +219,12 @@ void HostPathEntry::update() {
   }
 }
 
+bool HostPathEntry::is_empty_folder() const {
+  std::error_code error;
+  const bool empty = std::filesystem::is_empty(host_path_, error);
+  return error ? Entry::is_empty_folder() : empty;
+}
+
 bool HostPathEntry::SetTimes(xe::filesystem::FileHandle& file_handle,
                              uint64_t create_timestamp,
                              uint64_t access_timestamp,

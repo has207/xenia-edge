@@ -336,11 +336,19 @@ dword_result_t RtlUnicodeStringToAnsiString_entry(
     if (buffer_capacity < ansi_str.size() + 1) {
       // Too large - we just write what we can.
       result = X_STATUS_BUFFER_OVERFLOW;
-      memcpy(buffer_ptr, ansi_str.data(), buffer_capacity - 1);
+      if (buffer_capacity) {
+        memcpy(buffer_ptr, ansi_str.data(), buffer_capacity - 1);
+        buffer_ptr[buffer_capacity - 1] = 0;
+        destination_ptr->length = static_cast<uint16_t>(buffer_capacity - 1);
+      } else {
+        // The length is set to the whole string's before the buffer is
+        // checked.
+        destination_ptr->length = static_cast<uint16_t>(ansi_str.size());
+      }
     } else {
       memcpy(buffer_ptr, ansi_str.data(), ansi_str.size() + 1);
+      destination_ptr->length = static_cast<uint16_t>(ansi_str.size());
     }
-    buffer_ptr[buffer_capacity - 1] = 0;  // \0
   }
   return result;
 }
@@ -535,6 +543,8 @@ DECLARE_XBOXKRNL_EXPORT1(RtlImageXexHeaderField, kNone, kImplemented);
 #pragma pack(push, 1)
 struct X_RTL_CRITICAL_SECTION {
   X_DISPATCH_HEADER header;
+  // Big-endian like the other fields, but kept as a plain int for the atomic
+  // operations; -1 and 0 read the same either way.
   int32_t lock_count;                          // 0x10 -1 -> 0 on first lock
   xe::be<int32_t> recursion_count;             // 0x14  0 -> 1 on first lock
   TypedGuestPointer<X_KTHREAD> owning_thread;  // 0x18 PKTHREAD 0 unless locked
@@ -585,6 +595,20 @@ dword_result_t RtlInitializeCriticalSectionAndSpinCount_entry(
 DECLARE_XBOXKRNL_EXPORT2(RtlInitializeCriticalSectionAndSpinCount, kNone,
                          kImplemented, kHighFrequency);
 
+// Adds to a critical section's big-endian LockCount and returns the new value.
+static int32_t CriticalSectionAddLockCount(X_RTL_CRITICAL_SECTION* cs,
+                                           int32_t delta) {
+  while (true) {
+    const int32_t old_raw =
+        *reinterpret_cast<volatile int32_t*>(&cs->lock_count);
+    const int32_t new_value = xe::byte_swap(old_raw) + delta;
+
+    if (xe::atomic_cas(old_raw, xe::byte_swap(new_value), &cs->lock_count)) {
+      return new_value;
+    }
+  }
+}
+
 static void CriticalSectionPrefetchW(const void* vp) {
 #if XE_ARCH_AMD64 == 1
   if (amd64::GetFeatureFlags() & amd64::kX64EmitPrefetchW) {
@@ -604,7 +628,7 @@ void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
 
   if (cs->owning_thread == cur_thread) {
     // We already own the lock.
-    xe::atomic_inc(&cs->lock_count);
+    CriticalSectionAddLockCount(cs, 1);
     cs->recursion_count++;
     return;
   }
@@ -619,7 +643,7 @@ void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
     }
   }
 
-  if (xe::atomic_inc(&cs->lock_count) != 0) {
+  if (CriticalSectionAddLockCount(cs, 1) != 0) {
     // Create a full waiter.
     xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0,
                             nullptr);
@@ -648,7 +672,7 @@ dword_result_t RtlTryEnterCriticalSection_entry(
     return 1;
   } else if (cs->owning_thread == thread) {
     // Already own the lock.
-    xe::atomic_inc(&cs->lock_count);
+    CriticalSectionAddLockCount(cs, 1);
     ++cs->recursion_count;
     return 1;
   }
@@ -681,13 +705,13 @@ void RtlLeaveCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
   if (--cs->recursion_count != 0) {
     assert_true(cs->recursion_count >= 0);
 
-    xe::atomic_dec(&cs->lock_count);
+    CriticalSectionAddLockCount(cs, -1);
     return;
   }
 
   // Not owned - unlock!
   cs->owning_thread = 0;
-  if (xe::atomic_dec(&cs->lock_count) != -1) {
+  if (CriticalSectionAddLockCount(cs, -1) != -1) {
     // There were waiters - wake one of them.
     xeKeSetEvent(reinterpret_cast<X_KEVENT*>(cs.host_address()), 1, 0);
   }
@@ -710,10 +734,9 @@ static_assert_size(X_TIME_FIELDS, 16);
 // https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtltimetotimefields
 void RtlTimeToTimeFields_entry(lpqword_t time_ptr,
                                pointer_t<X_TIME_FIELDS> time_fields_ptr) {
-  // Use host clock because we don't want scaling to be applied, just conversion
-  using xe::chrono::WinSystemClock;
   auto tp =
-      WinSystemClock::to_sys(WinSystemClock::from_file_time(time_ptr.value()));
+      xe::chrono::filetime_epoch +
+      xe::chrono::hundrednanoseconds{static_cast<int64_t>(time_ptr.value())};
   auto dp = date::floor<date::days>(tp);
   auto year_month_day = date::year_month_day{dp};
   auto weekday = date::weekday{dp};
@@ -733,7 +756,6 @@ DECLARE_XBOXKRNL_EXPORT1(RtlTimeToTimeFields, kNone, kImplemented);
 // https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtltimefieldstotime
 dword_result_t RtlTimeFieldsToTime_entry(
     pointer_t<X_TIME_FIELDS> time_fields_ptr, lpqword_t time_ptr) {
-  using xe::chrono::WinSystemClock;
   if (time_fields_ptr->year < 1601 || time_fields_ptr->month < 1 ||
       time_fields_ptr->month > 12 || time_fields_ptr->day < 1 ||
       time_fields_ptr->day > 31 || time_fields_ptr->hour > 23 ||
@@ -749,12 +771,13 @@ dword_result_t RtlTimeFieldsToTime_entry(
     return 0;
   }
   auto dp = static_cast<date::sys_days>(year_month_day);
-  std::chrono::system_clock::time_point time = dp;
-  time += std::chrono::hours{time_fields_ptr->hour};
-  time += std::chrono::minutes{time_fields_ptr->minute};
-  time += std::chrono::seconds{time_fields_ptr->second};
-  time += std::chrono::milliseconds{time_fields_ptr->milliseconds};
-  *time_ptr = WinSystemClock::to_file_time(WinSystemClock::from_sys(time));
+  auto time = std::chrono::duration_cast<xe::chrono::hundrednanoseconds>(
+      (dp - xe::chrono::filetime_epoch) +
+      std::chrono::hours{time_fields_ptr->hour} +
+      std::chrono::minutes{time_fields_ptr->minute} +
+      std::chrono::seconds{time_fields_ptr->second} +
+      std::chrono::milliseconds{time_fields_ptr->milliseconds});
+  *time_ptr = static_cast<uint64_t>(time.count());
   return 1;
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlTimeFieldsToTime, kNone, kImplemented);

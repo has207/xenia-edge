@@ -164,8 +164,8 @@ dword_result_t NtQueryInformationFile_entry(
       out_length = 0;
       break;
     default: {
-      // Unsupported, for now.
-      assert_always();
+      XELOGW("NtQueryInformationFile: unimplemented class {}",
+             static_cast<uint32_t>(info_class));
       status = X_STATUS_INVALID_PARAMETER;
       out_length = 0;
       break;
@@ -274,6 +274,19 @@ dword_result_t NtSetInformationFile_entry(
     case XFileDispositionInformation: {
       auto info = info_ptr.as<X_FILE_DISPOSITION_INFORMATION*>();
       bool delete_on_close = info->delete_file ? true : false;
+      // A folder can only be deleted once it's empty. The host lookup can block
+      // on a slow drive.
+      if (delete_on_close &&
+          (file->entry()->attributes() & vfs::kFileAttributeDirectory)) {
+        bool empty = true;
+        kernel_state()->RunBlockingIo(
+            [&]() { empty = file->entry()->is_empty_folder(); },
+            GuestScheduler::BlockingCallClass::kConcurrent);
+        if (!empty) {
+          result = X_STATUS_DIRECTORY_NOT_EMPTY;
+          break;
+        }
+      }
       file->entry()->SetForDeletion(static_cast<bool>(info->delete_file));
       XELOGW("NtSetInformationFile set deleting flag for {} on close to: {}",
              file->name(), delete_on_close);
