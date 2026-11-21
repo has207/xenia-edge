@@ -1,0 +1,108 @@
+{
+ "corpus": "rtl",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-21",
+ "steps": [
+  {
+   "scenario": "to ANSI, fits",
+   "name": "RtlUnicodeStringToAnsiString",
+   "export": "RtlUnicodeStringToAnsiString",
+   "r3": "0000000000000000",
+   "capture": {
+    "string[:0x4]": "00040010",
+    "buffer": "41e93f5a00cdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "pointer": "string",
+     "offset": 32
+    },
+    {
+     "pointer": "source",
+     "offset": 8
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "to ANSI, cut short",
+   "name": "RtlUnicodeStringToAnsiString",
+   "export": "RtlUnicodeStringToAnsiString",
+   "r3": "FFFFFFFF80000005",
+   "capture": {
+    "string[:0x4]": "00020003",
+    "buffer": "41e900cdcdcdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "pointer": "string",
+     "offset": 32
+    },
+    {
+     "pointer": "source",
+     "offset": 8
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "to ANSI, no room",
+   "name": "RtlUnicodeStringToAnsiString",
+   "export": "RtlUnicodeStringToAnsiString",
+   "r3": "FFFFFFFF80000005",
+   "capture": {
+    "string[:0x4]": "00040000",
+    "buffer": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   },
+   "args": [
+    {
+     "pointer": "string",
+     "offset": 32
+    },
+    {
+     "pointer": "source",
+     "offset": 8
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "to ANSI, allocated",
+   "name": "RtlUnicodeStringToAnsiString",
+   "export": "RtlUnicodeStringToAnsiString",
+   "r3": "0000000000000000",
+   "capture": {
+    "string[:0x4]": "00040005"
+   },
+   "args": [
+    {
+     "pointer": "string",
+     "offset": 16
+    },
+    {
+     "pointer": "source",
+     "offset": 8
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "to ANSI, allocated",
+   "name": "RtlFreeAnsiString",
+   "export": "RtlFreeAnsiString",
+   "args": [
+    {
+     "pointer": "string",
+     "offset": 16
+    }
+   ]
+  }
+ ]
+}
