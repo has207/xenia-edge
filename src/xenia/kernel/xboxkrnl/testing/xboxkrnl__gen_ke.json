@@ -1,6 +1,6 @@
 {
  "corpus": "ke",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-10-31",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-21",
  "steps": [
   {
    "scenario": "mutant owned from the start",
@@ -290,6 +290,158 @@
     {
      "pointer": "timer",
      "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "KeInitializeDpc",
+   "export": "KeInitializeDpc",
+   "args": [
+    {
+     "pointer": "dpc",
+     "offset": 0
+    },
+    {
+     "recorder": "dpc routine"
+    },
+    {
+     "value": 13107
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "insert",
+   "export": "KeInsertQueueDpc",
+   "r3": "0000000000000001",
+   "capture": {
+    "dpc routine": "0000000100000000000000008203000000000000000033330000000000001111000000000000222200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "dpc",
+     "offset": 0
+    },
+    {
+     "value": 4369
+    },
+    {
+     "value": 8738
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "remove after it ran",
+   "export": "KeRemoveQueueDpc",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "dpc",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "KfRaiseIrql",
+   "export": "KfRaiseIrql",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "insert at DISPATCH_LEVEL",
+   "export": "KeInsertQueueDpc",
+   "r3": "0000000000000001",
+   "capture": {
+    "dpc routine": "0000000100000000000000008203000000000000000033330000000000001111000000000000222200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "dpc",
+     "offset": 0
+    },
+    {
+     "value": 4369
+    },
+    {
+     "value": 8738
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "lower",
+   "export": "KfLowerIrql",
+   "capture": {
+    "dpc routine": "0000000200000000000000008203000000000000000033330000000000001111000000000000222200000000820300000000000000003333000000000000111100000000000022220000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "variable": "old irql"
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "KfRaiseIrql",
+   "export": "KfRaiseIrql",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "insert to remove",
+   "export": "KeInsertQueueDpc",
+   "r3": "0000000000000001",
+   "capture": {
+    "dpc routine": "0000000200000000000000008203000000000000000033330000000000001111000000000000222200000000820300000000000000003333000000000000111100000000000022220000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "dpc",
+     "offset": 0
+    },
+    {
+     "value": 4369
+    },
+    {
+     "value": 8738
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "remove while queued",
+   "export": "KeRemoveQueueDpc",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "pointer": "dpc",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "dpc",
+   "name": "lower after the remove",
+   "export": "KfLowerIrql",
+   "capture": {
+    "dpc routine": "0000000200000000000000008203000000000000000033330000000000001111000000000000222200000000820300000000000000003333000000000000111100000000000022220000000000000000000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "variable": "old irql"
     }
    ]
   }
