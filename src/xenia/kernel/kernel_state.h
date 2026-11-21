@@ -149,6 +149,9 @@ struct KernelGuestGlobals {
   // KeQueryBackgroundProcessors and written by KeSetBackgroundProcessors.
   // 0x3C (CPUs 2-5) is the console's boot value.
   xe::be<uint32_t> background_processors;
+
+  // Every loaded module's loader entry, by InLoadOrderLinks, in load order.
+  X_LIST_ENTRY loaded_modules;
 };
 struct DPCImpersonationScope {
   uint8_t previous_irql_;

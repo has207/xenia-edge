@@ -30,6 +30,8 @@ namespace xe {
 namespace kernel {
 
 // Host object: the loader owns module handles, not the title's namespace.
+constexpr uint32_t kLoadFlagTitleProcess = 1;
+
 UserModule::UserModule(KernelState* kernel_state)
     : XModule(kernel_state, ModuleType::kUserModule, true) {}
 
@@ -274,8 +276,15 @@ X_STATUS UserModule::LoadContinue() {
 
   ldr_data->dll_base = 0;  // GetProcAddress will read this.
   ldr_data->xex_header_base = guest_xex_header_;
+  ldr_data->image_size = security_header->image_size;
   ldr_data->full_image_size = security_header->image_size;
   ldr_data->image_base = this->xex_module()->base_address();
+  // Loaded once, by whatever loaded it. The title's executable is loaded into
+  // the title process.
+  ldr_data->load_count = 1;
+  if (!is_dll_module_) {
+    ldr_data->load_flags = kLoadFlagTitleProcess;
+  }
 
   ldr_data->entry_point = entry_point_;
 

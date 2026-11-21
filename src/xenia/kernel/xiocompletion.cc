@@ -34,9 +34,10 @@ void XIOCompletion::QueueNotification(IONotification& notification) {
   kernel_state()->guest_scheduler()->WakeAll();
 }
 
-bool XIOCompletion::WaitForNotification(uint64_t wait_ticks,
+bool XIOCompletion::WaitForNotification(const uint64_t* timeout,
                                         IONotification* notify) {
-  auto ms = std::chrono::milliseconds(TimeoutTicksToMs(wait_ticks));
+  auto ms = timeout ? std::chrono::milliseconds(TimeoutTicksToMs(*timeout))
+                    : std::chrono::milliseconds::max();
 
   if (GuestScheduler::enabled() && XThread::GetCurrentFiberThread()) {
     // Acquire at zero timeout and yield between polls, rather than blocking
@@ -49,7 +50,7 @@ bool XIOCompletion::WaitForNotification(uint64_t wait_ticks,
       if (poll == threading::WaitResult::kSuccess) {
         break;
       }
-      if (Clock::QueryHostUptimeMillis() >= deadline_ms) {
+      if (timeout && Clock::QueryHostUptimeMillis() >= deadline_ms) {
         return false;
       }
       scheduler->BlockCurrentThread();

@@ -418,9 +418,38 @@ void KernelState::RemoveTitleTerminateNotification(uint32_t routine) {
   }
 }
 
-void KernelState::RegisterModule(XModule* module) {}
+// Links the module's loader entry onto the end of the loaded module list once,
+// so a title walking InLoadOrderLinks finds every module.
+void KernelState::RegisterModule(XModule* module) {
+  if (!kernel_guest_globals_ || !module->hmodule_ptr()) {
+    return;
+  }
+  auto global_lock = global_critical_region_.Acquire();
+  auto ldr_data =
+      memory_->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(module->hmodule_ptr());
+  if (ldr_data->in_load_order_links.flink_ptr) {
+    return;
+  }
+  auto block =
+      memory_->TranslateVirtual<KernelGuestGlobals*>(kernel_guest_globals_);
+  util::XeInsertTailList(&block->loaded_modules, &ldr_data->in_load_order_links,
+                         memory_);
+}
 
-void KernelState::UnregisterModule(XModule* module) {}
+void KernelState::UnregisterModule(XModule* module) {
+  if (!module->hmodule_ptr()) {
+    return;
+  }
+  auto global_lock = global_critical_region_.Acquire();
+  auto ldr_data =
+      memory_->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(module->hmodule_ptr());
+  if (!ldr_data->in_load_order_links.flink_ptr) {
+    return;
+  }
+  util::XeRemoveEntryList(&ldr_data->in_load_order_links, memory_);
+  ldr_data->in_load_order_links.flink_ptr = 0;
+  ldr_data->in_load_order_links.blink_ptr = 0;
+}
 
 bool KernelState::RegisterUserModule(object_ref<UserModule> module) {
   auto lock = global_critical_region_.Acquire();
@@ -1918,6 +1947,7 @@ void KernelState::InitializeKernelGuestGlobals() {
   KernelGuestGlobals* block =
       memory_->TranslateVirtual<KernelGuestGlobals*>(kernel_guest_globals_);
   memset(block, 0, sizeof(KernelGuestGlobals));
+  util::XeInitializeListHead(&block->loaded_modules, memory_);
 
   auto idle_process = memory()->TranslateVirtual<X_KPROCESS*>(GetIdleProcess());
   InitializeProcess(idle_process, X_PROCTYPE_IDLE, 0, 0, 0);
@@ -2038,6 +2068,9 @@ void KernelState::InitializeKernelGuestGlobals() {
       {XObject::Type::Mutant,
        kernel_guest_globals_ +
            offsetof32(KernelGuestGlobals, ExMutantObjectType)},
+      {XObject::Type::Timer,
+       kernel_guest_globals_ +
+           offsetof32(KernelGuestGlobals, ExTimerObjectType)},
       {XObject::Type::Device,
        kernel_guest_globals_ +
            offsetof32(KernelGuestGlobals, IoDeviceObjectType)}};

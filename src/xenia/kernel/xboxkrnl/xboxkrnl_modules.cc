@@ -147,7 +147,14 @@ static uint32_t LoadImageReference(
     const std::function<object_ref<UserModule>()>& load_callback) {
   uint32_t hmodule = 0;
   if (auto module = kernel_state()->GetModule(module_name)) {
+    // One more load for XexUnloadImage to undo. A module loaded here starts
+    // at one.
     hmodule = module->hmodule_ptr();
+    if (hmodule) {
+      kernel_memory()
+          ->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule)
+          ->load_count++;
+    }
   } else if (auto user_module = load_callback()) {
     // The executable runs with the update, which a module without it doesn't
     // match.
@@ -162,11 +169,6 @@ static uint32_t LoadImageReference(
     // Give up object ownership, this reference will be released by the last
     // XexUnloadImage call
     hmodule = user_module.release()->hmodule_ptr();
-  }
-  if (hmodule) {
-    kernel_memory()
-        ->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule)
-        ->load_count++;
   }
   return hmodule;
 }
