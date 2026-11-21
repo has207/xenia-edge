@@ -346,12 +346,6 @@ X_STATUS CooperativeWait(GuestScheduler* scheduler, XThread* self,
       WaitExit(self, kthread, X_STATUS_KERNEL_APC);
       return X_STATUS_KERNEL_APC;
     }
-    // Alertable waits return on a queued user APC (the cooperative equivalent
-    // of a host alertable-wait wake), then the caller runs xeProcessUserApcs.
-    if (alertable && self && self->HasPendingUserApc()) {
-      WaitExit(self, kthread, X_STATUS_USER_APC);
-      return X_STATUS_USER_APC;
-    }
     // Sampled before polling, so a signal landing after a failed poll changes
     // it and the re-poll is not skipped. A multi-wait has no single object, so
     // it uses the summed epoch of its set.
@@ -371,6 +365,14 @@ X_STATUS CooperativeWait(GuestScheduler* scheduler, XThread* self,
     if (parked && kernel_apc()) {
       WaitExit(self, kthread, X_STATUS_KERNEL_APC);
       return X_STATUS_KERNEL_APC;
+    }
+    // An alertable wait the objects don't satisfy returns on a queued user APC
+    // (the cooperative equivalent of a host alertable-wait wake), then the
+    // caller runs xeProcessUserApcs. Signalled objects satisfy the wait first
+    // and leave the APC queued.
+    if (alertable && self && self->HasPendingUserApc()) {
+      WaitExit(self, kthread, X_STATUS_USER_APC);
+      return X_STATUS_USER_APC;
     }
     if (deadline_ms != 0 && Clock::QueryHostUptimeMillis() >= deadline_ms) {
       WaitExit(self, kthread, X_STATUS_TIMEOUT);
