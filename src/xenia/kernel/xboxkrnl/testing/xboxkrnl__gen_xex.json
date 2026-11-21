@@ -51,6 +51,81 @@
      "offset": 32
     }
    ]
+  },
+  {
+   "scenario": "XexLoadImage flags",
+   "name": "LOAD_DLL in the system process",
+   "export": "XexLoadImage",
+   "r3": "FFFFFFFFC0000022",
+   "capture": {
+    "handle": "00000000"
+   },
+   "args": [
+    {
+     "pointer": "name",
+     "offset": 0
+    },
+    {
+     "value": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "XexLoadImage missing module",
+   "name": "missing name",
+   "export": "XexLoadImage",
+   "r3": "00000000C0000034",
+   "capture": {
+    "handle": "00000000"
+   },
+   "args": [
+    {
+     "pointer": "name",
+     "offset": 0
+    },
+    {
+     "value": 9
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "handle",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "XexLoadImage missing module",
+   "name": "missing folder",
+   "export": "XexLoadImage",
+   "r3": "00000000C000003A",
+   "capture": {
+    "handle": "00000000"
+   },
+   "args": [
+    {
+     "pointer": "name",
+     "offset": 32
+    },
+    {
+     "value": 9
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "handle",
+     "offset": 64
+    }
+   ]
   }
  ]
 }
