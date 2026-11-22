@@ -980,6 +980,8 @@ X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
     // Transition from acceptor to tcp_socket for client connection.
     // The acceptor was created in Initialize() before we knew whether this
     // socket would listen or connect.
+    const asio::ip::tcp::endpoint bound_endpoint =
+        bound_ ? acceptor_->local_endpoint(ec) : asio::ip::tcp::endpoint();
     acceptor_->close(ec);
     acceptor_.reset();
 
@@ -1007,6 +1009,14 @@ X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
       }
     }
     acceptor_options_.clear();
+    // And the address the guest bound it to.
+    if (bound_) {
+      tcp_socket_->bind(bound_endpoint, ec);
+      if (ec) {
+        last_error_ = AsioErrorToWSAError(ec);
+        return X_STATUS_UNSUCCESSFUL;
+      }
+    }
 
     connect_stream(asio::ip::tcp::endpoint(addr, port));
   } else if (tcp_socket_) {
