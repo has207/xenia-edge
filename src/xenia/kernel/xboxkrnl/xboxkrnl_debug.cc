@@ -498,6 +498,9 @@ static std::string DescribeCppException(pointer_t<X_EXCEPTION_RECORD> record,
 }
 
 static void LogCppException(pointer_t<X_EXCEPTION_RECORD> record) {
+  if (!logging::ShouldLog(LogLevel::Debug)) {
+    return;
+  }
   std::string type;
   const std::string detail = DescribeCppException(record, &type);
   XELOGD("Guest threw a C++ exception {}:{}", type, detail);
