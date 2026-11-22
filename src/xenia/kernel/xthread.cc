@@ -109,7 +109,9 @@ XThread::~XThread() {
     user_mode_.reset();
   }
   for (const auto& dispatch : exception_dispatches_) {
-    kernel_state()->memory()->SystemHeapFree(dispatch.records);
+    if (dispatch.kind == ExceptionDispatch::Kind::kDispatch) {
+      kernel_state()->memory()->SystemHeapFree(dispatch.records);
+    }
   }
 
   if (thread_state_) {

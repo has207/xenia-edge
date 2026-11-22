@@ -603,6 +603,10 @@ constexpr uint32_t kTrapFrameSize = 0x700;
 constexpr uint32_t kRaiseFrameSize = 0xB20;
 
 using ExceptionDispatch = XThread::ExceptionDispatch;
+using DispatchKind = ExceptionDispatch::Kind;
+// The frame an unwind or a handler calling guest code makes on the guest
+// stack has a back chain, then the registers it was called with.
+constexpr uint32_t kFrameCaller = 0x10;
 
 // A guest CONTEXT record's fields, as the kernel's unwinder reads and writes
 // them.
@@ -967,13 +971,33 @@ static size_t FindDispatchReturnedTo(
   return count;
 }
 
+// The registers the guest code a dispatch, unwind or call runs was reached
+// from. A walk unwinding to its call goes on from them.
+static uint32_t ReachedFrom(const ExceptionDispatch& dispatch) {
+  return dispatch.records + (dispatch.kind == DispatchKind::kDispatch
+                                 ? kRecordsFaulting
+                                 : kFrameCaller);
+}
+
+// Drops the dispatches from index on, freeing their records.
+static void PopDispatches(std::vector<ExceptionDispatch>* dispatches,
+                          size_t index) {
+  for (size_t i = index; i < dispatches->size(); ++i) {
+    if ((*dispatches)[i].kind == DispatchKind::kDispatch) {
+      kernel_memory()->SystemHeapFree((*dispatches)[i].records);
+    }
+  }
+  if (index < dispatches->size()) {
+    dispatches->resize(index);
+  }
+}
+
 // Steps through the frames a dispatch searches one at a time, as
 // RtlDispatchException does: each is looked up at its control pc and unwound
 // in a copy of the CONTEXT, which gives its establisher frame and its caller's
-// control pc. A frame unwinding to an outer dispatch's handler call goes on
-// from the registers that dispatch's exception was taken with, where the
-// kernel's frames down to its trap frame would lead. Nothing is left to free
-// when a handler doesn't return.
+// control pc. A frame unwinding to a call an outer dispatch, unwind or call
+// made goes on from the registers that was reached from, where the kernel's
+// frames would lead. Nothing is left to free when a handler doesn't return.
 struct DispatchWalk {
   const std::vector<ExceptionDispatch>* outer;
   // Outer dispatches the walk can still meet, innermost last.
@@ -1053,7 +1077,7 @@ static bool NextDispatchFrame(DispatchWalk* walk) {
     walk->met = i + 1;
     std::memcpy(walk->context,
                 kernel_memory()->TranslateVirtual<uint8_t*>(
-                    (*walk->outer)[i].records + kRecordsFaulting),
+                    ReachedFrom((*walk->outer)[i])),
                 kContextSize);
     walk->control_pc = c.iar();
   }
@@ -1083,10 +1107,7 @@ static void DropLeftDispatches(std::vector<ExceptionDispatch>* dispatches,
       --live;
     }
   }
-  for (size_t i = live; i < dispatches->size(); ++i) {
-    kernel_memory()->SystemHeapFree((*dispatches)[i].records);
-  }
-  dispatches->resize(live);
+  PopDispatches(dispatches, live);
 }
 
 // Delivers an exception taken at iar to the guest's frame-based handlers,
@@ -1141,9 +1162,10 @@ static uint32_t DispatchException(PPCContext* context, uint32_t frame_size,
 
   auto& dispatches = thread->exception_dispatches();
   DropLeftDispatches(&dispatches, records + kRecordsFaulting, stack_base);
-  if (dispatches.size() >= kDispatchNesting) {
-    XELOGE("{} at {:08X}: already in {} handlers", fault, address,
-           dispatches.size());
+  const auto nesting = std::ranges::count(dispatches, DispatchKind::kDispatch,
+                                          &ExceptionDispatch::kind);
+  if (size_t(nesting) >= kDispatchNesting) {
+    XELOGE("{} at {:08X}: already in {} handlers", fault, address, nesting);
     kernel_memory()->SystemHeapFree(dispatch.records);
     return 0;
   }
@@ -1195,7 +1217,7 @@ static uint32_t DispatchException(PPCContext* context, uint32_t frame_size,
   for (bool more = start_walk(); more;
        more = raised ? start_walk() : NextDispatchFrame(&walk)) {
     raised = false;
-    if (walk.met) {
+    if (walk.met && dispatches[walk.met - 1].kind == DispatchKind::kDispatch) {
       // A fault in an outer dispatch's handler is nested in that dispatch's
       // frames.
       flags |= kExceptionNestedCall;
@@ -1305,10 +1327,7 @@ static uint32_t DispatchException(PPCContext* context, uint32_t frame_size,
     LoadContextRecord(records + kRecordsFaulting, context);
     *out_searched = walk.count;
   }
-  for (size_t i = index; i < dispatches.size(); ++i) {
-    kernel_memory()->SystemHeapFree(dispatches[i].records);
-  }
-  dispatches.resize(index);
+  PopDispatches(&dispatches, index);
   return resume_address;
 }
 
@@ -1368,25 +1387,30 @@ uint32_t DispatchDataFault(PPCContext* context, uint32_t pc, bool is_store,
                                  "Data fault");
 }
 
-// Where an unwind leaves a frame for one returning to a handler the dispatcher
-// called, it goes on from the registers the exception was taken with. The
-// CONTEXT keeps its iar.
-static void MeetDispatchForUnwind(XThread* thread, uint8_t* context,
-                                  uint32_t* pc) {
+// Where an unwind leaves a frame for one returning to a call one of the first
+// count dispatches or calls made, it goes on from the registers that was
+// reached from, the CONTEXT keeping its iar. Returns the frame of an unwind
+// whose handler call it reaches instead, which it collides with, else 0.
+static uint32_t MeetDispatchForUnwind(XThread* thread, size_t count,
+                                      uint8_t* context, uint32_t* pc) {
   ContextView c{context};
   const auto& dispatches = thread->exception_dispatches();
-  const size_t i = FindDispatchReturnedTo(dispatches, dispatches.size(), *pc,
-                                          uint32_t(c.gpr(1)));
-  if (i == dispatches.size()) {
-    return;
+  const size_t i =
+      FindDispatchReturnedTo(dispatches, count, *pc, uint32_t(c.gpr(1)));
+  if (i == count) {
+    return 0;
+  }
+  if (dispatches[i].kind == DispatchKind::kUnwind) {
+    return dispatches[i].records;
   }
   const uint32_t iar = c.iar();
-  std::memcpy(context,
-              kernel_memory()->TranslateVirtual<uint8_t*>(
-                  dispatches[i].records + kRecordsFaulting),
-              kContextSize);
+  std::memcpy(
+      context,
+      kernel_memory()->TranslateVirtual<uint8_t*>(ReachedFrom(dispatches[i])),
+      kContextSize);
   *pc = c.iar();
   c.set_iar(iar);
+  return 0;
 }
 
 // Calls guest code from a kernel function, on the stack at sp, returning to the
@@ -1402,19 +1426,42 @@ static bool CallGuestFromKernel(PPCContext* ctx, uint32_t address,
   return function->Call(ctx->thread_state, kHostReturnAddress);
 }
 
-// RtlUnwind2's frame on the guest stack: a back chain, the record it makes
-// when it's given none, its dispatcher context, the CONTEXT RtlUnwind gives
-// it, then the STATUS_INVALID_DISPOSITION it can raise.
-constexpr uint32_t kUnwindRecord = 0x10;
+// Calls guest code from a handler, on the handler's frame, which holds the
+// registers the handler was called with for a walk from that code.
+static bool CallGuestFromHandler(PPCContext* ctx, uint32_t address,
+                                 uint32_t frame) {
+  auto* thread = XThread::GetCurrentThread();
+  if (!thread) {
+    return CallGuestFromKernel(ctx, address, frame);
+  }
+  auto& dispatches = thread->exception_dispatches();
+  const size_t index = dispatches.size();
+  ExceptionDispatch call = {};
+  call.handler_sp = frame;
+  call.handler_return = kHostReturnAddress;
+  call.records = frame;
+  call.kind = DispatchKind::kCall;
+  dispatches.push_back(call);
+  const bool called = CallGuestFromKernel(ctx, address, frame);
+  PopDispatches(&dispatches, index);
+  return called;
+}
+
+// RtlUnwind2's frame on the guest stack: a back chain, the registers it was
+// called with, the record it makes when it's given none, its dispatcher
+// context, the CONTEXT RtlUnwind gives it, then the STATUS_INVALID_DISPOSITION
+// it can raise.
+constexpr uint32_t kUnwindRecord = kFrameCaller + kContextSize;
 constexpr uint32_t kUnwindDispatcher = kUnwindRecord + kExceptionRecordSize;
 constexpr uint32_t kUnwindContext = kUnwindDispatcher + kDispatcherContextSize;
 constexpr uint32_t kUnwindRaised = kUnwindContext + kContextSize;
 constexpr uint32_t kUnwindFrameSize = kUnwindRaised + kExceptionRecordSize;
-// Flags of a record being unwound, the frame it's unwound to and an unwind with
-// no frame to stop at.
+// Flags of a record being unwound, the frame it's unwound to, an unwind with
+// no frame to stop at and one that took over another.
 constexpr uint32_t kExceptionUnwinding = 0x2;
 constexpr uint32_t kExceptionExitUnwind = 0x4;
 constexpr uint32_t kExceptionTargetUnwind = 0x20;
+constexpr uint32_t kExceptionCollided = 0x40;
 
 // Unwinds the frames from the caller to the one whose establisher frame is
 // target_frame, calling the handlers on the way. Then the guest continues at
@@ -1435,8 +1482,10 @@ static void UnwindGuestFrames(PPCContext* ctx, uint32_t target_frame,
     XELOGE("Unwind to {:08X}: no stack for the unwind", target_frame);
     return;
   }
-  xe::store_and_swap<uint32_t>(
-      kernel_memory()->TranslateVirtual<uint8_t*>(frame), caller_sp);
+  auto* frame_bytes = kernel_memory()->TranslateVirtual<uint8_t*>(frame);
+  xe::store_and_swap<uint32_t>(frame_bytes, caller_sp);
+  StoreContextRecord(frame_bytes + kFrameCaller, ctx, kHostReturnAddress,
+                     caller_lr);
   if (!context_record) {
     context_record = frame + kUnwindContext;
   }
@@ -1458,14 +1507,48 @@ static void UnwindGuestFrames(PPCContext* ctx, uint32_t target_frame,
         record_bytes + 0x4,
         xe::load_and_swap<uint32_t>(record_bytes + 0x4) | kExceptionExitUnwind);
   }
-  MeetDispatchForUnwind(thread, context, &control_pc);
 
   uint32_t stack_end = 0;
   uint32_t stack_base = 0;
   xeRtlGetStackLimits(ctx, &stack_end, &stack_base);
+  auto& dispatches = thread->exception_dispatches();
+  DropLeftDispatches(&dispatches, frame_bytes + kFrameCaller, stack_base);
+  const size_t index = dispatches.size();
+  ExceptionDispatch unwind = {};
+  unwind.handler_sp = frame;
+  unwind.handler_return = kHostReturnAddress;
+  unwind.records = frame;
+  unwind.kind = DispatchKind::kUnwind;
+  dispatches.push_back(unwind);
+
   const uint32_t dispatcher = frame + kUnwindDispatcher;
   auto* dispatcher_bytes =
       kernel_memory()->TranslateVirtual<uint8_t*>(dispatcher);
+  // Takes over the unwind whose frame and CONTEXT the dispatcher context
+  // holds, calling that frame's handler again.
+  uint32_t collided = 0;
+  auto take_over = [&]() {
+    control_pc = xe::load_and_swap<uint32_t>(dispatcher_bytes + 0x0);
+    context_record = xe::load_and_swap<uint32_t>(dispatcher_bytes + 0xC);
+    context = kernel_memory()->TranslateVirtual<uint8_t*>(context_record);
+    c = ContextView{context};
+    c.set_iar(target_ip);
+    collided = kExceptionCollided;
+  };
+  // Reaching another unwind's handler call collides with that unwind.
+  auto meet = [&](uint32_t* pc) {
+    const uint32_t other = MeetDispatchForUnwind(thread, index, context, pc);
+    if (!other) {
+      return false;
+    }
+    std::memcpy(
+        dispatcher_bytes,
+        kernel_memory()->TranslateVirtual<uint8_t*>(other + kUnwindDispatcher),
+        kDispatcherContextSize);
+    take_over();
+    return true;
+  };
+  meet(&control_pc);
   uint8_t probe[kContextSize];
   uint32_t establisher = caller_sp;
   X_STATUS failure = X_STATUS_SUCCESS;
@@ -1498,8 +1581,9 @@ static void UnwindGuestFrames(PPCContext* ctx, uint32_t target_frame,
         xe::store_and_swap<uint32_t>(dispatcher_bytes + 0xC, context_record);
         xe::store_and_swap<uint32_t>(
             record_bytes + 0x4,
-            kExceptionUnwinding |
+            kExceptionUnwinding | collided |
                 (establisher == target_frame ? kExceptionTargetUnwind : 0));
+        collided = 0;
         c.set_gpr(3, return_value);
         const uint32_t handler = ReadGuestWord(begin - 8);
         ctx->r[3] = record;
@@ -1513,10 +1597,9 @@ static void UnwindGuestFrames(PPCContext* ctx, uint32_t target_frame,
           break;
         }
         const uint32_t disposition = static_cast<uint32_t>(ctx->r[3]);
-        // A collided unwind isn't supported.
         if (disposition == kExceptionCollidedUnwind) {
-          failure = X_STATUS_INVALID_DISPOSITION;
-          break;
+          take_over();
+          continue;
         }
         if (disposition != kExceptionContinueSearch) {
           XELOGW(
@@ -1566,7 +1649,9 @@ static void UnwindGuestFrames(PPCContext* ctx, uint32_t target_frame,
         break;
       }
     }
-    MeetDispatchForUnwind(thread, context, &next_pc);
+    if (meet(&next_pc)) {
+      continue;
+    }
     control_pc = next_pc;
     if (establisher >= stack_base) {
       break;
@@ -1582,6 +1667,7 @@ static void UnwindGuestFrames(PPCContext* ctx, uint32_t target_frame,
         control_pc, fmt::format("Unwind to {:08X} at {:08X} failed: {:08X}",
                                 target_frame, target_ip, failure));
   }
+  PopDispatches(&dispatches, index);
   c.set_gpr(3, return_value);
   ctx->lr = LoadContextRecord(context, ctx);
 }
@@ -1646,18 +1732,24 @@ void __C_specific_handler_entry(pointer_t<X_EXCEPTION_RECORD> record,
     restore();
     ctx->r[3] = disposition;
   };
-  // Its frame, with the EXCEPTION_POINTERS filters get.
+  // Its frame, with the registers it was called with, then the
+  // EXCEPTION_POINTERS filters get.
+  constexpr uint32_t kPointers = kFrameCaller + kContextSize;
+  constexpr uint32_t kFrameSize = kPointers + 0x10;
   const uint32_t sp = uint32_t(ctx->r[1]);
-  const uint32_t frame = (sp - 0xA0) & ~0xFu;
-  const uint32_t pointers = frame + 0x50;
-  if (!IsGuestRangeReadable(frame, 0xA0)) {
+  const uint32_t frame = (sp - kFrameSize) & ~0xFu;
+  const uint32_t pointers = frame + kPointers;
+  if (!IsGuestRangeReadable(frame, kFrameSize)) {
     finish(kExceptionContinueSearch);
     return;
   }
   auto* frame_bytes = kernel_memory()->TranslateVirtual<uint8_t*>(frame);
   xe::store_and_swap<uint32_t>(frame_bytes, sp);
-  xe::store_and_swap<uint32_t>(frame_bytes + 0x50, record.guest_address());
-  xe::store_and_swap<uint32_t>(frame_bytes + 0x54, context.guest_address());
+  StoreContextRecord(frame_bytes + kFrameCaller, ctx, kHostReturnAddress,
+                     uint32_t(saved_lr));
+  xe::store_and_swap<uint32_t>(frame_bytes + kPointers, record.guest_address());
+  xe::store_and_swap<uint32_t>(frame_bytes + kPointers + 4,
+                               context.guest_address());
 
   auto scope_word = [&](uint32_t index, uint32_t offset) {
     return ReadGuestWord(scopes + index * 0x10 + offset);
@@ -1670,7 +1762,7 @@ void __C_specific_handler_entry(pointer_t<X_EXCEPTION_RECORD> record,
       }
       ctx->r[3] = pointers;
       ctx->r[12] = establisher;
-      if (!CallGuestFromKernel(ctx, scope_word(i, 8), frame)) {
+      if (!CallGuestFromHandler(ctx, scope_word(i, 8), frame)) {
         XELOGE("__C_specific_handler: no filter at {:08X}", scope_word(i, 8));
         continue;
       }
@@ -1714,7 +1806,7 @@ void __C_specific_handler_entry(pointer_t<X_EXCEPTION_RECORD> record,
     xe::store_and_swap<uint32_t>(dispatcher + 0x0, end + 4);
     ctx->r[3] = 1;
     ctx->r[12] = establisher;
-    if (!CallGuestFromKernel(ctx, scope_word(i, 8), frame)) {
+    if (!CallGuestFromHandler(ctx, scope_word(i, 8), frame)) {
       XELOGE("__C_specific_handler: no finally handler at {:08X}",
              scope_word(i, 8));
     }

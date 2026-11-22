@@ -624,16 +624,20 @@ class XThread : public XObject, public cpu::Thread {
     user_mode_ = std::move(user_mode);
   }
 
-  // A guest exception dispatch whose handler is running. One whose handler
-  // continued the thread elsewhere instead of returning stays here until the
-  // next dispatch on the thread finds it gone.
+  // Kernel code running guest code on the thread: an exception dispatch or an
+  // unwind calling a handler, or a handler calling a filter or finally block.
+  // One whose guest code continued the thread elsewhere instead of returning
+  // stays here until a later dispatch or unwind on the thread finds it gone.
   struct ExceptionDispatch {
-    // Where the handlers run, below the trap frame, and return to, which
-    // unwinding a handler's frame leads to.
+    enum class Kind : uint8_t { kDispatch, kUnwind, kCall };
+    // Where the guest code runs and returns to, which unwinding its frame
+    // leads to.
     uint32_t handler_sp;
     uint32_t handler_return;
-    // Its CONTEXT, EXCEPTION_RECORD and DISPATCHER_CONTEXT in the system heap.
+    // A dispatch's CONTEXT, EXCEPTION_RECORD and DISPATCHER_CONTEXT in the
+    // system heap, or an unwind's or a call's frame on the guest stack.
     uint32_t records;
+    Kind kind;
   };
   std::vector<ExceptionDispatch>& exception_dispatches() {
     return exception_dispatches_;
