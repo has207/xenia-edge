@@ -3695,7 +3695,7 @@ void EmulatorWindow::UpdateTitle() {
         title_version = shown->version ? VersionToString(shown->version) : "";
       }
     }
-    sb.AppendFormat(" | [{:08X}", title_id);
+    sb.AppendFormat(" [{:08X}", title_id);
     if (!title_version.empty()) {
       sb.Append(" v");
       sb.Append(title_version);
