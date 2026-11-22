@@ -567,20 +567,26 @@ constexpr uint32_t kExceptionNestedCall = 0x10;
 // control pc, function entry, establisher frame, context record.
 constexpr uint32_t kDispatcherContextSize = 0x10;
 constexpr uint32_t kDispatcherEstablisherFrame = 0x8;
+// Exceptions a dispatch raises in turn, each chained to the one before, for
+// handlers that continue a noncontinuable exception or return what no
+// handler may. The kernel goes on until its stack runs out.
+constexpr uint32_t kDispatchRaises = 4;
 // A dispatch's records: the CONTEXT handlers get, the EXCEPTION_RECORD it
 // makes, the DISPATCHER_CONTEXT, the registers it was taken with, then the
-// STATUS_NONCONTINUABLE_EXCEPTION it can raise.
+// exceptions it raises.
 constexpr uint32_t kRecordsException = kContextSize;
 constexpr uint32_t kRecordsDispatcher =
     kRecordsException + kExceptionRecordSize;
 constexpr uint32_t kRecordsFaulting =
     kRecordsDispatcher + kDispatcherContextSize;
-constexpr uint32_t kRecordsNoncontinuable = kRecordsFaulting + kContextSize;
-constexpr uint32_t kRecordsSize = kRecordsNoncontinuable + kExceptionRecordSize;
+constexpr uint32_t kRecordsRaised = kRecordsFaulting + kContextSize;
+constexpr uint32_t kRecordsSize =
+    kRecordsRaised + kDispatchRaises * kExceptionRecordSize;
 // What a language handler returns.
 constexpr uint32_t kExceptionContinueExecution = 0;
 constexpr uint32_t kExceptionContinueSearch = 1;
 constexpr uint32_t kExceptionNestedException = 2;
+constexpr uint32_t kExceptionCollidedUnwind = 3;
 // Frames searched for a handler, which can sit under a deep recursion.
 constexpr int kDispatchFrames = 128;
 // What a guest call returns to host code with when it has no caller.
@@ -1163,7 +1169,29 @@ static uint32_t DispatchException(PPCContext* context, uint32_t frame_size,
     return StartDispatchWalk(&walk, dispatches, index,
                              records + kRecordsFaulting, stack_base);
   };
+  // Raises code chained to the exception searched for, from where that was
+  // taken. False once the dispatch has raised all it can.
+  uint32_t raises = 0;
   bool raised = false;
+  auto raise = [&](uint32_t code) {
+    if (raises == kDispatchRaises) {
+      return false;
+    }
+    const uint32_t offset = kRecordsRaised + raises++ * kExceptionRecordSize;
+    auto* raised_record = records + offset;
+    std::memset(raised_record, 0, kExceptionRecordSize);
+    xe::store_and_swap<uint32_t>(raised_record + 0x0, code);
+    xe::store_and_swap<uint32_t>(raised_record + 0x4, kExceptionNoncontinuable);
+    xe::store_and_swap<uint32_t>(raised_record + 0x8, exception_record);
+    xe::store_and_swap<uint32_t>(raised_record + 0xC, iar);
+    exception_record = dispatch.records + offset;
+    record = raised_record;
+    flags = kExceptionNoncontinuable;
+    nested_frame = 0;
+    std::memcpy(records, records + kRecordsFaulting, kContextSize);
+    raised = true;
+    return true;
+  };
   for (bool more = start_walk(); more;
        more = raised ? start_walk() : NextDispatchFrame(&walk)) {
     raised = false;
@@ -1233,37 +1261,17 @@ static uint32_t DispatchException(PPCContext* context, uint32_t frame_size,
     const uint32_t disposition = static_cast<uint32_t>(context->r[3]);
     if (disposition == kExceptionContinueExecution) {
       if (flags & kExceptionNoncontinuable) {
-        const uint32_t noncontinuable =
-            dispatch.records + kRecordsNoncontinuable;
-        if (exception_record == noncontinuable) {
-          // The kernel raises another, chained to it, until its stack runs
-          // out.
+        if (!raise(X_STATUS_NONCONTINUABLE_EXCEPTION)) {
           XELOGE(
-              "{} at {:08X}: the handler at {:08X} continued "
-              "STATUS_NONCONTINUABLE_EXCEPTION",
-              fault, address, handler);
+              "{} at {:08X}: the handler at {:08X} continued it after {} "
+              "exceptions raised for it",
+              fault, address, handler, raises);
           break;
         }
-        // Like the kernel, raise STATUS_NONCONTINUABLE_EXCEPTION chained to it
-        // and search again from where it was taken.
         XELOGW(
             "{} at {:08X}: the handler at {:08X} continued it, raising "
             "STATUS_NONCONTINUABLE_EXCEPTION",
             fault, address, handler);
-        auto* raised_record = records + kRecordsNoncontinuable;
-        std::memset(raised_record, 0, kExceptionRecordSize);
-        xe::store_and_swap<uint32_t>(raised_record + 0x0,
-                                     X_STATUS_NONCONTINUABLE_EXCEPTION);
-        xe::store_and_swap<uint32_t>(raised_record + 0x4,
-                                     kExceptionNoncontinuable);
-        xe::store_and_swap<uint32_t>(raised_record + 0x8, exception_record);
-        xe::store_and_swap<uint32_t>(raised_record + 0xC, iar);
-        exception_record = noncontinuable;
-        record = raised_record;
-        flags = kExceptionNoncontinuable;
-        nested_frame = 0;
-        std::memcpy(records, records + kRecordsFaulting, kContextSize);
-        raised = true;
         continue;
       }
       resume_address = LoadContextRecord(records, context);
@@ -1279,11 +1287,17 @@ static uint32_t DispatchException(PPCContext* context, uint32_t frame_size,
           std::max(nested_frame, xe::load_and_swap<uint32_t>(
                                      dispatcher + kDispatcherEstablisherFrame));
     } else if (disposition != kExceptionContinueSearch) {
-      XELOGE(
-          "{} at {:08X}: the handler at {:08X} returned {}, which isn't "
-          "supported",
+      if (!raise(X_STATUS_INVALID_DISPOSITION)) {
+        XELOGE(
+            "{} at {:08X}: the handler at {:08X} returned {} after {} "
+            "exceptions raised for it",
+            fault, address, handler, disposition, raises);
+        break;
+      }
+      XELOGW(
+          "{} at {:08X}: the handler at {:08X} returned {}, raising "
+          "STATUS_INVALID_DISPOSITION",
           fault, address, handler, disposition);
-      break;
     }
   }
 
@@ -1389,12 +1403,13 @@ static bool CallGuestFromKernel(PPCContext* ctx, uint32_t address,
 }
 
 // RtlUnwind2's frame on the guest stack: a back chain, the record it makes
-// when it's given none, its dispatcher context, then the CONTEXT RtlUnwind
-// gives it.
+// when it's given none, its dispatcher context, the CONTEXT RtlUnwind gives
+// it, then the STATUS_INVALID_DISPOSITION it can raise.
 constexpr uint32_t kUnwindRecord = 0x10;
 constexpr uint32_t kUnwindDispatcher = kUnwindRecord + kExceptionRecordSize;
 constexpr uint32_t kUnwindContext = kUnwindDispatcher + kDispatcherContextSize;
-constexpr uint32_t kUnwindFrameSize = kUnwindContext + kContextSize;
+constexpr uint32_t kUnwindRaised = kUnwindContext + kContextSize;
+constexpr uint32_t kUnwindFrameSize = kUnwindRaised + kExceptionRecordSize;
 // Flags of a record being unwound, the frame it's unwound to and an unwind with
 // no frame to stop at.
 constexpr uint32_t kExceptionUnwinding = 0x2;
@@ -1497,8 +1512,40 @@ static void UnwindGuestFrames(PPCContext* ctx, uint32_t target_frame,
           failure = X_STATUS_INVALID_DISPOSITION;
           break;
         }
-        // A collided unwind, 3, isn't supported.
-        if (uint32_t(ctx->r[3]) != kExceptionContinueSearch) {
+        const uint32_t disposition = static_cast<uint32_t>(ctx->r[3]);
+        // A collided unwind isn't supported.
+        if (disposition == kExceptionCollidedUnwind) {
+          failure = X_STATUS_INVALID_DISPOSITION;
+          break;
+        }
+        if (disposition != kExceptionContinueSearch) {
+          XELOGW(
+              "Unwind to {:08X}: the handler at {:08X} returned {}, raising "
+              "STATUS_INVALID_DISPOSITION",
+              target_frame, handler, disposition);
+          auto* raised = kernel_memory()->TranslateVirtual<uint8_t*>(
+              frame + kUnwindRaised);
+          std::memset(raised, 0, kExceptionRecordSize);
+          xe::store_and_swap<uint32_t>(raised + 0x0,
+                                       X_STATUS_INVALID_DISPOSITION);
+          xe::store_and_swap<uint32_t>(raised + 0x4, kExceptionNoncontinuable);
+          xe::store_and_swap<uint32_t>(raised + 0x8, record);
+          xe::store_and_swap<uint32_t>(raised + 0xC, kHostReturnAddress);
+          // Raised in RtlUnwind, which has no guest code, so the search steps
+          // out of it to the call. The handlers run below this frame and a
+          // handler that takes it doesn't return.
+          ctx->r[1] = caller_sp;
+          ctx->lr = caller_lr;
+          int searched = 0;
+          DispatchException(ctx, caller_sp - frame + kRaiseFrameSize, caller_lr,
+                            kHostReturnAddress, nullptr, frame + kUnwindRaised,
+                            "Exception C0000026", caller_lr - 4, &searched);
+          if (searched) {
+            XELOGE(
+                "Exception C0000026 at {:08X}: no handler in {} frames "
+                "continued it",
+                caller_lr - 4, searched);
+          }
           failure = X_STATUS_INVALID_DISPOSITION;
           break;
         }
