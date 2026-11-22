@@ -1223,6 +1223,8 @@ dword_result_t NetDll_getsockopt_entry(dword_t caller, dword_t socket_handle,
     return -1;
   }
   uint32_t native_len = *optlen;
+  // The whole value is zeroed first, for options it refuses too.
+  std::memset(optval_ptr, 0, native_len);
   X_STATUS status = socket->GetOption(level, optname, optval_ptr, &native_len);
   if (XFAILED(status)) {
     XThread::SetLastError(socket->GetLastWSAError());
