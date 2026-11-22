@@ -546,30 +546,56 @@ dword_result_t NtQueryVirtualMemory_entry(
 }
 DECLARE_XBOXKRNL_EXPORT1(NtQueryVirtualMemory, kMemory, kImplemented);
 
-dword_result_t NtAllocateEncryptedMemory_entry(dword_t unk, dword_t region_size,
-                                               lpdword_t base_addr_ptr) {
-  if (!region_size) {
+// An encrypted memory region, 64 KB pages up to |end|.
+struct EncryptedRegion {
+  uint32_t start;
+  uint32_t end;
+};
+constexpr uint32_t kEncryptedPageSize = 0x10000;
+
+// The region a type names: 0 the caller's process, 1 the title's, 2 the
+// system's.
+static std::optional<EncryptedRegion> EncryptedRegionOf(uint32_t type,
+                                                        PPCContext* context) {
+  if (type == 0) {
+    type = xeKeGetCurrentProcessType(context) == X_PROCTYPE_TITLE ? 1 : 2;
+  }
+  switch (type) {
+    case 1:
+      return EncryptedRegion{0x8D000000, 0x8DFF0000};
+    case 2:
+      return EncryptedRegion{0x8C000000, 0x8CFF0000};
+    default:
+      return std::nullopt;
+  }
+}
+
+dword_result_t NtAllocateEncryptedMemory_entry(dword_t region_type,
+                                               dword_t region_size,
+                                               lpdword_t base_addr_ptr,
+                                               const ppc_context_t& context) {
+  const auto region = EncryptedRegionOf(region_type, context);
+  if (!region) {
     return X_STATUS_INVALID_PARAMETER;
   }
-
-  const uint32_t region_size_adjusted =
-      xe::round_up(region_size, 64 * 1024, true);
-
-  if (region_size_adjusted > 16 * 1024 * 1024) {
+  // Wraps to 0 for a size near 4 GB, which fails.
+  const uint32_t size =
+      xe::round_up(uint32_t(region_size), kEncryptedPageSize, false);
+  if (!size || size > region->end - region->start) {
     return X_STATUS_INVALID_PARAMETER;
   }
 
   uint32_t out_address = 0;
-  auto heap = kernel_memory()->LookupHeap(0x8C000000);
+  auto heap = kernel_memory()->LookupHeap(region->start);
   const bool result =
-      heap->AllocRange(0x8C000000, 0x8FFFFFFF, region_size_adjusted, 64 * 1024,
+      heap->AllocRange(region->start, region->end - 1, size, kEncryptedPageSize,
                        MemoryAllocationFlag::kMemoryAllocationCommit,
                        MemoryProtectFlag::kMemoryProtectRead |
                            MemoryProtectFlag::kMemoryProtectWrite,
                        false, &out_address);
 
   if (!result) {
-    return X_STATUS_UNSUCCESSFUL;
+    return X_STATUS_NO_MEMORY;
   }
 
   XELOGD("NtAllocateEncryptedMemory = {:08X}", out_address);
@@ -579,23 +605,27 @@ dword_result_t NtAllocateEncryptedMemory_entry(dword_t unk, dword_t region_size,
 DECLARE_XBOXKRNL_EXPORT1(NtAllocateEncryptedMemory, kMemory, kImplemented);
 
 dword_result_t NtFreeEncryptedMemory_entry(dword_t region_type,
-                                           lpdword_t base_address_ptr) {
-  if (!base_address_ptr) {
+                                           dword_t base_address,
+                                           const ppc_context_t& context) {
+  const auto region = EncryptedRegionOf(region_type, context);
+  const uint32_t address = base_address;
+  if (!region || address < region->start || address >= region->end) {
     return X_STATUS_INVALID_PARAMETER;
   }
-
-  auto heap = kernel_state()->memory()->LookupHeap(0x80000000);
-  const uint32_t encrypt_address =
-      heap->heap_base() + heap->page_size() * base_address_ptr.value();
-
-  auto encrypt_heap = kernel_state()->memory()->LookupHeap(encrypt_address);
-
-  if (encrypt_heap->heap_type() != HeapType::kGuestXex) {
+  auto heap = kernel_memory()->LookupHeap(region->start);
+  auto global_lock = global_critical_region::AcquireDirect();
+  // The 64 KB page the address rounds up to must start an allocation and hold
+  // the address in its first 4 KB, which leaves only the base.
+  const uint32_t page = xe::round_up(address, kEncryptedPageSize);
+  if (ReservationOf(heap, page) != page) {
     return X_STATUS_INVALID_PARAMETER;
   }
-
-  kernel_state()->memory()->SystemHeapFree(encrypt_address);
-
+  if (address >> 12 != page >> 12) {
+    return X_STATUS_FREE_VM_NOT_AT_BASE;
+  }
+  if (!heap->Release(page)) {
+    return X_STATUS_UNSUCCESSFUL;
+  }
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(NtFreeEncryptedMemory, kMemory, kImplemented);
