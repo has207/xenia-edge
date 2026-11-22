@@ -1100,6 +1100,7 @@ X_STATUS XSocket::Bind(N_XSOCKADDR_IN* name, int name_len) {
   }
 
   bound_ = true;
+  bound_address_ = name->sin_addr;
 
   // Get the actual bound port (important when binding to port 0)
   if (acceptor_) {
@@ -1194,6 +1195,7 @@ object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
   auto socket =
       object_ref<XSocket>(new XSocket(kernel_state_, std::move(*new_socket)));
   socket->bound_ = true;
+  socket->bound_address_ = bound_address_;
   TakeListenerOptions(*socket);
   // An accepted socket starts in the listener's non-blocking mode.
   if (guest_non_blocking_) {
@@ -1666,7 +1668,7 @@ X_STATUS XSocket::QueryName(bool peer, N_XSOCKADDR_IN* name) {
 
   name->sin_family = host_name.sin_family;
   name->sin_port = ntohs(host_name.sin_port);
-  name->sin_addr = ntohl(host_name.sin_addr.s_addr);
+  name->sin_addr = peer ? ntohl(host_name.sin_addr.s_addr) : bound_address_;
   std::memset(name->x_sin_zero, 0, sizeof(name->x_sin_zero));
   return X_STATUS_SUCCESS;
 }

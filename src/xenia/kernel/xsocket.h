@@ -286,6 +286,9 @@ class XSocket : public XObject {
 
   bool bound_ = false;  // Explicitly bound to an IP address?
   uint16_t bound_port_ = 0;
+  // The address getsockname reports, the one bound to rather than the one a
+  // connection goes out from.
+  uint32_t bound_address_ = 0;
 
   bool broadcast_socket_ = false;
 
