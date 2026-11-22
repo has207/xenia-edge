@@ -10,7 +10,7 @@
 xenia starts the host's Release build (or the Windows one from WSL, XENIA_EXE
 names another) on OUTDIR/xamgen.xex with XENIA_ARGS, waits for the results file
 the executor writes beside it and its DbgPrint line in the log, then kills it
-(Xenia doesn't quit when a title it was started on exits). console uploads the
+rather than wait for the title to end. console uploads the
 XEX to Hdd:\\oracle\\ over XBDM with XeCLI's rgh (RGH or on PATH), launches it,
 watches XBDM's debug output until the executor unloads or faults and fetches
 the results file. On a fault it reads the executor's progress word to name the
@@ -69,8 +69,10 @@ CONSOLE_DIR = 'Hdd:\\oracle'
 AURORA = 'Hdd:\\Aurora\\Aurora.xex'
 # Settings a user's config may change that results depend on, at what a
 # console does. Without cache: the executor writes its results to game:, which
-# is OUTDIR once Xenia may write there.
-XENIA_ARGS = ['--license_mask=0', '--allow_game_relative_writes=true']
+# is OUTDIR once Xenia may write there. Unattended, Xenia shows no dialog and
+# exits when the title crashes.
+XENIA_ARGS = ['--license_mask=0', '--allow_game_relative_writes=true',
+              '--unattended']
 
 
 def from_wsl(program):
@@ -177,20 +179,27 @@ def run_xenia(outdir, timeout, extra_args=()):
     deadline = started + timeout
     summary = None
     last_step = None
+
+    def scan_log():
+        nonlocal summary, last_step
+        if not os.path.exists(log):
+            return
+        with open(log, errors='replace') as f:
+            for line in f:
+                if '(DbgPrint) xamgen:' in line:
+                    summary = line.strip()
+                elif '(DbgPrint) xamgen step ' in line:
+                    last_step = int(line.split('xamgen step ')[1])
+
     try:
         while time.time() < deadline and process.poll() is None:
             time.sleep(0.5)
-            if not os.path.exists(log):
-                continue
-            with open(log, errors='replace') as f:
-                for line in f:
-                    if '(DbgPrint) xamgen:' in line:
-                        summary = line.strip()
-                    elif '(DbgPrint) xamgen step ' in line:
-                        last_step = int(line.split('xamgen step ')[1])
+            scan_log()
             if summary and os.path.exists(results):
                 time.sleep(0.5)
                 break
+        # Xenia can end between two scans.
+        scan_log()
     finally:
         exit_code = process.poll()
         if from_wsl(XENIA):
