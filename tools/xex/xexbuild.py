@@ -40,6 +40,7 @@ KEY_IMPORT_LIBRARIES = 0x000103FF
 KEY_DEFAULT_STACK_SIZE = 0x00020200
 KEY_SYSTEM_FLAGS = 0x00030000
 KEY_EXECUTION_INFO = 0x00040006
+KEY_LAN_KEY = 0x00040404
 
 PE_SECTION_FLAGS = {
     SECTION_CODE: 0x60000020,      # code, execute, read
@@ -189,11 +190,11 @@ def _pe_header(load_address, entry, page_types, directories):
 
 
 def build(load_address, entry, pages, title_id=0xFFFF7E57, stack_size=0x40000,
-          imports=None, directories=None):
+          imports=None, directories=None, lan_key=None):
     """Returns the XEX2 file for `pages`, a list of (section type, bytes), with
     the import records of `imports` if given. `directories` maps a PE data
     directory's index, such as PE_EXCEPTION_DIRECTORY, to the guest address
-    and size of its data."""
+    and size of its data. `lan_key` is the 16-byte System Link key."""
     page_types = [kind for kind, _ in pages]
     if imports:
         offset = imports.base - load_address - PAGE_SIZE
@@ -230,6 +231,10 @@ def build(load_address, entry, pages, title_id=0xFFFF7E57, stack_size=0x40000,
         (KEY_SYSTEM_FLAGS, 0),
         (KEY_EXECUTION_INFO, execution_info),
     ]
+    if lan_key is not None:
+        if len(lan_key) != 16:
+            raise ValueError('a LAN key is 16 bytes')
+        headers.append((KEY_LAN_KEY, bytes(lan_key)))
     import_count, import_digest = 0, bytes(20)
     if imports:
         import_header, import_count, import_digest = imports.header()

@@ -677,6 +677,9 @@ class Corpus:
         # session, since XBDM with one open raises a first-chance exception
         # again and again instead of dispatching it to the title's handlers.
         self.unwatched = False
+        # The XEX's LAN key, which Xenia needs to run the title's sockets over
+        # System Link.
+        self.lan_key = None
 
     def scenario(self, name, fill=0xCD, console_only=None):
         """`console_only` says why Xenia mustn't run the scenario, such as a
@@ -832,7 +835,8 @@ def build(corpus, outdir):
         directories[xexbuild.PE_EXCEPTION_DIRECTORY] = (CONTROL + C_PDATA,
                                                         len(pdata))
     xex = xexbuild.build(LOAD_ADDRESS, CODE_BASE, pages, title_id=corpus.title_id,
-                         imports=imports, directories=directories)
+                         imports=imports, directories=directories,
+                         lan_key=corpus.lan_key)
     run = sum(1 for step in steps if not step.get('faults'))
     os.makedirs(outdir, exist_ok=True)
     with open(os.path.join(outdir, 'xamgen.xex'), 'wb') as f:
