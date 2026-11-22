@@ -221,6 +221,9 @@ class EmulatorWindow {
       uint32_t title_id, const std::string& name,
       const std::filesystem::path& path);
 
+  // Keeps the title's frame rate current until the title shuts down.
+  void StartFrameRateTimer();
+
   void OnKeyDown(ui::KeyEvent& e);
   void OnMouseDown(const ui::MouseEvent& e);
   void OnMouseDoubleClick(ui::MouseEvent& e);
@@ -289,6 +292,8 @@ class EmulatorWindow {
   bool initializing_shader_storage_ = false;
   bool compiling_shaders_ = false;
   std::unique_ptr<wxTimer> compiling_shaders_hide_timer_;
+  // Refreshes the frame rate in the title while a title runs.
+  std::unique_ptr<wxTimer> frame_rate_timer_;
 
   ui::ImGuiPostProcessingDialog* postprocessing_dialog_ = nullptr;
   ui::ImGuiPerformanceDialog* performance_dialog_ = nullptr;

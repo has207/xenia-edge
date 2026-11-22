@@ -453,6 +453,44 @@ void GraphicsSystem::MarkVblank() {
   DispatchInterruptCallback(0, 2);
 }
 
+void GraphicsSystem::OnGuestSwap() {
+  const uint64_t now = Clock::QueryHostTickCount();
+  const uint64_t frequency = Clock::QueryHostTickFrequency();
+  const uint64_t previous =
+      frame_rate_last_swap_ticks_.exchange(now, std::memory_order_relaxed);
+
+  // The first swap, or the first after a stall, starts a period.
+  if (!previous || now - previous >= frequency * kFrameRateStallMs / 1000) {
+    frame_rate_frames_per_second_.store(0.0f, std::memory_order_relaxed);
+    frame_rate_period_start_ticks_ = now;
+    frame_rate_period_swaps_ = 0;
+    return;
+  }
+
+  ++frame_rate_period_swaps_;
+  const uint64_t elapsed = now - frame_rate_period_start_ticks_;
+  if (elapsed < frequency * kFrameRatePeriodMs / 1000) {
+    return;
+  }
+  frame_rate_frames_per_second_.store(
+      float(double(frame_rate_period_swaps_) * double(frequency) /
+            double(elapsed)),
+      std::memory_order_relaxed);
+  frame_rate_period_start_ticks_ = now;
+  frame_rate_period_swaps_ = 0;
+}
+
+float GraphicsSystem::GetFramesPerSecond() const {
+  const uint64_t last_swap =
+      frame_rate_last_swap_ticks_.load(std::memory_order_relaxed);
+  if (!last_swap ||
+      Clock::QueryHostTickCount() - last_swap >=
+          Clock::QueryHostTickFrequency() * kFrameRateStallMs / 1000) {
+    return 0.0f;
+  }
+  return frame_rate_frames_per_second_.load(std::memory_order_relaxed);
+}
+
 void GraphicsSystem::ClearCaches() {
   command_processor_->CallInThread(
       [&]() { command_processor_->ClearCaches(); });

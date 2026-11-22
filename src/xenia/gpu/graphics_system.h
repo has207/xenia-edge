@@ -134,6 +134,11 @@ class GraphicsSystem {
     scaled_aspect_y_ = y;
   };
 
+  // Command processor thread, once per guest swap.
+  void OnGuestSwap();
+  // Measured from the guest's swaps, zero once it swaps no frame for a second.
+  float GetFramesPerSecond() const;
+
   // Whether pipelines are being created, in the background or inline, from
   // the thread that started or finished them.
   xe::Delegate<bool> on_shader_compilation;
@@ -180,6 +185,17 @@ class GraphicsSystem {
   uint32_t scaled_aspect_y_ = 0;
 
  private:
+  static constexpr uint64_t kFrameRatePeriodMs = 500;
+  // A longer gap between swaps reads as zero and restarts the period.
+  static constexpr uint64_t kFrameRateStallMs = 1000;
+
+  // Command processor thread only.
+  uint64_t frame_rate_period_start_ticks_ = 0;
+  uint64_t frame_rate_period_swaps_ = 0;
+
+  std::atomic<uint64_t> frame_rate_last_swap_ticks_{0};
+  std::atomic<float> frame_rate_frames_per_second_{0.0f};
+
   std::unique_ptr<ui::Presenter> presenter_;
 
   std::atomic_flag host_gpu_loss_reported_;

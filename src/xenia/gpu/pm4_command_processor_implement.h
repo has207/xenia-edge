@@ -837,6 +837,7 @@ bool COMMAND_PROCESSOR::ExecutePacketType3_XE_SWAP(uint32_t packet,
   swap_frontbuffer_height_ = frontbuffer_height;
   COMMAND_PROCESSOR::IssueScalerSwap();
   swap_representable_ = true;
+  graphics_system_->OnGuestSwap();
 
   // Advance the present-frame counter shown in the log prefix.
   logging::IncrementFrameNumber();

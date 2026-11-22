@@ -922,6 +922,7 @@ void EmulatorWindow::OnEmulatorInitialized() {
         app_context_.CallInUIThread(
             [this, title_id, name = std::string(title_name)]() {
               AddLaunchedTitleToLibrary(title_id, name);
+              StartFrameRateTimer();
               UpdateTitle();
               ApplyContentVisibility();
               NoteMissingTitleUpdate(title_id);
@@ -953,6 +954,9 @@ void EmulatorWindow::OnEmulatorInitialized() {
       compiling_shaders_ = false;
       if (compiling_shaders_hide_timer_) {
         compiling_shaders_hide_timer_->Stop();
+      }
+      if (frame_rate_timer_) {
+        frame_rate_timer_->Stop();
       }
       UpdateTitle();
     });
@@ -3765,6 +3769,10 @@ void EmulatorWindow::UpdateTitle() {
     sb.Append(">");
   }
 
+  if (graphics_system && emulator()->is_title_open()) {
+    sb.AppendFormat(" {:.2f} FPS", graphics_system->GetFramesPerSecond());
+  }
+
   if (Clock::guest_time_scalar() != 1.0) {
     sb.AppendFormat(" (@{:.2f}x)", Clock::guest_time_scalar());
   }
@@ -3794,6 +3802,17 @@ void EmulatorWindow::SetInitializingShaderStorage(bool initializing) {
   }
   initializing_shader_storage_ = initializing;
   UpdateTitle();
+}
+
+void EmulatorWindow::StartFrameRateTimer() {
+  if (!frame_rate_timer_) {
+    frame_rate_timer_ = std::make_unique<wxTimer>();
+    frame_rate_timer_->Bind(wxEVT_TIMER,
+                            [this](wxTimerEvent&) { UpdateTitle(); });
+  }
+  // The frame rate is measured over half a second.
+  constexpr int kFrameRateUpdateMs = 500;
+  frame_rate_timer_->Start(kFrameRateUpdateMs);
 }
 
 void EmulatorWindow::SetCompilingShaders(bool compiling) {
