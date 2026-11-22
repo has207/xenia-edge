@@ -59,6 +59,13 @@ class GuestScheduler {
   // running, queued, blocked or suspended is left alone.
   void MarkReady(XThread* thread);
 
+  // Delivers the first suspend of another thread like a kernel APC: a running
+  // target stops at its next safepoint, a waiting one leaves its wait, a ready
+  // one stops at dispatch and a masked one once it unmasks. Returns once an
+  // unmasked target has stopped so whatever it ran meanwhile comes before the
+  // suspend.
+  void SuspendThread(XThread* thread);
+
   // Returns |thread| to its CPU's ready queue once its guest suspend count has
   // dropped to zero. No-op for a thread suspended while running or queued,
   // which is not parked yet and just gets dispatched again.
@@ -153,9 +160,11 @@ class GuestScheduler {
   // user APC lands on an alertable waiter or a kernel APC on an interruptible
   // one. Anything else re-polls every pass. |interruptible| false keeps a
   // terminate from ending the fiber at a park whose waker holds a pointer into
-  // this stack.
-  void BlockCurrentThread(uint64_t deadline_ms = 0, uint32_t wait_epoch = 0,
-                          bool alertable = false, bool interruptible = true);
+  // this stack. Returns true when a suspend unwound an |object_wait|
+  // (CooperativeWait) park, which then leaves with X_STATUS_KERNEL_APC.
+  bool BlockCurrentThread(uint64_t deadline_ms = 0, uint32_t wait_epoch = 0,
+                          bool alertable = false, bool interruptible = true,
+                          bool object_wait = false);
 
   // Marks the running guest fiber finished so its CPU can reclaim it, dropping
   // the final handle once control is back on the idle fiber. Call before the
@@ -265,8 +274,16 @@ class GuestScheduler {
   void SwitchTo(XThread* next);
   void RereadyBlocked(int cpu_index);
   // Parks a thread whose suspend count is nonzero until Resume drops it.
-  // Returns false if the count already reached zero, meaning run it instead.
+  // Returns false if it must run instead: the count reached zero, the suspend
+  // is masked, or it has a wait to unwind first.
   bool ParkSuspended(XThread* thread, int cpu_index);
+  // Whether a suspend on |thread| has landed and SuspendThread can return.
+  bool SuspendLandedLocked(XThread* thread);
+  // Takes |thread| out of an object wait for a suspend, readying it to unwind.
+  // Returns the CPU to wake, -1 if none.
+  int UnwaitForSuspendLocked(XThread* thread);
+  // Wakes CPU |cpu_index| if its dispatch thread sleeps, ignoring -1.
+  void WakeCpu(int cpu_index);
   void RunLoop(int cpu_index);
   // Raises preempt_requested on any CPU whose running fiber outlived its
   // slice, since a dispatch thread cannot tick while it runs a fiber.

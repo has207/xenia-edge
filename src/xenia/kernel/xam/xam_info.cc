@@ -650,8 +650,9 @@ static void StartTitle(XamModule::LoaderData& loader_data,
     // Stop running guest code; RelaunchTitle terminates us. Suspend can
     // return on POSIX, so park rather than fall through to spawn.
     current_thread->Suspend(nullptr);
+    // SpinYield parks a fiber, a host sleep would stall its dispatch thread.
     while (true) {
-      xe::threading::NanoSleep(int64_t(1'000'000'000));
+      GuestScheduler::SpinYield(std::chrono::seconds(1));
     }
   }
 #endif  // !XE_PLATFORM_MAC

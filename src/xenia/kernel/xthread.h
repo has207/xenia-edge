@@ -473,9 +473,18 @@ class XThread : public XObject, public cpu::Thread {
   // cooperative scheduler's alertable waits to return USER_APC, the same way a
   // host alertable wait wakes on a queued APC.
   bool HasPendingUserApc();
-  // True if a kernel APC is queued that this thread can run now, below
-  // APC_LEVEL, outside a critical region and outside another kernel APC.
+  // True below APC_LEVEL, outside a critical region and outside another kernel
+  // APC, where a normal kernel APC can run.
+  bool KernelApcsUnmasked();
+  // True if a kernel APC is queued that this thread can run now.
   bool HasDeliverableKernelApc();
+  // True if this thread is suspended, unmasked as for a normal kernel APC and
+  // not terminating, and as the current fiber not holding the global critical
+  // region.
+  bool HasDeliverableSuspend();
+  // On the current fiber, stops for a deliverable suspend until resumed.
+  // Returns true if it stopped.
+  bool DeliverPendingSuspend();
 
   int32_t priority() const { return priority_; }
   int32_t QueryPriority();
@@ -740,6 +749,15 @@ class XThread : public XObject, public cpu::Thread {
     uint64_t wait_deadline_ms = 0;  // absolute host uptime, 0 = none
     // Also re-poll on a deliverable kernel APC.
     bool wait_interruptible = true;
+    // Parked in a CooperativeWait, which a suspend unwinds while other parks
+    // stop in place.
+    bool object_wait = false;
+    // How a suspend landing on that park unwinds it, set under lock_.
+    // |suspend_poll_first|: a signal may have satisfied the wait first so it
+    // polls before stopping. |suspend_unwait|: it leaves without polling and
+    // waits again once resumed.
+    bool suspend_poll_first = false;
+    bool suspend_unwait = false;
     // What this fiber parked in and the guest handles it named. Handles, not
     // XObject pointers: safe to print if the object is released mid-dump, and
     // they key the signal ring. Without it a multi-object wait dumps obj=0x0.

@@ -131,6 +131,24 @@ static bool TakeHeadRequeue(XThread::SchedulerLinks& links) {
   return at_head;
 }
 
+// Whether a signal may have reached |thread|'s parked wait since its last
+// poll, always true for an ungated wait as it polls every pass.
+static bool ParkedWaitMayHaveResolved(XThread* thread) {
+  auto& links = thread->scheduler_links();
+  if (!links.wait_gated) {
+    return true;
+  }
+  // Three gate kinds: a single object's epoch, a multi-wait's summed epoch, or
+  // (neither) a pure timed sleep that only its deadline can resolve.
+  if (XObject* obj = thread->cooperative_wait_object()) {
+    return obj->cooperative_signal_epoch() != links.wait_epoch;
+  }
+  if (links.wait_gate_count) {
+    return thread->cooperative_wait_set_epoch() != links.wait_epoch;
+  }
+  return false;
+}
+
 // Reporting threshold for the lock case.
 static constexpr uint32_t kLockPreemptDeferReport = 65536;
 
@@ -495,6 +513,116 @@ void GuestScheduler::ResumeThread(XThread* thread) {
   MarkReady(thread);
 }
 
+void GuestScheduler::SuspendThread(XThread* thread) {
+  assert_not_null(thread);
+  if (!started_.load() || stopped_.load()) {
+    return;
+  }
+  bool wait = false;
+  int wake_cpu = -1;
+  {
+    std::lock_guard<std::mutex> lock(lock_);
+    auto& links = thread->scheduler_links();
+    if (links.terminate_pending.load(std::memory_order_relaxed) ||
+        !thread->KernelApcsUnmasked()) {
+      return;
+    }
+    if (links.running) {
+      // Stops at its next safepoint without charging a quantum.
+      links.repoll_preempt = true;
+      thread->thread_state()->context()->preempt_requested = 1;
+      wait = true;
+    } else if (links.object_wait && (links.blocked || links.queued)) {
+      wake_cpu = UnwaitForSuspendLocked(thread);
+      wait = true;
+    }
+    // Anything else stops at its next dispatch, before it runs.
+  }
+  WakeCpu(wake_cpu);
+  if (!wait) {
+    return;
+  }
+  XThread* self = XThread::GetCurrentFiberThread();
+  // No fiber switch at DISPATCH_LEVEL, only the host thread yields there.
+  const bool may_switch =
+      self &&
+      self->memory()->TranslateVirtual<X_KPCR*>(self->pcr_ptr())->current_irql <
+          2;
+  // Spins briefly before parking in 1 ms steps, as a safepoint is usually
+  // microseconds away.
+  const uint64_t spin_until = Clock::QueryHostUptimeMillis() + 1;
+  while (!shutting_down_.load()) {
+    {
+      std::lock_guard<std::mutex> lock(lock_);
+      if (SuspendLandedLocked(thread)) {
+        return;
+      }
+      auto& links = thread->scheduler_links();
+      // A waiter queued on this CPU only unwinds after the caller lowers IRQL.
+      if (!may_switch && !links.running && links.cpu == t_current_cpu) {
+        return;
+      }
+      // It was still running when the suspend landed and has parked since.
+      if (!links.running && links.blocked && links.object_wait &&
+          !links.suspend_poll_first && !links.suspend_unwait) {
+        wake_cpu = UnwaitForSuspendLocked(thread);
+      }
+    }
+    WakeCpu(wake_cpu);
+    wake_cpu = -1;
+    if (!may_switch) {
+      xe::threading::MaybeYield();
+    } else if (Clock::QueryHostUptimeMillis() < spin_until) {
+      SpinYield();
+    } else {
+      SpinYield(std::chrono::milliseconds(1));
+    }
+  }
+}
+
+int GuestScheduler::UnwaitForSuspendLocked(XThread* thread) {
+  auto& links = thread->scheduler_links();
+  // Polls first if a signal may already satisfy the wait.
+  const bool resolved = ParkedWaitMayHaveResolved(thread);
+  links.suspend_poll_first = resolved;
+  links.suspend_unwait = !resolved;
+  if (!links.blocked) {
+    return -1;
+  }
+  Cpu& cpu = cpus_[links.cpu];
+  UnlinkLocked(cpu.blocked_head, cpu.blocked_tail, thread);
+  links.blocked = false;
+  links.ready_next = nullptr;
+  links.queued = true;
+  links.cpu = CpuOf(thread);
+  LinkReadyLocked(cpus_[links.cpu], thread, true);
+  return links.cpu;
+}
+
+void GuestScheduler::WakeCpu(int cpu_index) {
+  if (cpu_index >= 0 && cpus_[cpu_index].parked.load() &&
+      cpus_[cpu_index].ready_event) {
+    cpus_[cpu_index].ready_event->Set();
+  }
+}
+
+bool GuestScheduler::SuspendLandedLocked(XThread* thread) {
+  auto& links = thread->scheduler_links();
+  // Resumed, terminated, or parked.
+  if (thread->suspend_count() == 0 ||
+      links.terminate_pending.load(std::memory_order_relaxed) ||
+      links.suspended) {
+    return true;
+  }
+  // Masked meanwhile, it stops once it unmasks.
+  if (!thread->KernelApcsUnmasked()) {
+    return true;
+  }
+  // Off-CPU, the dispatcher parks it before it runs, unless it still has an
+  // object wait to leave.
+  return !links.running && !links.object_wait;
+}
+
 bool GuestScheduler::ParkSuspended(XThread* thread, int cpu_index) {
   std::lock_guard<std::mutex> lock(lock_);
   auto& links = thread->scheduler_links();
@@ -503,6 +631,20 @@ bool GuestScheduler::ParkSuspended(XThread* thread, int cpu_index) {
   // Termination overrides suspension, run it so it can exit.
   if (thread->suspend_count() == 0 ||
       links.terminate_pending.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  // A masked suspend waits for the thread to unmask.
+  if (!thread->KernelApcsUnmasked()) {
+    return false;
+  }
+  // A waiter runs to leave its wait first, deciding how here if it was readied
+  // before SuspendThread got to it.
+  if (links.object_wait) {
+    if (!links.suspend_poll_first && !links.suspend_unwait) {
+      const bool resolved = ParkedWaitMayHaveResolved(thread);
+      links.suspend_poll_first = resolved;
+      links.suspend_unwait = !resolved;
+    }
     return false;
   }
   // Clearing running last, so it is never both unowned and unlisted.
@@ -883,13 +1025,22 @@ void GuestScheduler::SwitchTo(XThread* next) {
           Clock::host_tick_count_raw() + quantum_ticks_;
     }
     cpus_[t_current_cpu].quantum_deadline_tick = links.quantum_deadline_tick;
+    // A flag raised while this fiber was off-CPU is stale, the dispatcher
+    // already served it. Other threads raise it under lock_ so none races this.
+    auto* next_context = next->thread_state()->context();
+    next_context->preempt_requested = 0;
+    // A suspend landing after the dispatcher's check stops it at its first
+    // safepoint. The count is bumped before SuspendThread takes lock_ so
+    // either this sees it or that raise comes after the clear.
+    if (!links.suspend_poll_first && !links.suspend_unwait &&
+        next->suspend_count() && next->KernelApcsUnmasked()) {
+      links.repoll_preempt = true;
+      next_context->preempt_requested = 1;
+    }
   }
   stats_.switches.fetch_add(1, std::memory_order_relaxed);
   XThread::SetCurrentThread(next);
   next->guest_object<X_KTHREAD>()->thread_state = KTHREAD_STATE_RUNNING;
-  // A flag raised while this fiber was off-CPU is stale, the dispatcher
-  // already served it. A raise racing this clear is restored by the watchdog.
-  next->thread_state()->context()->preempt_requested = 0;
   // The profiler keys its scope stack by host thread, so without this every
   // fiber dispatched here would nest its scopes inside whichever one ran
   // before it. A yield resumes this line, so the restore below pairs with it.
@@ -1413,11 +1564,11 @@ void GuestScheduler::NotifyThreadExited(XThread* thread) {
   cpus_[t_current_cpu].exited_thread = thread;
 }
 
-void GuestScheduler::BlockCurrentThread(uint64_t deadline_ms,
+bool GuestScheduler::BlockCurrentThread(uint64_t deadline_ms,
                                         uint32_t wait_epoch, bool alertable,
-                                        bool interruptible) {
+                                        bool interruptible, bool object_wait) {
   if (!OnDispatchThread("BlockCurrentThread")) {
-    return;
+    return false;
   }
   if (interruptible) {
     ExitIfTerminated();
@@ -1454,8 +1605,14 @@ void GuestScheduler::BlockCurrentThread(uint64_t deadline_ms,
     // that would leave its signals unseen until the deadline or backstop.
     gated = true;
   }
+  auto& links = self->scheduler_links();
   {
     std::lock_guard<std::mutex> lock(lock_);
+    // A suspend landing since the caller's failed poll ends an object wait
+    // unparked.
+    if (object_wait && interruptible && self->HasDeliverableSuspend()) {
+      return true;
+    }
     // A signal between the caller's failed poll and this park bumped the epoch
     // but walked the blocked list before we joined it, so nothing would re-poll
     // us before the backstop. Compare under the walk's own lock and poke this
@@ -1477,7 +1634,6 @@ void GuestScheduler::BlockCurrentThread(uint64_t deadline_ms,
         cpus_[cpu_index].repoll_now.store(true, std::memory_order_relaxed);
       }
     }
-    auto& links = self->scheduler_links();
     // Park self (running, in no list) on this CPU's blocked list.
     links.blocked = true;
     links.preempted = false;
@@ -1488,6 +1644,9 @@ void GuestScheduler::BlockCurrentThread(uint64_t deadline_ms,
     links.wait_gated = gated;
     links.wait_alertable = alertable;
     links.wait_interruptible = interruptible;
+    links.object_wait = object_wait && interruptible;
+    links.suspend_poll_first = false;
+    links.suspend_unwait = false;
     links.wait_epoch = wait_epoch;
     links.wait_deadline_ms = deadline_ms;
     // A wait consumes the slice.
@@ -1516,10 +1675,16 @@ void GuestScheduler::BlockCurrentThread(uint64_t deadline_ms,
   }
   self->guest_object<X_KTHREAD>()->thread_state = KTHREAD_STATE_WAITING;
   YieldToScheduler();
+  // Nothing else reads these while it runs.
+  links.object_wait = false;
+  links.suspend_poll_first = false;
+  const bool unwait = links.suspend_unwait;
+  links.suspend_unwait = false;
   // Terminated while parked, TerminateThread re-readied us to exit here.
   if (interruptible) {
     ExitIfTerminated();
   }
+  return unwait;
 }
 
 void GuestScheduler::RereadyBlocked(int cpu_index) {
@@ -1566,19 +1731,8 @@ void GuestScheduler::RereadyBlocked(int cpu_index) {
       auto& links = t->scheduler_links();
       XThread* next = links.ready_next;
       if (links.wait_gated) {
-        // Three gate kinds: a single object's epoch, a multi-wait's summed
-        // epoch, or (neither) a pure timed sleep that only the deadline below
-        // can resolve.
         XObject* obj = t->cooperative_wait_object();
-        bool may_have_resolved = false;
-        if (obj) {
-          may_have_resolved =
-              obj->cooperative_signal_epoch() != links.wait_epoch;
-        } else if (links.wait_gate_count) {
-          may_have_resolved =
-              t->cooperative_wait_set_epoch() != links.wait_epoch;
-        }
-        if (!may_have_resolved &&
+        if (!ParkedWaitMayHaveResolved(t) &&
             !(links.wait_alertable && t->HasPendingUserApc()) &&
             !(links.wait_interruptible && t->HasDeliverableKernelApc())) {
           if (links.wait_deadline_ms && now_ms >= links.wait_deadline_ms) {

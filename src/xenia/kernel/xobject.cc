@@ -336,10 +336,12 @@ X_STATUS CooperativeWait(GuestScheduler* scheduler, XThread* self,
                          bool alertable, uint64_t deadline_ms, PollFn&& poll,
                          bool interruptible = true) {
   bool parked = false;
-  // A kernel APC interrupts a wait below APC_LEVEL, alertable or not. One that
-  // must not end, as its waker writes into this stack, runs no guest code.
+  // A kernel APC or a suspend interrupts a wait below APC_LEVEL, alertable or
+  // not. One that must not end, as its waker writes into this stack, runs no
+  // guest code.
   auto kernel_apc = [&]() {
-    return interruptible && self && self->HasDeliverableKernelApc();
+    return interruptible && self &&
+           (self->HasDeliverableKernelApc() || self->HasDeliverableSuspend());
   };
   while (true) {
     if (!parked && kernel_apc()) {
@@ -378,9 +380,22 @@ X_STATUS CooperativeWait(GuestScheduler* scheduler, XThread* self,
       WaitExit(self, kthread, X_STATUS_TIMEOUT);
       return X_STATUS_TIMEOUT;
     }
-    scheduler->BlockCurrentThread(deadline_ms, wait_epoch, alertable,
-                                  interruptible);
+    // Unwaited by a suspend, it leaves without polling and the caller waits
+    // again.
+    if (scheduler->BlockCurrentThread(deadline_ms, wait_epoch, alertable,
+                                      interruptible, true)) {
+      WaitExit(self, kthread, X_STATUS_KERNEL_APC);
+      return X_STATUS_KERNEL_APC;
+    }
     parked = true;
+  }
+}
+
+// A suspend landing after the wait was satisfied stops the thread on its way
+// out. Called once it left the waiter queue so it holds no place there.
+void StopForSuspendOnWaitExit(XThread* self) {
+  if (self) {
+    self->DeliverPendingSuspend();
   }
 }
 
@@ -618,6 +633,9 @@ X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode,
           interruptible);
       LeaveCooperativeWait(self);
       if (status != X_STATUS_KERNEL_APC) {
+        if (interruptible) {
+          StopForSuspendOnWaitExit(self);
+        }
         return status;
       }
       xboxkrnl::xeProcessKernelApcs(self->thread_state()->context());
@@ -758,6 +776,7 @@ X_STATUS XObject::SignalAndWait(XObject* signal_object, XObject* wait_object,
           });
       wait_object->LeaveCooperativeWait(self);
       if (status != X_STATUS_KERNEL_APC) {
+        StopForSuspendOnWaitExit(self);
         return status;
       }
       xboxkrnl::xeProcessKernelApcs(self->thread_state()->context());
@@ -956,6 +975,7 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects,
             }
           });
       if (status != X_STATUS_KERNEL_APC) {
+        StopForSuspendOnWaitExit(self);
         return status;
       }
       xboxkrnl::xeProcessKernelApcs(self->thread_state()->context());

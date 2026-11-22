@@ -1308,9 +1308,19 @@ void xeKeKfReleaseSpinLock(PPCContext* ctx, X_KSPINLOCK* lock,
   }
 }
 
+// Lowering IRQL below APC_LEVEL delivers a suspend the raise held off.
+static void DeliverSuspendOnLowerIrql(uint32_t new_irql) {
+  if (new_irql < 1) {
+    if (XThread* self = XThread::GetCurrentFiberThread()) {
+      self->DeliverPendingSuspend();
+    }
+  }
+}
+
 void KfReleaseSpinLock_entry(pointer_t<X_KSPINLOCK> lock_ptr, dword_t old_irql,
                              const ppc_context_t& ppc_ctx) {
   xeKeKfReleaseSpinLock(ppc_ctx, lock_ptr, old_irql, true);
+  DeliverSuspendOnLowerIrql(old_irql);
 }
 
 DECLARE_XBOXKRNL_EXPORT2(KfReleaseSpinLock, kThreading, kImplemented,
@@ -1388,6 +1398,7 @@ void xeKfLowerIrql(PPCContext* ctx, unsigned char new_irql) {
 // irql is supposed to be per thread afaik...
 void KfLowerIrql_entry(dword_t new_irql, const ppc_context_t& ctx) {
   xeKfLowerIrql(ctx, static_cast<unsigned char>(new_irql));
+  DeliverSuspendOnLowerIrql(new_irql);
 }
 DECLARE_XBOXKRNL_EXPORT2(KfLowerIrql, kThreading, kImplemented, kHighFrequency);
 
@@ -1554,20 +1565,22 @@ bool xeProcessKernelApcs(PPCContext* ctx) {
   }
   auto kpcr = ctx->TranslateVirtualGPR<X_KPCR*>(ctx->r[13]);
   auto current_thread = ctx->TranslateVirtual(kpcr->prcb_data.current_thread);
+  bool delivered = false;
   // Masked at APC_LEVEL and above or in a critical region, and never nested.
-  if (kpcr->current_irql >= 1 || current_thread->apc_disable_count ||
-      current_thread->executing_kernel_apc) {
-    return false;
+  if (kpcr->current_irql < 1 && !current_thread->apc_disable_count &&
+      !current_thread->executing_kernel_apc &&
+      !current_thread->apc_lists[0].empty(ctx)) {
+    current_thread->executing_kernel_apc = 1;
+    delivered = ProcessApcList(ctx, current_thread, 0);
+    if (delivered) {
+      XELOGD("xeProcessKernelApcs: delivered");
+    }
+    current_thread->executing_kernel_apc = 0;
   }
-  if (current_thread->apc_lists[0].empty(ctx)) {
-    return false;
+  // A suspend is a kernel APC under the same mask.
+  if (XThread* self = XThread::GetCurrentFiberThread()) {
+    delivered |= self->DeliverPendingSuspend();
   }
-  current_thread->executing_kernel_apc = 1;
-  bool delivered = ProcessApcList(ctx, current_thread, 0);
-  if (delivered) {
-    XELOGD("xeProcessKernelApcs: delivered");
-  }
-  current_thread->executing_kernel_apc = 0;
   return delivered;
 }
 

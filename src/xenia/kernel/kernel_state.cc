@@ -1144,8 +1144,9 @@ static void HandOffToHostUI(const Emulator::ExitToDashboardCallback& handler) {
     // return on POSIX, so loop rather than fall through to TerminateTitle.
     auto* current_thread = XThread::GetCurrentThread();
     current_thread->Suspend(nullptr);
+    // SpinYield parks a fiber, a host sleep would stall its dispatch thread.
     while (true) {
-      xe::threading::NanoSleep(int64_t(1'000'000'000));
+      GuestScheduler::SpinYield(std::chrono::seconds(1));
     }
   }
 }

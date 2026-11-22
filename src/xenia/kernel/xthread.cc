@@ -910,16 +910,44 @@ bool XThread::HasPendingUserApc() {
   return !kthread->apc_lists[1].empty(thread_state_->context());
 }
 
-bool XThread::HasDeliverableKernelApc() {
+bool XThread::KernelApcsUnmasked() {
   auto* kthread = guest_object<X_KTHREAD>();
   if (kthread->apc_disable_count || kthread->executing_kernel_apc) {
     return false;
   }
   auto* pcr = memory()->TranslateVirtual<X_KPCR*>(pcr_address_);
-  if (pcr->current_irql >= 1) {
+  return pcr->current_irql < 1;
+}
+
+bool XThread::HasDeliverableKernelApc() {
+  return KernelApcsUnmasked() && !guest_object<X_KTHREAD>()->apc_lists[0].empty(
+                                     thread_state_->context());
+}
+
+bool XThread::HasDeliverableSuspend() {
+  // A pending terminate goes first, the thread never stops on its way out.
+  if (!suspend_count() || !KernelApcsUnmasked() ||
+      scheduler_links_.terminate_pending.load(std::memory_order_relaxed)) {
     return false;
   }
-  return !kthread->apc_lists[0].empty(thread_state_->context());
+  // Stopping while holding the global critical region would let a co-resident
+  // fiber re-enter it so it waits for a later delivery point.
+  return !(this == GetCurrentFiberThread() &&
+           xe::global_critical_region::is_held_by_current_thread());
+}
+
+bool XThread::DeliverPendingSuspend() {
+  if (!fiber_ || this != GetCurrentFiberThread()) {
+    return false;
+  }
+  auto* scheduler = kernel_state()->guest_scheduler();
+  bool stopped = false;
+  while (HasDeliverableSuspend()) {
+    // The dispatcher parks it on pick-up until Resume.
+    scheduler->YieldCurrentThread(false);
+    stopped = true;
+  }
+  return stopped;
 }
 
 void XThread::SetCurrentThread(XThread* thread) {
@@ -1264,9 +1292,8 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
   X_KTHREAD* guest_thread = guest_object<X_KTHREAD>();
 
   if (fiber_) {
-    // Bump the guest suspend count and let the dispatcher act on it, at our
-    // next pick-up for a self-suspend or the target's next yield otherwise.
-    // A count at the limit is left as it is.
+    // Bumps the guest suspend count and delivers the first one like a kernel
+    // APC. A count at the limit is left as it is.
     auto* count =
         reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count);
     uint8_t previous = count->load();
@@ -1280,7 +1307,9 @@ X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
       *out_suspend_count = previous;
     }
     if (this == XThread::GetCurrentFiberThread()) {
-      kernel_state()->guest_scheduler()->YieldCurrentThread(false);
+      DeliverPendingSuspend();
+    } else if (previous == 0) {
+      kernel_state()->guest_scheduler()->SuspendThread(this);
     }
     return X_STATUS_SUCCESS;
   }
