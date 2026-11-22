@@ -162,6 +162,11 @@ void MetalPresenter::Shutdown() {
     guest_output_sampler_ = nullptr;
   }
   guest_output_pipeline_format_ = 0;
+  if (frame_rate_overlay_pipeline_) {
+    [frame_rate_overlay_pipeline_ release];
+    frame_rate_overlay_pipeline_ = nullptr;
+  }
+  frame_rate_overlay_pipeline_format_ = 0;
   if (metalfx_scaler_) {
     [metalfx_scaler_ release];
     metalfx_scaler_ = nullptr;
@@ -627,6 +632,40 @@ Presenter::PaintResult MetalPresenter::PaintAndPresentImpl(bool execute_ui_drawe
     [render_encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     if (cvars::metal_presenter_debug_markers) {
       [render_encoder popDebugGroup];
+    }
+  }
+
+  // The frame rate overlay goes over the guest output, under the UI.
+  if (draw_guest_output && paint_texture) {
+    size_t shadow_count;
+    const std::vector<GuestOutputPaintFlow::ClearRectangle>& overlay =
+        LayOutFrameRateOverlay(drawable_width, drawable_height, shadow_count);
+    if (!overlay.empty() &&
+        EnsureFrameRateOverlayPipeline(uint32_t(drawable_texture.pixelFormat))) {
+      MTLViewport viewport = {0.0, 0.0, double(drawable_width), double(drawable_height), 0.0, 1.0};
+      [render_encoder setViewport:viewport];
+      MTLScissorRect scissor = {0, 0, drawable_width, drawable_height};
+      [render_encoder setScissorRect:scissor];
+      [render_encoder setRenderPipelineState:frame_rate_overlay_pipeline_];
+      const float drawable_size[] = {float(drawable_width), float(drawable_height)};
+      [render_encoder setVertexBytes:drawable_size length:sizeof(drawable_size) atIndex:1];
+      // setVertexBytes is for data under 4 KB.
+      constexpr size_t kRectanglesPerDraw = 128;
+      size_t i = 0;
+      while (i < overlay.size()) {
+        const float shade = i < shadow_count ? 0.0f : 1.0f;
+        const float color[] = {shade, shade, shade, 1.0f};
+        const size_t end =
+            std::min(i < shadow_count ? shadow_count : overlay.size(), i + kRectanglesPerDraw);
+        [render_encoder setVertexBytes:overlay.data() + i
+                                length:(end - i) * sizeof(GuestOutputPaintFlow::ClearRectangle)
+                               atIndex:0];
+        [render_encoder setFragmentBytes:color length:sizeof(color) atIndex:0];
+        [render_encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                           vertexStart:0
+                           vertexCount:(end - i) * 6];
+        i = end;
+      }
     }
   }
 
@@ -1139,6 +1178,75 @@ id<MTLRenderPipelineState> CreateGuestOutputPipeline(id<MTLDevice> device,
 }
 
 }  // namespace
+
+bool MetalPresenter::EnsureFrameRateOverlayPipeline(uint32_t pixel_format) {
+  // A failed pipeline is only retried for another format.
+  if (frame_rate_overlay_pipeline_format_ == pixel_format) {
+    return frame_rate_overlay_pipeline_ != nullptr;
+  }
+  if (frame_rate_overlay_pipeline_) {
+    [frame_rate_overlay_pipeline_ release];
+    frame_rate_overlay_pipeline_ = nullptr;
+  }
+  frame_rate_overlay_pipeline_format_ = pixel_format;
+
+  id<MTLDevice> mtl_device = (__bridge id<MTLDevice>)device_;
+  if (!mtl_device) {
+    return false;
+  }
+
+  // Fills rectangles given in drawable pixels with one color.
+  static const char kFrameRateOverlayShaderSource[] = R"METAL(
+#include <metal_stdlib>
+using namespace metal;
+
+struct VertexOut {
+  float4 position [[position]];
+};
+
+vertex VertexOut xe_frame_rate_overlay_vs(
+    uint vertex_id [[vertex_id]],
+    constant uint4* rectangles [[buffer(0)]],
+    constant float2& drawable_size [[buffer(1)]]) {
+  uint4 rectangle = rectangles[vertex_id / 6];
+  uint corner = vertex_id % 6;
+  float2 offset = float2(corner == 1 || corner >= 4 ? 1.0 : 0.0,
+                         corner == 2 || corner == 3 || corner == 5 ? 1.0 : 0.0);
+  float2 pixel = float2(rectangle.xy) + offset * float2(rectangle.zw);
+  VertexOut out;
+  out.position = float4(pixel / drawable_size * float2(2.0, -2.0) +
+                            float2(-1.0, 1.0),
+                        0.0, 1.0);
+  return out;
+}
+
+fragment float4 xe_frame_rate_overlay_ps(constant float4& color [[buffer(0)]]) {
+  return color;
+}
+)METAL";
+
+  NSString* source = [[NSString alloc] initWithUTF8String:kFrameRateOverlayShaderSource];
+  NSError* error = nil;
+  id<MTLLibrary> library = [mtl_device newLibraryWithSource:source options:nil error:&error];
+  [source release];
+  if (!library) {
+    XELOGE("Metal presenter: failed to compile the frame rate overlay: {}",
+           error ? error.localizedDescription.UTF8String : "unknown");
+    return false;
+  }
+  id<MTLFunction> vs = [library newFunctionWithName:@"xe_frame_rate_overlay_vs"];
+  id<MTLFunction> ps = [library newFunctionWithName:@"xe_frame_rate_overlay_ps"];
+  [library release];
+  frame_rate_overlay_pipeline_ = CreateGuestOutputPipeline(
+      mtl_device, vs, ps, MTLPixelFormat(pixel_format), "frame rate overlay");
+  if (vs) {
+    [vs release];
+  }
+  if (ps) {
+    [ps release];
+  }
+  return frame_rate_overlay_pipeline_ != nullptr;
+}
 
 bool MetalPresenter::EnsureGuestOutputPaintResources(uint32_t pixel_format) {
   if (guest_output_pipeline_bilinear_ && guest_output_pipeline_bilinear_dither_ &&

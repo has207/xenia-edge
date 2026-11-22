@@ -116,6 +116,7 @@ class MetalPresenter : public Presenter {
   bool EnsureCopyTextureConvertPipelines();
   bool EnsureApplyGammaPipelines();
   bool EnsureGuestOutputPaintResources(uint32_t pixel_format);
+  bool EnsureFrameRateOverlayPipeline(uint32_t pixel_format);
 
   MetalProvider* provider_;
   MTL::Device* device_ = nullptr;
@@ -146,6 +147,8 @@ class MetalPresenter : public Presenter {
       nullptr;                         // id<MTLRenderPipelineState>
   id guest_output_sampler_ = nullptr;  // id<MTLSamplerState>
   uint32_t guest_output_pipeline_format_ = 0;
+  id frame_rate_overlay_pipeline_ = nullptr;  // id<MTLRenderPipelineState>
+  uint32_t frame_rate_overlay_pipeline_format_ = 0;
 
   id metalfx_scaler_ = nullptr;          // id<MTLFXSpatialScaler>
   id metalfx_output_texture_ = nullptr;  // id<MTLTexture>

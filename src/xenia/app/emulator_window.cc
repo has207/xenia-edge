@@ -188,6 +188,7 @@ DECLARE_bool(debug);
 DECLARE_path(target);
 DECLARE_bool(in_process_title_relaunch);
 DECLARE_bool(discord);
+DECLARE_bool(fps_overlay);
 
 DECLARE_string(hid);
 DECLARE_string(gpu);
@@ -1944,6 +1945,12 @@ void EmulatorWindow::ToggleContextMenu(bool use_cursor_position) {
       std::string("Vibration: ") + (vibration_enabled ? "On" : "Off");
   context_menu->AddAction(vibration_text,
                           [this]() { ToggleControllerVibration(); });
+
+  context_menu->AddAction(
+      std::string("FPS Counter: ") + (cvars::fps_overlay ? "On" : "Off"), []() {
+        ui::Presenter::ToggleFrameRateOverlay();
+        config::SaveConfig();
+      });
 
   context_menu->AddAction(
       "Take Screenshot", [this]() { TakeScreenshot(); }, "F12");
