@@ -318,6 +318,46 @@ static uint32_t HostSocketError() {
   return AsioErrorToWSAError(HostSocketErrorCode());
 }
 
+// Starts a connect on a non-blocking host socket, would_block while it runs.
+static asio::error_code StartHostConnect(
+    uint64_t handle, const asio::ip::tcp::endpoint& endpoint) {
+  if (::connect(static_cast<int>(handle), endpoint.data(),
+                static_cast<socklen_t>(endpoint.size())) == 0) {
+    return {};
+  }
+  const asio::error_code ec = HostSocketErrorCode();
+  // POSIX hosts report EINPROGRESS where Winsock reports WSAEWOULDBLOCK.
+  return ec == asio::error::in_progress ? asio::error::would_block : ec;
+}
+
+// How a finished connect went, by the host's SO_ERROR.
+static asio::error_code HostConnectError(uint64_t handle) {
+  int error = 0;
+  socklen_t length = sizeof(error);
+  if (getsockopt(static_cast<int>(handle), SOL_SOCKET, SO_ERROR,
+                 reinterpret_cast<char*>(&error), &length) < 0) {
+    return HostSocketErrorCode();
+  }
+  return asio::error_code(error, asio::error::get_system_category());
+}
+
+// How a connect StartHostConnect began is going, would_block while it runs.
+static asio::error_code PollHostConnect(uint64_t handle) {
+  fd_set write_set;
+  fd_set error_set;
+  FD_ZERO(&write_set);
+  FD_ZERO(&error_set);
+  FD_SET(handle, &write_set);
+  FD_SET(handle, &error_set);
+  timeval now = {0, 0};
+  const int ready = select(static_cast<int>(handle) + 1, nullptr, &write_set,
+                           &error_set, &now);
+  if (ready < 0) {
+    return HostSocketErrorCode();
+  }
+  return ready ? HostConnectError(handle) : asio::error::would_block;
+}
+
 // SOL_SOCKET and IPPROTO_TCP values are a big-endian word, or a byte below 4
 // bytes, which the host takes in its own byte order and layout. Other levels'
 // values pass as they are.
@@ -907,23 +947,27 @@ X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
 
   asio::error_code ec;
 
-  // asio's connect waits for the connection, where a non-blocking guest gets
-  // WSAEWOULDBLOCK and waits for it in select.
+  // asio's connect waits for the connection. A non-blocking guest gets
+  // WSAEWOULDBLOCK and waits for it in select. A blocking one parks between
+  // polls, as waiting would stall the other guest threads on this host thread.
   auto connect_stream = [&](const asio::ip::tcp::endpoint& endpoint) {
+    const uint64_t handle = tcp_socket_->native_handle();
     if (!guest_non_blocking_) {
-      RunCooperatively(ec, RetryMode::kConnect,
-                       [&]() { tcp_socket_->connect(endpoint, ec); });
+      bool started = false;
+      RunCooperatively(ec, RetryMode::kConnect, [&]() {
+        if (!CooperativeThread()) {
+          tcp_socket_->connect(endpoint, ec);
+        } else if (!started) {
+          started = true;
+          ec = StartHostConnect(handle, endpoint);
+        } else {
+          ec = PollHostConnect(handle);
+        }
+      });
       connect_state_ = ConnectState::kNone;
       return;
     }
-    if (::connect(tcp_socket_->native_handle(), endpoint.data(),
-                  static_cast<socklen_t>(endpoint.size())) < 0) {
-      ec = HostSocketErrorCode();
-      // POSIX hosts report EINPROGRESS where Winsock reports WSAEWOULDBLOCK.
-      if (ec == asio::error::in_progress) {
-        ec = asio::error::would_block;
-      }
-    }
+    ec = StartHostConnect(handle, endpoint);
     if (ec == asio::error::would_block) {
       connect_state_ = ConnectState::kConnecting;
     } else if (ec != asio::error::already_started) {
@@ -984,13 +1028,8 @@ void XSocket::SettleConnect() {
   if (connect_state_ != ConnectState::kConnecting) {
     return;
   }
-  int error = 0;
-  socklen_t length = sizeof(error);
-  if (getsockopt(static_cast<int>(native_handle()), SOL_SOCKET, SO_ERROR,
-                 reinterpret_cast<char*>(&error), &length) < 0) {
-    error = int(HostSocketError());
-  }
-  connect_state_ = error ? ConnectState::kFailed : ConnectState::kNone;
+  connect_state_ = HostConnectError(native_handle()) ? ConnectState::kFailed
+                                                     : ConnectState::kNone;
 }
 
 X_STATUS XSocket::Bind(N_XSOCKADDR_IN* name, int name_len) {
