@@ -3,8 +3,10 @@
 The free scenarios allocate a block and free it from its base, from an address
 inside it or just below the next block, twice, with a region type other than
 the caller's, or at an address outside the regions. The allocate scenarios pass
-a bad type or size or take the whole region. The base an allocation returns is
-captured, as it names the region the type picked.
+a bad type or size, take the whole region, and allocate again after frees and
+next to a gap at the region's start. The base an allocation returns is
+captured, as it names the region the type picked and where in it the block
+went.
 """
 
 PAGE = 0x10000
@@ -76,3 +78,39 @@ def build(corpus):
     s = corpus.scenario('allocate the whole region')
     block = allocate(s, REGION, 'block')
     s.call('NtFreeEncryptedMemory', 0, block, name='free')
+
+    s = corpus.scenario('allocate after freeing the first block')
+    first = allocate(s, 0x14, 'block')
+    second = allocate(s, 0x14, 'second block')
+    s.call('NtFreeEncryptedMemory', 0, first, name='free the first')
+    third = allocate(s, 0x14, 'third block')
+    s.call('NtFreeEncryptedMemory', 0, second, name='free the second')
+    s.call('NtFreeEncryptedMemory', 0, third, name='free the third')
+
+    s = corpus.scenario('allocate after freeing the last block')
+    first = allocate(s, 0x14, 'block')
+    second = allocate(s, 0x14, 'second block')
+    third = allocate(s, 0x14, 'third block')
+    s.call('NtFreeEncryptedMemory', 0, first, name='free the first')
+    s.call('NtFreeEncryptedMemory', 0, third, name='free the third')
+    fourth = allocate(s, 0x14, 'fourth block')
+    s.call('NtFreeEncryptedMemory', 0, second, name='free the second')
+    s.call('NtFreeEncryptedMemory', 0, fourth, name='free the fourth')
+
+    # A block that fills the region after its first page leaves a gap at the
+    # start exactly one page long.
+    s = corpus.scenario('allocate into a gap at the start of the same size')
+    first = allocate(s, PAGE, 'block')
+    rest = allocate(s, REGION - PAGE, 'second block')
+    s.call('NtFreeEncryptedMemory', 0, first, name='free the first')
+    third = allocate(s, PAGE, 'third block')
+    s.call('NtFreeEncryptedMemory', 0, third, name='free the third')
+    s.call('NtFreeEncryptedMemory', 0, rest, name='free the second')
+
+    s = corpus.scenario('allocate into a larger gap at the start')
+    first = allocate(s, 2 * PAGE, 'block')
+    rest = allocate(s, REGION - 2 * PAGE, 'second block')
+    s.call('NtFreeEncryptedMemory', 0, first, name='free the first')
+    third = allocate(s, PAGE, 'third block')
+    s.call('NtFreeEncryptedMemory', 0, third, name='free the third')
+    s.call('NtFreeEncryptedMemory', 0, rest, name='free the second')

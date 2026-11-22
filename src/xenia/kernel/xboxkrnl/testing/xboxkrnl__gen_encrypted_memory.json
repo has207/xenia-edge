@@ -503,6 +503,461 @@
      "variable": "block"
     }
    ]
+  },
+  {
+   "scenario": "allocate after freeing the first block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the first block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "second block base": "8d010000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "second block base",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the first block",
+   "name": "free the first",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the first block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "third block base": "8d020000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "third block base",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the first block",
+   "name": "free the second",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "second block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the first block",
+   "name": "free the third",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "third block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "second block base": "8d010000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "second block base",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "third block base": "8d020000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "third block base",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "free the first",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "free the third",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "third block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "fourth block base": "8d020000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "fourth block base",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "free the second",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "second block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate after freeing the last block",
+   "name": "free the fourth",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "fourth block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a gap at the start of the same size",
+   "name": "allocate 0x10000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a gap at the start of the same size",
+   "name": "allocate 0xfe0000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "second block base": "8d010000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 16646144
+    },
+    {
+     "pointer": "second block base",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a gap at the start of the same size",
+   "name": "free the first",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a gap at the start of the same size",
+   "name": "allocate 0x10000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "FFFFFFFFC0000017",
+   "capture": {
+    "third block base": "00000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "pointer": "third block base",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a gap at the start of the same size",
+   "name": "free the third",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "third block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a gap at the start of the same size",
+   "name": "free the second",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "second block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a larger gap at the start",
+   "name": "allocate 0x20000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 131072
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a larger gap at the start",
+   "name": "allocate 0xfd0000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "second block base": "8d020000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 16580608
+    },
+    {
+     "pointer": "second block base",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a larger gap at the start",
+   "name": "free the first",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a larger gap at the start",
+   "name": "allocate 0x10000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "third block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "pointer": "third block base",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a larger gap at the start",
+   "name": "free the third",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "third block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate into a larger gap at the start",
+   "name": "free the second",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "second block"
+    }
+   ]
   }
  ]
 }
