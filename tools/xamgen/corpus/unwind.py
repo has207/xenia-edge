@@ -27,6 +27,56 @@ def gpr(context, first, count=1):
     return (context + 0x18 + first * 8).prefix(count * 8)
 
 
+def capture_lr_scenario(corpus):
+    """RtlCaptureContext called three ways, a bl to the import thunk, a bctrl
+    right after the mtctr and one two instructions after it. Each logs the
+    lr it captured against the address its call returns to."""
+    s = corpus.scenario('capture context lr')
+    log = s.alloc(0xC, 'lr log', fill=0)
+    context = s.alloc(CONTEXT_SIZE, 'lr context', fill=0)
+
+    def emit(a, r, thunk):
+        target = thunk('RtlCaptureContext')
+
+        def logged(k):
+            a.label(r.label(f'returned {k}'))
+            a.load32(11, context.address)
+            a.lwz(0, 0xC, 11)
+            a.load_address(9, r.label(f'returned {k}'))
+            a.subf(0, 9, 0)
+            a.load32(11, log.address)
+            a.stw(0, 4 * k, 11)
+
+        a.label(r.entry)
+        a.mflr(0)
+        a.stw(0, -8, 1)
+        a.stwu(1, -0x60, 1)
+        a.label(r.label('prolog end'))
+        a.load32(3, context.address)
+        a.word(0x48000001 | ((target - a.address()) & 0x03FFFFFC))
+        logged(0)
+        a.load32(3, context.address)
+        a.call(target)
+        logged(1)
+        a.load32(3, context.address)
+        a.load32(12, target)
+        a.mtctr(12)
+        a.nop()
+        a.nop()
+        a.bctrl()
+        logged(2)
+        a.addi(1, 1, 0x60)
+        a.lwz(0, -8, 1)
+        a.mtlr(0)
+        a.li(3, 0)
+        a.blr()
+        a.label(r.label('end'))
+        r.function(r.entry, r.label('prolog end'), r.label('end'))
+
+    routine = s.routine('capture context lr probe', emit)
+    s.call(routine, name='capture context lr', capture=[log])
+
+
 def build(corpus):
     s = corpus.scenario('pc to file header')
     for name, pc in (('executor code', EXECUTOR_CODE),
@@ -51,3 +101,5 @@ def build(corpus):
         (context + 0x230).prefix(0x810),  # vscr, vr
         context + CONTEXT_SIZE,           # guard
     ])
+
+    capture_lr_scenario(corpus)
