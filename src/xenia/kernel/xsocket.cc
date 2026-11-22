@@ -704,12 +704,16 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
   std::vector<char> value = HostOptionValue(level, optname, optval_ptr, optlen);
   int ret = setsockopt(native_handle_val, native_level, native_optname,
                        value.data(), static_cast<socklen_t>(value.size()));
-  if (ret < 0) {
+  // getsockopt reports the guest's buffer sizes and a host refusing one, as
+  // macOS does a receive buffer of 0, changes nothing the guest sees.
+  const bool buffer_size =
+      level == 0xFFFF && (optname == 0x1001 || optname == 0x1002);
+  if (ret < 0 && !buffer_size) {
     last_error_ = HostSocketError();
     XELOGE("XSocket::SetOption: failed with error {:08X}", last_error_);
     return X_STATUS_UNSUCCESSFUL;
   }
-  if (acceptor_) {
+  if (ret == 0 && acceptor_) {
     acceptor_options_.push_back(
         {native_level, native_optname, std::move(value)});
   }
