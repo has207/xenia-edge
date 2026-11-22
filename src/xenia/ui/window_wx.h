@@ -10,6 +10,7 @@
 #ifndef XENIA_UI_WINDOW_WX_H_
 #define XENIA_UI_WINDOW_WX_H_
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -150,7 +151,7 @@ class WxWindow : public Window {
 #endif
 
 #if XE_PLATFORM_LINUX
-  unsigned int pending_paint_source_ = 0;
+  std::atomic<bool> paint_idle_pending_{false};
   GtkSurfaceFactory gtk_surface_factory_;
 #endif
 };

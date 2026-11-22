@@ -189,9 +189,8 @@ WxWindow::WxWindow(WindowedAppContext& app_context,
 WxWindow::~WxWindow() {
   EnterDestructor();
 #if XE_PLATFORM_LINUX
-  if (pending_paint_source_) {
-    g_source_remove(pending_paint_source_);
-    pending_paint_source_ = 0;
+  if (paint_idle_pending_) {
+    g_idle_remove_by_data(this);
   }
 #endif
 #if XE_PLATFORM_WIN32
@@ -593,14 +592,15 @@ void WxWindow::RequestPaintImpl() {
 #elif XE_PLATFORM_LINUX
   // Schedule via glib's main loop (not wx's pending-event queue) so X11 input
   // events at higher priority preempt back-to-back paints.
-  if (pending_paint_source_) {
+  // Called from the GPU thread too, the idle can run before its id is returned.
+  if (paint_idle_pending_.exchange(true)) {
     return;
   }
-  pending_paint_source_ = g_idle_add_full(
+  g_idle_add_full(
       G_PRIORITY_LOW,
       [](gpointer user_data) -> gboolean {
         auto* self = static_cast<WxWindow*>(user_data);
-        self->pending_paint_source_ = 0;
+        self->paint_idle_pending_.store(false);
         if (self->render_panel_) {
           self->OnPaint(true);
         }
