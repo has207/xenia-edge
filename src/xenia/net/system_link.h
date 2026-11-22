@@ -170,8 +170,6 @@ class SystemLinkStream {
   virtual bool Readable() const = 0;
   virtual bool Writable() const = 0;
   virtual bool Failed() const = 0;
-  // Why a connect failed, 0 if it didn't.
-  virtual uint32_t ConnectError() const = 0;
   // Runs with the kStream* events that happened and right away with those
   // that already hold. It must not call back into the System Link.
   virtual void SetReadyCallback(

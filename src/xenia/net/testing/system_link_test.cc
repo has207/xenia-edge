@@ -1365,7 +1365,6 @@ TEST_CASE("System Link streams refuse ports nobody listens on",
   auto client = Stream(*pair.a);
   CHECK(client->Connect({host, 1004}, kWait) == kWsaConnectionRefused);
   CHECK(client->Failed());
-  CHECK(client->ConnectError() == kWsaConnectionRefused);
   uint32_t error = 0;
   std::array<uint8_t, 4> buffer;
   CHECK(client->Receive(buffer, false, 0, error) == -1);

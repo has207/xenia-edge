@@ -1427,16 +1427,19 @@ struct host_set {
         [](const auto& socket) { return socket->system_link(); });
   }
 
-  // A System Link socket answers for itself. Only a stream's failed connect is
-  // an exception.
+  // A System Link socket answers for itself, a stream's failed connect is
+  // ready in every set.
   bool SystemLinkReady(const XSocket& socket) const {
+    if (socket.SystemLinkFailed()) {
+      return true;
+    }
     switch (this->set) {
       case SelectSet::kRead:
         return socket.SystemLinkReadable();
       case SelectSet::kWrite:
         return socket.SystemLinkWritable();
       default:
-        return socket.SystemLinkFailed();
+        return false;
     }
   }
 

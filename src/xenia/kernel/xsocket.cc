@@ -704,10 +704,7 @@ X_STATUS XSocket::StreamGetOption(uint32_t level, uint32_t optname,
     return X_STATUS_UNSUCCESSFUL;
   }
   uint32_t value;
-  if (level == 0xFFFF && optname == 0x1007) {
-    // SO_ERROR, which tells why a non-blocking connect failed.
-    value = system_link_stream_->ConnectError();
-  } else if (level == 0xFFFF && optname == 0x1008) {
+  if (level == 0xFFFF && optname == 0x1008) {
     value = X_SOCK_STREAM;
   } else if (level == 0xFFFF && (optname == 0x1001 || optname == 0x1002)) {
     value = uint32_t(net::tcp::kBufferSize);

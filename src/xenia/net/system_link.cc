@@ -1509,15 +1509,6 @@ class SystemLink::Stream final : public SystemLinkStream {
     return ConnectFailed(*stream_);
   }
 
-  uint32_t ConnectError() const override {
-    std::lock_guard lock(state_->mutex);
-    if (!ConnectFailed(*stream_)) {
-      return 0;
-    }
-    return stream_->error ? stream_->error
-                          : FailureError(stream_->connection->failure());
-  }
-
   void SetReadyCallback(std::function<void(uint32_t)> callback) override {
     std::lock_guard lock(state_->mutex);
     stream_->ready = std::move(callback);
