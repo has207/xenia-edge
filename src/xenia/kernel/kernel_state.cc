@@ -28,6 +28,7 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_ob.h"
+#include "xenia/kernel/xboxkrnl/xboxkrnl_rtl.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xevent.h"
 #include "xenia/kernel/xmodule.h"
@@ -856,8 +857,41 @@ X_RESULT KernelState::FinishLoadingUserModule(
   return result;
 }
 
+KernelState::LoaderLockScope::LoaderLockScope(KernelState* kernel_state)
+    : kernel_state_(kernel_state) {
+  if (kernel_state_->title_loader_lock_ && !XThread::IsInThread(nullptr)) {
+    xboxkrnl::xeRtlEnterCriticalSection(
+        kernel_state_->memory()
+            ->TranslateVirtual<xboxkrnl::X_RTL_CRITICAL_SECTION*>(
+                kernel_state_->title_loader_lock_));
+    held_ = true;
+  }
+}
+
+KernelState::LoaderLockScope::~LoaderLockScope() {
+  if (held_) {
+    xboxkrnl::xeRtlLeaveCriticalSection(
+        kernel_state_->memory()
+            ->TranslateVirtual<xboxkrnl::X_RTL_CRITICAL_SECTION*>(
+                kernel_state_->title_loader_lock_),
+        kernel_state_->title_loader_lock_);
+  }
+}
+
 void KernelState::AttachPendingModules(XThread* thread,
                                        uint32_t loader_thread_id) {
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    if (std::ranges::find(pending_process_attaches_, loader_thread_id,
+                          &PendingProcessAttach::loader_thread_id) ==
+        pending_process_attaches_.end()) {
+      return;
+    }
+  }
+  // DllMain runs under the loader lock, never the global critical region: a
+  // DllMain that waits would leave its host thread holding that, and stall
+  // every other thread that takes it.
+  LoaderLockScope loader_lock(this);
   auto global_lock = global_critical_region_.Acquire();
   while (true) {
     auto it = std::ranges::find(pending_process_attaches_, loader_thread_id,
@@ -880,7 +914,8 @@ void KernelState::AttachPendingModules(XThread* thread,
                          xe::countof(args));
 
     global_lock.lock();
-    // Threads that start while DllMain runs skip the module.
+    // A thread that starts while DllMain runs waits for the loader lock and
+    // then gets DLL_THREAD_ATTACH for the module, as on the console.
     module->is_attached_ = true;
   }
 }
@@ -1097,7 +1132,7 @@ X_RESULT KernelState::ApplyTitleUpdate(
 
 void KernelState::UnloadUserModule(const object_ref<UserModule>& module,
                                    bool call_entry) {
-  auto global_lock = global_critical_region_.Acquire();
+  LoaderLockScope loader_lock(this);
 
   if (module->is_dll_module() && module->entry_point() && call_entry) {
     // Call DllMain(DLL_PROCESS_DETACH):
@@ -1112,6 +1147,7 @@ void KernelState::UnloadUserModule(const object_ref<UserModule>& module,
                          xe::countof(args));
   }
 
+  auto global_lock = global_critical_region_.Acquire();
   auto iter = std::ranges::find_if(user_modules_, [&module](const auto& e) {
     return e->path() == module->path();
   });
@@ -1189,9 +1225,22 @@ static bool NotifiesDlls(XThread* thread) {
          thread->guest_object<X_KTHREAD>()->process_type == X_PROCTYPE_TITLE;
 }
 
-void KernelState::OnThreadExecute(XThread* thread) {
+// The DLLs a thread start or exit notifies, in load order: attached ones with
+// an entry point. The console copies them out of the module list the same way
+// before it calls any (xboxkrnl 17559, 0x8007B598-0x8007B610).
+std::vector<object_ref<UserModule>> KernelState::NotifiedModules() {
   auto global_lock = global_critical_region_.Acquire();
+  std::vector<object_ref<UserModule>> modules;
+  for (const auto& user_module : user_modules_) {
+    if (user_module->is_dll_module() && user_module->entry_point() &&
+        user_module->is_attached()) {
+      modules.push_back(user_module);
+    }
+  }
+  return modules;
+}
 
+void KernelState::OnThreadExecute(XThread* thread) {
   // Must be called on executing thread.
   assert_true(XThread::GetCurrentThread() == thread);
 
@@ -1199,38 +1248,35 @@ void KernelState::OnThreadExecute(XThread* thread) {
     return;
   }
 
-  // Call DllMain(DLL_THREAD_ATTACH) for each user module:
+  // Call DllMain(DLL_THREAD_ATTACH) for each user module, holding the loader
+  // lock as the console's thread notification (0x8007B520) does:
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
+  LoaderLockScope loader_lock(this);
   auto thread_state = thread->thread_state();
-  for (auto user_module : user_modules_) {
-    if (user_module->is_dll_module() && user_module->entry_point() &&
-        user_module->is_attached()) {
-      uint64_t args[] = {
-          user_module->hmodule_ptr(),
-          2,  // DLL_THREAD_ATTACH
-          0,  // 0 because always dynamic
-      };
-      processor()->Execute(thread_state, user_module->entry_point(), args,
-                           xe::countof(args));
-    }
+  for (const auto& user_module : NotifiedModules()) {
+    uint64_t args[] = {
+        user_module->hmodule_ptr(),
+        2,  // DLL_THREAD_ATTACH
+        0,  // 0 because always dynamic
+    };
+    processor()->Execute(thread_state, user_module->entry_point(), args,
+                         xe::countof(args));
   }
   // Imports loaded with the title.
   AttachPendingModules(thread, 0);
 }
 
 void KernelState::OnThreadExit(XThread* thread) {
-  auto global_lock = global_critical_region_.Acquire();
-
   // Must be called on executing thread.
   assert_true(XThread::GetCurrentThread() == thread);
 
-  // Call DllMain(DLL_THREAD_DETACH) for each user module:
+  // Call DllMain(DLL_THREAD_DETACH) for each user module, under the loader
+  // lock:
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms682583%28v=vs.85%29.aspx
-  auto thread_state = thread->thread_state();
-  const bool notifies_dlls = NotifiesDlls(thread);
-  for (auto user_module : user_modules_) {
-    if (notifies_dlls && user_module->is_dll_module() &&
-        user_module->entry_point() && user_module->is_attached()) {
+  if (NotifiesDlls(thread)) {
+    LoaderLockScope loader_lock(this);
+    auto thread_state = thread->thread_state();
+    for (const auto& user_module : NotifiedModules()) {
       uint64_t args[] = {
           user_module->hmodule_ptr(),
           3,  // DLL_THREAD_DETACH
@@ -1955,6 +2001,13 @@ void KernelState::InitializeKernelGuestGlobals() {
       memory_->TranslateVirtual<KernelGuestGlobals*>(kernel_guest_globals_);
   memset(block, 0, sizeof(KernelGuestGlobals));
   util::XeInitializeListHead(&block->loaded_modules, memory_);
+
+  title_loader_lock_ =
+      memory_->SystemHeapAlloc(xboxkrnl::xeRtlCriticalSectionSize());
+  xboxkrnl::xeRtlInitializeCriticalSection(
+      memory_->TranslateVirtual<xboxkrnl::X_RTL_CRITICAL_SECTION*>(
+          title_loader_lock_),
+      title_loader_lock_);
 
   auto idle_process = memory()->TranslateVirtual<X_KPROCESS*>(GetIdleProcess());
   InitializeProcess(idle_process, X_PROCTYPE_IDLE, 0, 0, 0);

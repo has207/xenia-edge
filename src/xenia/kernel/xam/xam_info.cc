@@ -1600,21 +1600,32 @@ DECLARE_XAM_EXPORT1(XamSetDvrStorage, kNone, kStub);
 // The guest address of a string in xam's common string table, or 0.
 static uint32_t LookupCommonString(uint32_t string_index) {
   static std::mutex lock;
-  std::lock_guard<std::mutex> guard(lock);
   auto& table = kernel_state()->xam_state()->common_string_table_;
+  std::unique_lock<std::mutex> guard(lock);
   if (!table) {
+    // The load can wait on the loader lock, which a guest thread mustn't do
+    // holding a host mutex. A caller that loses the race drops its reference.
+    guard.unlock();
     // They're in the xam section of the system UI skin.
     constexpr std::string_view kSkinPath = "\\SystemRoot\\huduiskin.xex";
     uint32_t loaded = 0;
     object_ref<XModule> skin;
-    if (xboxkrnl::xeXexLoadImage(kSkinPath)) {
+    const uint32_t hmodule = xboxkrnl::xeXexLoadImage(kSkinPath);
+    if (hmodule) {
       skin = kernel_state()->GetModule(kSkinPath, true);
     }
     if (!skin ||
         XFAILED(LoadXuiStringTable(*skin, "xam", "xamstrings.xus", &loaded))) {
       XELOGW("LookupCommonString: no xam string table to read");
     }
-    table = loaded;
+    guard.lock();
+    if (!table) {
+      table = loaded;
+    } else if (hmodule) {
+      guard.unlock();
+      xboxkrnl::xeXexUnloadImage(hmodule);
+      guard.lock();
+    }
   }
   return *table ? LookupXuiStringTable(*table, string_index) : 0;
 }

@@ -303,6 +303,22 @@ class KernelState {
 
   void RegisterThread(XThread* thread);
   void UnregisterThread(XThread* thread);
+  // Holds the title loader lock for the current guest thread, as the console's
+  // loader does around a load, an unload and the DllMain calls. A thread that
+  // finds it held waits like for any critical section, so other guest threads
+  // run meanwhile. Threads that aren't guest threads don't take it.
+  class LoaderLockScope {
+   public:
+    explicit LoaderLockScope(KernelState* kernel_state);
+    ~LoaderLockScope();
+    LoaderLockScope(const LoaderLockScope&) = delete;
+    LoaderLockScope& operator=(const LoaderLockScope&) = delete;
+
+   private:
+    KernelState* kernel_state_;
+    bool held_ = false;
+  };
+
   void OnThreadExecute(XThread* thread);
   void OnThreadExit(XThread* thread);
   object_ref<XThread> GetThreadByID(uint32_t thread_id);
@@ -408,6 +424,7 @@ class KernelState {
   void SetProcessTLSVars(X_KPROCESS* process, int num_slots, int tls_data_size,
                          int tls_static_data_address);
   void InitializeKernelGuestGlobals();
+  std::vector<object_ref<UserModule>> NotifiedModules();
 
   std::vector<xam::XCONTENT_AGGREGATE_DATA> FindTitleUpdate(
       const uint32_t title_id) const;
@@ -459,6 +476,10 @@ class KernelState {
   std::vector<PendingProcessAttach> pending_process_attaches_;
   std::vector<TerminateNotification> terminate_notifications_;
   uint32_t kernel_guest_globals_ = 0;
+  // The title process's loader lock, a guest RTL_CRITICAL_SECTION, held around
+  // the DllMain calls as xboxkrnl 17559's XexpAcquireLoaderLock (0x80078F40)
+  // does with its own at 0x801A5DE0.
+  uint32_t title_loader_lock_ = 0;
 
   std::atomic<bool> dispatch_thread_running_;
   object_ref<XHostThread> dispatch_thread_;

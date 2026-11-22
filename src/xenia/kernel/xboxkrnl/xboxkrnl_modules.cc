@@ -170,6 +170,10 @@ inline const std::map<X_MODULE_FLAGS, std::string> xex_load_image_map = {
 static uint32_t LoadImageReference(
     const std::string_view module_name,
     const std::function<object_ref<UserModule>()>& load_callback) {
+  // The console's XexLoadImage (0x8007D6E8) holds the loader lock from the
+  // lookup through DLL_PROCESS_ATTACH, so an unload can't take the module away
+  // in between.
+  KernelState::LoaderLockScope loader_lock(kernel_state());
   uint32_t hmodule = 0;
   if (auto module = kernel_state()->GetModule(module_name)) {
     // One more load for XexUnloadImage to undo. A module loaded here starts
@@ -307,6 +311,9 @@ X_STATUS xeXexUnloadImage(uint32_t hmodule) {
 
   // Can't unload kernel modules from user code.
   if (module->module_type() != XModule::ModuleType::kKernelModule) {
+    // As XexUnloadImage (0x8007D0E8) does, the last reference goes and the
+    // module detaches and leaves the list under the loader lock.
+    KernelState::LoaderLockScope loader_lock(kernel_state());
     if (--ldr_data->load_count == 0) {
       // No more references, free it.
       module->Release();

@@ -558,6 +558,8 @@ struct X_RTL_CRITICAL_SECTION {
 #pragma pack(pop)
 static_assert_size(X_RTL_CRITICAL_SECTION, 28);
 
+uint32_t xeRtlCriticalSectionSize() { return sizeof(X_RTL_CRITICAL_SECTION); }
+
 void xeRtlInitializeCriticalSection(X_RTL_CRITICAL_SECTION* cs,
                                     uint32_t cs_ptr) {
   xeRtlInitializeCriticalSectionAndSpinCount(cs, cs_ptr, 0);
@@ -623,11 +625,7 @@ static void CriticalSectionPrefetchW(const void* vp) {
 #endif
 }
 
-void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
-  if (!cs.guest_address()) {
-    XELOGE("Null critical section in RtlEnterCriticalSection!");
-    return;
-  }
+void xeRtlEnterCriticalSection(X_RTL_CRITICAL_SECTION* cs) {
   CriticalSectionPrefetchW(&cs->lock_count);
   uint32_t cur_thread = XThread::GetCurrentThread()->guest_object();
   uint32_t spin_count = cs->header.absolute * 256;
@@ -651,13 +649,20 @@ void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
 
   if (CriticalSectionAddLockCount(cs, 1) != 0) {
     // Create a full waiter.
-    xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0,
-                            nullptr);
+    xeKeWaitForSingleObject(reinterpret_cast<void*>(cs), 8, 0, 0, nullptr);
   }
 
   assert_true(cs->owning_thread == 0);
   cs->owning_thread = cur_thread;
   cs->recursion_count = 1;
+}
+
+void RtlEnterCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
+  if (!cs.guest_address()) {
+    XELOGE("Null critical section in RtlEnterCriticalSection!");
+    return;
+  }
+  xeRtlEnterCriticalSection(cs);
 }
 DECLARE_XBOXKRNL_EXPORT2(RtlEnterCriticalSection, kNone, kImplemented,
                          kHighFrequency);
@@ -689,11 +694,7 @@ dword_result_t RtlTryEnterCriticalSection_entry(
 DECLARE_XBOXKRNL_EXPORT2(RtlTryEnterCriticalSection, kNone, kImplemented,
                          kHighFrequency);
 
-void RtlLeaveCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
-  if (!cs.guest_address()) {
-    XELOGE("Null critical section in RtlLeaveCriticalSection!");
-    return;
-  }
+void xeRtlLeaveCriticalSection(X_RTL_CRITICAL_SECTION* cs, uint32_t cs_ptr) {
   // Retail RtlLeaveCriticalSection does not check ownership, it just
   // decrements. A non-owner leave is a caller error but titles rely on it, so
   // log not assert.
@@ -703,7 +704,7 @@ void RtlLeaveCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
         "RtlLeaveCriticalSection {:08X} left by non-owner (owner {:08X}, "
         "caller "
         "{:08X})",
-        cs.guest_address(), uint32_t(cs->owning_thread.m_ptr), leaving_thread);
+        cs_ptr, uint32_t(cs->owning_thread.m_ptr), leaving_thread);
   }
 
   // Drop recursion count - if it isn't zero we still have the lock.
@@ -719,8 +720,16 @@ void RtlLeaveCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
   cs->owning_thread = 0;
   if (CriticalSectionAddLockCount(cs, -1) != -1) {
     // There were waiters - wake one of them.
-    xeKeSetEvent(reinterpret_cast<X_KEVENT*>(cs.host_address()), 1, 0);
+    xeKeSetEvent(reinterpret_cast<X_KEVENT*>(cs), 1, 0);
   }
+}
+
+void RtlLeaveCriticalSection_entry(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
+  if (!cs.guest_address()) {
+    XELOGE("Null critical section in RtlLeaveCriticalSection!");
+    return;
+  }
+  xeRtlLeaveCriticalSection(cs, cs.guest_address());
 }
 DECLARE_XBOXKRNL_EXPORT2(RtlLeaveCriticalSection, kNone, kImplemented,
                          kHighFrequency);
