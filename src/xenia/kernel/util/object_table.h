@@ -110,7 +110,7 @@ class ObjectTable {
     handle &= host ? ~XObject::kHandleHostBase : ~XObject::kHandleBase;
     return handle >> 2;
   }
-  X_STATUS FindFreeSlot(uint32_t* out_slot, bool host);
+  X_STATUS FindFreeSlot(uint32_t* out_slot, bool host, bool allow_zero);
   bool Resize(uint32_t new_capacity, bool host);
 
   xe::global_critical_region global_critical_region_;

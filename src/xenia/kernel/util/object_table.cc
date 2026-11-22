@@ -79,14 +79,15 @@ object_ref<XObject> ObjectTable::LookupAllocatedBody(uint32_t body) {
   return object_ref<XObject>(it->second);
 }
 
-X_STATUS ObjectTable::FindFreeSlot(uint32_t* out_slot, bool host) {
+X_STATUS ObjectTable::FindFreeSlot(uint32_t* out_slot, bool host,
+                                   bool allow_zero) {
   // Find a free slot.
   uint32_t slot = host ? last_free_host_entry_ : last_free_entry_;
   uint32_t capacity = host ? host_table_capacity_ : table_capacity_;
   uint32_t scan_count = 0;
   while (scan_count < capacity) {
     ObjectTableEntry& entry = host ? host_table_[slot] : table_[slot];
-    if (!entry.object) {
+    if (!entry.object && (slot || allow_zero)) {
       *out_slot = slot;
       return X_STATUS_SUCCESS;
     }
@@ -107,6 +108,9 @@ X_STATUS ObjectTable::FindFreeSlot(uint32_t* out_slot, bool host) {
 
   // Never allow 0 handles on host.
   slot = host ? ++last_free_host_entry_ : last_free_entry_++;
+  if (!slot && !allow_zero) {
+    slot = last_free_entry_++;
+  }
   *out_slot = slot;
 
   return X_STATUS_SUCCESS;
@@ -152,7 +156,10 @@ X_STATUS ObjectTable::AddHandle(XObject* object, X_HANDLE* out_handle,
     // Find a free slot.
     uint32_t slot = 0;
     bool host_object = object->is_host_object() && !force_guest_handle;
-    result = FindFreeSlot(&slot, host_object);
+    // A socket's handle is its slot's offset alone, and 0 is no handle.
+    result =
+        FindFreeSlot(&slot, host_object,
+                     !host_object && object->type() != XObject::Type::Socket);
 
     // Stash.
     if (XSUCCEEDED(result)) {
