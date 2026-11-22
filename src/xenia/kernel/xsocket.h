@@ -246,9 +246,13 @@ class XSocket : public XObject {
                            uint32_t* optlen);
   // How long a System Link call waits on this thread.
   uint32_t SystemLinkWait(RetryMode mode) const;
-  // SO_RCVTIMEO and SO_SNDTIMEO, which the retry loop enforces itself.
-  void KeepTimeout(uint32_t level, uint32_t optname, const void* optval_ptr,
-                   uint32_t optlen);
+  // Keeps what getsockopt reports and the retry loop enforces itself.
+  void KeepOption(uint32_t level, uint32_t optname, const void* optval_ptr,
+                  uint32_t optlen);
+  // An option getsockopt answers from what the guest set, none for the others.
+  std::optional<uint32_t> GuestOption(uint32_t level, uint32_t optname) const;
+  // An accepted socket starts with the options the guest set on the listener.
+  void TakeListenerOptions(XSocket& accepted) const;
   // Hooks the WSAEventSelect event and the overlapped receives up to the
   // System Link port or stream. select_mutex_ held.
   void ArmSystemLinkReady();
@@ -294,6 +298,13 @@ class XSocket : public XObject {
   // since the host option has no effect on a non-blocking socket.
   uint32_t recv_timeout_ms_ = 0;
   uint32_t send_timeout_ms_ = 0;
+  // What getsockopt reports, which a host socket doesn't keep as the guest set
+  // it and a System Link stream doesn't have.
+  uint32_t send_buffer_size_ = 0;
+  uint32_t receive_buffer_size_ = 0;
+  uint16_t linger_on_ = 0;
+  uint16_t linger_seconds_ = 60;
+  bool no_delay_ = false;
 
   // Last error code for this socket
   mutable uint32_t last_error_ = 0;
@@ -310,8 +321,6 @@ class XSocket : public XObject {
   bool on_system_link_ = false;
   std::unique_ptr<net::SystemLinkPort> system_link_port_;
   std::unique_ptr<net::SystemLinkStream> system_link_stream_;
-  // SO_LINGER with a zero timeout so closing resets the connection.
-  bool linger_abort_ = false;
   // Set by shutdown(SD_RECEIVE or SD_BOTH). Receives fail with WSAESHUTDOWN.
   std::atomic<bool> receive_shutdown_{false};
   // Overlapped receives, shared with the port's ready callback that completes
