@@ -167,7 +167,15 @@ void XEvent::SyncFromGuest() {
 
 void XEvent::CooperativeWaitBegin(XThread* thread) { waiters_.Add(thread); }
 
-void XEvent::CooperativeWaitEnd(XThread* thread) { waiters_.Remove(thread); }
+// A waiter leaving an auto-reset event that is still set hands the set to the
+// next one in line.
+void XEvent::CooperativeWaitEnd(XThread* thread) {
+  auto* kevent = memory()->TranslateVirtual<X_KEVENT*>(guest_object());
+  if (waiters_.Remove(thread) && !manual_reset_ &&
+      kevent->header.signal_state) {
+    WakeCooperativeWaiters();
+  }
+}
 
 // An auto-reset set with a parked waiter belongs to the front of the queue.
 // NT wakes the first waiter directly, so a later poller must not steal it.
