@@ -129,6 +129,9 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   void SwitchToPhysicalMouseAndUpdateMousePosition(const MouseEvent& e);
 
   bool IsDrawingDialogs() const { return dialog_loop_next_index_ != SIZE_MAX; }
+  bool HasAnythingToDraw() const {
+    return !dialogs_.empty() || !notifications_.empty();
+  }
   void ResetFrameTimeIfIdle();
   void DetachIfLastWindowRemoved();
   void UpdateGamepads();
@@ -152,6 +155,9 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   // range that would be invalidated.
   // SIZE_MAX if not currently in the dialog loop.
   size_t dialog_loop_next_index_ = SIZE_MAX;
+
+  // Attached while dialogs are shown.
+  bool is_input_listener_added_ = false;
 
   Presenter* presenter_ = nullptr;
 

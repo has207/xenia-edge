@@ -69,7 +69,7 @@ ImGuiDrawer::ImGuiDrawer(xe::ui::Window* window, size_t z_order)
 
 ImGuiDrawer::~ImGuiDrawer() {
   SetPresenter(nullptr);
-  if (!dialogs_.empty()) {
+  if (is_input_listener_added_) {
     window_->RemoveInputListener(this);
     if (internal_state_) {
       ImGui::SetCurrentContext(internal_state_);
@@ -102,6 +102,7 @@ void ImGuiDrawer::AddDialog(ImGuiDialog* dialog) {
     // a dialog's Draw function, re-registering the ImGuiDrawer may result in
     // ImGui being drawn multiple times in the current frame.
     window_->AddInputListener(this, z_order_);
+    is_input_listener_added_ = true;
     // No events arrive while detached, so seed the pointer position
     int32_t mouse_x, mouse_y;
     if (window_->GetMousePosition(mouse_x, mouse_y)) {
@@ -595,14 +596,14 @@ void ImGuiDrawer::SetPresenter(Presenter* new_presenter) {
     if (presenter_ == new_presenter) {
       return;
     }
-    if (!dialogs_.empty()) {
+    if (HasAnythingToDraw()) {
       presenter_->RemoveUIDrawerFromUIThread(this);
     }
     ImGuiIO& io = GetIO();
   }
   presenter_ = new_presenter;
   if (presenter_) {
-    if (!dialogs_.empty()) {
+    if (HasAnythingToDraw()) {
       presenter_->AddUIDrawerFromUIThread(this, z_order_);
     }
   }
@@ -644,7 +645,7 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
     return;
   }
 
-  if (dialogs_.empty() && notifications_.empty()) {
+  if (!HasAnythingToDraw()) {
     return;
   }
 
@@ -1045,7 +1046,7 @@ void ImGuiDrawer::SwitchToPhysicalMouseAndUpdateMousePosition(
 
 void ImGuiDrawer::ResetFrameTimeIfIdle() {
   // Draw isn't called while nothing is shown, so the idle gap would skew delta
-  if (dialogs_.empty() && notifications_.empty()) {
+  if (!HasAnythingToDraw()) {
     last_frame_time_ticks_ = Clock::QueryHostTickCount();
   }
 }
@@ -1055,22 +1056,26 @@ void ImGuiDrawer::DetachIfLastWindowRemoved() {
   // only dialog, then adding a dialog, from within a dialog's Draw function,
   // re-registering the ImGuiDrawer may result in ImGui being drawn multiple
   // times in the current frame.
-  if (!dialogs_.empty() || !notifications_.empty() || IsDrawingDialogs()) {
+  if (!dialogs_.empty() || IsDrawingDialogs()) {
     return;
   }
-  if (presenter_) {
+  // Only dialogs take input. A notification still shown is only drawn.
+  if (is_input_listener_added_) {
+    window_->RemoveInputListener(this);
+    is_input_listener_added_ = false;
+    if (cursor_visibility_overridden_) {
+      cursor_visibility_overridden_ = false;
+      window_->SetCursorVisibility(cursor_visibility_before_dialogs_);
+    }
+    // Clear all input since no input will be received anymore, and when the
+    // drawer becomes active again, it'd have an outdated input state otherwise
+    // which will be persistent until new events actualize individual input
+    // properties.
+    ClearInput();
+  }
+  if (!HasAnythingToDraw() && presenter_) {
     presenter_->RemoveUIDrawerFromUIThread(this);
   }
-  window_->RemoveInputListener(this);
-  if (cursor_visibility_overridden_) {
-    cursor_visibility_overridden_ = false;
-    window_->SetCursorVisibility(cursor_visibility_before_dialogs_);
-  }
-  // Clear all input since no input will be received anymore, and when the
-  // drawer becomes active again, it'd have an outdated input state otherwise
-  // which will be persistent until new events actualize individual input
-  // properties.
-  ClearInput();
 }
 
 void ImGuiDrawer::UpdateGamepads() {
