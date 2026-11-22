@@ -2043,6 +2043,32 @@ std::string FormatWaitShape(const XThread::SchedulerLinks& links) {
   }
   return out;
 }
+
+// Return addresses up a parked fiber's guest back chain: each frame's word 0
+// is the caller's SP and the return address into the caller sits 8 below it.
+std::string FormatGuestCallers(XThread* thread) {
+  auto* context = thread->thread_state()->context();
+  auto* memory = thread->memory();
+  const uint32_t limit = thread->stack_limit();
+  const uint32_t base = thread->stack_base();
+  std::string out;
+  uint32_t sp = uint32_t(context->r[1]);
+  for (int depth = 0; depth < 16; ++depth) {
+    if (sp < limit || sp >= base || base - sp < 4) {
+      break;
+    }
+    uint32_t caller_sp =
+        xe::load_and_swap<uint32_t>(memory->TranslateVirtual(sp));
+    if (caller_sp <= sp || caller_sp > base || caller_sp - limit < 8) {
+      break;
+    }
+    out += fmt::format(
+        "{}{:08X}", depth ? "," : "",
+        xe::load_and_swap<uint32_t>(memory->TranslateVirtual(caller_sp - 8)));
+    sp = caller_sp;
+  }
+  return out;
+}
 }  // namespace
 
 void GuestScheduler::ReportNoProgress() {
@@ -2082,12 +2108,24 @@ void GuestScheduler::ReportNoProgress() {
                            : -1;
       XELOGW(
           "    blocked tid={:08X} '{}' last_safepoint={:08X} lr={:08X} on {} "
-          "obj={} wait={} gated={} alertable={} epoch={} deadline_in_ms={}",
+          "obj={} guest={:08X} wait={} gated={} alertable={} epoch={} "
+          "deadline_in_ms={} suspend={} callers={}",
           t->thread_id(), t->thread_name(),
           uint32_t(context->last_safepoint_pc), uint32_t(context->lr),
           WaitObjectKind(obj), static_cast<const void*>(obj),
-          FormatWaitShape(links), links.wait_gated ? 1 : 0,
-          links.wait_alertable ? 1 : 0, links.wait_epoch, due_in);
+          obj ? obj->guest_object() : 0u, FormatWaitShape(links),
+          links.wait_gated ? 1 : 0, links.wait_alertable ? 1 : 0,
+          links.wait_epoch, due_in, t->suspend_count(), FormatGuestCallers(t));
+    }
+    for (XThread* t = cpu.suspended_head; t;
+         t = t->scheduler_links().ready_next) {
+      auto* context = t->thread_state()->context();
+      XELOGW(
+          "    suspended tid={:08X} '{}' kthread={:08X} last_safepoint={:08X} "
+          "lr={:08X} suspend={} callers={}",
+          t->thread_id(), t->thread_name(), t->guest_object(),
+          uint32_t(context->last_safepoint_pc), uint32_t(context->lr),
+          t->suspend_count(), FormatGuestCallers(t));
     }
     // Ready-but-not-running fibers matter too: a queue that never drains
     // means the CPU is rotating between the same few spinners.
