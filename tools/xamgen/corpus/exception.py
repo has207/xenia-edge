@@ -838,6 +838,8 @@ RAISE_CODE = 0xE0000001
 NESTED_RAISE_CODE = 0xE0000002
 RAISE_PARAMETERS = (0x11111111, 0x22222222)
 EXCEPTION_NONCONTINUABLE = 0x1
+# What no handler may return, searching or unwinding.
+INVALID_DISPOSITION = 4
 # How a raise handler logs a record pointer.
 NO_RECORD = 0
 OTHER_RECORD = 3
@@ -870,8 +872,8 @@ def raise_handler(s, log, actions, records):
     number in `records` from 1, NO_RECORD or OTHER_RECORD. The actions are
     'continue' at the probe's recovery label with r3 0, 'return' to where it
     was raised, 'search', 'unwind' to the frame whose handler it is at its
-    probe's recovery label with UNWIND_VALUE, and 'raise' the second record
-    with r31 FAULT_R31."""
+    probe's recovery label with UNWIND_VALUE, 'raise' the second record with
+    r31 FAULT_R31, and 'invalid' to return INVALID_DISPOSITION."""
     assert len(records) < OTHER_RECORD
 
     def emit(a, r, thunk):
@@ -971,6 +973,9 @@ def raise_handler(s, log, actions, records):
                 a.b(r.label('return'))
             elif action == 'return':
                 a.li(3, 0)              # ExceptionContinueExecution
+                a.b(r.label('return'))
+            elif action == 'invalid':
+                a.li(3, INVALID_DISPOSITION)
                 a.b(r.label('return'))
             elif action == 'search':
                 a.b(r.label('search'))
@@ -1157,3 +1162,14 @@ def build(corpus):
     raise_scenario(corpus, 'noncontinuable continued',
                    ['continue', 'unwind', 'search'],
                    flags=EXCEPTION_NONCONTINUABLE)
+    # A handler returning what none may raises another, which this handler
+    # unwinds.
+    raise_scenario(corpus, 'invalid disposition',
+                   ['invalid', 'unwind', 'search'])
+    # Continuing that one raises a third, chained to it.
+    raise_scenario(corpus, 'invalid disposition continued',
+                   ['invalid', 'continue', 'unwind', 'search'])
+    # One returned while unwinding is raised from the call that unwinds,
+    # here in the handler, so it is nested.
+    raise_scenario(corpus, 'invalid disposition in an unwind',
+                   ['unwind', 'invalid', 'unwind', 'search'])
