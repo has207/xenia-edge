@@ -612,6 +612,11 @@ X_STATUS XSocket::GetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     net::StoreSocketOptionValue(optval_ptr, *optlen, *value);
     return X_STATUS_SUCCESS;
   }
+  // IPPROTO_IP's numbers aren't the host's.
+  if (level == 0) {
+    last_error_ = 10042;  // WSAENOPROTOOPT
+    return X_STATUS_UNSUCCESSFUL;
+  }
 
   // Map Xbox socket levels to native
   int native_level = level;
@@ -647,6 +652,9 @@ X_STATUS XSocket::SetOption(uint32_t level, uint32_t optname, void* optval_ptr,
     // Disable socket encryption
     secure_ = false;
     return X_STATUS_SUCCESS;
+  }
+  if (level == 0) {
+    return SetIpOption(optname, optval_ptr, optlen);
   }
 
   if (system_link_stream_) {
@@ -737,6 +745,12 @@ std::optional<uint32_t> XSocket::GuestOption(uint32_t level,
   if (level == X_IPPROTO_TCP && optname == 0x0001) {
     return uint32_t(no_delay_);
   }
+  if (level == 0 && optname == 7) {
+    return ip_ttl_;
+  }
+  if (level == 0 && optname == 0x64) {
+    return ip_dscp_;
+  }
   if (level != 0xFFFF) {
     return std::nullopt;
   }
@@ -766,6 +780,88 @@ void XSocket::TakeListenerOptions(XSocket& accepted) const {
   accepted.linger_on_ = linger_on_;
   accepted.linger_seconds_ = linger_seconds_;
   accepted.no_delay_ = no_delay_;
+  accepted.ip_ttl_ = ip_ttl_;
+  accepted.ip_dscp_ = ip_dscp_;
+}
+
+X_STATUS XSocket::SetIpOption(uint32_t optname, const void* optval_ptr,
+                              uint32_t optlen) {
+  const uint32_t value = net::SocketOptionValue(optval_ptr, optlen);
+  int host_name = 0;
+  int host_value = 0;
+  switch (optname) {
+    case 7:  // IP_TTL
+      if (optlen != 4 || !value || value > 0xFF) {
+        last_error_ = uint32_t(X_WSAError::X_WSAEINVAL);
+        return X_STATUS_UNSUCCESSFUL;
+      }
+      ip_ttl_ = uint8_t(value);
+      host_name = IP_TTL;
+      host_value = int(value);
+      break;
+    case 0x64:  // The DSCP, the TOS byte's top 6 bits
+      if (optlen != 1 || value > 0x3F) {
+        last_error_ = uint32_t(X_WSAError::X_WSAEINVAL);
+        return X_STATUS_UNSUCCESSFUL;
+      }
+      ip_dscp_ = uint8_t(value);
+      host_name = IP_TOS;
+      host_value = int(value << 2);
+      break;
+    case 5:  // IP_ADD_MEMBERSHIP
+    case 6:  // IP_DROP_MEMBERSHIP
+      return SetMulticastGroup(optname == 5, value);
+    default:
+      last_error_ = 10042;  // WSAENOPROTOOPT
+      return X_STATUS_UNSUCCESSFUL;
+  }
+  // A System Link stream has no host socket. A host refusing IP_TOS changes
+  // nothing the guest sees.
+  const uint64_t handle = native_handle();
+  if (handle == static_cast<uint64_t>(-1)) {
+    return X_STATUS_SUCCESS;
+  }
+  std::vector<char> bytes = ValueBytes(host_value);
+  if (setsockopt(static_cast<int>(handle), IPPROTO_IP, host_name, bytes.data(),
+                 static_cast<socklen_t>(bytes.size())) == 0 &&
+      acceptor_) {
+    acceptor_options_.push_back({IPPROTO_IP, host_name, std::move(bytes)});
+  }
+  return X_STATUS_SUCCESS;
+}
+
+X_STATUS XSocket::SetMulticastGroup(bool join, uint32_t group) {
+  if (type_ != Type::X_SOCK_DGRAM) {
+    last_error_ = 10042;  // WSAENOPROTOOPT
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  const auto it = std::ranges::find(multicast_groups_, group);
+  if (!join && it == multicast_groups_.end()) {
+    last_error_ = uint32_t(X_WSAError::X_WSAEINVAL);
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  if (join && it != multicast_groups_.end()) {
+    return X_STATUS_SUCCESS;
+  }
+  if (join) {
+    multicast_groups_.push_back(group);
+  } else {
+    multicast_groups_.erase(it);
+  }
+  // The host joins too so the group's datagrams arrive.
+  ip_mreq request = {};
+  request.imr_multiaddr.s_addr = htonl(group);
+  request.imr_interface.s_addr = htonl(INADDR_ANY);
+  const uint64_t handle = native_handle();
+  if (handle != static_cast<uint64_t>(-1) &&
+      setsockopt(static_cast<int>(handle), IPPROTO_IP,
+                 join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP,
+                 reinterpret_cast<const char*>(&request),
+                 sizeof(request)) < 0) {
+    XELOGW("XSocket: host multicast {} of {:08X} failed: {:08X}",
+           join ? "join" : "leave", group, HostSocketError());
+  }
+  return X_STATUS_SUCCESS;
 }
 
 X_STATUS XSocket::StreamGetOption(uint32_t level, uint32_t optname,

@@ -253,6 +253,11 @@ class XSocket : public XObject {
   std::optional<uint32_t> GuestOption(uint32_t level, uint32_t optname) const;
   // An accepted socket starts with the options the guest set on the listener.
   void TakeListenerOptions(XSocket& accepted) const;
+  // IPPROTO_IP's options, which keep Winsock 1's numbers.
+  X_STATUS SetIpOption(uint32_t optname, const void* optval_ptr,
+                       uint32_t optlen);
+  // IP_ADD_MEMBERSHIP and IP_DROP_MEMBERSHIP of a datagram socket.
+  X_STATUS SetMulticastGroup(bool join, uint32_t group);
   // Hooks the WSAEventSelect event and the overlapped receives up to the
   // System Link port or stream. select_mutex_ held.
   void ArmSystemLinkReady();
@@ -308,6 +313,9 @@ class XSocket : public XObject {
   uint16_t linger_on_ = 0;
   uint16_t linger_seconds_ = 60;
   bool no_delay_ = false;
+  uint8_t ip_ttl_ = 64;
+  uint8_t ip_dscp_ = 0;
+  std::vector<uint32_t> multicast_groups_;
 
   // Last error code for this socket
   mutable uint32_t last_error_ = 0;
