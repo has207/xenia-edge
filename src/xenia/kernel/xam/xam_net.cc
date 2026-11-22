@@ -1404,8 +1404,8 @@ struct host_set {
     }
   }
 
-  // Returns how many host handles it set.
-  uint32_t Store(fd_set* native_set) {
+  // Returns how many host handles it set, raising max_handle to the highest.
+  uint32_t Store(fd_set* native_set, int& max_handle) {
     FD_ZERO(native_set);
     uint32_t stored = 0;
     for (uint32_t i = 0; i < this->count; ++i) {
@@ -1416,6 +1416,7 @@ struct host_set {
       const auto handle = this->sockets[i]->native_handle();
       if (handle != static_cast<uint64_t>(-1)) {
         FD_SET(handle, native_set);
+        max_handle = std::max(max_handle, static_cast<int>(handle));
         ++stored;
       }
     }
@@ -1521,17 +1522,23 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
   fd_set* const native_exceptfds_in =
       exceptfds || !connects.empty() ? &native_exceptfds : nullptr;
   uint32_t native_count = 0;
+  // The guest's nfds means nothing to Winsock. POSIX hosts look at the
+  // descriptors below this one alone.
+  int native_nfds = 0;
   // A select with nothing ready empties the sets, so this refills them too.
   auto store_native = [&]() {
-    native_count = host_readfds.Store(&native_readfds) +
-                   host_writefds.Store(&native_writefds) +
-                   host_exceptfds.Store(&native_exceptfds);
+    int max_handle = -1;
+    native_count = host_readfds.Store(&native_readfds, max_handle) +
+                   host_writefds.Store(&native_writefds, max_handle) +
+                   host_exceptfds.Store(&native_exceptfds, max_handle);
     for (const auto& socket : connects) {
       const auto handle = socket->native_handle();
       if (socket->connecting() && handle != static_cast<uint64_t>(-1)) {
         FD_SET(handle, &native_exceptfds);
+        max_handle = std::max(max_handle, static_cast<int>(handle));
       }
     }
+    native_nfds = max_handle + 1;
   };
   store_native();
   timeval* timeout_in = nullptr;
@@ -1555,7 +1562,7 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
                            host_exceptfds.HasSystemLink();
   int ret;
   if (!offload && !system_link) {
-    ret = select(nfds, readfds ? &native_readfds : nullptr,
+    ret = select(native_nfds, readfds ? &native_readfds : nullptr,
                  writefds ? &native_writefds : nullptr, native_exceptfds_in,
                  timeout_in);
   } else {
@@ -1575,7 +1582,7 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
       // Windows fails a select with no handles at all.
       if (native_count || !system_link) {
         timeval poll_timeout = {0, 0};
-        ret = select(nfds, readfds ? &native_readfds : nullptr,
+        ret = select(native_nfds, readfds ? &native_readfds : nullptr,
                      writefds ? &native_writefds : nullptr, native_exceptfds_in,
                      &poll_timeout);
       }
