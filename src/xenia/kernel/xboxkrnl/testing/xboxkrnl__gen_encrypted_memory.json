@@ -1,0 +1,508 @@
+{
+ "corpus": "encrypted_memory",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-22",
+ "steps": [
+  {
+   "scenario": "free at the base",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free at the base",
+   "name": "free",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free at the base",
+   "name": "free again",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free inside one page",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free inside one page",
+   "name": "free 0x10 in",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block",
+     "delta": 16
+    }
+   ]
+  },
+  {
+   "scenario": "free inside one page",
+   "name": "free at the base",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free inside two pages",
+   "name": "allocate 0x20000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 131072
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free inside two pages",
+   "name": "free at the second page",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block",
+     "delta": 65536
+    }
+   ]
+  },
+  {
+   "scenario": "free inside two pages",
+   "name": "free 0x1000 in",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block",
+     "delta": 4096
+    }
+   ]
+  },
+  {
+   "scenario": "free inside two pages",
+   "name": "free 0x10 in",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block",
+     "delta": 16
+    }
+   ]
+  },
+  {
+   "scenario": "free inside two pages",
+   "name": "free at the base after",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free just below the next block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free just below the next block",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "second block base": "8d010000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "second block base",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "free just below the next block",
+   "name": "free 0x10 below the second",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000009F",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "second block",
+     "delta": -16
+    }
+   ]
+  },
+  {
+   "scenario": "free just below the next block",
+   "name": "free the first",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free just below the next block",
+   "name": "free the second",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "second block"
+    }
+   ]
+  },
+  {
+   "scenario": "free with another type",
+   "name": "allocate 0x14",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free with another type",
+   "name": "free with type 3",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 3
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free with another type",
+   "name": "free with type 2",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free with another type",
+   "name": "free with type 1",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free with another type",
+   "name": "free again with type 0",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free outside the regions",
+   "name": "free at 0",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free outside the regions",
+   "name": "free below the regions",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 2348744704
+    }
+   ]
+  },
+  {
+   "scenario": "free outside the regions",
+   "name": "free above the regions",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 2382364672
+    }
+   ]
+  },
+  {
+   "scenario": "allocate with a bad type or size",
+   "name": "allocate with type 3",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "capture": {
+    "allocate with type 3 base": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 3
+    },
+    {
+     "value": 20
+    },
+    {
+     "pointer": "allocate with type 3 base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate with a bad type or size",
+   "name": "allocate size 0",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "capture": {
+    "allocate size 0 base": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "allocate size 0 base",
+     "offset": 8
+    }
+   ]
+  },
+  {
+   "scenario": "allocate with a bad type or size",
+   "name": "allocate a size past the region",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "capture": {
+    "allocate a size past the region base": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 16711681
+    },
+    {
+     "pointer": "allocate a size past the region base",
+     "offset": 16
+    }
+   ]
+  },
+  {
+   "scenario": "allocate with a bad type or size",
+   "name": "allocate a size near 4 GB",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "FFFFFFFFC000000D",
+   "capture": {
+    "allocate a size near 4 GB base": "cdcdcdcd"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4294967280
+    },
+    {
+     "pointer": "allocate a size near 4 GB base",
+     "offset": 24
+    }
+   ]
+  },
+  {
+   "scenario": "allocate the whole region",
+   "name": "allocate 0xff0000",
+   "export": "NtAllocateEncryptedMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "block base": "8d000000"
+   },
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 16711680
+    },
+    {
+     "pointer": "block base",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate the whole region",
+   "name": "free",
+   "export": "NtFreeEncryptedMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  }
+ ]
+}
