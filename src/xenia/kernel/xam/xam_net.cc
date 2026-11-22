@@ -1380,21 +1380,20 @@ struct host_set {
   uint32_t count = 0;
   object_ref<XSocket> sockets[64];
 
-  void Load(const x_fd_set* guest_set) {
+  // False for a set holding a handle that isn't a socket's.
+  bool Load(const x_fd_set* guest_set) {
     assert_true(guest_set->fd_count < 64);
     this->count = guest_set->fd_count;
     for (uint32_t i = 0; i < this->count; ++i) {
-      auto socket_handle = static_cast<X_HANDLE>(guest_set->fd_array[i]);
-      if (socket_handle == -1) {
+      auto socket = kernel_state()->object_table()->LookupObject<XSocket>(
+          static_cast<X_HANDLE>(guest_set->fd_array[i]));
+      if (!socket) {
         this->count = i;
-        break;
+        return false;
       }
-      // Convert from Xenia -> native
-      auto socket =
-          kernel_state()->object_table()->LookupObject<XSocket>(socket_handle);
-      assert_not_null(socket);
       this->sockets[i] = socket;
     }
+    return true;
   }
 
   void Store(x_fd_set* guest_set) {
@@ -1486,18 +1485,19 @@ int_result_t NetDll_select_entry(dword_t caller, dword_t nfds,
 
   host_set host_readfds(SelectSet::kRead);
   fd_set native_readfds = {0};
-  if (readfds) {
-    host_readfds.Load(readfds);
-  }
   host_set host_writefds(SelectSet::kWrite);
   fd_set native_writefds = {0};
-  if (writefds) {
-    host_writefds.Load(writefds);
-  }
   host_set host_exceptfds(SelectSet::kExcept);
   fd_set native_exceptfds = {0};
-  if (exceptfds) {
-    host_exceptfds.Load(exceptfds);
+  if ((readfds && !host_readfds.Load(readfds)) ||
+      (writefds && !host_writefds.Load(writefds)) ||
+      (exceptfds && !host_exceptfds.Load(exceptfds))) {
+    XThread::SetLastError(uint32_t(X_WSAError::X_WSAENOTSOCK));
+    return -1;
+  }
+  if (!host_readfds.count && !host_writefds.count && !host_exceptfds.count) {
+    XThread::SetLastError(uint32_t(X_WSAError::X_WSAEINVAL));
+    return -1;
   }
   // A failed non-blocking connect is ready in every set the guest asks for it
   // in. Windows reports it in the error set alone so pending connects are
