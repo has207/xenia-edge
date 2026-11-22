@@ -1384,12 +1384,14 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     assert_true(i.src2.value->IsConstantZero());
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
-    // Clamp to [PackSHORT_Min, PackSHORT_Max].
+    // Clamp to [PackSHORT_Min, PackSHORT_Max]. FMAX and FMIN keep a NaN, which
+    // FMAXNM then replaces with 0x403F8000 so it packs as 0x8000.
     LoadV128Const(e, 0, vec128i(0x403F8001u));
-    EmitQuietSnan(e, d, s);
-    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmax(VReg(d).s4, VReg(s).s4, VReg(0).s4);
     LoadV128Const(e, 0, vec128i(0x40407FFFu));
-    e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    LoadV128Const(e, 0, vec128i(0x403F8000u));
+    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     // TBL: extract low 2 bytes from lanes 0,1 -> pack into lane 3.
     // TBL ctrl for PACK_SHORT_2: bytes 12-15={0x04,0x05,0x00,0x01}, rest=0xFF
     vec128_t ctrl;
@@ -1402,11 +1404,13 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     assert_true(i.src2.value->IsConstantZero());
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
+    // A NaN packs as 0x8000, as in EmitSHORT_2.
     LoadV128Const(e, 0, vec128i(0x403F8001u));
-    EmitQuietSnan(e, d, s);
-    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmax(VReg(d).s4, VReg(s).s4, VReg(0).s4);
     LoadV128Const(e, 0, vec128i(0x40407FFFu));
-    e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    LoadV128Const(e, 0, vec128i(0x403F8000u));
+    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     // TBL ctrl for PACK_SHORT_4: bytes 8-11={0x04,0x05,0x00,0x01},
     // 12-15={0x0C,0x0D,0x08,0x09}
     vec128_t ctrl;
@@ -1509,22 +1513,27 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
 
-    // Clamp to valid range: fmaxnm(src, min) then fminnm(result, max).
+    // Clamp to valid range: fmax(src, min) then fmin(result, max).
     // XYZ min=0x403FFE01 (-511), max=0x404001FF (+511)
     // W   min=0x40400000 (0),    max=0x40400003 (+3)
     e.mov(e.x0, 0x403FFE01403FFE01ull);
     e.fmov(DReg(0), e.x0);
     e.mov(e.x0, 0x40400000403FFE01ull);
     e.ins(VReg(0).d2[1], e.x0);
-    // fmaxnm clamps NaN to min (NaN packs as the minimum value).
-    EmitQuietSnan(e, d, s);
-    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmax(VReg(d).s4, VReg(s).s4, VReg(0).s4);
 
     e.mov(e.x0, 0x404001FF404001FFull);
     e.fmov(DReg(0), e.x0);
     e.mov(e.x0, 0x40400003404001FFull);
     e.ins(VReg(0).d2[1], e.x0);
-    e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+
+    // A NaN kept by the clamp packs as the minimum, 0x200, and 0 in W.
+    e.mov(e.x0, 0x403FFE00403FFE00ull);
+    e.fmov(DReg(0), e.x0);
+    e.mov(e.x0, 0x40400000403FFE00ull);
+    e.ins(VReg(0).d2[1], e.x0);
+    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
 
     // Mask to extract encoded integer bits: {0x3FF, 0x3FF, 0x3FF, 0x3}
     e.mov(e.x0, 0x000003FF000003FFull);
@@ -1553,21 +1562,27 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
 
-    // Clamp: fmaxnm(src, min) then fminnm(result, max).
+    // Clamp: fmax(src, min) then fmin(result, max).
     // XYZ min=0x40400000+(-524287)=0x40380001, max=0x40400000+524287=0x4047FFFF
     // W   min=0x40400000+0=0x40400000, max=0x40400000+15=0x4040000F
     e.mov(e.x0, 0x4038000140380001ull);
     e.fmov(DReg(0), e.x0);
     e.mov(e.x0, 0x4040000040380001ull);
     e.ins(VReg(0).d2[1], e.x0);
-    EmitQuietSnan(e, d, s);
-    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmax(VReg(d).s4, VReg(s).s4, VReg(0).s4);
 
     e.mov(e.x0, 0x4047FFFF4047FFFFull);
     e.fmov(DReg(0), e.x0);
     e.mov(e.x0, 0x4040000F4047FFFFull);
     e.ins(VReg(0).d2[1], e.x0);
-    e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+
+    // A NaN kept by the clamp packs as the minimum, 0x80000, and 0 in W.
+    e.mov(e.x0, 0x4038000040380000ull);
+    e.fmov(DReg(0), e.x0);
+    e.mov(e.x0, 0x4040000040380000ull);
+    e.ins(VReg(0).d2[1], e.x0);
+    e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
 
     // Extract clamped values to GPRs: mask low bits from magic float encoding.
     // XYZ: & 0xFFFFF (20 bits), W: & 0xF (4 bits)

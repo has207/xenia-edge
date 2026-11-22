@@ -1297,15 +1297,21 @@ X_RESULT ContentManager::DeleteContent(const uint64_t xuid,
   if (IsContentOpen(package_path)) {
     return X_ERROR_SHARING_VIOLATION;
   }
-  if (std::filesystem::remove_all(package_path) > 0) {
-    // A header left behind would list again for a package copied in under the
-    // same name.
-    std::error_code ec;
-    std::filesystem::remove(PackageHeaderPath(package_path), ec);
-    return X_ERROR_SUCCESS;
-  } else {
+  // A host failure is reported, not thrown through the export.
+  std::error_code ec;
+  const auto removed = std::filesystem::remove_all(package_path, ec);
+  if (ec) {
+    XELOGE("{}: Cannot delete {}: {}", __func__,
+           xe::strip_pii(xe::path_to_utf8(package_path)), ec.message());
+    return X_ERROR_ACCESS_DENIED;
+  }
+  if (!removed) {
     return X_ERROR_PATH_NOT_FOUND;
   }
+  // A header left behind would list again for a package copied in under the
+  // same name.
+  std::filesystem::remove(PackageHeaderPath(package_path), ec);
+  return X_ERROR_SUCCESS;
 }
 
 std::filesystem::path ContentManager::ResolveGameUserContentPath(

@@ -871,8 +871,10 @@ dword_result_t xeMmQueryStatistics(
 
   const uint32_t size = sizeof(X_MM_QUERY_STATISTICS_RESULT);
 
-  if (stats_ptr->size != size) {
-    return X_STATUS_BUFFER_TOO_SMALL;
+  // A larger structure is accepted and keeps the caller's length.
+  const uint32_t length = stats_ptr->size;
+  if (length < size) {
+    return X_STATUS_INVALID_PARAMETER;
   }
 
   // Zero out the struct.
@@ -882,7 +884,7 @@ dword_result_t xeMmQueryStatistics(
   // These numbers are mostly guessed. If the game is just checking for
   // memory, this should satisfy it. If it's actually verifying things
   // this won't work :/
-  stats_ptr->size = size;
+  stats_ptr->size = length;
 
   stats_ptr->total_physical_pages = 0x00020000;  // 512mb / 4kb pages
   stats_ptr->kernel_pages = 0x00000100;          // Previous value 0x300

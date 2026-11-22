@@ -33,6 +33,29 @@ DEFINE_bool(
 
 namespace xe {
 
+static bool IsBeforeWindows11(HMODULE ntdll_module) {
+  constexpr DWORD kWindows11BuildNumber = 22000;
+
+  // clang-format off
+  NTSTATUS (NTAPI* rtl_get_version)(OUT PRTL_OSVERSIONINFOW VersionInformation);
+  // clang-format on
+  rtl_get_version = reinterpret_cast<decltype(rtl_get_version)>(
+      GetProcAddress(ntdll_module, "RtlGetVersion"));
+
+  if (!rtl_get_version) {
+    return false;
+  }
+
+  RTL_OSVERSIONINFOW version_info = {};
+  version_info.dwOSVersionInfoSize = sizeof(version_info);
+
+  if (rtl_get_version(&version_info) < 0) {
+    return false;
+  }
+
+  return version_info.dwBuildNumber < kWindows11BuildNumber;
+}
+
 static void RequestWin32HighResolutionTimer() {
   HMODULE ntdll_module = GetModuleHandleW(L"ntdll.dll");
   if (!ntdll_module) {
@@ -58,8 +81,9 @@ static void RequestWin32HighResolutionTimer() {
 
   // Windows 11 may ignore the resolution request while the window is occluded
   // or minimized, falling back to the 15.625 ms tick, which halves the speed
-  // of titles paced by a 16 ms timer. Opt out of that throttling.
-  {
+  // of titles paced by a 16 ms timer. Opt out of that throttling, which earlier
+  // versions don't have.
+  if (!IsBeforeWindows11(ntdll_module)) {
     HMODULE kernel32_module = GetModuleHandleW(L"kernel32.dll");
 
     // clang-format off
