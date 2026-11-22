@@ -62,6 +62,7 @@ typedef uint32_t X_STATUS;
 #define X_STATUS_ACCESS_DENIED                          ((X_STATUS)0xC0000022L)
 #define X_STATUS_BUFFER_TOO_SMALL                       ((X_STATUS)0xC0000023L)
 #define X_STATUS_OBJECT_TYPE_MISMATCH                   ((X_STATUS)0xC0000024L)
+#define X_STATUS_NONCONTINUABLE_EXCEPTION               ((X_STATUS)0xC0000025L)
 #define X_STATUS_INVALID_DISPOSITION                    ((X_STATUS)0xC0000026L)
 #define X_STATUS_UNWIND                                 ((X_STATUS)0xC0000027L)
 #define X_STATUS_BAD_STACK                              ((X_STATUS)0xC0000028L)
