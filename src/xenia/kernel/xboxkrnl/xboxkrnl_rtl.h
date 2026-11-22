@@ -63,6 +63,12 @@ void xeRtlInitializeCriticalSection(X_RTL_CRITICAL_SECTION* cs,
 X_STATUS xeRtlInitializeCriticalSectionAndSpinCount(X_RTL_CRITICAL_SECTION* cs,
                                                     uint32_t cs_ptr,
                                                     uint32_t spin_count);
+// RtlEnterCriticalSection and RtlLeaveCriticalSection for the current guest
+// thread: a contended enter waits like any guest kernel wait.
+void xeRtlEnterCriticalSection(X_RTL_CRITICAL_SECTION* cs);
+void xeRtlLeaveCriticalSection(X_RTL_CRITICAL_SECTION* cs, uint32_t cs_ptr);
+// The size of an RTL_CRITICAL_SECTION in guest memory.
+uint32_t xeRtlCriticalSectionSize();
 
 }  // namespace xboxkrnl
 }  // namespace kernel
