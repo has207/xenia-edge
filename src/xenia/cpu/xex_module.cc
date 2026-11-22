@@ -1054,6 +1054,32 @@ int XexModule::ReadPEHeaders() {
     pe_sections_.push_back(section);
   }
 
+  // Images such as the CLR's native images keep their exception directory in
+  // another section than .pdata.
+  constexpr uint32_t kExceptionDirectory = 3;
+  if (opthdr->NumberOfRvaAndSizes > kExceptionDirectory) {
+    const auto& directory = opthdr->DataDirectory[kExceptionDirectory];
+    if (directory.VirtualAddress && directory.Size &&
+        uint64_t(directory.VirtualAddress) + directory.Size <=
+            opthdr->SizeOfImage) {
+      function_entries_ = base_address_ + directory.VirtualAddress;
+      function_entry_count_ = directory.Size / 8;
+    }
+  }
+  if (!function_entry_count_) {
+    if (const PESection* pdata = GetPESection(".pdata")) {
+      const auto* entries =
+          memory()->TranslateVirtual<const xe::be<uint32_t>*>(pdata->address);
+      const uint32_t limit = std::min(pdata->raw_size, pdata->size) / 8;
+      uint32_t count = 0;
+      while (count < limit && uint32_t(entries[count * 2])) {
+        ++count;
+      }
+      function_entries_ = pdata->address;
+      function_entry_count_ = count;
+    }
+  }
+
   // DumpTLSDirectory(pImageBase, pNTHeader, (PIMAGE_TLS_DIRECTORY32)0);
   // DumpExportsSection(pImageBase, pNTHeader);
   return 0;

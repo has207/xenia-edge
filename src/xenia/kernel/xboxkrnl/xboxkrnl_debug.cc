@@ -257,80 +257,25 @@ static std::string DescribeGuestFuncInfo(uint32_t func_info_ptr) {
   return text;
 }
 
-// The exception directory of the image at base: the .pdata entries, as the
-// kernel's RtlLookupFunctionEntry finds them through XexPcToFileHeader and
-// RtlImageDirectoryEntryToData. Images such as the CLR's native images keep it
-// in another section than .pdata. The PE headers are little-endian.
-static const xe::be<uint32_t>* GetExceptionDirectory(uint32_t base,
-                                                     uint32_t* out_size) {
-  constexpr uint32_t kExceptionDirectory = 3;
-  if (!IsGuestRangeReadable(base, 0x40)) {
-    return nullptr;
-  }
-  const auto* image = kernel_memory()->TranslateVirtual<const uint8_t*>(base);
-  if (xe::load<uint16_t>(image) != 0x5A4D) {  // MZ
-    return nullptr;
-  }
-  const uint32_t nt = base + xe::load<uint32_t>(image + 0x3C);
-  // Signature, file header, then the PE32 optional header, whose data
-  // directories follow its count at 0x5C.
-  const uint32_t optional = nt + 0x18;
-  if (!IsGuestRangeReadable(nt, 0x18 + 0x60 + (kExceptionDirectory + 1) * 8)) {
-    return nullptr;
-  }
-  const auto* header = kernel_memory()->TranslateVirtual<const uint8_t*>(nt);
-  if (xe::load<uint32_t>(header) != 0x4550 ||  // PE
-      xe::load<uint16_t>(header + 0x18) != 0x10B ||
-      xe::load<uint32_t>(header + 0x18 + 0x5C) <= kExceptionDirectory) {
-    return nullptr;
-  }
-  const auto* directory = kernel_memory()->TranslateVirtual<const uint8_t*>(
-      optional + 0x60 + kExceptionDirectory * 8);
-  const uint32_t address = xe::load<uint32_t>(directory);
-  const uint32_t size = xe::load<uint32_t>(directory + 4);
-  if (!address || !size || !IsGuestRangeReadable(base + address, size)) {
-    return nullptr;
-  }
-  *out_size = size;
-  return kernel_memory()->TranslateVirtual<const xe::be<uint32_t>*>(base +
-                                                                    address);
-}
-
-// Locates the .pdata of the module holding address: its exception directory,
-// else its .pdata section with the zero padding trimmed. out_base, when given,
-// gets the entries' guest address. The kernel also searches a second table
-// the loader entry points to, at 0x44; xenia leaves that field 0.
+// The .pdata entries of the module holding address, as the kernel's
+// RtlLookupFunctionEntry finds them through XexPcToFileHeader and
+// RtlImageDirectoryEntryToData. out_base, when given, gets their guest
+// address. The kernel also searches a second table the loader entry points
+// to, at 0x44; xenia leaves that field 0.
 static const xe::be<uint32_t>* GetGuestPdata(uint32_t address,
                                              uint32_t* out_count,
                                              uint32_t* out_base = nullptr) {
   auto* xex = dynamic_cast<xe::cpu::XexModule*>(
       kernel_state()->processor()->LookupModule(address));
-  if (!xex) {
+  if (!xex || !xex->function_entry_count()) {
     return nullptr;
   }
-  uint32_t size = 0;
-  if (const auto* entries = GetExceptionDirectory(xex->base_address(), &size)) {
-    *out_count = size / 8;
-    if (out_base) {
-      *out_base = kernel_memory()->HostToGuestVirtual(entries);
-    }
-    return entries;
-  }
-  auto* section = xex->GetPESection(".pdata");
-  if (!section || !IsGuestRangeReadable(section->address, section->raw_size)) {
-    return nullptr;
-  }
-  auto* entries = kernel_memory()->TranslateVirtual<const xe::be<uint32_t>*>(
-      section->address);
-  uint32_t count = 0;
-  while (count < section->raw_size / 8 && uint32_t(entries[count * 2]) != 0) {
-    ++count;
-  }
-  *out_count = count;
+  *out_count = xex->function_entry_count();
   if (out_base) {
-    *out_base = section->address;
+    *out_base = xex->function_entries();
   }
-  return entries;
+  return kernel_memory()->TranslateVirtual<const xe::be<uint32_t>*>(
+      xex->function_entries());
 }
 
 // Finds the .pdata entry covering address. Entries are sorted by start.

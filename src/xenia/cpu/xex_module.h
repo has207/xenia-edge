@@ -196,6 +196,11 @@ class XexModule : public xe::cpu::Module {
   const uint32_t base_address() const { return base_address_; }
   const bool is_dev_kit() const { return is_dev_kit_; }
 
+  // The function entries the kernel's unwinder searches: the image's
+  // exception directory, else its .pdata section without the zero padding.
+  uint32_t function_entries() const { return function_entries_; }
+  uint32_t function_entry_count() const { return function_entry_count_; }
+
   // Section type of the image page containing `address`.
   bool GetPageSectionType(uint32_t address, xex2_section_type* out_type) const;
 
@@ -331,6 +336,8 @@ class XexModule : public xe::cpu::Module {
   uint32_t base_address_ = 0;
   uint32_t low_address_ = 0;
   uint32_t high_address_ = 0;
+  uint32_t function_entries_ = 0;
+  uint32_t function_entry_count_ = 0;
 
   XexFormat xex_format_ = kFormatUnknown;
   SecurityInfoContext security_info_ = {};
