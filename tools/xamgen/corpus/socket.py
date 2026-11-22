@@ -1,7 +1,8 @@
 """Socket corpus: TCP over the loopback address. A non-blocking connect to a
-port nobody listens on and the select sets it fails in, socket and TCP option
-values set and read back at every length, and a non-blocking connect to a
-listener followed by a receive with no data.
+port nobody listens on and the select sets it fails in, socket, TCP and IP
+option values set and read back at every length, blocking connects, a bind
+kept through a connect, a non-blocking connect to a listener followed by a
+receive with no data and select given handles that aren't sockets.
 
 Each call is preceded by WSASetLastError(0) and followed by WSAGetLastError,
 so a call that fails shows its error and one that succeeds shows 0. Socket
@@ -21,8 +22,11 @@ CALLER = 1  # XNCALLER_TITLE
 
 AF_INET = 2
 SOCK_STREAM = 1
+SOCK_DGRAM = 2
 IPPROTO_TCP = 6
+IPPROTO_UDP = 17
 FIONBIO = 0x8004667E
+INVALID_SOCKET = 0xFFFFFFFF
 
 SOL_SOCKET = 0xFFFF
 SO_LINGER = 0x0080
@@ -33,10 +37,20 @@ SO_RCVTIMEO = 0x1006
 SO_ERROR = 0x1007
 SO_TYPE = 0x1008
 TCP_NODELAY = 0x0001
+# IPPROTO_IP, which keeps Winsock 1's numbers.
+IPPROTO_IP = 0
+IP_ADD_MEMBERSHIP = 5
+IP_DROP_MEMBERSHIP = 6
+IP_TTL = 7
+IP_DSCP = 0x64
 
 LOOPBACK = 0x7F000001
 CLOSED_PORT = 31233
 LISTEN_PORT = 31234
+BLOCKING_LISTEN_PORT = 31236
+BOUND_LISTEN_PORT = 31237
+BOUND_CLIENT_PORT = 31238
+MULTICAST_GROUP = 0xEFFF0102  # 239.255.1.2
 FD_SET_SIZE = 4 + 4 * 64
 SELECT_SECONDS = 5
 
@@ -65,10 +79,9 @@ def stop(s):
     s.call('NetDll_XNetCleanup', CALLER, 0, name='xnet cleanup')
 
 
-def open_socket(s, variable, name):
+def open_socket(s, variable, name, kind=SOCK_STREAM, protocol=IPPROTO_TCP):
     handle = s.variable(variable)
-    net(s, 'NetDll_socket', AF_INET, SOCK_STREAM, IPPROTO_TCP, name=name,
-        handle=handle)
+    net(s, 'NetDll_socket', AF_INET, kind, protocol, name=name, handle=handle)
     return handle
 
 
@@ -88,6 +101,26 @@ def address(s, addr, port):
 
 def connect(s, handle, port, name):
     net(s, 'NetDll_connect', handle, address(s, LOOPBACK, port), 16, name=name)
+
+
+def listen(s, variable, port, name):
+    """A non-blocking listener, so an accept with nothing to take returns."""
+    handle = open_socket(s, variable, name)
+    non_blocking(s, handle, f'{name} non-blocking')
+    net(s, 'NetDll_bind', handle, address(s, 0, port), 16, name=f'{name} bind')
+    net(s, 'NetDll_listen', handle, 1, name=f'{name} listen')
+    return handle
+
+
+def socket_name(s, export, handle, name, port=True):
+    """The port and address getsockname or getpeername gives. A port the
+    system picked differs between runs, so it's left out with `port`."""
+    value = s.alloc(16, 'name')
+    length = s.alloc(4, 'length', struct.pack('>I', 16))
+    capture = [(value + 4).prefix(4), length]
+    if port:
+        capture.insert(0, (value + 2).prefix(2))
+    net(s, export, handle, value, length, name=name, capture=capture)
 
 
 def set_option(s, handle, level, option, data, name, length=None):
@@ -204,6 +237,76 @@ def build(corpus):
     close(s, handle, 'close')
     stop(s)
 
+    s = corpus.scenario('blocking connect')
+    start(s)
+    handle = open_socket(s, 'socket', 'socket')
+    connect(s, handle, CLOSED_PORT, 'connect refused')
+    close(s, handle, 'close')
+    listener = listen(s, 'listener', BLOCKING_LISTEN_PORT, 'listener')
+    client = open_socket(s, 'client', 'client')
+    connect(s, client, BLOCKING_LISTEN_PORT, 'connect')
+    socket_name(s, 'NetDll_getsockname', client, 'name', port=False)
+    socket_name(s, 'NetDll_getpeername', client, 'peer')
+    accepted = s.variable('accepted')
+    net(s, 'NetDll_accept', listener, 0, 0, name='accept', handle=accepted)
+    close(s, accepted, 'close accepted')
+    close(s, client, 'close client')
+    close(s, listener, 'close listener')
+    stop(s)
+
+    s = corpus.scenario('bind before connect')
+    start(s)
+    listener = listen(s, 'listener', BOUND_LISTEN_PORT, 'listener')
+    client = open_socket(s, 'client', 'client')
+    net(s, 'NetDll_bind', client, address(s, 0, BOUND_CLIENT_PORT), 16,
+        name='client bind')
+    socket_name(s, 'NetDll_getsockname', client, 'name before connect')
+    connect(s, client, BOUND_LISTEN_PORT, 'connect')
+    socket_name(s, 'NetDll_getsockname', client, 'name after connect')
+    accepted = s.variable('accepted')
+    net(s, 'NetDll_accept', listener, 0, 0, name='accept', handle=accepted)
+    socket_name(s, 'NetDll_getpeername', accepted, 'accepted peer')
+    # The accepted side closes first and keeps the TIME_WAIT, so the client's
+    # port is free for the next run.
+    close(s, accepted, 'close accepted')
+    close(s, client, 'close client')
+    close(s, listener, 'close listener')
+    stop(s)
+
+    s = corpus.scenario('ip options')
+    start(s)
+    handle = open_socket(s, 'socket', 'socket')
+    get_option(s, handle, IPPROTO_IP, IP_TTL, 'default ttl')
+    get_option(s, handle, IPPROTO_IP, IP_DSCP, 'default dscp')
+    get_option(s, handle, IPPROTO_IP, 4, 'winsock 2 ttl')
+    get_option(s, handle, IPPROTO_IP, IP_ADD_MEMBERSHIP, 'get membership')
+    set_option(s, handle, IPPROTO_IP, IP_TTL, word(32), 'ttl')
+    get_option(s, handle, IPPROTO_IP, IP_TTL, 'ttl back')
+    get_option(s, handle, IPPROTO_IP, IP_TTL, 'ttl back, 1 byte', length=1)
+    set_option(s, handle, IPPROTO_IP, IP_TTL, b'\x20', 'ttl, 1 byte')
+    set_option(s, handle, IPPROTO_IP, IP_TTL, word(0), 'ttl 0')
+    set_option(s, handle, IPPROTO_IP, IP_TTL, word(0x100), 'ttl 0x100')
+    set_option(s, handle, IPPROTO_IP, IP_TTL, word(64) + word(0),
+               'ttl, 8 bytes')
+    get_option(s, handle, IPPROTO_IP, IP_TTL, 'ttl after refusals')
+    set_option(s, handle, IPPROTO_IP, IP_DSCP, b'\x2e', 'dscp')
+    get_option(s, handle, IPPROTO_IP, IP_DSCP, 'dscp back')
+    get_option(s, handle, IPPROTO_IP, IP_DSCP, 'dscp back, 1 byte', length=1)
+    set_option(s, handle, IPPROTO_IP, IP_DSCP, word(0x2e), 'dscp, 4 bytes')
+    set_option(s, handle, IPPROTO_IP, IP_DSCP, b'\x40', 'dscp 0x40')
+    set_option(s, handle, IPPROTO_IP, 4, word(32), 'winsock 2 ttl set')
+    membership = struct.pack('>II', MULTICAST_GROUP, 0)
+    set_option(s, handle, IPPROTO_IP, IP_ADD_MEMBERSHIP, membership,
+               'tcp membership')
+    close(s, handle, 'close')
+    udp = open_socket(s, 'udp', 'udp socket', SOCK_DGRAM, IPPROTO_UDP)
+    set_option(s, udp, IPPROTO_IP, IP_ADD_MEMBERSHIP, membership, 'join')
+    set_option(s, udp, IPPROTO_IP, IP_DROP_MEMBERSHIP, membership, 'leave')
+    set_option(s, udp, IPPROTO_IP, IP_DROP_MEMBERSHIP, membership,
+               'leave again')
+    close(s, udp, 'close udp')
+    stop(s)
+
     # The receive comes last: on a Xenia whose connect drops FIONBIO it
     # blocks.
     s = corpus.scenario('accepted connect')
@@ -235,4 +338,19 @@ def build(corpus):
     close(s, accepted, 'close accepted')
     close(s, client, 'close client')
     close(s, listener, 'close listener')
+    stop(s)
+
+    # Last, since a Xenia that looks a handle up without checking it crashes.
+    s = corpus.scenario('bad handles')
+    start(s)
+    sets = Sets(s)
+    sets.select(s, 0x12345678, ('read',), 'select unknown handle')
+    handle = open_socket(s, 'socket', 'socket')
+    close(s, handle, 'close')
+    sets.select(s, handle, ('read',), 'select closed handle')
+    sets.select(s, INVALID_SOCKET, ('read',), 'select invalid socket')
+    empty = s.alloc(FD_SET_SIZE, 'empty set', fill=0)
+    net(s, 'NetDll_select', 0, empty, 0, 0, sets.timeout,
+        name='select empty set', capture=[empty.prefix(4)])
+    net(s, 'NetDll_select', 0, 0, 0, 0, sets.timeout, name='select no sets')
     stop(s)

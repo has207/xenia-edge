@@ -1,6 +1,6 @@
 {
  "corpus": "socket",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-22",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-23",
  "steps": [
   {
    "scenario": "refused connect",
@@ -2631,6 +2631,2384 @@
    ]
   },
   {
+   "scenario": "blocking connect",
+   "name": "xnet startup",
+   "export": "NetDll_XNetStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "wsa startup",
+   "export": "NetDll_WSAStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 514
+    },
+    {
+     "pointer": "wsadata",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "socket: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "socket",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 6
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "socket: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "connect refused: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "connect refused",
+   "export": "NetDll_connect",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "pointer": "address",
+     "offset": 512
+    },
+    {
+     "value": 16
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "connect refused: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "000000000000274D",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 6
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener non-blocking: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener non-blocking",
+   "export": "NetDll_ioctlsocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 2147772030
+    },
+    {
+     "pointer": "on",
+     "offset": 528
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener non-blocking: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener bind: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener bind",
+   "export": "NetDll_bind",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "pointer": "address",
+     "offset": 536
+    },
+    {
+     "value": 16
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener bind: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener listen: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener listen",
+   "export": "NetDll_listen",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "listener listen: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "client: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "client",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 6
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "client: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "connect: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "connect",
+   "export": "NetDll_connect",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    },
+    {
+     "pointer": "address",
+     "offset": 552
+    },
+    {
+     "value": 16
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "connect: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "name: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "name",
+   "export": "NetDll_getsockname",
+   "r3": "0000000000000000",
+   "capture": {
+    "name+0x4[:0x4]": "00000000",
+    "length": "00000010"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    },
+    {
+     "pointer": "name",
+     "offset": 568
+    },
+    {
+     "pointer": "length",
+     "offset": 584
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "name: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "peer: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "peer",
+   "export": "NetDll_getpeername",
+   "r3": "0000000000000000",
+   "capture": {
+    "name+0x2[:0x2]": "7a04",
+    "name+0x4[:0x4]": "7f000001",
+    "length": "00000010"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    },
+    {
+     "pointer": "name",
+     "offset": 592
+    },
+    {
+     "pointer": "length",
+     "offset": 608
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "peer: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "accept: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "accept",
+   "export": "NetDll_accept",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "accept: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close accepted: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close accepted",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "accepted"
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close accepted: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close client: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close client",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close client: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close listener: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close listener",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "close listener: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "wsa cleanup",
+   "export": "NetDll_WSACleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "blocking connect",
+   "name": "xnet cleanup",
+   "export": "NetDll_XNetCleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "xnet startup",
+   "export": "NetDll_XNetStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "wsa startup",
+   "export": "NetDll_WSAStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 514
+    },
+    {
+     "pointer": "wsadata",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 6
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener non-blocking: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener non-blocking",
+   "export": "NetDll_ioctlsocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 2147772030
+    },
+    {
+     "pointer": "on",
+     "offset": 512
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener non-blocking: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener bind: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener bind",
+   "export": "NetDll_bind",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "pointer": "address",
+     "offset": 520
+    },
+    {
+     "value": 16
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener bind: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener listen: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener listen",
+   "export": "NetDll_listen",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "listener listen: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "client: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "client",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 6
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "client: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "client bind: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "client bind",
+   "export": "NetDll_bind",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    },
+    {
+     "pointer": "address",
+     "offset": 536
+    },
+    {
+     "value": 16
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "client bind: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "name before connect: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "name before connect",
+   "export": "NetDll_getsockname",
+   "r3": "0000000000000000",
+   "capture": {
+    "name+0x2[:0x2]": "7a06",
+    "name+0x4[:0x4]": "00000000",
+    "length": "00000010"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    },
+    {
+     "pointer": "name",
+     "offset": 552
+    },
+    {
+     "pointer": "length",
+     "offset": 568
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "name before connect: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "connect: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "connect",
+   "export": "NetDll_connect",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    },
+    {
+     "pointer": "address",
+     "offset": 576
+    },
+    {
+     "value": 16
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "connect: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "name after connect: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "name after connect",
+   "export": "NetDll_getsockname",
+   "r3": "0000000000000000",
+   "capture": {
+    "name+0x2[:0x2]": "7a06",
+    "name+0x4[:0x4]": "00000000",
+    "length": "00000010"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    },
+    {
+     "pointer": "name",
+     "offset": 592
+    },
+    {
+     "pointer": "length",
+     "offset": 608
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "name after connect: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "accept: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "accept",
+   "export": "NetDll_accept",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "accept: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "accepted peer: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "accepted peer",
+   "export": "NetDll_getpeername",
+   "r3": "0000000000000000",
+   "capture": {
+    "name+0x2[:0x2]": "7a06",
+    "name+0x4[:0x4]": "7f000001",
+    "length": "00000010"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "accepted"
+    },
+    {
+     "pointer": "name",
+     "offset": 616
+    },
+    {
+     "pointer": "length",
+     "offset": 632
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "accepted peer: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close accepted: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close accepted",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "accepted"
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close accepted: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close client: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close client",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "client"
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close client: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close listener: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close listener",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "listener"
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "close listener: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "wsa cleanup",
+   "export": "NetDll_WSACleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "bind before connect",
+   "name": "xnet cleanup",
+   "export": "NetDll_XNetCleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "xnet startup",
+   "export": "NetDll_XNetStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "wsa startup",
+   "export": "NetDll_WSAStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 514
+    },
+    {
+     "pointer": "wsadata",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "socket: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "socket",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 6
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "socket: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "default ttl: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "default ttl",
+   "export": "NetDll_getsockopt",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "00000040cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 512
+    },
+    {
+     "pointer": "length",
+     "offset": 520
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "default ttl: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "default dscp: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "default dscp",
+   "export": "NetDll_getsockopt",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "00000000cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 528
+    },
+    {
+     "pointer": "length",
+     "offset": 536
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "default dscp: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "winsock 2 ttl: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "winsock 2 ttl",
+   "export": "NetDll_getsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "capture": {
+    "value": "00000000cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "pointer": "value",
+     "offset": 544
+    },
+    {
+     "pointer": "length",
+     "offset": 552
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "winsock 2 ttl: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "000000000000273A",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "get membership: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "get membership",
+   "export": "NetDll_getsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "capture": {
+    "value": "00000000cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 5
+    },
+    {
+     "pointer": "value",
+     "offset": 560
+    },
+    {
+     "pointer": "length",
+     "offset": 568
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "get membership: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "000000000000273A",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl",
+   "export": "NetDll_setsockopt",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 576
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl back: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl back",
+   "export": "NetDll_getsockopt",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "00000020cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 584
+    },
+    {
+     "pointer": "length",
+     "offset": 592
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl back: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl back, 1 byte: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl back, 1 byte",
+   "export": "NetDll_getsockopt",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "20cdcdcdcdcdcdcd",
+    "length": "00000001"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 600
+    },
+    {
+     "pointer": "length",
+     "offset": 608
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl back, 1 byte: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl, 1 byte: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl, 1 byte",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 616
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl, 1 byte: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl 0: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl 0",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 624
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl 0: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl 0x100: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl 0x100",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 632
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl 0x100: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl, 8 bytes: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl, 8 bytes",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 640
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl, 8 bytes: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl after refusals: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl after refusals",
+   "export": "NetDll_getsockopt",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "00000020cdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 7
+    },
+    {
+     "pointer": "value",
+     "offset": 648
+    },
+    {
+     "pointer": "length",
+     "offset": 656
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "ttl after refusals: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp",
+   "export": "NetDll_setsockopt",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 664
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp back: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp back",
+   "export": "NetDll_getsockopt",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "0000002ecdcdcdcd",
+    "length": "00000004"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 672
+    },
+    {
+     "pointer": "length",
+     "offset": 680
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp back: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp back, 1 byte: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp back, 1 byte",
+   "export": "NetDll_getsockopt",
+   "r3": "0000000000000000",
+   "capture": {
+    "value": "2ecdcdcdcdcdcdcd",
+    "length": "00000001"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 688
+    },
+    {
+     "pointer": "length",
+     "offset": 696
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp back, 1 byte: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp, 4 bytes: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp, 4 bytes",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 704
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp, 4 bytes: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp 0x40: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp 0x40",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 100
+    },
+    {
+     "pointer": "value",
+     "offset": 712
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "dscp 0x40: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "winsock 2 ttl set: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "winsock 2 ttl set",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "pointer": "value",
+     "offset": 720
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "winsock 2 ttl set: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "000000000000273A",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "tcp membership: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "tcp membership",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 5
+    },
+    {
+     "pointer": "value",
+     "offset": 728
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "tcp membership: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "000000000000273A",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "close: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "close",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "close: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "udp socket: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "udp socket",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 17
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "udp socket: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "join: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "join",
+   "export": "NetDll_setsockopt",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "udp"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 5
+    },
+    {
+     "pointer": "value",
+     "offset": 736
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "join: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "leave: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "leave",
+   "export": "NetDll_setsockopt",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "udp"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 744
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "leave: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "leave again: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "leave again",
+   "export": "NetDll_setsockopt",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "udp"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 6
+    },
+    {
+     "pointer": "value",
+     "offset": 752
+    },
+    {
+     "value": 8
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "leave again: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "close udp: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "close udp",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "udp"
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "close udp: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ip options",
+   "name": "wsa cleanup",
+   "export": "NetDll_WSACleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "ip options",
+   "name": "xnet cleanup",
+   "export": "NetDll_XNetCleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
    "scenario": "accepted connect",
    "name": "xnet startup",
    "export": "NetDll_XNetStartup",
@@ -3463,6 +5841,417 @@
   },
   {
    "scenario": "accepted connect",
+   "name": "xnet cleanup",
+   "export": "NetDll_XNetCleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "xnet startup",
+   "export": "NetDll_XNetStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "wsa startup",
+   "export": "NetDll_WSAStartup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 514
+    },
+    {
+     "pointer": "wsadata",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select unknown handle: fill read",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "read set+0x4",
+     "offset": 516
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 305419896
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select unknown handle: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select unknown handle",
+   "export": "NetDll_select",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "capture": {
+    "read set[:0x4]": "00000001"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "read set",
+     "offset": 512
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "timeout",
+     "offset": 1304
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select unknown handle: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002736",
+   "args": []
+  },
+  {
+   "scenario": "bad handles",
+   "name": "socket: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "socket",
+   "export": "NetDll_socket",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 6
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "socket: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bad handles",
+   "name": "close: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "close",
+   "export": "NetDll_closesocket",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "socket"
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "close: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select closed handle: fill read",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "read set+0x4",
+     "offset": 516
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "socket"
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select closed handle: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select closed handle",
+   "export": "NetDll_select",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "capture": {
+    "read set[:0x4]": "00000001"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "read set",
+     "offset": 512
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "timeout",
+     "offset": 1304
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select closed handle: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002736",
+   "args": []
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select invalid socket: fill read",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "read set+0x4",
+     "offset": 516
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 4294967295
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select invalid socket: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select invalid socket",
+   "export": "NetDll_select",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "capture": {
+    "read set[:0x4]": "00000001"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "read set",
+     "offset": 512
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "timeout",
+     "offset": 1304
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select invalid socket: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002736",
+   "args": []
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select empty set: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select empty set",
+   "export": "NetDll_select",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "capture": {
+    "empty set[:0x4]": "00000000"
+   },
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "empty set",
+     "offset": 1312
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "timeout",
+     "offset": 1304
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select empty set: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select no sets: clear",
+   "export": "NetDll_WSASetLastError",
+   "args": [
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select no sets",
+   "export": "NetDll_select",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "timeout",
+     "offset": 1304
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
+   "name": "select no sets: error",
+   "export": "NetDll_WSAGetLastError",
+   "r3": "0000000000002726",
+   "args": []
+  },
+  {
+   "scenario": "bad handles",
+   "name": "wsa cleanup",
+   "export": "NetDll_WSACleanup",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "bad handles",
    "name": "xnet cleanup",
    "export": "NetDll_XNetCleanup",
    "r3": "0000000000000000",
