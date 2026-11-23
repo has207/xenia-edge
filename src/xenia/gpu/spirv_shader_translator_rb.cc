@@ -678,6 +678,14 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
   spv::Block* block_fsi_if_after_depth_stencil_merge = nullptr;
 
   if (edram_fragment_shader_interlock_) {
+    if (!FSI_IsDepthStencilEarly()) {
+      FSI_LoadEdramOffsets();
+      // Begin the critical section before the kill check, on the outermost
+      // control flow level so it's entered exactly once on any control flow
+      // path as required by the SPIR-V extension specification.
+      builder_->createNoResultOp(spv::OpBeginInvocationInterlockEXT);
+    }
+
     if (fsi_pixel_potentially_killed) {
       if (features_.demote_to_helper_invocation) {
         // Don't do anything related to writing to the EDRAM if the pixel was
@@ -743,11 +751,6 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
             const_uint_0_);
       }
     } else {
-      FSI_LoadEdramOffsets();
-      // Begin the critical section on the outermost control flow level so it's
-      // entered exactly once on any control flow path as required by the SPIR-V
-      // extension specification.
-      builder_->createNoResultOp(spv::OpBeginInvocationInterlockEXT);
       // Do the depth / stencil test.
       // The sample mask might have been made narrower than the initially loaded
       // mask by various conditions that discard the whole pixel, as well as by
