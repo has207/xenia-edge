@@ -154,6 +154,8 @@ class CommandProcessor {
   // Safe from any thread, even while the context is being torn down.
   std::string GetTitleStateSuffix() const;
 
+  // Runs fn on the worker thread, right away if already on it with nothing
+  // queued. Callable from any thread.
   void CallInThread(std::function<void()> fn);
 
   // Dumps the EDRAM contents to a raw file.
@@ -172,7 +174,8 @@ class CommandProcessor {
 
   // Get cached ZPD mode (avoids string parsing every frame).
   ZPDMode GetZPDMode() const { return cached_zpd_mode_; }
-  // Set ZPD mode (updates both cvar and cached value).
+  // Set ZPD mode (updates both cvar and cached value). Callable from any
+  // thread, the query state switches over on the command processor thread.
   void SetZPDMode(ZPDMode mode);
 
   // "Desired" is for the external thread managing the post-processing effect.
@@ -297,6 +300,8 @@ class CommandProcessor {
   };
 
   void WorkerThreadMain();
+  bool HasPendingFunctions() const;
+  void RunPendingFunctions();
   virtual bool SetupContext() = 0;
   virtual void ShutdownContext() = 0;
   // Built once the context is set up, and kept until it shuts down.
@@ -778,6 +783,8 @@ class CommandProcessor {
   std::atomic<bool> worker_running_;
   kernel::object_ref<kernel::XHostThread> worker_thread_;
 
+  // Pushed from any thread, run on the worker thread.
+  mutable std::mutex pending_fns_mutex_;
   std::queue<std::function<void()>> pending_fns_;
 
   // MicroEngine binary from PM4_ME_INIT
@@ -812,8 +819,9 @@ class CommandProcessor {
   SwapPostEffect swap_post_effect_desired_ = SwapPostEffect::kNone;
   SwapPostEffect swap_post_effect_actual_ = SwapPostEffect::kNone;
 
-  // Cached ZPD occlusion query mode (defaults to fake)
-  ZPDMode cached_zpd_mode_ = ZPDMode::kFake;
+  // Cached ZPD occlusion query mode (defaults to fake). Set from the UI
+  // thread, zpd_mode_ follows it on the command processor thread.
+  std::atomic<ZPDMode> cached_zpd_mode_{ZPDMode::kFake};
 
   // For host frame rate limiting at IssueSwap
   uint64_t last_swap_time_ = 0;

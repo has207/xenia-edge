@@ -3899,7 +3899,7 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
     frame_open_ = true;
 
     // Log guest ZPD report stats every 100 frames.
-    if (GetZPDMode() != ZPDMode::kFake && cvars::occlusion_query_log &&
+    if (zpd_mode_ != ZPDMode::kFake && cvars::occlusion_query_log &&
         host_query_pool_ && host_query_pool_->capacity() &&
         frame_current_ - zpd_stats_.last_log_frame >= 100) {
       XELOGI(

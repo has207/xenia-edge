@@ -373,11 +373,35 @@ void CommandProcessor::RestoreGammaRamp(
 }
 
 void CommandProcessor::CallInThread(std::function<void()> fn) {
-  if (pending_fns_.empty() &&
-      kernel::XThread::IsInThread(worker_thread_.get())) {
+  {
+    std::lock_guard<std::mutex> lock(pending_fns_mutex_);
+    if (!pending_fns_.empty() ||
+        !kernel::XThread::IsInThread(worker_thread_.get())) {
+      pending_fns_.push(std::move(fn));
+      return;
+    }
+  }
+  // Outside the lock, fn may call in the thread again.
+  fn();
+}
+
+bool CommandProcessor::HasPendingFunctions() const {
+  std::lock_guard<std::mutex> lock(pending_fns_mutex_);
+  return !pending_fns_.empty();
+}
+
+void CommandProcessor::RunPendingFunctions() {
+  while (true) {
+    std::function<void()> fn;
+    {
+      std::lock_guard<std::mutex> lock(pending_fns_mutex_);
+      if (pending_fns_.empty()) {
+        return;
+      }
+      fn = std::move(pending_fns_.front());
+      pending_fns_.pop();
+    }
     fn();
-  } else {
-    pending_fns_.push(std::move(fn));
   }
 }
 
@@ -395,15 +419,22 @@ void CommandProcessor::SetZPDMode(ZPDMode mode) {
   if (cached_zpd_mode_ == mode) {
     return;
   }
-  // Close any active query segment before the mode changes so that a
-  // BeginQuery recorded under the old mode gets a matching EndQuery.
-  // Without this, switching to kFake mid-frame would cause EndRenderPass
-  // to skip CloseQuerySegment, leaving the query dangling.
-  if (active_segment_.segment_active) {
-    CloseQuerySegment();
-  }
   cached_zpd_mode_ = mode;
-  zpd_mode_ = mode;
+  // The query state and the command list it records into belong to the
+  // command processor thread, while this is called from the UI.
+  CallInThread([this, mode]() {
+    if (zpd_mode_ == mode) {
+      return;
+    }
+    // Close any active query segment before the mode changes so that a
+    // BeginQuery recorded under the old mode gets a matching EndQuery.
+    // Without this, switching to kFake mid-frame would make Metal's
+    // EndRenderEncoder skip CloseQuerySegment, leaving the query dangling.
+    if (active_segment_.segment_active) {
+      CloseQuerySegment();
+    }
+    zpd_mode_ = mode;
+  });
   const char* mode_str = "fake";
   switch (mode) {
     case ZPDMode::kFast:
@@ -513,11 +544,7 @@ void CommandProcessor::WorkerThreadMain() {
   SetTitleStateSuffix(MakeTitleStateSuffix());
 
   while (worker_running_) {
-    while (!pending_fns_.empty()) {
-      auto fn = std::move(pending_fns_.front());
-      pending_fns_.pop();
-      fn();
-    }
+    RunPendingFunctions();
 
     uint32_t write_ptr_index = write_ptr_index_.load();
     if (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index) {
@@ -545,11 +572,11 @@ void CommandProcessor::WorkerThreadMain() {
         // The guest may be spinning on a held-back signal.
         SubmitHeldSignals();
         write_ptr_index = write_ptr_index_.load();
-      } while (worker_running_ && pending_fns_.empty() &&
+      } while (worker_running_ && !HasPendingFunctions() &&
                (write_ptr_index == 0xBAADF00D ||
                 read_ptr_index_ == write_ptr_index));
       ReturnFromWait();
-      if (!worker_running_ || !pending_fns_.empty()) {
+      if (!worker_running_ || HasPendingFunctions()) {
         continue;
       }
     }

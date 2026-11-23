@@ -2707,7 +2707,7 @@ void MetalCommandProcessor::AwaitAllQueueOperationsCompletion() {
 // ============================================================================
 
 void MetalCommandProcessor::EnsureQueryResources() {
-  if (GetZPDMode() == ZPDMode::kFake || !zpd_visibility_pool_) {
+  if (zpd_mode_ == ZPDMode::kFake || !zpd_visibility_pool_) {
     return;
   }
   if (!zpd_visibility_pool_->EnsureInitialized(device_, kQueryPoolCapacity)) {
@@ -2758,7 +2758,7 @@ CommandProcessor::QueryOpenResult MetalCommandProcessor::OpenQuery(
   bool waited_for_submission = false;
 
   if (is_pool_exhausted) {
-    if (GetZPDMode() == ZPDMode::kFast || GetZPDMode() == ZPDMode::kFastAlt) {
+    if (zpd_mode_ == ZPDMode::kFast || zpd_mode_ == ZPDMode::kFastAlt) {
       return QueryOpenResult::kPoolExhausted;
     }
 
@@ -2880,7 +2880,7 @@ void MetalCommandProcessor::PumpQueryResolves() {
 
 bool MetalCommandProcessor::AwaitQueryResolve(ReportHandle report_handle,
                                               uint64_t wait_for_submission) {
-  if (GetZPDMode() == ZPDMode::kFake) {
+  if (zpd_mode_ == ZPDMode::kFake) {
     return false;
   }
 
@@ -3607,7 +3607,7 @@ bool MetalCommandProcessor::IssueDrawMsl(
   // A counted draw needs the guest's own shaders. The placeholder has no pixel
   // kills or alpha test and overcounts, and a skipped draw counts nothing.
   const bool exact_shaders_required =
-      GetZPDMode() != ZPDMode::kFake && !zpd_force_fake_fallback_ &&
+      zpd_mode_ != ZPDMode::kFake && !zpd_force_fake_fallback_ &&
       zpd_current_report_.handle != kInvalidReportHandle;
 
   // Get or create shader translations. Both are asked for before either is
@@ -4844,7 +4844,7 @@ bool MetalCommandProcessor::IssueDrawDxil(
   // A counted draw needs the guest's own shaders. The placeholder has no pixel
   // kills or alpha test and overcounts, and a skipped draw counts nothing.
   const bool exact_shaders_required =
-      GetZPDMode() != ZPDMode::kFake && !zpd_force_fake_fallback_ &&
+      zpd_mode_ != ZPDMode::kFake && !zpd_force_fake_fallback_ &&
       zpd_current_report_.handle != kInvalidReportHandle;
 
   ShaderCompileStatus compile_status = ShaderCompileStatus::kReady;
@@ -5431,7 +5431,7 @@ void MetalCommandProcessor::EndRenderEncoder() {
   // Visibility results are scoped to the render encoder and an offset can't be
   // selected again after it ends, so the segment closes here. The logical
   // report stays open and resumes on the next encoder.
-  if (GetZPDMode() != ZPDMode::kFake) {
+  if (zpd_mode_ != ZPDMode::kFake) {
     CloseQuerySegment();
   }
   current_render_encoder_->endEncoding();
@@ -5475,7 +5475,7 @@ void MetalCommandProcessor::BeginCommandBuffer() {
   // The visibility result buffer has to be on the descriptor before the encoder
   // is created, so a segment waiting to open needs the pool allocated now.
   const bool zpd_segment_pending =
-      GetZPDMode() != ZPDMode::kFake &&
+      zpd_mode_ != ZPDMode::kFake &&
       zpd_current_report_.handle != kInvalidReportHandle &&
       active_segment_.segment_pending_begin;
   if (zpd_segment_pending) {
