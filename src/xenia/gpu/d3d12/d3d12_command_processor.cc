@@ -3902,11 +3902,14 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
           "Occlusion Query Stats (last 100 frames): "
           "ReportsQueued={}, ReportsRetired={}, SegBegun={}, SegEnded={}, "
           "PoolExhausted={}, Failed={}, SpeculativeCorrections={}, "
-          "RetiresAbandoned={}",
+          "RetiresAbandoned={}, StrictWaitsDelaying={}, "
+          "StrictWaitsDelayingMs={:.1f}",
           zpd_stats_.reports_queued, zpd_stats_.reports_retired,
           zpd_stats_.segments_begun, zpd_stats_.segments_ended,
           zpd_stats_.pool_exhausted, zpd_stats_.failed,
-          zpd_stats_.speculative_corrections, zpd_stats_.retires_abandoned);
+          zpd_stats_.speculative_corrections, zpd_stats_.retires_abandoned,
+          zpd_stats_.strict_waits_delaying,
+          zpd_stats_.strict_waits_delaying_us / 1000.0);
 
       zpd_stats_.Reset(frame_current_);
     }

@@ -475,6 +475,10 @@ class CommandProcessor {
     uint64_t speculative_corrections = 0;
     // Reports force-retired on the backstop deadline with segments unresolved.
     uint64_t retires_abandoned = 0;
+    // Strict GPU waits that the guest wrote new commands during, and their
+    // total time.
+    uint64_t strict_waits_delaying = 0;
+    uint64_t strict_waits_delaying_us = 0;
     uint64_t last_log_frame = 0;
 
     void Reset(uint64_t current_frame) {

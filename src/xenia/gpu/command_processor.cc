@@ -1646,8 +1646,26 @@ void CommandProcessor::PrepareZPDForWait() {
   if (!wait_report || !wait_report->pending_segments) {
     return;
   }
-  if (AwaitQueryResolve(wait_report->handle,
-                        wait_report->last_segment_end_submission)) {
+  // Only a GPU wait on an empty ring can hold back commands the guest writes
+  // during it. Waits from WAIT_REG_MEM are mid-buffer and excluded.
+  const uint32_t write_ptr_index = write_ptr_index_.load();
+  const bool log_wait =
+      cvars::occlusion_query_log && write_ptr_index == read_ptr_index_ &&
+      wait_report->last_segment_end_submission > GetCompletedSubmission();
+  std::chrono::steady_clock::time_point wait_start;
+  if (log_wait) {
+    wait_start = std::chrono::steady_clock::now();
+  }
+  const bool resolved = AwaitQueryResolve(
+      wait_report->handle, wait_report->last_segment_end_submission);
+  if (log_wait && write_ptr_index_.load() != write_ptr_index) {
+    zpd_stats_.strict_waits_delaying++;
+    zpd_stats_.strict_waits_delaying_us +=
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - wait_start)
+            .count();
+  }
+  if (resolved) {
     PumpPendingRetire();
     return;
   }
