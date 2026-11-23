@@ -6329,12 +6329,9 @@ void MetalCommandProcessor::ApplyRasterizerState(bool primitive_polygonal) {
   current_render_encoder_->setDepthBias(depth_bias_constant, depth_bias_slope,
                                         0.0f);
 
-  // With force_depth_clamp, use the host viewport clamp instead of near and far
-  // Z plane clipping. X/Y/W clipping is unchanged.
   current_render_encoder_->setDepthClipMode(
-      (draw_util::IsDepthClampedAtZPlanes(regs) || cvars::force_depth_clamp)
-          ? MTL::DepthClipModeClamp
-          : MTL::DepthClipModeClip);
+      draw_util::IsDepthClampedAtZPlanes(regs) ? MTL::DepthClipModeClamp
+                                               : MTL::DepthClipModeClip);
 }
 
 MTL::RenderPassDescriptor*

@@ -65,10 +65,6 @@ class GraphicsSystem {
 
   virtual std::string name() const = 0;
 
-  // Whether the host can clamp depth instead of clipping at the near and far
-  // planes, which is what force_depth_clamp asks for.
-  virtual bool supports_depth_clamp() const { return true; }
-
   Memory* memory() const { return memory_; }
   cpu::Processor* processor() const { return processor_; }
   kernel::KernelState* kernel_state() const { return kernel_state_; }

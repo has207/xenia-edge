@@ -34,7 +34,6 @@ DECLARE_int32(anisotropic_override);
 DECLARE_bool(gpu_allow_invalid_fetch_constants);
 DECLARE_bool(gpu_3d_to_2d_texture);
 DECLARE_bool(half_pixel_offset);
-DECLARE_bool(force_depth_clamp);
 DECLARE_bool(depth_bias_shader_offset);
 DECLARE_bool(submit_on_primary_buffer_end);
 DECLARE_int32(occlusion_query_fake_lower_threshold);
@@ -296,7 +295,6 @@ void ImGuiDebugDialog::LoadCurrentSettings() {
   gpu_allow_invalid_fetch_constants_ = cvars::gpu_allow_invalid_fetch_constants;
   gpu_3d_to_2d_texture_ = cvars::gpu_3d_to_2d_texture;
   half_pixel_offset_ = cvars::half_pixel_offset;
-  force_depth_clamp_ = cvars::force_depth_clamp;
   depth_bias_shader_offset_ = cvars::depth_bias_shader_offset;
   submit_on_primary_buffer_end_ = cvars::submit_on_primary_buffer_end;
   occlusion_query_fake_lower_threshold_ =
@@ -609,14 +607,6 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
 
   bool is_fake_occlusion_query = cvars::occlusion_query == "fake";
 
-  // Depth clamping needs host support, which currently only Vulkan can lack.
-  // With nothing running there's no device to ask, so leave the setting
-  // editable.
-  gpu::GraphicsSystem* graphics_system =
-      cpu_emulator ? cpu_emulator->graphics_system() : nullptr;
-  bool depth_clamp_available =
-      graphics_system == nullptr || graphics_system->supports_depth_clamp();
-
   bool filter_active = HasFilter();
   bool is_release_build = true;
 #if !defined(NDEBUG)
@@ -630,7 +620,6 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
       "gpu_allow_invalid_fetch_constants",
       "gpu_3d_to_2d_texture",
       "half_pixel_offset",
-      "force_depth_clamp",
       "submit_on_primary_buffer_end",
       "occlusion_query_fake_lower_threshold",
       "occlusion_query_fake_upper_threshold",
@@ -770,23 +759,6 @@ void ImGuiDebugDialog::OnDraw(ImGuiIO& io) {
               ApplyBoolSetting("GPU.Debug", "half_pixel_offset",
                                half_pixel_offset_);
             }
-          }
-
-          if (MatchesFilter("force_depth_clamp")) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::BeginDisabled(!depth_clamp_available);
-            DrawLabelCell("force_depth_clamp",
-                          depth_clamp_available
-                              ? nullptr
-                              : "[unsupported by the host device]");
-            ImGui::TableSetColumnIndex(1);
-            if (RightAlignedCheckbox("##force_depth_clamp",
-                                     &force_depth_clamp_) &&
-                depth_clamp_available) {
-              ApplyBoolSetting("GPU", "force_depth_clamp", force_depth_clamp_);
-            }
-            ImGui::EndDisabled();
           }
 
           if (MatchesFilter("submit_on_primary_buffer_end")) {

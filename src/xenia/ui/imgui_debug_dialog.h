@@ -80,7 +80,6 @@ class ImGuiDebugDialog : public ImGuiGamepadDialog {
   bool gpu_allow_invalid_fetch_constants_;
   bool gpu_3d_to_2d_texture_;
   bool half_pixel_offset_;
-  bool force_depth_clamp_;
   bool submit_on_primary_buffer_end_;
   int32_t occlusion_query_fake_lower_threshold_;
   int32_t occlusion_query_fake_upper_threshold_;

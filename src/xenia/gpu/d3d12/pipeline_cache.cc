@@ -1606,14 +1606,7 @@ bool PipelineCache::GetCurrentStateDescription(
     description_out.fill_mode_wireframe = 1;
   }
 
-  // With force_depth_clamp, use the host viewport clamp instead of near and far
-  // Z plane clipping. X/Y/W clipping is unchanged. Both 494707EE and 41560881
-  // have passes that rely on alpha inputs that currently gets dropped by
-  // near-plane clipping.
-  // TODO(boma): Investigate whether the difference is in shader arithmetic or
-  // the clipper itself.
-  description_out.depth_clip =
-      !draw_util::IsDepthClampedAtZPlanes(regs) && !cvars::force_depth_clamp;
+  description_out.depth_clip = !draw_util::IsDepthClampedAtZPlanes(regs);
   bool depth_stencil_bound_and_used = false;
   if (!edram_rov_used) {
     // Depth/stencil. No stencil, always passing depth test and no depth writing

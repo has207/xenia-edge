@@ -24,15 +24,6 @@ VulkanGraphicsSystem::~VulkanGraphicsSystem() {}
 
 std::string VulkanGraphicsSystem::name() const { return "Vulkan"; }
 
-bool VulkanGraphicsSystem::supports_depth_clamp() const {
-  auto vulkan_provider =
-      static_cast<const xe::ui::vulkan::VulkanProvider*>(provider());
-  if (!vulkan_provider) {
-    return false;
-  }
-  return vulkan_provider->vulkan_device()->properties().depthClamp;
-}
-
 X_STATUS VulkanGraphicsSystem::Setup(cpu::Processor* processor,
                                      kernel::KernelState* kernel_state,
                                      ui::WindowedAppContext* app_context,

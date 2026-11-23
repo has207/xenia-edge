@@ -271,13 +271,6 @@ DEFINE_bool(use_fuzzy_alpha_epsilon, false,
             "GPU");
 
 DEFINE_bool(
-    force_depth_clamp, false,
-    "Use host depth clamping instead of near and far plane clipping when "
-    "guest clipping is enabled. X/Y/W clipping is unaffected. On Vulkan, "
-    "this requires depthClamp support.",
-    "GPU");
-
-DEFINE_bool(
     alu_round_toward_zero, true,
     "Round vertex shader ALU sums and products toward zero, with unfused "
     "multiply-adds and overflow saturating, instead of rounding to nearest "
