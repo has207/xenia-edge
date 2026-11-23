@@ -285,8 +285,8 @@ DEFINE_bool(
     "Volition Engine titles. Pixel shaders keep rounding to nearest, the "
     "extra instructions per operation are too slow there. Unless the host "
     "GPU supports the rounding mode, vertex shaders only round results that "
-    "may reach a vertex fetch index, the address register, a memory export "
-    "or a floor, trunc or frc this way.",
+    "may reach a vertex fetch index, the address register, a memory export, "
+    "a floor, trunc or frc, or the position's Z or W this way.",
     "GPU");
 
 DEFINE_bool(xenos_sample_positions, false,

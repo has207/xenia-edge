@@ -963,8 +963,9 @@ class Shader {
   }
   // Whether the result of the vector or the scalar operation of the ALU
   // instruction at the address may reach a vertex fetch index, the address
-  // register, a memory export or a floor, trunc or frc operand, where rounding
-  // it differently may change the outcome by a whole unit. Vertex shaders only.
+  // register, a memory export, a floor, trunc or frc operand, or the position's
+  // Z or W, where rounding it differently may change the outcome by a whole
+  // unit or clip a whole primitive. Vertex shaders only.
   bool IsAluVectorResultRoundingSensitive(uint32_t address) const {
     return address < alu_rounding_sensitive_results_.size() &&
            (alu_rounding_sensitive_results_[address] & 0b01);

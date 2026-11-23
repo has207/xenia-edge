@@ -1052,7 +1052,8 @@ spv::Id SpirvShaderTranslator::ProcessVectorAluOperation(
     case ucode::AluVectorOpcode::kDp2Add: {
       // Not using OpDot for predictable optimization (especially addition
       // order) and NoContraction (which, for some reason, isn't placed on dot
-      // in glslang as of the February 16, 2020 version).
+      // in glslang as of the February 16, 2020 version). Each product and sum
+      // is rounded separately.
       uint32_t component_count;
       if (instr.vector_opcode == ucode::AluVectorOpcode::kDp2Add) {
         component_count = 2;
@@ -1077,9 +1078,8 @@ spv::Id SpirvShaderTranslator::ProcessVectorAluOperation(
           operand_components[j] =
               builder_->createCompositeExtract(operands[j], type_float_, i);
         }
-        spv::Id product = builder_->createNoContractionBinOp(
-            spv::OpFMul, type_float_, operand_components[0],
-            operand_components[1]);
+        spv::Id product =
+            AluMultiply(operand_components[0], operand_components[1]);
         if (different & (1 << i)) {
           // Shader Model 3: +0 or denormal * anything = +-0.
           product = ZeroIfAnyOperandIsZero(
@@ -1093,14 +1093,12 @@ spv::Id SpirvShaderTranslator::ProcessVectorAluOperation(
           result = product;
           continue;
         }
-        result = builder_->createNoContractionBinOp(spv::OpFAdd, type_float_,
-                                                    result, product);
+        result = AluAdd(result, product);
       }
       if (instr.vector_opcode == ucode::AluVectorOpcode::kDp2Add) {
-        result = builder_->createNoContractionBinOp(
-            spv::OpFAdd, type_float_, result,
-            GetOperandComponents(operand_storage[2], instr.vector_operands[2],
-                                 0b0001));
+        result = AluAdd(result,
+                        GetOperandComponents(operand_storage[2],
+                                             instr.vector_operands[2], 0b0001));
       }
       return result;
     }
