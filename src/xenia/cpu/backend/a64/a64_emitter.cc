@@ -168,6 +168,7 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
   // Count each block's incoming edges for the FPCR tracker, and note whether
   // the function touches VEC128 at all.
   function_has_vmx_ = false;
+  function_has_stackpoint_ = false;
   ResetSequenceHandoffs();
   expected_preds_.clear();
   incoming_state_.clear();
@@ -178,6 +179,9 @@ bool A64Emitter::Emit(hir::HIRBuilder* builder, EmitFunctionInfo& func_info) {
       ++hir_instr_count;
       if (const hir::Label* label = i->BranchLabel()) {
         ++expected_preds_[label->block];
+      }
+      if (!function_has_stackpoint_ && MakesCall(i)) {
+        function_has_stackpoint_ = true;
       }
       if (function_has_vmx_) {
         continue;
@@ -881,24 +885,51 @@ void A64Emitter::Call(const hir::Instr* instr, GuestFunction* function) {
   }
 }
 
-bool A64Emitter::TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
-                                              const GuestFunction* function) {
+bool A64Emitter::InlinesPPCGprLrSaveRestore(
+    const hir::Instr* instr, const GuestFunction* function) const {
   // The inlined form addresses the stack through the membase.
   if (guest_tlb_ || !function->IsSaverest() ||
       function->SaverestType() != SaveRestoreType::GPR) {
     return false;
   }
-
   const unsigned first_gpr = function->SaverestIndex();
   if (first_gpr < 14 || first_gpr > 31) {
     return false;
   }
-
   const bool is_tail_call = (instr->flags & hir::CALL_TAIL) != 0;
-  if ((function->IsSave() && is_tail_call) ||
-      (function->IsRestore() && !is_tail_call)) {
+  return !((function->IsSave() && is_tail_call) ||
+           (function->IsRestore() && !is_tail_call));
+}
+
+bool A64Emitter::MakesCall(const hir::Instr* instr) const {
+  switch (instr->opcode->num) {
+    case hir::OPCODE_CALL:
+      return !InlinesPPCGprLrSaveRestore(
+          instr, static_cast<const GuestFunction*>(instr->src1.symbol));
+    case hir::OPCODE_CALL_TRUE:
+      return !InlinesPPCGprLrSaveRestore(
+          instr, static_cast<const GuestFunction*>(instr->src2.symbol));
+    case hir::OPCODE_CALL_INDIRECT:
+    case hir::OPCODE_CALL_INDIRECT_TRUE:
+    // Host code can run guest code, which unwinds into this frame.
+    case hir::OPCODE_CALL_EXTERN:
+    case hir::OPCODE_TRAP:
+    case hir::OPCODE_TRAP_TRUE:
+    case hir::OPCODE_DEBUG_BREAK:
+    case hir::OPCODE_DEBUG_BREAK_TRUE:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool A64Emitter::TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
+                                              const GuestFunction* function) {
+  if (!InlinesPPCGprLrSaveRestore(instr, function)) {
     return false;
   }
+
+  const unsigned first_gpr = function->SaverestIndex();
 
   // Standard PPC helper layout:
   //   std/ld rN, -((33 - N) * 8)(r1), N = first_gpr..31
@@ -1461,7 +1492,8 @@ void A64Emitter::HandleStackpointOverflowError(ppc::PPCContext* context) {
 }
 
 void A64Emitter::PushStackpoint() {
-  if (!cvars::a64_enable_host_guest_stack_synchronization) {
+  if (!cvars::a64_enable_host_guest_stack_synchronization ||
+      !function_has_stackpoint_) {
     return;
   }
   // x8 = stackpoints array, w9 = current depth
@@ -1504,7 +1536,8 @@ void A64Emitter::PushStackpoint() {
 }
 
 void A64Emitter::PopStackpoint() {
-  if (!cvars::a64_enable_host_guest_stack_synchronization) {
+  if (!cvars::a64_enable_host_guest_stack_synchronization ||
+      !function_has_stackpoint_) {
     return;
   }
   // Decrement current_stackpoint_depth.
