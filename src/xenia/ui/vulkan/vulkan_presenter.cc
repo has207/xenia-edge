@@ -1830,6 +1830,8 @@ Presenter::PaintResult VulkanPresenter::PaintAndPresentImpl(
           swapchain_effect_pipeline.swapchain_pipeline =
               CreateGuestOutputPaintPipeline(
                   swapchain_effect, paint_context_.swapchain_render_pass);
+          swapchain_effect_pipeline.swapchain_format =
+              paint_context_.swapchain_render_pass_format;
           if (swapchain_effect_pipeline.swapchain_pipeline == VK_NULL_HANDLE) {
             guest_output_flow.effect_count = 0;
           }
