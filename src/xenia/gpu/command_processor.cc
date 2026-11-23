@@ -58,7 +58,7 @@ DEFINE_bool(clear_memory_page_state, false,
 UPDATE_from_bool(clear_memory_page_state, 2026, 8, 1, 12, true);
 
 DEFINE_string(
-    occlusion_query, "fast",
+    occlusion_query, "strict",
     "Controls hardware occlusion query behavior for EVENT_WRITE_ZPD.\n"
     "Used for effects like lens flares, object culling, and auto-exposure.\n"
     "Titles that use QueryBatch are not currently supported and fall back to\n"
@@ -67,13 +67,14 @@ DEFINE_string(
     "       though some effects may look slightly wrong.\n"
     " fast: Ask the GPU but don't wait for the answer. Writes a cached\n"
     "       result immediately and updates it when the GPU catches up.\n"
-    "       Cached results bias toward visible when guessing. (default)\n"
+    "       Cached results bias toward visible when guessing.\n"
     " fast-alt: Variant of fast mode that keeps cached zero results for\n"
     "           unresolved reports. May improve effects relying on precise\n"
     "           visibility, but may be less stable for occlusion culling.\n"
     " strict: Ask the GPU and wait for the real result before continuing.\n"
-    "         Most accurate, but may be somewhat less performant.",
+    "         Most accurate, but may be somewhat less performant. (default)",
     "GPU");
+UPDATE_from_string(occlusion_query, 2026, 11, 23, 6, "fast");
 
 DEFINE_bool(
     occlusion_query_full_counters, false,
