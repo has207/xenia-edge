@@ -333,10 +333,12 @@ EMITTER_OPCODE_TABLE(OPCODE_LVR, LVR_V128);
 // accesses, so nothing outside the range is touched. Merging a whole 16-byte
 // block back with a blend would be shorter but turns the store into a
 // read-modify-write, losing any concurrent write to the bytes outside count.
+// Exits to done, which the caller binds, or falls through.
 static void EmitPartialVectorStore(X64Emitter& e, const Xbyak::Reg64& dst,
                                    const Xbyak::Reg64& src,
-                                   const Xbyak::Reg32& count) {
-  Xbyak::Label from8, from4, from2, from1, done;
+                                   const Xbyak::Reg32& count,
+                                   Xbyak::Label& done) {
+  Xbyak::Label from8, from4, from2, from1;
   const Xbyak::Reg64 tail = count.cvt64();
 
   e.cmp(count, 8);
@@ -373,8 +375,6 @@ static void EmitPartialVectorStore(X64Emitter& e, const Xbyak::Reg64& dst,
   e.L(from1);
   e.movzx(e.r9d, e.byte[src]);
   e.mov(e.byte[dst], e.r9b);
-
-  e.L(done);
 }
 
 struct STVL_V128 : Sequence<STVL_V128, I<OPCODE_STVL, VoidOp, I64Op, V128Op>> {
@@ -385,15 +385,25 @@ struct STVL_V128 : Sequence<STVL_V128, I<OPCODE_STVL, VoidOp, I64Op, V128Op>> {
     // 16 - offset bytes ending at the block boundary.
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
     e.vpshufb(e.xmm0, src2, e.GetXmmConstPtr(XMMByteSwapMask));
-    e.StashXmm(0, e.xmm0);
 
+    // At offset 0 that is the whole block, which bulk copies to aligned
+    // buffers store this way. The partial store stays inline, so an unaligned
+    // store only adds the untaken branch.
     e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, i.src1)]);
+    Xbyak::Label aligned, done;
+    e.test(e.al, 15);
+    e.jz(aligned, e.T_NEAR);
+    e.StashXmm(0, e.xmm0);
     e.mov(e.ecx, e.eax);
     e.and_(e.ecx, 15);
     e.mov(e.edx, 16);
     e.sub(e.edx, e.ecx);
     e.lea(e.r8, e.ptr[e.rsp + X64Emitter::kStashOffset]);
-    EmitPartialVectorStore(e, e.rax, e.r8, e.edx);
+    EmitPartialVectorStore(e, e.rax, e.r8, e.edx, done);
+    e.jmp(done);
+    e.L(aligned);
+    e.vmovdqu(e.ptr[e.rax], e.xmm0);
+    e.L(done);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_STVL, STVL_V128);
@@ -403,17 +413,20 @@ struct STVR_V128 : Sequence<STVR_V128, I<OPCODE_STVR, VoidOp, I64Op, V128Op>> {
     // Store bytes 0..offset-1 of the block from the tail of the source, again
     // contiguous. offset == 0 stores nothing, which matters: memcpy tails use
     // stvrx on an address that can sit one past a valid page.
+    e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, i.src1)]);
+    Xbyak::Label done;
+    e.test(e.al, 15);
+    e.jz(done, e.T_NEAR);
     Xmm src2 = GetInputRegOrConstant(e, i.src2, e.xmm0);
     e.vpshufb(e.xmm0, src2, e.GetXmmConstPtr(XMMByteSwapMask));
     e.StashXmm(0, e.xmm0);
-
-    e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, i.src1)]);
     e.mov(e.ecx, e.eax);
     e.and_(e.ecx, 15);
     e.and_(e.rax, -16);
     e.lea(e.r8, e.ptr[e.rsp + X64Emitter::kStashOffset + 16]);
     e.sub(e.r8, e.rcx);
-    EmitPartialVectorStore(e, e.rax, e.r8, e.ecx);
+    EmitPartialVectorStore(e, e.rax, e.r8, e.ecx, done);
+    e.L(done);
   }
 };
 EMITTER_OPCODE_TABLE(OPCODE_STVR, STVR_V128);
@@ -422,7 +435,7 @@ EMITTER_OPCODE_TABLE(OPCODE_STVR, STVR_V128);
 // had the granule claimed. The wait clobbers rax, so it recomputes the address.
 static void EmitAwaitClaimedGranule(X64Emitter& e, const I64Op& src) {
   Xbyak::Label& unclaimed = e.NewCachedLabel();
-  e.jz(unclaimed, X64Emitter::T_NEAR);
+  e.jz(unclaimed, e.T_NEAR);
   e.mov(e.GetNativeParam(0).cvt32(), e.ecx);
   e.CallNativeSafe(reinterpret_cast<void*>(X64Backend::AwaitReservation));
   e.lea(e.rax, e.ptr[ComputeMemoryAddress(e, src)]);
