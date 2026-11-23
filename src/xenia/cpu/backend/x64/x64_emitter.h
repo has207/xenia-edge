@@ -313,6 +313,11 @@ class X64Emitter : public Xbyak::CodeGenerator {
   // calling it. Returns false when the callee is not a GPR saverest helper.
   bool TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
                                     const GuestFunction* function);
+  bool InlinesPPCGprLrSaveRestore(const hir::Instr* instr,
+                                  const GuestFunction* function) const;
+  // Whether |instr| calls or branches to guest code, a saverest helper inlined
+  // in place aside, or calls host code, traps included.
+  bool MakesCall(const hir::Instr* instr) const;
   void CallIndirect(const hir::Instr* instr, const Xbyak::Reg64& reg);
   void CallExtern(const hir::Instr* instr, const Function* function);
   void CallNative(void* fn);
@@ -515,6 +520,12 @@ class X64Emitter : public Xbyak::CodeGenerator {
       label_cache_;  // for creating labels that need to be referenced much
                      // later by tail emitters
   MXCSRMode mxcsr_mode_ = MXCSRMode::Unknown;
+  // Whether this function records a stackpoint. One that makes no call has no
+  // return sites, so no unwind ever restores its frame, and it is never below
+  // another frame, so a pseudo stack trace, taken from the frames that called
+  // out, has nothing to show for it either. Every tail branch, and so every
+  // dynamic one, leaves from a frame that has its record.
+  bool function_has_stackpoint_ = true;
   const hir::Instr* fused_to_single_ = nullptr;
   Xbyak::Label* fused_to_single_exit_ = nullptr;
 };

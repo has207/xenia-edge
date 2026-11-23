@@ -183,6 +183,16 @@ bool X64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
   Xbyak::Label epilog_label;
   epilog_label_ = &epilog_label;
   fused_to_single_ = nullptr;
+  function_has_stackpoint_ = false;
+  for (const hir::Block* block = builder->first_block();
+       block && !function_has_stackpoint_; block = block->next) {
+    for (const Instr* i = block->instr_head; i; i = i->next) {
+      if (MakesCall(i)) {
+        function_has_stackpoint_ = true;
+        break;
+      }
+    }
+  }
 
   // Calculate stack size. We need to align things to their natural sizes.
   // This could be much better (sort by type/etc).
@@ -1010,23 +1020,50 @@ static void EmitDynamicCallLookup(X64Emitter& e, bool tail,
   e.L(done);
 }
 
-bool X64Emitter::TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
-                                              const GuestFunction* function) {
+bool X64Emitter::InlinesPPCGprLrSaveRestore(
+    const hir::Instr* instr, const GuestFunction* function) const {
   if (!function->IsSaverest() ||
       function->SaverestType() != SaveRestoreType::GPR) {
     return false;
   }
-
   const unsigned first_gpr = function->SaverestIndex();
   if (first_gpr < 14 || first_gpr > 31) {
     return false;
   }
-
   const bool is_tail_call = (instr->flags & hir::CALL_TAIL) != 0;
-  if ((function->IsSave() && is_tail_call) ||
-      (function->IsRestore() && !is_tail_call)) {
+  return !((function->IsSave() && is_tail_call) ||
+           (function->IsRestore() && !is_tail_call));
+}
+
+bool X64Emitter::MakesCall(const hir::Instr* instr) const {
+  switch (instr->opcode->num) {
+    case hir::OPCODE_CALL:
+      return !InlinesPPCGprLrSaveRestore(
+          instr, static_cast<const GuestFunction*>(instr->src1.symbol));
+    case hir::OPCODE_CALL_TRUE:
+      return !InlinesPPCGprLrSaveRestore(
+          instr, static_cast<const GuestFunction*>(instr->src2.symbol));
+    case hir::OPCODE_CALL_INDIRECT:
+    case hir::OPCODE_CALL_INDIRECT_TRUE:
+    // Host code can run guest code, which unwinds into this frame.
+    case hir::OPCODE_CALL_EXTERN:
+    case hir::OPCODE_TRAP:
+    case hir::OPCODE_TRAP_TRUE:
+    case hir::OPCODE_DEBUG_BREAK:
+    case hir::OPCODE_DEBUG_BREAK_TRUE:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool X64Emitter::TryInlinePPCGprLrSaveRestore(const hir::Instr* instr,
+                                              const GuestFunction* function) {
+  if (!InlinesPPCGprLrSaveRestore(instr, function)) {
     return false;
   }
+
+  const unsigned first_gpr = function->SaverestIndex();
 
   // Standard PPC helper layout:
   //   std/ld rN, -((33 - N) * 8)(r1), N = first_gpr..31
@@ -2515,7 +2552,8 @@ void X64Emitter::HandleStackpointOverflowError(ppc::PPCContext* context) {
 }
 
 void X64Emitter::PushStackpoint() {
-  if (!cvars::enable_host_guest_stack_synchronization) {
+  if (!cvars::enable_host_guest_stack_synchronization ||
+      !function_has_stackpoint_) {
     return;
   }
   // push the current host and guest stack pointers
@@ -2606,7 +2644,8 @@ void X64Emitter::EmitDropCallingFrame() {
 }
 
 void X64Emitter::PopStackpoint() {
-  if (!cvars::enable_host_guest_stack_synchronization) {
+  if (!cvars::enable_host_guest_stack_synchronization ||
+      !function_has_stackpoint_) {
     return;
   }
   // todo: maybe verify that rsp and r1 == the stackpoint?
