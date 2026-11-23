@@ -183,6 +183,31 @@ TEST_CASE("TO_SINGLE_KEEP_NAN", "[convert]") {
            });
 }
 
+// What Value::IsNeverWideNan proves: a single's NaN payload, through
+// arithmetic, and not a double from the context or a NaN constant with low
+// payload bits.
+TEST_CASE("IS_NEVER_WIDE_NAN", "[convert]") {
+  TestFunction test([](HIRBuilder& b) {
+    Value* single = b.UnpackSingle(b.Truncate(LoadGPR(b, 4), INT32_TYPE));
+    Value* wide = LoadFPR(b, 4);
+    REQUIRE(single->IsNeverWideNan());
+    REQUIRE(!wide->IsNeverWideNan());
+    REQUIRE(b.ToSingle(wide)->IsNeverWideNan());
+    REQUIRE(!b.ToSingle(wide, TO_SINGLE_KEEP_NAN)->IsNeverWideNan());
+    Value* sum = b.ToSingle(b.Add(single, single), TO_SINGLE_KEEP_NAN);
+    REQUIRE(sum->IsNeverWideNan());
+    REQUIRE(b.MulAdd(sum, single, b.Neg(sum))->IsNeverWideNan());
+    REQUIRE(!b.Add(sum, wide)->IsNeverWideNan());
+    REQUIRE(b.LoadConstantFloat64(1.5)->IsNeverWideNan());
+    REQUIRE(!b.Cast(b.LoadConstantUint64(0x7FF8000000000001ull), FLOAT64_TYPE)
+                 ->IsNeverWideNan());
+    StoreFPR(b, 3, sum);
+    b.Return();
+  });
+  test.Run([](PPCContext* ctx) { ctx->r[4] = 0x3F800000; },
+           [](PPCContext* ctx) { REQUIRE(ctx->f[3] == 2.0); });
+}
+
 // ============================================================================
 // MUL_ADD F64 — fused multiply-add: (1 * 2) + 3
 // ============================================================================

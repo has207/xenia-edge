@@ -1815,6 +1815,58 @@ hir::Instr* Value::GetDefSkipAssigns() {
     return nullptr;
   }
 }
+// Answers no once it has looked at budget values, which bounds the walk where
+// values are shared.
+static bool IsNeverWideNan(const Value* value, int& budget) {
+  if (value->type != FLOAT64_TYPE || --budget < 0) {
+    return false;
+  }
+  if (value->IsConstant()) {
+    const uint64_t bits = value->constant.u64;
+    return (bits & 0x7FFFFFFFFFFFFFFFull) <= 0x7FF0000000000000ull ||
+           !(bits & 0x1FFFFFFFull);
+  }
+  const Instr* def = const_cast<Value*>(value)->GetDefSkipAssigns();
+  if (!def) {
+    return false;
+  }
+  auto never = [&budget](const Value* operand) {
+    return IsNeverWideNan(operand, budget);
+  };
+  switch (def->GetOpcodeNum()) {
+    case OPCODE_UNPACK_SINGLE:
+      return true;
+    case OPCODE_CONVERT:
+      return def->src1.value->type != FLOAT64_TYPE;
+    case OPCODE_TO_SINGLE:
+      // Under --no_round_to_single the x64 TO_SINGLE is an identity.
+      return (!(def->flags & TO_SINGLE_KEEP_NAN) &&
+              !cvars::no_round_to_single) ||
+             never(def->src1.value);
+    case OPCODE_NEG:
+    case OPCODE_ABS:
+    case OPCODE_SQRT:
+    case OPCODE_RECIP:
+      return never(def->src1.value);
+    case OPCODE_ADD:
+    case OPCODE_SUB:
+    case OPCODE_MUL:
+    case OPCODE_DIV:
+      return never(def->src1.value) && never(def->src2.value);
+    case OPCODE_MUL_ADD:
+    case OPCODE_MUL_SUB:
+      return never(def->src1.value) && never(def->src2.value) &&
+             never(def->src3.value);
+    case OPCODE_SELECT:
+      return never(def->src2.value) && never(def->src3.value);
+    default:
+      return false;
+  }
+}
+bool Value::IsNeverWideNan() const {
+  int budget = 64;
+  return xe::cpu::hir::IsNeverWideNan(this, budget);
+}
 bool Value::IsInSingleRange(int depth) const {
   if (type != FLOAT64_TYPE) {
     return false;

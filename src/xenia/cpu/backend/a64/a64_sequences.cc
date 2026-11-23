@@ -5123,10 +5123,12 @@ struct TOSINGLE : Sequence<TOSINGLE, I<OPCODE_TO_SINGLE, F64Op, F64Op>> {
   }
 
   static void Emit(A64Emitter& e, const EmitArgType& i) {
-    // Fused, the operation before kept every NaN away from here.
+    // Fused, the operation before kept every NaN away from here. A source
+    // that is never a wide NaN rounds without losing a payload bit.
     Xbyak_aarch64::Label* past_nan = e.ConsumeFusedToSingle(i.instr);
     EmitConversion(e, i,
-                   (i.instr->flags & TO_SINGLE_KEEP_NAN) != 0 && !past_nan);
+                   (i.instr->flags & TO_SINGLE_KEEP_NAN) != 0 && !past_nan &&
+                       !i.src1.value->IsNeverWideNan());
     if (past_nan) {
       // The stubs that jump here only move a register.
       e.LKeepingRemapBound(*past_nan);

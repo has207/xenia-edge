@@ -610,6 +610,11 @@ class Value {
   // Whether a double can never set off the single-precision quirk: zero, a
   // magnitude in [2^-149, 2^128), infinity or a NaN. Every single is one.
   bool IsInSingleRange(int depth = 4) const;
+  // Whether a double can never be a wide NaN, one with fraction bits a single
+  // drops: a value widened from a single or rounded to one, or worked out from
+  // such operands only, as an arithmetic NaN result is one of the operands' or
+  // the default QNaN. Rounding one to single loses nothing then.
+  bool IsNeverWideNan() const;
   // tunnel_flags is updated to the kinds we actually traversed
   hir::Instr* GetDefTunnelMovs(unsigned int* tunnel_flags);
 

@@ -447,10 +447,12 @@ struct TOSINGLE_F64_F64
          on actual hardware, it looks good to me
       */
       e.vcvtsd2ss(e.xmm0, srcreg, srcreg);
-      // Fused, the operation before kept every NaN away from here.
+      // Fused, the operation before kept every NaN away from here. A source
+      // that is never a wide NaN rounds without losing a payload bit.
       assert_true(!e.fused_to_single() || e.fused_to_single() == i.instr);
       Xbyak::Label* past_nan = e.ConsumeFusedToSingle(i.instr);
-      if (!(i.instr->flags & TO_SINGLE_KEEP_NAN) || past_nan) {
+      if (!(i.instr->flags & TO_SINGLE_KEEP_NAN) || past_nan ||
+          i.src1.value->IsNeverWideNan()) {
         e.vcvtss2sd(i.dest, e.xmm0, e.xmm0);
         if (past_nan) {
           e.L(*past_nan);
