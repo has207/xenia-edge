@@ -122,6 +122,10 @@ def f2w(value):
     return struct.unpack('>I', struct.pack('>f', value))[0]
 
 
+def w2f(word):
+    return struct.unpack('>f', struct.pack('>I', word))[0]
+
+
 # Suite.
 
 # Memory export formats: (ColorFormat, SurfaceNumberFormat, bytes).
@@ -371,11 +375,16 @@ def memexport_pixel_shader(body, exports, index):
     return s
 
 
-def interpolating_vertex_shader(vertex_dwords):
+def interpolating_vertex_shader(vertex_dwords, body=()):
     """Fetches the vertex into r1, r2, ... and exports oPos = r1 and
-    interpolator i = r2 + i, shaped like gpr_dummy_vertex_shader."""
+    interpolator i = r2 + i, shaped like gpr_dummy_vertex_shader. `body` ALU
+    instructions run between the fetch and the exports."""
     s = xenos.Shader()
     s.exec_(fetch_inputs(vertex_dwords))
+    first = list(body)
+    if first:
+        first[0] = first[0].serialized()
+        s.exec_(first)
     s.alloc(xenos.ALLOC_INTERPOLATORS, 0)
     s.exec_([xenos.alu(vector_op=xenos.V_MAX, vector_dest=i, vector_mask=0xF,
                        export=True, src1=xenos.r(INPUT_REGISTER + 1 + i),

@@ -67,3 +67,5 @@ Suites:
   MSAA samples and resolves.
 - `blend_products`: blending on the fixed point formats one product at a time,
   each operand swept or held.
+- `clip`: near and far Z clipping across viewport Z ranges, both clip spaces,
+  the PA_CL_CLIP_CNTL bits, the PA_CL_VTE_CNTL formats and rectangle lists.

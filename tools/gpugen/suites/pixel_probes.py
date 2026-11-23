@@ -25,11 +25,11 @@ of the position.
 """
 
 import os
-import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gpugen  # noqa: E402
 import pixel  # noqa: E402
 import pm4  # noqa: E402
 
@@ -52,17 +52,13 @@ RIGHT = [(3, 3), (5, 5), (7, 7), (11, 11), (13, 13), (15, 15), (17, 3),
          (21, 13), (31, 29), (63, 61)]
 
 
-def w2f(word):
-    return struct.unpack('>f', struct.pack('>I', word))[0]
-
-
 def one_hot(corners, w=0.0, x_words=None):
     vertices = []
     for k, p in enumerate(corners):
         attribute = [0.0, 0.0, 0.0, w]
         attribute[k] = 1.0
         if x_words:
-            attribute[0] = w2f(x_words[k])
+            attribute[0] = gpugen.w2f(x_words[k])
         vertices.append(pixel.vertex(p, attribute))
     return vertices
 
