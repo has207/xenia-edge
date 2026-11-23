@@ -2111,14 +2111,18 @@ EMITTER_OPCODE_TABLE(OPCODE_LVR, LVR_V128);
 // accesses, so nothing outside the range is touched. Baseline NEON has no
 // byte-masked store, and merging a whole 16-byte block back with a blend would
 // lose a concurrent write to the bytes this store is not supposed to reach.
+// Exits to done, which the caller binds, or falls through.
 static void EmitPartialVectorStore(A64Emitter& e,
                                    const Xbyak_aarch64::XReg& dst,
                                    const Xbyak_aarch64::XReg& src,
-                                   const Xbyak_aarch64::WReg& count) {
+                                   const Xbyak_aarch64::WReg& count,
+                                   Xbyak_aarch64::Label& done) {
   // Unqualified Label here is hir::Label.
-  Xbyak_aarch64::Label from8, from4, from2, from1, done;
+  Xbyak_aarch64::Label from8, from4, from2, from1;
 
-  // Every label below is bound within this helper, so the near forms are safe.
+  // Every label below is bound within the calling sequence, so the near forms
+  // are safe. The copy works in scratch registers, so they keep the remap
+  // bound.
   e.cmp(count, 8);
   e.b_near(Xbyak_aarch64::HS, from8);
   e.cmp(count, 4);
@@ -2128,7 +2132,7 @@ static void EmitPartialVectorStore(A64Emitter& e,
   e.cbnz_near(count, from1);
   e.b(done);
 
-  e.L(from8);
+  e.LKeepingRemapBound(from8);
   e.sub(e.w6, count, 8);
   e.ldr(e.x3, ptr(src));
   e.str(e.x3, ptr(dst));
@@ -2136,7 +2140,7 @@ static void EmitPartialVectorStore(A64Emitter& e,
   e.str(e.x3, ptr(dst, e.x6));
   e.b(done);
 
-  e.L(from4);
+  e.LKeepingRemapBound(from4);
   e.sub(e.w6, count, 4);
   e.ldr(e.w3, ptr(src));
   e.str(e.w3, ptr(dst));
@@ -2144,7 +2148,7 @@ static void EmitPartialVectorStore(A64Emitter& e,
   e.str(e.w3, ptr(dst, e.x6));
   e.b(done);
 
-  e.L(from2);
+  e.LKeepingRemapBound(from2);
   e.sub(e.w6, count, 2);
   e.ldrh(e.w3, ptr(src));
   e.strh(e.w3, ptr(dst));
@@ -2152,11 +2156,9 @@ static void EmitPartialVectorStore(A64Emitter& e,
   e.strh(e.w3, ptr(dst, e.x6));
   e.b(done);
 
-  e.L(from1);
+  e.LKeepingRemapBound(from1);
   e.ldrb(e.w3, ptr(src));
   e.strb(e.w3, ptr(dst));
-
-  e.L(done);
 }
 
 // ============================================================================
@@ -2173,22 +2175,22 @@ struct STVL_V128 : Sequence<STVL_V128, I<OPCODE_STVL, VoidOp, I64Op, V128Op>> {
 
     // The host address has the guest address's alignment within the block.
     ComputeGuestHostAddress(e, e.x0, i.src1, 1, true);
-    auto& done = e.NewCachedLabel();
-    auto& partial = e.AddToTail([&done](A64Emitter& e, Xbyak_aarch64::Label&) {
-      // Stash rev32(src) so its bytes can be addressed individually.
-      e.str(QReg(0),
-            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
-      e.and_(e.w2, e.w0, 0xF);
-      e.mov(e.w1, 16);
-      e.sub(e.w2, e.w1, e.w2);
-      e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
-      EmitPartialVectorStore(e, e.x0, e.x1, e.w2);
-      e.b(done);
-    });
+    // The partial store stays inline, so an unaligned store only adds the
+    // untaken branch.
+    Xbyak_aarch64::Label aligned, done;
     e.tst(e.x0, 0xF);
-    e.b(Xbyak_aarch64::NE, partial);
+    e.b_near(Xbyak_aarch64::EQ, aligned);
+    // Stash rev32(src) so its bytes can be addressed individually.
+    e.str(QReg(0),
+          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+    e.and_(e.w2, e.w0, 0xF);
+    e.mov(e.w1, 16);
+    e.sub(e.w2, e.w1, e.w2);
+    e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH));
+    EmitPartialVectorStore(e, e.x0, e.x1, e.w2, done);
+    e.b(done);
+    e.LKeepingRemapBound(aligned);
     e.str(QReg(0), ptr(e.x0));
-    // The partial store works in scratch registers.
     e.LKeepingRemapBound(done);
   }
 };
@@ -2205,21 +2207,17 @@ struct STVR_V128 : Sequence<STVR_V128, I<OPCODE_STVR, VoidOp, I64Op, V128Op>> {
     int s = SrcVReg(e, i.src2, 0);
 
     ComputeGuestHostAddress(e, e.x0, i.src1, 1, true);
-    auto& done = e.NewCachedLabel();
-    auto& partial = e.AddToTail([s, &done](A64Emitter& e,
-                                           Xbyak_aarch64::Label&) {
-      e.rev32(VReg(0).b16, VReg(s).b16);
-      e.str(QReg(0),
-            ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
-      e.and_(e.w2, e.w0, 0xF);
-      e.and_(e.x0, e.x0, ~0xFull);
-      e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH) + 16);
-      e.sub(e.x1, e.x1, e.x2);
-      EmitPartialVectorStore(e, e.x0, e.x1, e.w2);
-      e.b(done);
-    });
+    Xbyak_aarch64::Label done;
     e.tst(e.x0, 0xF);
-    e.b(Xbyak_aarch64::NE, partial);
+    e.b_near(Xbyak_aarch64::EQ, done);
+    e.rev32(VReg(0).b16, VReg(s).b16);
+    e.str(QReg(0),
+          ptr(e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH)));
+    e.and_(e.w2, e.w0, 0xF);
+    e.and_(e.x0, e.x0, ~0xFull);
+    e.add(e.x1, e.sp, static_cast<uint32_t>(StackLayout::GUEST_SCRATCH) + 16);
+    e.sub(e.x1, e.x1, e.x2);
+    EmitPartialVectorStore(e, e.x0, e.x1, e.w2, done);
     e.LKeepingRemapBound(done);
   }
 };
