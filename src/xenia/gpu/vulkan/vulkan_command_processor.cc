@@ -547,8 +547,9 @@ bool VulkanCommandProcessor::SetupContext() {
   zpd_draw_resolution_scale_x_ = draw_resolution_scale_x;
   zpd_draw_resolution_scale_y_ = draw_resolution_scale_y;
 
-  const VkDeviceSize zpd_counter_sink_range =
-      XenosZPDReport::kCounterSizeBytes * kQueryPoolCapacity;
+  // Holds the counter binding until the counter buffer replaces it. Queries
+  // only open after that so shaders never index it and one slot is enough.
+  const VkDeviceSize zpd_counter_sink_range = XenosZPDReport::kCounterSizeBytes;
   if (zpd_counter_binding_used &&
       !ui::vulkan::util::CreateDedicatedAllocationBuffer(
           vulkan_device, zpd_counter_sink_range,
