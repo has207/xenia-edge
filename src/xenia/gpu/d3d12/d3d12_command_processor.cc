@@ -4574,6 +4574,9 @@ bool D3D12CommandProcessor::UpdateBindingsMesa(
     if (active_query_is_rov_ && active_query_index_ != UINT32_MAX &&
         host_query_pool_->counter_initialized()) {
       zpd_fsi_counter_index = active_query_index_;
+      if (active_segment_.viz.generation != kInvalidVIZGeneration) {
+        zpd_fsi_counter_index |= XenosZPDReport::kCounterIndexFirstCopyOnly;
+      }
     }
     bool fsi_dirty = false;
     WriteFragmentShaderInterlockSystemConstants(
@@ -5153,7 +5156,8 @@ bool D3D12CommandProcessor::CloseQuery(ReportHandle report_handle,
       }
       SubmitBarriers();
       if (active_query_is_rov_) {
-        // The ZPass lane of the counter slot, written by pixel shader atomics.
+        // The ZPass lane of the slot's first copy, which pixel shaders add to
+        // alone in VIZ segments.
         // The transition out of UNORDERED_ACCESS also orders the copy after
         // them. Only the low dword is written. The high one reads zero from
         // the buffer's zeroed creation, or from an earlier full resolve.

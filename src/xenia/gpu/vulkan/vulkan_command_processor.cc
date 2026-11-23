@@ -6460,6 +6460,9 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
     if (active_query_index_ != UINT32_MAX && active_query_is_fsi_ &&
         host_query_pool_->counter_initialized()) {
       zpd_fsi_counter_index = active_query_index_;
+      if (active_segment_.viz.generation != kInvalidVIZGeneration) {
+        zpd_fsi_counter_index |= XenosZPDReport::kCounterIndexFirstCopyOnly;
+      }
     }
     dirty |= zpd_counter_index_force_update_;
     zpd_counter_index_force_update_ = false;

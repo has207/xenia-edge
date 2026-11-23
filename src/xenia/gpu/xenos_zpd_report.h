@@ -56,7 +56,8 @@ namespace gpu {
 // pre-test coverage for an approximate Total, but can't distinguish ZFail from
 // StencilFail.
 struct XenosZPDReport {
-  // Host counter buffer slot layout, one slot per pool query index.
+  // Counters in each copy within a host counter buffer slot, one slot per pool
+  // query index.
   enum CounterIndex : uint32_t {
     kTotal,
     kZFail,
@@ -64,7 +65,28 @@ struct XenosZPDReport {
     kStencilFail,
     kCount,
   };
-  static constexpr uint32_t kCounterSizeBytes = kCount * sizeof(uint32_t);
+  // Shaders add to one of the copies picked by pixel position, each in its own
+  // cache line so the atomics of a query don't all contend for one address.
+  static constexpr uint32_t kCounterSpread = 16;
+  static constexpr uint32_t kCounterSpreadStrideBytes = 128;
+  static_assert(kCount * sizeof(uint32_t) <= kCounterSpreadStrideBytes);
+  static constexpr uint32_t kCounterSpreadStrideWords =
+      kCounterSpreadStrideBytes / sizeof(uint32_t);
+  static constexpr uint32_t kCounterSizeBytes =
+      kCounterSpread * kCounterSpreadStrideBytes;
+  static constexpr uint32_t kCounterSizeWords =
+      kCounterSizeBytes / sizeof(uint32_t);
+  // Set in the interlock shaders' slot index to add to the first copy only,
+  // for VIZ segments since the GPU predicate is copied from it alone.
+  static constexpr uint32_t kCounterIndexFirstCopyOnly = UINT32_C(1) << 31;
+
+  static uint64_t SumCounter(const uint32_t* slot, CounterIndex counter) {
+    uint64_t sum = 0;
+    for (uint32_t i = 0; i < kCounterSpread; ++i) {
+      sum += slot[i * kCounterSpreadStrideWords + counter];
+    }
+    return sum;
+  }
 
   uint64_t z_fail = 0;
   uint64_t z_pass = 0;
@@ -100,9 +122,9 @@ struct XenosZPDReport {
   // Counter slot filled by the interlock shaders.
   static XenosZPDReport FromCounterSlot(const uint32_t* slot) {
     XenosZPDReport report;
-    report.z_fail = slot[kZFail];
-    report.z_pass = slot[kZPass];
-    report.stencil_fail = slot[kStencilFail];
+    report.z_fail = SumCounter(slot, kZFail);
+    report.z_pass = SumCounter(slot, kZPass);
+    report.stencil_fail = SumCounter(slot, kStencilFail);
     return report;
   }
 

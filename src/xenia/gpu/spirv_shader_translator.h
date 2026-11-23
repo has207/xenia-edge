@@ -22,6 +22,7 @@
 #include "xenia/gpu/shader_translator.h"
 #include "xenia/gpu/spirv_builder.h"
 #include "xenia/gpu/xenos.h"
+#include "xenia/gpu/xenos_zpd_report.h"
 
 namespace xe {
 namespace ui {
@@ -354,7 +355,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
     uint32_t alpha_to_mask;
 
     // UINT32_MAX when the draw is outside an active ZPD segment, which is used
-    // as a skip writing sentinel to the FSI counter buffer.
+    // as a skip writing sentinel to the FSI counter buffer. Otherwise the
+    // slot index, with XenosZPDReport::kCounterIndexFirstCopyOnly to add to
+    // the slot's first copy only.
     uint32_t zpd_fsi_counter_index;
 
     uint32_t edram_32bpp_tile_pitch_dwords_scaled;
@@ -1046,7 +1049,15 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // flow because of taking derivatives of the fragment depth.
   void FSI_DepthStencilTest(bool sample_mask_potentially_narrowed_previouly);
   // Adds the selected depth/stencil outcomes to the active ZPD counter slot.
-  void FSI_AddMSAASamplesToZPD(bool count_passed, bool count_failed);
+  // Deferred ones are kept until FSI_AddDeferredSamplesToZPD.
+  void FSI_AddMSAASamplesToZPD(bool count_passed, bool count_failed,
+                               bool deferred);
+  // Called after the critical section so overlapping fragments don't wait on
+  // the contended counter atomics.
+  void FSI_AddDeferredSamplesToZPD();
+  // Per ZPD counter lane, NoResult for lanes not counted.
+  using ZPDSampleCounts = std::array<spv::Id, XenosZPDReport::kCount>;
+  void FSI_AddSampleCountsToZPD(const ZPDSampleCounts& sample_counts);
   // Adds the coverage before the depth/stencil test to the Total lane of the
   // active ZPD counter slot.
   void FBO_AddMSAASamplesToZPDTotal();
@@ -1504,6 +1515,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
   // of these, stencil failure taking precedence.
   spv::Id main_fsi_z_fail_sample_mask_;
   spv::Id main_fsi_stencil_fail_sample_mask_;
+  // Deferred ZPD sample counts, created on first use.
+  ZPDSampleCounts var_main_fsi_zpd_samples_;
   // Loaded by FSI_LoadEdramOffsets.
   // Including the depth render target base.
   spv::Id main_fsi_address_depth_;

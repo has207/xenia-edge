@@ -765,8 +765,8 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
       }
     }
 
-    FSI_AddMSAASamplesToZPD(true,
-                            zpd_full_counters_ && !FSI_IsDepthStencilEarly());
+    FSI_AddMSAASamplesToZPD(
+        true, zpd_full_counters_ && !FSI_IsDepthStencilEarly(), true);
 
     if (color_write_depth_stencil_condition != spv::NoResult) {
       // Skip all color operations if the pixel has failed the tests entirely.
@@ -1547,6 +1547,7 @@ void SpirvShaderTranslator::CompleteFragmentShaderInMain() {
     }
 
     builder_->createNoResultOp(spv::OpEndInvocationInterlockEXT);
+    FSI_AddDeferredSamplesToZPD();
   }
 }
 
@@ -2014,10 +2015,70 @@ spv::Id SpirvShaderTranslator::FSI_AddSampleOffset(spv::Id sample_0_address,
 }
 
 void SpirvShaderTranslator::FSI_AddMSAASamplesToZPD(bool count_passed,
-                                                    bool count_failed) {
+                                                    bool count_failed,
+                                                    bool deferred) {
   assert_true(edram_fragment_shader_interlock_);
   assert_true(buffer_zpd_counter_ != spv::NoResult);
 
+  ZPDSampleCounts sample_counts;
+  sample_counts.fill(spv::NoResult);
+  if (count_passed) {
+    // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil and
+    // don't contribute to the counter.
+    sample_counts[XenosZPDReport::kZPass] = builder_->createUnaryOp(
+        spv::OpBitCount, type_uint_,
+        builder_->createBinOp(
+            spv::OpBitwiseAnd, type_uint_, main_fsi_sample_mask_,
+            builder_->makeUintConstant((uint32_t(1) << 4) - 1)));
+  }
+  if (count_failed && !is_viz_survey_fragment_shader_) {
+    sample_counts[XenosZPDReport::kZFail] = builder_->createUnaryOp(
+        spv::OpBitCount, type_uint_, main_fsi_z_fail_sample_mask_);
+    sample_counts[XenosZPDReport::kStencilFail] = builder_->createUnaryOp(
+        spv::OpBitCount, type_uint_, main_fsi_stencil_fail_sample_mask_);
+  }
+
+  if (!deferred) {
+    FSI_AddSampleCountsToZPD(sample_counts);
+    return;
+  }
+  for (uint32_t lane = 0; lane < XenosZPDReport::kCount; ++lane) {
+    if (sample_counts[lane] == spv::NoResult) {
+      continue;
+    }
+    spv::Id& var_samples = var_main_fsi_zpd_samples_[lane];
+    if (var_samples == spv::NoResult) {
+      var_samples = builder_->createVariable(
+          spv::NoPrecision, spv::StorageClassFunction, type_uint_,
+          "xe_var_zpd_samples", const_uint_0_);
+    }
+    builder_->createStore(
+        builder_->createBinOp(
+            spv::OpIAdd, type_uint_,
+            builder_->createLoad(var_samples, spv::NoPrecision),
+            sample_counts[lane]),
+        var_samples);
+  }
+}
+
+void SpirvShaderTranslator::FSI_AddDeferredSamplesToZPD() {
+  ZPDSampleCounts sample_counts;
+  sample_counts.fill(spv::NoResult);
+  bool any_deferred = false;
+  for (uint32_t lane = 0; lane < XenosZPDReport::kCount; ++lane) {
+    if (var_main_fsi_zpd_samples_[lane] != spv::NoResult) {
+      sample_counts[lane] = builder_->createLoad(
+          var_main_fsi_zpd_samples_[lane], spv::NoPrecision);
+      any_deferred = true;
+    }
+  }
+  if (any_deferred) {
+    FSI_AddSampleCountsToZPD(sample_counts);
+  }
+}
+
+void SpirvShaderTranslator::FSI_AddSampleCountsToZPD(
+    const ZPDSampleCounts& sample_counts) {
   // UINT32_MAX means no ZPD segment is currently open for this draw.
   id_vector_temp_.clear();
   id_vector_temp_.push_back(
@@ -2039,28 +2100,79 @@ void SpirvShaderTranslator::FSI_AddMSAASamplesToZPD(bool count_passed,
   spv::Id const_semantics_relaxed = const_uint_0_;
 
   // One slot holds every ZPD counter.
-  spv::Id counter_base =
-      builder_->createBinOp(spv::OpIMul, type_uint_, counter_index,
-                            builder_->makeUintConstant(XenosZPDReport::kCount));
+  spv::Id counter_base = builder_->createBinOp(
+      spv::OpIMul, type_uint_,
+      builder_->createBinOp(spv::OpBitwiseAnd, type_uint_, counter_index,
+                            builder_->makeUintConstant(
+                                ~XenosZPDReport::kCounterIndexFirstCopyOnly)),
+      builder_->makeUintConstant(XenosZPDReport::kCounterSizeWords));
 
-  // For VIZ, an atomic store of 1 replaces the atomic add since the survey's
-  // ID consumer only cares about zero vs non-zero.
-  auto add_lane = [&](spv::Id sample_mask, uint32_t lane, bool flag) {
-    spv::Id sample_count =
-        builder_->createUnaryOp(spv::OpBitCount, type_uint_, sample_mask);
+  // Surveys only store to the first copy. Other shaders pick the copy from the
+  // position in a 4x4 pixel tile, unless the index asks for the first one.
+  spv::Id spread_base = counter_base;
+  if (!is_viz_survey_fragment_shader_) {
+    static_assert(XenosZPDReport::kCounterSpread == 4 * 4);
+    assert_true(input_fragment_coordinates_ != spv::NoResult);
+    spv::Id const_uint_3 = builder_->makeUintConstant(3);
+    auto load_tile_coordinate = [&](int component) {
+      id_vector_temp_.clear();
+      id_vector_temp_.push_back(builder_->makeIntConstant(component));
+      return builder_->createBinOp(
+          spv::OpBitwiseAnd, type_uint_,
+          builder_->createUnaryOp(
+              spv::OpConvertFToU, type_uint_,
+              builder_->createLoad(
+                  builder_->createAccessChain(spv::StorageClassInput,
+                                              input_fragment_coordinates_,
+                                              id_vector_temp_),
+                  spv::NoPrecision)),
+          const_uint_3);
+    };
+    spv::Id tile_x = load_tile_coordinate(0);
+    spv::Id tile_y = load_tile_coordinate(1);
+    spv::Id tile_offset = builder_->createBinOp(
+        spv::OpIMul, type_uint_,
+        builder_->createBinOp(
+            spv::OpBitwiseOr, type_uint_, tile_x,
+            builder_->createBinOp(spv::OpShiftLeftLogical, type_uint_, tile_y,
+                                  builder_->makeUintConstant(2))),
+        builder_->makeUintConstant(XenosZPDReport::kCounterSpreadStrideWords));
+    spread_base = builder_->createBinOp(
+        spv::OpIAdd, type_uint_, counter_base,
+        builder_->createTriOp(
+            spv::OpSelect, type_uint_,
+            builder_->createBinOp(
+                spv::OpINotEqual, type_bool_,
+                builder_->createBinOp(
+                    spv::OpBitwiseAnd, type_uint_, counter_index,
+                    builder_->makeUintConstant(
+                        XenosZPDReport::kCounterIndexFirstCopyOnly)),
+                const_uint_0_),
+            const_uint_0_, tile_offset));
+  }
+
+  for (uint32_t lane = 0; lane < XenosZPDReport::kCount; ++lane) {
+    spv::Id sample_count = sample_counts[lane];
+    if (sample_count == spv::NoResult) {
+      continue;
+    }
     SpirvBuilder::IfBuilder if_any_samples(
         builder_->createBinOp(spv::OpINotEqual, type_bool_, sample_count,
                               const_uint_0_),
         spv::SelectionControlDontFlattenMask, *builder_);
+    // For VIZ, an atomic store of 1 replaces the atomic add since the survey's
+    // ID consumer only cares about zero vs non-zero.
+    bool viz_store =
+        lane == XenosZPDReport::kZPass && is_viz_survey_fragment_shader_;
     id_vector_temp_.clear();
     id_vector_temp_.push_back(const_int_0_);
     id_vector_temp_.push_back(builder_->createUnaryOp(
         spv::OpBitcast, type_int_,
-        builder_->createBinOp(spv::OpIAdd, type_uint_, counter_base,
+        builder_->createBinOp(spv::OpIAdd, type_uint_, spread_base,
                               builder_->makeUintConstant(lane))));
     spv::Id counter_ptr = builder_->createAccessChain(
         storage_class, buffer_zpd_counter_, id_vector_temp_);
-    if (flag) {
+    if (viz_store) {
       id_vector_temp_.clear();
       id_vector_temp_.push_back(counter_ptr);
       id_vector_temp_.push_back(const_scope_device);
@@ -2073,20 +2185,6 @@ void SpirvShaderTranslator::FSI_AddMSAASamplesToZPD(bool count_passed,
                              sample_count);
     }
     if_any_samples.makeEndIf();
-  };
-
-  if (count_passed) {
-    // Only bits 0:3 are surviving coverage. 4:7 are deferred depth/stencil and
-    // don't contribute to the counter.
-    add_lane(builder_->createBinOp(
-                 spv::OpBitwiseAnd, type_uint_, main_fsi_sample_mask_,
-                 builder_->makeUintConstant((uint32_t(1) << 4) - 1)),
-             XenosZPDReport::kZPass, is_viz_survey_fragment_shader_);
-  }
-  if (count_failed && !is_viz_survey_fragment_shader_) {
-    add_lane(main_fsi_z_fail_sample_mask_, XenosZPDReport::kZFail, false);
-    add_lane(main_fsi_stencil_fail_sample_mask_, XenosZPDReport::kStencilFail,
-             false);
   }
 
   if_counter_open.makeEndIf();
@@ -2127,10 +2225,10 @@ void SpirvShaderTranslator::FBO_AddMSAASamplesToZPDTotal() {
                             const_uint_0_),
       spv::SelectionControlDontFlattenMask, *builder_);
 
-  // Total is the slot's first counter.
-  spv::Id counter_offset =
-      builder_->createBinOp(spv::OpIMul, type_uint_, counter_index,
-                            builder_->makeUintConstant(XenosZPDReport::kCount));
+  // Total is the slot's first counter, only the first copy is used here.
+  spv::Id counter_offset = builder_->createBinOp(
+      spv::OpIMul, type_uint_, counter_index,
+      builder_->makeUintConstant(XenosZPDReport::kCounterSizeWords));
   id_vector_temp_.clear();
   id_vector_temp_.push_back(const_int_0_);
   id_vector_temp_.push_back(

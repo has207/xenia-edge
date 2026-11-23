@@ -383,6 +383,7 @@ void SpirvShaderTranslator::Reset() {
   main_rect_list_loop_vertex_index_next_ = spv::NoResult;
   var_main_kill_pixel_ = spv::NoResult;
   var_main_fsi_color_written_ = spv::NoResult;
+  var_main_fsi_zpd_samples_.fill(spv::NoResult);
   var_main_zpd_coverage_ = spv::NoResult;
   std::ranges::fill(output_fragment_data_, spv::NoResult);
   output_or_var_fragment_depth_ = spv::NoResult;
@@ -3666,8 +3667,10 @@ void SpirvShaderTranslator::StartFragmentShaderInMain() {
     FSI_DepthStencilTest(false);
     if (zpd_full_counters_) {
       // Failed samples never reach the end of an early-tested shader, so
-      // they're counted here before the quad can be discarded.
-      FSI_AddMSAASamplesToZPD(false, true);
+      // they're counted here before the quad can be discarded. Not deferred,
+      // as a guest kill may still demote the invocation to a helper, whose
+      // atomics have no effect.
+      FSI_AddMSAASamplesToZPD(false, true, false);
     }
     if (!is_depth_only_fragment_shader_) {
       // Skip the rest of the shader if the whole quad (due to derivatives) has

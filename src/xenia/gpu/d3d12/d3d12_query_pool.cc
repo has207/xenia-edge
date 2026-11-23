@@ -405,7 +405,8 @@ XenosZPDReport D3D12QueryPool::GetQueryReadbackValue(uint32_t query_index,
   assert_true(query_index < capacity_ && readback_mapping_);
   const uint32_t* counter_slot =
       counter_readback_mapping_
-          ? counter_readback_mapping_ + query_index * XenosZPDReport::kCount
+          ? counter_readback_mapping_ +
+                query_index * XenosZPDReport::kCounterSizeWords
           : nullptr;
   if (counter) {
     assert_not_null(counter_slot);
@@ -415,7 +416,8 @@ XenosZPDReport D3D12QueryPool::GetQueryReadbackValue(uint32_t query_index,
   if (hybrid) {
     assert_not_null(counter_slot);
     return XenosZPDReport::FromNativeQueryAndTotal(
-        passed, counter_slot[XenosZPDReport::kTotal]);
+        passed,
+        XenosZPDReport::SumCounter(counter_slot, XenosZPDReport::kTotal));
   }
   return XenosZPDReport::FromNativeQuery(passed);
 }
