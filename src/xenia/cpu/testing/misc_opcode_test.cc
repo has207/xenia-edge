@@ -147,6 +147,42 @@ TEST_CASE("TO_SINGLE", "[convert]") {
            });
 }
 
+// With TO_SINGLE_KEEP_NAN a NaN keeps its whole payload, quieted; without it a
+// NaN rounds to single like any value (frsp).
+TEST_CASE("TO_SINGLE_KEEP_NAN", "[convert]") {
+  TestFunction test([](HIRBuilder& b) {
+    StoreFPR(b, 3, b.ToSingle(LoadFPR(b, 4), TO_SINGLE_KEEP_NAN));
+    StoreFPR(b, 5, b.ToSingle(LoadFPR(b, 4)));
+    b.Return();
+  });
+  auto set = [](double& reg, uint64_t bits) {
+    std::memcpy(&reg, &bits, sizeof(bits));
+  };
+  auto get = [](const double& reg) {
+    uint64_t bits;
+    std::memcpy(&bits, &reg, sizeof(bits));
+    return bits;
+  };
+  // A QNaN whose payload is only below single precision.
+  test.Run([&](PPCContext* ctx) { set(ctx->f[4], 0x7FF8000000000001ull); },
+           [&](PPCContext* ctx) {
+             REQUIRE(get(ctx->f[3]) == 0x7FF8000000000001ull);
+             REQUIRE(get(ctx->f[5]) == 0x7FF8000000000000ull);
+           });
+  // A signaling NaN is quieted either way.
+  test.Run([&](PPCContext* ctx) { set(ctx->f[4], 0xFFF4000000000001ull); },
+           [&](PPCContext* ctx) {
+             REQUIRE(get(ctx->f[3]) == 0xFFFC000000000001ull);
+             REQUIRE(get(ctx->f[5]) == 0xFFFC000000000000ull);
+           });
+  // Anything else still rounds.
+  test.Run([&](PPCContext* ctx) { ctx->f[4] = 1.0 + std::ldexp(1.0, -24); },
+           [&](PPCContext* ctx) {
+             REQUIRE(ctx->f[3] == 1.0);
+             REQUIRE(ctx->f[5] == 1.0);
+           });
+}
+
 // ============================================================================
 // MUL_ADD F64 — fused multiply-add: (1 * 2) + 3
 // ============================================================================

@@ -182,6 +182,7 @@ void* X64Emitter::Emplace(const EmitFunctionInfo& func_info,
 bool X64Emitter::Emit(HIRBuilder* builder, EmitFunctionInfo& func_info) {
   Xbyak::Label epilog_label;
   epilog_label_ = &epilog_label;
+  fused_to_single_ = nullptr;
 
   // Calculate stack size. We need to align things to their natural sizes.
   // This could be much better (sort by type/etc).

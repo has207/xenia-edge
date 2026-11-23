@@ -52,7 +52,7 @@ int InstrEmit_faddsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   f.BeginFPSCRUpdate(i.A.Rc);
   uint32_t range_flag = f.SingleRangeFlag(i.A.Rc);
-  Value* v = f.ToSingle(f.Add(a, b, range_flag));
+  Value* v = f.ToSingle(f.Add(a, b, range_flag), TO_SINGLE_KEEP_NAN);
   Value* out_of_range = nullptr;
   if (!range_flag) {
     out_of_range = f.SingleOutOfRangeOperand({a, b});
@@ -100,10 +100,12 @@ int InstrEmit_fdivsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(frb);
   f.BeginFPSCRUpdate(rc);
   Value* v = f.Div(a, b);
+  Value* before_rounding = f.SnapshotFpExceptions(rc);
+  // Right after the quotient, whose NaN test can then serve it too.
+  Value* rounded = f.ToSingle(v, TO_SINGLE_KEEP_NAN);
   // An operand outside the single range keeps the double quotient, unrounded.
   Value* out_of_range = f.SingleOutOfRangeOperand({a, b});
-  Value* before_rounding = f.SnapshotFpExceptions(rc);
-  f.StoreFPR(frt, f.Select(out_of_range, v, f.ToSingle(v)));
+  f.StoreFPR(frt, f.Select(out_of_range, v, rounded));
   f.UpdateFPSCRForUnroundedSingle({a, b}, rc, out_of_range, before_rounding);
   return 0;
 }
@@ -125,7 +127,7 @@ int InstrEmit_fmulsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* c = f.LoadFPR(i.A.FRC);
   f.BeginFPSCRUpdate(i.A.Rc);
   uint32_t range_flag = f.SingleRangeFlag(i.A.Rc);
-  Value* v = f.ToSingle(f.Mul(a, c, range_flag));
+  Value* v = f.ToSingle(f.Mul(a, c, range_flag), TO_SINGLE_KEEP_NAN);
   Value* out_of_range = nullptr;
   if (!range_flag) {
     out_of_range = f.SingleOutOfRangeOperand({a, c});
@@ -172,7 +174,7 @@ int InstrEmit_fsubsx(PPCHIRBuilder& f, const InstrData& i) {
   Value* b = f.LoadFPR(i.A.FRB);
   f.BeginFPSCRUpdate(i.A.Rc);
   uint32_t range_flag = f.SingleRangeFlag(i.A.Rc);
-  Value* v = f.ToSingle(f.Sub(a, b, range_flag));
+  Value* v = f.ToSingle(f.Sub(a, b, range_flag), TO_SINGLE_KEEP_NAN);
   Value* out_of_range = nullptr;
   if (!range_flag) {
     out_of_range = f.SingleOutOfRangeOperand({a, b});
@@ -203,10 +205,12 @@ static int InstrEmit_fsqrt(PPCHIRBuilder& f, const InstrData& i, bool single) {
     f.UpdateFPSCR({b}, i.A.Rc);
     return 0;
   }
+  Value* before_rounding = f.SnapshotFpExceptions(i.A.Rc);
+  // Right after the root, whose NaN test can then serve it too.
+  Value* rounded = f.ToSingle(v, TO_SINGLE_KEEP_NAN);
   // An operand outside the single range keeps the double root, unrounded.
   Value* out_of_range = f.SingleOutOfRangeOperand({b});
-  Value* before_rounding = f.SnapshotFpExceptions(i.A.Rc);
-  f.StoreFPR(i.A.FRT, f.Select(out_of_range, v, f.ToSingle(v)));
+  f.StoreFPR(i.A.FRT, f.Select(out_of_range, v, rounded));
   f.UpdateFPSCRForUnroundedSingle({b}, i.A.Rc, out_of_range, before_rounding);
   return 0;
 }
@@ -230,7 +234,7 @@ static int InstrEmit_fmadd(PPCHIRBuilder& f, const InstrData& i, bool single) {
   Value* v = f.MulAdd(a, c, b, false, range_flag);
   Value* out_of_range = nullptr;
   if (single) {
-    v = f.ToSingle(v);
+    v = f.ToSingle(v, TO_SINGLE_KEEP_NAN);
     if (!range_flag) {
       out_of_range = f.SingleOutOfRangeOperand({a, c, b});
       v = f.ApplySingleOutOfRangeOperand(out_of_range, v);
@@ -259,7 +263,7 @@ static int InstrEmit_fmsub(PPCHIRBuilder& f, const InstrData& i, bool single) {
   Value* v = f.MulSub(a, c, b, false, range_flag);
   Value* out_of_range = nullptr;
   if (single) {
-    v = f.ToSingle(v);
+    v = f.ToSingle(v, TO_SINGLE_KEEP_NAN);
     if (!range_flag) {
       out_of_range = f.SingleOutOfRangeOperand({a, c, b});
       v = f.ApplySingleOutOfRangeOperand(out_of_range, v);
@@ -299,7 +303,7 @@ int InstrEmit_fnmaddsx(PPCHIRBuilder& f, const InstrData& i) {
   f.BeginFPSCRUpdate(i.A.Rc);
   uint32_t range_flag = f.SingleRangeFlag(i.A.Rc);
   Value* v = f.MulAdd(a, c, b, /*negate_result=*/true, range_flag);
-  v = f.ToSingle(v);
+  v = f.ToSingle(v, TO_SINGLE_KEEP_NAN);
   Value* out_of_range = nullptr;
   if (!range_flag) {
     out_of_range = f.SingleOutOfRangeOperand({a, c, b});
@@ -330,7 +334,7 @@ int InstrEmit_fnmsubsx(PPCHIRBuilder& f, const InstrData& i) {
   f.BeginFPSCRUpdate(i.A.Rc);
   uint32_t range_flag = f.SingleRangeFlag(i.A.Rc);
   Value* v = f.MulSub(a, c, b, /*negate_result=*/true, range_flag);
-  v = f.ToSingle(v);
+  v = f.ToSingle(v, TO_SINGLE_KEEP_NAN);
   Value* out_of_range = nullptr;
   if (!range_flag) {
     out_of_range = f.SingleOutOfRangeOperand({a, c, b});

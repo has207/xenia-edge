@@ -70,6 +70,12 @@ enum ArithmeticFlags {
   ARITHMETIC_SINGLE_RANGE = (1 << 5),
 };
 
+enum ToSingleFlags {
+  // A NaN keeps its whole double payload, quieted, as the single-precision
+  // arithmetic instructions return one. frsp rounds a NaN like any value.
+  TO_SINGLE_KEEP_NAN = (1 << 0),
+};
+
 constexpr uint32_t MakePermuteMask(uint32_t sel_x, uint32_t x, uint32_t sel_y,
                                    uint32_t y, uint32_t sel_z, uint32_t z,
                                    uint32_t sel_w, uint32_t w) {

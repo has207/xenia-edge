@@ -447,7 +447,31 @@ struct TOSINGLE_F64_F64
          on actual hardware, it looks good to me
       */
       e.vcvtsd2ss(e.xmm0, srcreg, srcreg);
+      // Fused, the operation before kept every NaN away from here.
+      assert_true(!e.fused_to_single() || e.fused_to_single() == i.instr);
+      Xbyak::Label* past_nan = e.ConsumeFusedToSingle(i.instr);
+      if (!(i.instr->flags & TO_SINGLE_KEEP_NAN) || past_nan) {
+        e.vcvtss2sd(i.dest, e.xmm0, e.xmm0);
+        if (past_nan) {
+          e.L(*past_nan);
+        }
+        return;
+      }
+      // A NaN takes the tail, which returns it quieted with its whole
+      // payload. The source is still intact there when dest aliases it.
+      Xbyak::Label& done = e.NewCachedLabel();
+      Xbyak::Label& keep_nan =
+          e.AddToTail([i, srcreg, &done](X64Emitter& e, Xbyak::Label& tail) {
+            e.L(tail);
+            e.vmovq(e.rax, srcreg);
+            e.bts(e.rax, 51);
+            e.vmovq(i.dest, e.rax);
+            e.jmp(done, e.T_NEAR);
+          });
+      e.vucomisd(srcreg, srcreg);
+      e.jp(keep_nan, e.T_NEAR);
       e.vcvtss2sd(i.dest, e.xmm0, e.xmm0);
+      e.L(done);
     }
   }
 };
@@ -1691,6 +1715,44 @@ static Xbyak::Label* EmitSingleRangeCheck(X64Emitter& e, const ARGS& i) {
   return &done;
 }
 
+// Fuses the TO_SINGLE_KEEP_NAN right after an F64 operation that reads its
+// result (see X64Emitter::MarkFusedToSingle). Only for operations whose every
+// NaN result leaves through exits bound with BindNanExit, and before any is.
+static void FuseToSingleIfNext(X64Emitter& e, const Instr* instr) {
+  const Instr* next = instr->next;
+  if (cvars::no_round_to_single || !next ||
+      next->GetOpcodeNum() != OPCODE_TO_SINGLE ||
+      !(next->flags & TO_SINGLE_KEEP_NAN) || next->src1.value != instr->dest) {
+    return;
+  }
+  assert_null(e.fused_to_single());
+  e.MarkFusedToSingle(next, &e.NewCachedLabel());
+}
+
+// Binds exit, which an F64 operation's tails return to with a NaN in dest.
+// Fused with a TO_SINGLE, exit starts a stub instead that hands the NaN to the
+// TO_SINGLE's dest and jumps past its conversion, while the hot path, which
+// has no NaN, runs on into it.
+static void BindNanExit(X64Emitter& e, Xbyak::Label& exit, const Xmm& dest) {
+  const Instr* to_single = e.fused_to_single();
+  if (!to_single) {
+    e.L(exit);
+    return;
+  }
+  Xmm to_single_dest;
+  X64Emitter::SetupReg(to_single->dest, to_single_dest);
+  Xbyak::Label* past = e.fused_to_single_exit();
+  e.AddToTail(
+      [&exit, dest, to_single_dest, past](X64Emitter& e, Xbyak::Label& tail) {
+        e.L(tail);
+        e.L(exit);
+        if (to_single_dest.getIdx() != dest.getIdx()) {
+          e.vmovapd(to_single_dest, dest);
+        }
+        e.jmp(*past, e.T_NEAR);
+      });
+}
+
 // An invalid operation with no NaN operand answers with the default QNaN, and
 // x86's is negative where PPC's is positive. Only a NaN result can need the
 // fixup, so the test stays off the result's dependency chain and the work goes
@@ -1732,7 +1794,7 @@ static void EmitBinaryFpWithPpcDefaultNan_F64(X64Emitter& e, const ARGS& i,
   if (aliased) {
     e.vmovapd(i.dest, e.xmm2);
   }
-  e.L(done);
+  BindNanExit(e, done, i.dest.reg());
 }
 
 // ============================================================================
@@ -1786,13 +1848,14 @@ struct ADD_F32 : Sequence<ADD_F32, I<OPCODE_ADD, F32Op, F32Op, F32Op>> {
 struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    FuseToSingleIfNext(e, i.instr);
     Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
     EmitBinaryFpWithPpcDefaultNan_F64(
         e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
           e.vaddsd(dest, s1, s2);
         });
     if (range_done) {
-      e.L(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg());
     }
   }
 };
@@ -1913,13 +1976,14 @@ struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_true(!(i.instr->flags & ~ARITHMETIC_SINGLE_RANGE));
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    FuseToSingleIfNext(e, i.instr);
     Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
     EmitBinaryFpWithPpcDefaultNan_F64(
         e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
           e.vsubsd(dest, s1, s2);
         });
     if (range_done) {
-      e.L(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg());
     }
   }
 };
@@ -2064,13 +2128,14 @@ struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_true(!(i.instr->flags & ~ARITHMETIC_SINGLE_RANGE));
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    FuseToSingleIfNext(e, i.instr);
     Xbyak::Label* range_done = EmitSingleRangeCheck<2>(e, i);
     EmitBinaryFpWithPpcDefaultNan_F64(
         e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
           e.vmulsd(dest, s1, s2);
         });
     if (range_done) {
-      e.L(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg());
     }
   }
 };
@@ -2354,6 +2419,7 @@ struct DIV_F64 : Sequence<DIV_F64, I<OPCODE_DIV, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     assert_true(!i.instr->flags);
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    FuseToSingleIfNext(e, i.instr);
     EmitBinaryFpWithPpcDefaultNan_F64(
         e, i, [](X64Emitter& e, const Xmm& dest, const Xmm& s1, const Xmm& s2) {
           e.vdivsd(dest, s1, s2);
@@ -2464,7 +2530,7 @@ static void EmitPpcFmaResult_F64(X64Emitter& e, const ARGS& i, bool negate) {
   e.vucomisd(e.xmm3, e.xmm3);
   e.jp(fixup, e.T_NEAR);
   e.vmovapd(i.dest, e.xmm3);
-  e.L(done);
+  BindNanExit(e, done, i.dest.reg());
 }
 
 template <typename ARGS>
@@ -2501,6 +2567,7 @@ struct MUL_ADD_F64
     : Sequence<MUL_ADD_F64, I<OPCODE_MUL_ADD, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    FuseToSingleIfNext(e, i.instr);
     Xbyak::Label* range_done = EmitSingleRangeCheck<3>(e, i);
 
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
@@ -2518,7 +2585,7 @@ struct MUL_ADD_F64
     EmitPpcFmaResult_F64(e, i,
                          (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
     if (range_done) {
-      e.L(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg());
     }
   }
 };
@@ -2585,6 +2652,7 @@ struct MUL_SUB_F64
     : Sequence<MUL_SUB_F64, I<OPCODE_MUL_SUB, F64Op, F64Op, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    FuseToSingleIfNext(e, i.instr);
     Xbyak::Label* range_done = EmitSingleRangeCheck<3>(e, i);
 
     Xmm src1 = GetInputRegOrConstant(e, i.src1, e.xmm0);
@@ -2602,7 +2670,7 @@ struct MUL_SUB_F64
     EmitPpcFmaResult_F64(e, i,
                          (i.instr->flags & ARITHMETIC_NEGATE_RESULT) != 0);
     if (range_done) {
-      e.L(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg());
     }
   }
 };
@@ -2727,6 +2795,7 @@ struct SQRT_F32 : Sequence<SQRT_F32, I<OPCODE_SQRT, F32Op, F32Op>> {
 struct SQRT_F64 : Sequence<SQRT_F64, I<OPCODE_SQRT, F64Op, F64Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     e.ChangeMxcsrMode(MXCSRMode::Fpu);
+    FuseToSingleIfNext(e, i.instr);
     Xmm src = GetInputRegOrConstant(e, i.src1, e.xmm0);
     // A negative operand is an invalid operation, and PPC answers it with the
     // positive default QNaN where x86 answers with the negative one. Only a NaN
@@ -2752,7 +2821,7 @@ struct SQRT_F64 : Sequence<SQRT_F64, I<OPCODE_SQRT, F64Op, F64Op>> {
     e.vucomisd(e.xmm1, e.xmm1);
     e.jp(invalid, X64Emitter::T_NEAR);
     e.vmovapd(i.dest, e.xmm1);
-    e.L(done);
+    BindNanExit(e, done, i.dest.reg());
   }
 };
 struct SQRT_V128 : Sequence<SQRT_V128, I<OPCODE_SQRT, V128Op, V128Op>> {

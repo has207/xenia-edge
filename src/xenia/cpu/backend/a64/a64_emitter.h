@@ -353,6 +353,28 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
     return true;
   }
 
+  // A TO_SINGLE_KEEP_NAN reading the result of the F64 operation right before
+  // it leaves the NaN to that operation, when it tests its result anyway: the
+  // operation's NaN exits hand the NaN to the TO_SINGLE's dest and jump to
+  // exit, past the conversion, where the TO_SINGLE binds it. Keyed on the
+  // TO_SINGLE; cleared on read. It must take it, or Emit fails the function.
+  void MarkFusedToSingle(const hir::Instr* to_single,
+                         Xbyak_aarch64::Label* exit) {
+    fused_to_single_ = to_single;
+    fused_to_single_exit_ = exit;
+  }
+  const hir::Instr* fused_to_single() const { return fused_to_single_; }
+  Xbyak_aarch64::Label* fused_to_single_exit() const {
+    return fused_to_single_exit_;
+  }
+  Xbyak_aarch64::Label* ConsumeFusedToSingle(const hir::Instr* to_single) {
+    if (!fused_to_single_ || fused_to_single_ != to_single) {
+      return nullptr;
+    }
+    fused_to_single_ = nullptr;
+    return fused_to_single_exit_;
+  }
+
   // SOURCE_OFFSET, CONTEXT_BARRIER and NOP emit no code that touches NZCV
   // or a register a required handoff names (SOURCE_OFFSET's coverage
   // counter uses add, not adds, and only x0/x1). COMMENT does not pass: it
@@ -534,21 +556,25 @@ class A64Emitter : public Xbyak_aarch64::CodeGenerator {
     RecordIncomingState(target, fpcr_mode_, physical_remap_bound_valid_);
   }
   bool physical_remap_bound_valid_ = false;
-  // Handoffs between adjacent sequences; see MarkFusedAddressMask and
-  // MarkFusedCompareBranch.
+  // Handoffs between adjacent sequences; see MarkFusedAddressMask,
+  // MarkFusedCompareBranch and MarkFusedToSingle.
   void ResetSequenceHandoffs() {
     fused_addr_mask_dest_reg_ = -1;
     fused_cmp_branch_reg_ = -1;
+    fused_to_single_ = nullptr;
     x0_constant_reader_ = nullptr;
   }
   bool sequence_handoff_pending() const {
-    return fused_addr_mask_dest_reg_ >= 0 || fused_cmp_branch_reg_ >= 0;
+    return fused_addr_mask_dest_reg_ >= 0 || fused_cmp_branch_reg_ >= 0 ||
+           fused_to_single_;
   }
   int fused_addr_mask_dest_reg_ = -1;
   int fused_addr_mask_src_reg_ = -1;
   uint32_t fused_addr_mask_imm_ = 0;
   int fused_cmp_branch_reg_ = -1;
   Xbyak_aarch64::Cond fused_cmp_branch_cond_ = Xbyak_aarch64::EQ;
+  const hir::Instr* fused_to_single_ = nullptr;
+  Xbyak_aarch64::Label* fused_to_single_exit_ = nullptr;
   const hir::Instr* x0_constant_reader_ = nullptr;
   uint64_t x0_constant_ = 0;
   bool synchronize_stack_on_next_instruction_ = false;

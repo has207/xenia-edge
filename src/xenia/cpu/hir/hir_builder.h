@@ -252,7 +252,7 @@ class HIRBuilder {
   Value* VectorCompareUGT(Value* value1, Value* value2, TypeName part_type);
   Value* VectorCompareUGE(Value* value1, Value* value2, TypeName part_type);
   Value* VectorDenormFlush(Value* value1);
-  Value* ToSingle(Value* value);
+  Value* ToSingle(Value* value, uint32_t to_single_flags = 0);
   Value* UnpackSingle(Value* single_bits);
   Value* PackSingle(Value* value);
   Value* Add(Value* value1, Value* value2, uint32_t arithmetic_flags = 0);

@@ -1638,9 +1638,10 @@ Value* HIRBuilder::VectorDenormFlush(Value* value1) {
   i->src3.value = nullptr;
   return i->dest;
 }
-Value* HIRBuilder::ToSingle(Value* value) {
+Value* HIRBuilder::ToSingle(Value* value, uint32_t to_single_flags) {
   assert_true(value->type == FLOAT64_TYPE);
-  Instr* i = AppendInstr(OPCODE_TO_SINGLE_info, 0, AllocValue(FLOAT64_TYPE));
+  Instr* i = AppendInstr(OPCODE_TO_SINGLE_info, to_single_flags,
+                         AllocValue(FLOAT64_TYPE));
   i->set_src1(value);
   i->src2.value = nullptr;
   i->src3.value = nullptr;

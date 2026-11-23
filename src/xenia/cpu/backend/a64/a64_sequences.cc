@@ -737,17 +737,59 @@ static void EmitTakeNanOperand(A64Emitter& e, const Reg& dest,
   e.b(done);
 }
 
+// The ARM result of a binary operation is already PowerPC's unless the first
+// operand can be a quiet NaN while the second is a signalling one. Only then
+// does EmitFpBinOpWithPpcNan test the result for a NaN.
+static bool FpBinOpNeedsPpcNanFixup(const hir::Instr* instr) {
+  const hir::Value* v1 = instr->src1.value;
+  const hir::Value* v2 = instr->src2.value;
+  return v1 != v2 && !IsNeverSignalingNan(v2) && !IsNonNanConstant(v1);
+}
+
+// Fuses the TO_SINGLE_KEEP_NAN right after an F64 operation that reads its
+// result (see A64Emitter::MarkFusedToSingle). Only for operations whose every
+// NaN result leaves through exits bound with BindNanExit, and before any is.
+static void FuseToSingleIfNext(A64Emitter& e, const hir::Instr* instr) {
+  const hir::Instr* next = instr->next;
+  if (!next || next->GetOpcodeNum() != hir::OPCODE_TO_SINGLE ||
+      !(next->flags & TO_SINGLE_KEEP_NAN) || next->src1.value != instr->dest) {
+    return;
+  }
+  assert_null(e.fused_to_single());
+  e.MarkFusedToSingle(next, &e.NewCachedLabel());
+}
+
+// Binds exit, which an F64 operation's tails return to with a NaN in the
+// register dest_idx. Fused with a TO_SINGLE, exit starts a stub instead that
+// hands the NaN to the TO_SINGLE's dest and jumps past its conversion, while
+// the hot path, which has no NaN, runs on into it. Neither touches w7.
+static void BindNanExit(A64Emitter& e, Xbyak_aarch64::Label& exit,
+                        int dest_idx) {
+  const hir::Instr* to_single = e.fused_to_single();
+  if (!to_single) {
+    e.LKeepingRemapBound(exit);
+    return;
+  }
+  DReg to_single_dest(0);
+  A64Emitter::SetupReg(to_single->dest, to_single_dest);
+  const DReg dest(dest_idx);
+  Xbyak_aarch64::Label* past = e.fused_to_single_exit();
+  e.AddToTail([&exit, dest, to_single_dest, past](A64Emitter& e,
+                                                  Xbyak_aarch64::Label&) {
+    e.L(exit);
+    if (to_single_dest.getIdx() != dest.getIdx()) {
+      e.fmov(to_single_dest, dest);
+    }
+    e.b(*past);
+  });
+}
+
 template <typename Reg>
 static void EmitFpBinOpWithPpcNan(A64Emitter& e, const hir::Instr* instr,
                                   std::type_identity_t<Reg> dest, Reg s1,
                                   Reg s2, FpBinOp op) {
   e.ChangeFpcrMode(FPCRMode::Fpu);
-  // The ARM result is already PowerPC's unless the first operand can be a
-  // quiet NaN while the second is a signalling one.
-  const hir::Value* v1 = instr->src1.value;
-  const hir::Value* v2 = instr->src2.value;
-  const bool fixup =
-      v1 != v2 && !IsNeverSignalingNan(v2) && !IsNonNanConstant(v1);
+  const bool fixup = FpBinOpNeedsPpcNanFixup(instr);
 
   // Preserve the first source if the op overwrites it: the fixup reads it.
   Reg t1 = s1;
@@ -783,7 +825,7 @@ static void EmitFpBinOpWithPpcNan(A64Emitter& e, const hir::Instr* instr,
       });
   e.fcmp(dest, dest);
   e.b(VS, nan_result);
-  e.LKeepingRemapBound(done);
+  BindNanExit(e, done, dest.getIdx());
 }
 // Branches to target if an operand is nonzero and outside [2^-149, 2^128), or
 // infinite or NaN: the bits are compared without the sign, shifted up by one.
@@ -908,7 +950,7 @@ static void EmitFmaWithPpcNan(A64Emitter& e, std::type_identity_t<Reg> dest,
   if (negate) {
     e.fneg(dest, dest);
   }
-  e.LKeepingRemapBound(done);
+  BindNanExit(e, done, dest.getIdx());
 }
 
 struct ADD_F32 : Sequence<ADD_F32, I<OPCODE_ADD, F32Op, F32Op, F32Op>> {
@@ -958,10 +1000,13 @@ struct ADD_F64 : Sequence<ADD_F64, I<OPCODE_ADD, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    if (FpBinOpNeedsPpcNanFixup(i.instr)) {
+      FuseToSingleIfNext(e, i.instr);
+    }
     auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Add);
     if (range_done) {
-      e.LKeepingRemapBound(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg().getIdx());
     }
   }
 };
@@ -1275,10 +1320,13 @@ struct SUB_F64 : Sequence<SUB_F64, I<OPCODE_SUB, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    if (FpBinOpNeedsPpcNanFixup(i.instr)) {
+      FuseToSingleIfNext(e, i.instr);
+    }
     auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Sub);
     if (range_done) {
-      e.LKeepingRemapBound(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg().getIdx());
     }
   }
 };
@@ -1524,10 +1572,13 @@ struct MUL_F64 : Sequence<MUL_F64, I<OPCODE_MUL, F64Op, F64Op, F64Op>> {
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
     }
+    if (FpBinOpNeedsPpcNanFixup(i.instr)) {
+      FuseToSingleIfNext(e, i.instr);
+    }
     auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2});
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Mul);
     if (range_done) {
-      e.LKeepingRemapBound(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg().getIdx());
     }
   }
 };
@@ -1648,6 +1699,9 @@ struct DIV_F64 : Sequence<DIV_F64, I<OPCODE_DIV, F64Op, F64Op, F64Op>> {
       c.d = i.src2.constant();
       e.mov(e.x0, c.u);
       e.fmov(e.d1, e.x0);
+    }
+    if (FpBinOpNeedsPpcNanFixup(i.instr)) {
+      FuseToSingleIfNext(e, i.instr);
     }
     EmitFpBinOpWithPpcNan(e, i.instr, i.dest, s1, s2, FpBinOp::Div);
   }
@@ -4422,11 +4476,12 @@ struct MUL_ADD_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
+    FuseToSingleIfNext(e, i.instr);
     auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan(e, i.dest, s1, s2, s3, /*is_sub=*/false,
                       i.instr->flags & ARITHMETIC_NEGATE_RESULT);
     if (range_done) {
-      e.LKeepingRemapBound(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg().getIdx());
     }
   }
 };
@@ -4532,11 +4587,12 @@ struct MUL_SUB_F64
       e.mov(e.x0, c.u);
       e.fmov(e.d2, e.x0);
     }
+    FuseToSingleIfNext(e, i.instr);
     auto* range_done = EmitSingleRangeCheck(e, i.instr, i.dest, {s1, s2, s3});
     EmitFmaWithPpcNan(e, i.dest, s1, s2, s3, /*is_sub=*/true,
                       i.instr->flags & ARITHMETIC_NEGATE_RESULT);
     if (range_done) {
-      e.LKeepingRemapBound(*range_done);
+      BindNanExit(e, *range_done, i.dest.reg().getIdx());
     }
   }
 };
@@ -5053,17 +5109,46 @@ EMITTER_OPCODE_TABLE(OPCODE_RECIP, RECIP_F32, RECIP_F64, RECIP_V128);
 // is the source unchanged and a normal single or zero: neither rounding nor
 // FZ applies to such a value in any mode. Anything else, a NaN included,
 // takes the tail and converts in the Fpu mode.
+//
+// With TO_SINGLE_KEEP_NAN a NaN comes back quieted with its whole payload
+// instead: from a tail of its own in the Fpu mode, else from the conversion
+// tail it already takes. Fused with the operation before (FuseToSingleIfNext),
+// no NaN gets here and there is no test.
 struct TOSINGLE : Sequence<TOSINGLE, I<OPCODE_TO_SINGLE, F64Op, F64Op>> {
+  // dest = src with the quiet bit set. Clobbers x0.
+  static void EmitKeepNan(A64Emitter& e, const DReg& dest, const DReg& src) {
+    e.fmov(e.x0, src);
+    e.orr(e.x0, e.x0, uint64_t(1) << 51);
+    e.fmov(dest, e.x0);
+  }
+
   static void Emit(A64Emitter& e, const EmitArgType& i) {
+    // Fused, the operation before kept every NaN away from here.
+    Xbyak_aarch64::Label* past_nan = e.ConsumeFusedToSingle(i.instr);
+    EmitConversion(e, i,
+                   (i.instr->flags & TO_SINGLE_KEEP_NAN) != 0 && !past_nan);
+    if (past_nan) {
+      // The stubs that jump here only move a register.
+      e.LKeepingRemapBound(*past_nan);
+    }
+  }
+
+  static void EmitConversion(A64Emitter& e, const EmitArgType& i,
+                             bool keep_nan) {
     if (i.src1.is_constant) {
-      if (!IsExactNormalSingle(i.src1.constant())) {
-        e.ChangeFpcrMode(FPCRMode::Fpu);
-      }
       union {
         double d;
         uint64_t u;
       } c;
       c.d = i.src1.constant();
+      if (keep_nan && std::isnan(c.d)) {
+        e.mov(e.x0, c.u | (uint64_t(1) << 51));
+        e.fmov(i.dest, e.x0);
+        return;
+      }
+      if (!IsExactNormalSingle(c.d)) {
+        e.ChangeFpcrMode(FPCRMode::Fpu);
+      }
       e.mov(e.x0, c.u);
       e.fmov(e.d0, e.x0);
     }
@@ -5072,16 +5157,44 @@ struct TOSINGLE : Sequence<TOSINGLE, I<OPCODE_TO_SINGLE, F64Op, F64Op>> {
     // NaN sign is already correct from upstream arithmetic (EmitFmaWithPpcNan
     // etc.) or fneg.  fcvt with DN=0 preserves NaN sign, so no fixup needed.
     e.fcvt(e.s0, src);
+    const DReg dest = i.dest;
     if (i.src1.is_constant || e.fpcr_mode() == FPCRMode::Fpu) {
+      if (!keep_nan || i.src1.is_constant) {
+        e.fcvt(i.dest, e.s0);
+        return;
+      }
+      // The source is still intact in the tail when dest aliases it.
+      auto& done = e.NewCachedLabel();
+      auto& nan_tail =
+          e.AddToTail([src, dest, &done](A64Emitter& e, Xbyak_aarch64::Label&) {
+            EmitKeepNan(e, dest, src);
+            e.b(done);
+          });
+      e.fcmp(src, src);
+      e.b(Xbyak_aarch64::VS, nan_tail);
       e.fcvt(i.dest, e.s0);
+      // The tail works in x0.
+      e.LKeepingRemapBound(done);
       return;
     }
-    const DReg dest = i.dest;
     auto& done = e.NewCachedLabel();
-    auto& in_fpu = AddFpuModeTail(e, done, [src, dest](A64Emitter& e) {
-      e.fcvt(e.s0, src);
-      e.fcvt(dest, e.s0);
-    });
+    auto& in_fpu =
+        AddFpuModeTail(e, done, [src, dest, keep_nan](A64Emitter& e) {
+          if (keep_nan) {
+            Xbyak_aarch64::Label convert, converted;
+            e.fcmp(src, src);
+            e.b_near(Xbyak_aarch64::VC, convert);
+            EmitKeepNan(e, dest, src);
+            e.b(converted);
+            e.L(convert);
+            e.fcvt(e.s0, src);
+            e.fcvt(dest, e.s0);
+            e.L(converted);
+            return;
+          }
+          e.fcvt(e.s0, src);
+          e.fcvt(dest, e.s0);
+        });
     e.fcvt(e.d1, e.s0);
     e.cmeq(e.d2, e.d1, src);
     e.fmov(e.x17, e.d2);
