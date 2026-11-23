@@ -41,7 +41,6 @@ class DeferredCommandList {
   void Reset();
   void Execute(ID3D12GraphicsCommandList* command_list,
                ID3D12GraphicsCommandList1* command_list_1,
-               ID3D12GraphicsCommandList2* command_list_2,
                ID3D12GraphicsCommandList9* command_list_9);
 
   D3D12_RECT* ClearDepthStencilViewAllocatedRects(
@@ -517,14 +516,6 @@ class DeferredCommandList {
                     sizeof(D3D12_SAMPLE_POSITION));
   }
 
-  void D3DWriteBufferImmediate(D3D12_GPU_VIRTUAL_ADDRESS dest, UINT value) {
-    auto& args = *reinterpret_cast<D3DWriteBufferImmediateArguments*>(
-        WriteCommand(Command::kD3DWriteBufferImmediate,
-                     sizeof(D3DWriteBufferImmediateArguments)));
-    args.dest = dest;
-    args.value = value;
-  }
-
   // Debug marker support for PIX/RenderDoc annotation.
   void BeginDebugMarker(const char* label_name) {
     size_t label_len = std::strlen(label_name);
@@ -592,7 +583,6 @@ class DeferredCommandList {
     kD3DSetPipelineState,
     kSetPipelineStateHandle,
     kD3DSetSamplePositions,
-    kD3DWriteBufferImmediate,
     kBeginDebugMarker,
     kEndDebugMarker,
     kInsertDebugMarker,
@@ -758,11 +748,6 @@ class DeferredCommandList {
     UINT num_samples_per_pixel;
     UINT num_pixels;
     D3D12_SAMPLE_POSITION sample_positions[16];
-  };
-
-  struct D3DWriteBufferImmediateArguments {
-    D3D12_GPU_VIRTUAL_ADDRESS dest;
-    UINT value;
   };
 
   struct DebugMarkerHeader {

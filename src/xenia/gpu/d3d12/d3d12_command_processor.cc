@@ -607,7 +607,6 @@ bool D3D12CommandProcessor::SetupContext() {
   // Initially in open state, wait until a deferred command list submission.
   command_list_->Close();
   command_list_->QueryInterface(IID_PPV_ARGS(&command_list_1_));
-  command_list_->QueryInterface(IID_PPV_ARGS(&command_list_2_));
   command_list_->QueryInterface(IID_PPV_ARGS(&command_list_9_));
 
   bindless_resources_used_ =
@@ -677,10 +676,8 @@ bool D3D12CommandProcessor::SetupContext() {
            RenderTargetCache::Path::kPixelShaderInterlock ||
        cvars::xenos_sample_positions);
 
-  // Hybrid RTV queries count pre-test coverage in the pixel shader and clear
-  // their counter slot with WriteBufferImmediate, so they need CommandList2.
+  // Hybrid RTV queries count pre-test coverage in the pixel shader.
   zpd_hybrid_supported_ = cvars::occlusion_query_full_counters &&
-                          command_list_2_ &&
                           render_target_cache_->GetPath() ==
                               RenderTargetCache::Path::kHostRenderTargets;
   // The pixel shader interlock path applies the depth bias in the shader.
@@ -1518,7 +1515,6 @@ void D3D12CommandProcessor::ShutdownContext() {
 
   deferred_command_list_.Reset();
   ui::d3d12::util::ReleaseAndNull(command_list_1_);
-  ui::d3d12::util::ReleaseAndNull(command_list_2_);
   ui::d3d12::util::ReleaseAndNull(command_list_9_);
   ui::d3d12::util::ReleaseAndNull(command_list_);
   ClearCommandAllocatorCache();
@@ -4028,7 +4024,7 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
     command_allocator->Reset();
     command_list_->Reset(command_allocator, nullptr);
     deferred_command_list_.Execute(command_list_, command_list_1_,
-                                   command_list_2_, command_list_9_);
+                                   command_list_9_);
     command_list_->Close();
     ID3D12CommandList* execute_command_lists[] = {command_list_};
     direct_queue->ExecuteCommandLists(1, execute_command_lists);
@@ -5011,10 +5007,7 @@ void D3D12CommandProcessor::EnsureQueryResources() {
                   render_target_cache_->GetPath() ==
                       RenderTargetCache::Path::kPixelShaderInterlock;
   zpd_rov_path_ = rov_path;
-  // The counter clear uses WriteBufferImmediate, so only initialize when
-  // CommandList2 is available.
-  bool can_initialize_counter =
-      (rov_path || zpd_hybrid_supported_) && command_list_2_;
+  bool can_initialize_counter = rov_path || zpd_hybrid_supported_;
 
   ID3D12Resource* counter_buffer = nullptr;
   uint32_t counter_capacity = 0;
@@ -5040,15 +5033,9 @@ void D3D12CommandProcessor::EnsureQueryResources() {
         ui::d3d12::D3D12DescriptorHeapPool::kHeapIndexInvalid;
   }
   if (zpd_rov_path_ && !IsQueryPoolReady()) {
-    if (!command_list_2_) {
-      XELOGW(
-          "ZPD/D3D12: Counter unavailable because CommandList2 is not "
-          "available; keeping counter index sentinel active");
-    } else {
-      XELOGW(
-          "ZPD/D3D12: Counter resources unavailable; keeping counter index "
-          "sentinel active");
-    }
+    XELOGW(
+        "ZPD/D3D12: Counter resources unavailable; keeping counter index "
+        "sentinel active");
   }
 }
 

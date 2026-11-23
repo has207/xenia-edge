@@ -112,10 +112,12 @@ class D3D12QueryPool {
   Microsoft::WRL::ComPtr<ID3D12Resource> counter_buffer_;
   Microsoft::WRL::ComPtr<ID3D12Resource> counter_readback_buffer_;
   uint32_t* counter_readback_mapping_ = nullptr;
-  // counter_buffer_ is written as a copy (WriteBufferImmediate needs
-  // COPY_DEST), through pixel shader UAV atomics (UNORDERED_ACCESS), and read
-  // out for resolve (COPY_SOURCE). The tracked state is only valid within the
-  // submission recorded in counter_buffer_state_submission_.
+  // One zeroed slot, copied over a slot to clear it.
+  Microsoft::WRL::ComPtr<ID3D12Resource> counter_zero_buffer_;
+  // counter_buffer_ is cleared with a copy (COPY_DEST), written through pixel
+  // shader UAV atomics (UNORDERED_ACCESS), and read out for resolve
+  // (COPY_SOURCE). The tracked state is only valid within the submission
+  // recorded in counter_buffer_state_submission_.
   D3D12_RESOURCE_STATES counter_buffer_state_ = D3D12_RESOURCE_STATE_COMMON;
   uint64_t counter_buffer_state_submission_ = UINT64_MAX;
 

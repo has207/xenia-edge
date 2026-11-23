@@ -112,6 +112,7 @@ bool D3D12QueryPool::EnsureInitialized(const ui::d3d12::D3D12Provider& provider,
   }
   counter_readback_mapping_ = nullptr;
   counter_readback_buffer_.Reset();
+  counter_zero_buffer_.Reset();
   counter_buffer_.Reset();
   counter_resolve_batch_indices_.clear();
 
@@ -134,6 +135,24 @@ bool D3D12QueryPool::EnsureInitialized(const ui::d3d12::D3D12Provider& provider,
   counter_buffer_state_ = D3D12_RESOURCE_STATE_COMMON;
   counter_buffer_state_submission_ = UINT64_MAX;
 
+  // Created zeroed, not with the usual not-zeroed flag. It's never written so
+  // it's only implicitly promoted from COMMON to COPY_SOURCE.
+  D3D12_RESOURCE_DESC zero_buffer_desc;
+  ui::d3d12::util::FillBufferResourceDesc(zero_buffer_desc,
+                                          XenosZPDReport::kCounterSizeBytes,
+                                          D3D12_RESOURCE_FLAG_NONE);
+  if (FAILED(device->CreateCommittedResource(
+          &ui::d3d12::util::kHeapPropertiesDefault, D3D12_HEAP_FLAG_NONE,
+          &zero_buffer_desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+          IID_PPV_ARGS(&counter_zero_buffer_)))) {
+    XELOGW(
+        "D3D12QueryPool: Failed to create the ZPD counter zero "
+        "buffer, falling back to fake sample counts.");
+    counter_buffer_.Reset();
+    return false;
+  }
+  counter_zero_buffer_->SetName(L"ZPD Counter Zero Buffer");
+
   D3D12_RESOURCE_DESC readback_buffer_desc;
   ui::d3d12::util::FillBufferResourceDesc(
       readback_buffer_desc,
@@ -147,6 +166,7 @@ bool D3D12QueryPool::EnsureInitialized(const ui::d3d12::D3D12Provider& provider,
     XELOGW(
         "D3D12QueryPool: Failed to create the ZPD counter readback "
         "buffer, falling back to fake sample counts.");
+    counter_zero_buffer_.Reset();
     counter_buffer_.Reset();
     return false;
   }
@@ -162,6 +182,7 @@ bool D3D12QueryPool::EnsureInitialized(const ui::d3d12::D3D12Provider& provider,
         "D3D12QueryPool: Failed to map the ZPD counter readback "
         "buffer, falling back to fake sample counts.");
     counter_readback_buffer_.Reset();
+    counter_zero_buffer_.Reset();
     counter_buffer_.Reset();
     return false;
   }
@@ -196,6 +217,7 @@ void D3D12QueryPool::Shutdown() {
 
   counter_readback_mapping_ = nullptr;
   counter_readback_buffer_.Reset();
+  counter_zero_buffer_.Reset();
   counter_buffer_.Reset();
   counter_buffer_state_ = D3D12_RESOURCE_STATE_COMMON;
   counter_buffer_state_submission_ = UINT64_MAX;
@@ -286,20 +308,17 @@ void D3D12QueryPool::TransitionCounterBuffer(
 void D3D12QueryPool::ClearCounter(DeferredCommandList& deferred_command_list,
                                   uint64_t submission, uint32_t query_index) {
   assert_true(counter_initialized() && query_index < capacity_);
-  // WriteBufferImmediate writes as a copy, so the buffer must be in COPY_DEST.
-  // The transition also orders this reset after any atomic adds from the
-  // previous query that owned the same slot.
+  // The reset is a copy so the buffer must be in COPY_DEST. The transition also
+  // orders it after any atomic adds from the previous query that owned the same
+  // slot.
   TransitionCounterBuffer(deferred_command_list, submission,
                           D3D12_RESOURCE_STATE_COPY_DEST);
 
   // Only the selected slot needs to be reset.
-  D3D12_GPU_VIRTUAL_ADDRESS counter_address =
-      counter_buffer_->GetGPUVirtualAddress() +
-      static_cast<uint64_t>(query_index) * XenosZPDReport::kCounterSizeBytes;
-  for (uint32_t i = 0; i < XenosZPDReport::kCount; ++i) {
-    deferred_command_list.D3DWriteBufferImmediate(
-        counter_address + i * sizeof(uint32_t), 0u);
-  }
+  deferred_command_list.D3DCopyBufferRegion(
+      counter_buffer_.Get(),
+      uint64_t(query_index) * XenosZPDReport::kCounterSizeBytes,
+      counter_zero_buffer_.Get(), 0, XenosZPDReport::kCounterSizeBytes);
 
   // Return to UNORDERED_ACCESS for the pixel shader atomic adds. This also
   // orders the reset before them so the next query sees the cleared value.

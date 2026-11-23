@@ -672,7 +672,6 @@ class D3D12CommandProcessor final : public CommandProcessor {
   CommandAllocator* command_allocator_submitted_last_ = nullptr;
   ID3D12GraphicsCommandList* command_list_ = nullptr;
   ID3D12GraphicsCommandList1* command_list_1_ = nullptr;
-  ID3D12GraphicsCommandList2* command_list_2_ = nullptr;
   ID3D12GraphicsCommandList9* command_list_9_ = nullptr;
   DeferredCommandList deferred_command_list_;
 
