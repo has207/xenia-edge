@@ -3958,6 +3958,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
               render_pass_key.msaa_samples,
               render_pass_key.depth_and_color_used) != nullptr);
   gviargs.SetupRegisterValues(regs, window_offset_tiles != 0);
+  // The host clips at the Z planes without depthClamp.
+  gviargs.depth_clamped &= uint32_t(device_properties.depthClamp);
 
   if (gviargs == previous_viewport_info_args_) {
     viewport_info = previous_viewport_info_;

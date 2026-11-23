@@ -1369,8 +1369,7 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
   // the clipper itself.
   description_out.depth_clamp_enable =
       device_properties.depthClamp &&
-      (regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable ||
-       cvars::force_depth_clamp);
+      (draw_util::IsDepthClampedAtZPlanes(regs) || cvars::force_depth_clamp);
 
   // TODO(Triang3l): Tessellation.
   bool primitive_polygonal = draw_util::IsPrimitivePolygonal(regs);

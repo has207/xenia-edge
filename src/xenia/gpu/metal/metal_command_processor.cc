@@ -6278,7 +6278,6 @@ void MetalCommandProcessor::ApplyRasterizerState(bool primitive_polygonal) {
 
   const RegisterFile& regs = *register_file_;
   auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
-  auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
 
   MTL::CullMode cull_mode = MTL::CullModeNone;
   if (primitive_polygonal) {
@@ -6333,7 +6332,7 @@ void MetalCommandProcessor::ApplyRasterizerState(bool primitive_polygonal) {
   // With force_depth_clamp, use the host viewport clamp instead of near and far
   // Z plane clipping. X/Y/W clipping is unchanged.
   current_render_encoder_->setDepthClipMode(
-      (pa_cl_clip_cntl.clip_disable || cvars::force_depth_clamp)
+      (draw_util::IsDepthClampedAtZPlanes(regs) || cvars::force_depth_clamp)
           ? MTL::DepthClipModeClamp
           : MTL::DepthClipModeClip);
 }

@@ -702,6 +702,14 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
         ndc_offset[2] = 1.0f - ndc_offset[2];
       }
     }
+    if (args->depth_clamped) {
+      // Unclipped Z is clamped to 0...1 after the viewport transform, not to
+      // the viewport's Z range.
+      z_min = 0.0f;
+      z_max = 1.0f;
+      ndc_scale[2] = scale_z;
+      ndc_offset[2] = offset_z;
+    }
   }
 
   if (args->normalized_depth_control.z_enable &&

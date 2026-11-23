@@ -114,6 +114,14 @@ static bool IsPrimitivePolygonal(const RegisterFile& regs) {
       regs.Get<reg::VGT_DRAW_INITIATOR>().prim_type);
 }
 
+// Whether the depth is clamped instead of clipped at the near and far planes.
+// Rectangle lists are never clipped there.
+inline bool IsDepthClampedAtZPlanes(const RegisterFile& regs) {
+  return regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable ||
+         regs.Get<reg::VGT_DRAW_INITIATOR>().prim_type ==
+             xenos::PrimitiveType::kRectangleList;
+}
+
 // Whether with the current state, any samples to rasterize (for any reason, not
 // only to write something to a render target, but also to do sample counting or
 // pixel shader memexport) can be generated. Finally dropping draw calls can
@@ -372,6 +380,9 @@ struct GetViewportInfoArgs {
           uint32_t draw_resolution_scale_y : 3;
           xenos::MsaaSamples msaa_samples : xenos::kMsaaSamplesBits;
           uint32_t xenos_sample_positions : 1;
+          // The host clamps the depth instead of clipping at the Z planes (see
+          // IsDepthClampedAtZPlanes).
+          uint32_t depth_clamped : 1;
         };
         uint32_t packed_portions;
       };
@@ -453,6 +464,7 @@ struct GetViewportInfoArgs {
     }
     depth_format = regs.Get<reg::RB_DEPTH_INFO>().depth_format;
     msaa_samples = regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
+    depth_clamped = IsDepthClampedAtZPlanes(regs);
   }
   XE_FORCEINLINE
   bool operator==(const GetViewportInfoArgs& prev) const {

@@ -1612,8 +1612,8 @@ bool PipelineCache::GetCurrentStateDescription(
   // near-plane clipping.
   // TODO(boma): Investigate whether the difference is in shader arithmetic or
   // the clipper itself.
-  description_out.depth_clip = !regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable &&
-                               !cvars::force_depth_clamp;
+  description_out.depth_clip =
+      !draw_util::IsDepthClampedAtZPlanes(regs) && !cvars::force_depth_clamp;
   bool depth_stencil_bound_and_used = false;
   if (!edram_rov_used) {
     // Depth/stencil. No stencil, always passing depth test and no depth writing
