@@ -43,10 +43,17 @@ window X only so every row should read the same:
   raw W. The other axis is at NDC +-4. Variants: NDC Z 0.5 with W 1 and 2;
   W 2 given as 1/W at NDC Z 0.125; XY given as XY/W (vtx_xy_fmt 1). With a
   viewport half as wide as the scissor: whether anything outside the viewport
-  is drawn up to the guard band, and a draw wholly outside the viewport with
-  the discard adjustments (PA_CL_GB_HORZ_DISC_ADJ and PA_CL_GB_VERT_DISC_ADJ,
-  1 unless a test changes them) at 1 and 4. A rectangle list under the
-  narrowed guard band.
+  is drawn up to the guard band. A rectangle list under the narrowed guard
+  band.
+- The discard band (PA_CL_GB_HORZ_DISC_ADJ and PA_CL_GB_VERT_DISC_ADJ) at 1
+  unless a test changes it, with viewport X scale 16 and the guard band at
+  NDC +-4. Draws with every vertex outside the viewport: right of it and
+  below a viewport Y scale -8, each with the horizontal and vertical
+  adjustments at (1, 4) and (4, 1); on both sides; a rectangle list;
+  clipping disabled; a point sprite centered past the band reaching into the
+  viewport and a line past the band, at 1 and 4. W 2 given as 1/W inside the
+  viewport, outside the band only if it bounds the raw X by the raw W, at 1
+  and 4. The nearest vertices at and one ulp past the band.
 - All 6 user clip planes enabled on 'both ramp' together with the Z planes
   and the guard band. Where they shouldn't cut, the user planes are W >= 0
   and the guard band is at NDC +-4. Variants: only the Z planes cutting; one
@@ -143,16 +150,18 @@ def product(ulps, negative=False):
 
 
 def clip_state(clip_cntl=CLIP_CNTL, vte_cntl=VTE_CNTL, z=(1.0, 0.0),
-               guard_band=GUARD_BAND, user_clip_planes=None,
-               viewport_x=(32.0, 32.0), guard_band_discard=(1.0, 1.0)):
-    """z and viewport_x are the viewport Z and X scale and offset, guard_band
-    and guard_band_discard the horizontal and vertical clip and discard
-    adjustments, user_clip_planes the 6 planes' XYZW if they're written."""
+               viewport_x=(32.0, 32.0), viewport_y=(-16.0, 16.0),
+               guard_band=GUARD_BAND, guard_band_discard=(1.0, 1.0),
+               user_clip_planes=None):
+    """z, viewport_x and viewport_y are the viewport scales and offsets,
+    guard_band and guard_band_discard the horizontal and vertical clip and
+    discard adjustments, user_clip_planes the 6 planes' XYZW if they're
+    written."""
     state = [('PA_CL_CLIP_CNTL', [clip_cntl]),
              ('PA_CL_VTE_CNTL', [vte_cntl]),
              ('PA_CL_VPORT_XSCALE',
-              [f2w(v) for v in (viewport_x[0], viewport_x[1], -16.0, 16.0,
-                                z[0], z[1])]),
+              [f2w(v) for v in (viewport_x[0], viewport_x[1], viewport_y[0],
+                                viewport_y[1], z[0], z[1])]),
              ('PA_CL_GB_HORZ_CLIP_ADJ', [f2w(guard_band[0])]),
              ('PA_CL_GB_VERT_CLIP_ADJ', [f2w(guard_band[1])]),
              ('PA_CL_GB_HORZ_DISC_ADJ', [f2w(guard_band_discard[0])]),
@@ -183,9 +192,9 @@ def build(suite):
               vector_mask=0x4, src1=x.r(gpugen.INPUT_REGISTER),
               src2=x.r(gpugen.INPUT_REGISTER + 1, 'xxxx'))])
 
-    def test(name, key, fmt=depth.D24S8, shader=plain, **state):
-        """state goes to clip_state."""
-        after = clip_state(**state) + [
+    def test(name, key, fmt=depth.D24S8, shader=plain, registers=(), **state):
+        """state goes to clip_state, registers are written after it."""
+        after = clip_state(**state) + list(registers) + [
             ('RB_STENCILREFMASK', [rb.STENCILREFMASK])]
         rb.test(suite, name, 'zero', rb.registers(depth_format=fmt),
                 depth.RESOLVE, draw=draws[key],
@@ -310,33 +319,97 @@ def build(suite):
         for name, bounds in NARROW_GUARD_BANDS:
             test(f'guard band {name}{suffix}', key, vte_cntl=vte_cntl,
                  guard_band=tuple(b * ratio for b in bounds))
+    wide = (WIDE_GUARD_BAND, WIDE_GUARD_BAND)
     # Viewport X scale 16 (window X 16 to 48) under the full scissor, the draw
     # spanning NDC X +-2.125: the guard band edges at window X 7.625 and
     # 56.375, or past the render target.
-    key = add('guard band viewport X scale 16', vertices(
-        lambda xw, yw: ((xw - 32) / 16, (16 - yw) / 16, 0.5, 1.0)))
+    def viewport_x_16(xw, yw):
+        """Window X and Y under viewport X scale 16 at NDC Z 0.5."""
+        return ((xw - 32) / 16, (16 - yw) / 16, 0.5, 1.0)
+    key = add('guard band viewport X scale 16', vertices(viewport_x_16))
     for name, guard_band in (('X', (195 / 128, WIDE_GUARD_BAND)),
-                             ('4', (WIDE_GUARD_BAND, WIDE_GUARD_BAND))):
+                             ('4', wide)):
         test(f'guard band {name} viewport X scale 16', key,
              guard_band=guard_band, viewport_x=(16.0, 32.0))
-    # The same viewport with a draw only right of it, window X 50 to 66 (NDC X
-    # 1.125 to 2.125), inside the guard band.
-    key = add('guard band outside viewport X scale 16', vertices(
-        lambda xw, yw: ((50 + (xw - LEFT) * 16 / (RIGHT - LEFT) - 32) / 16,
-                        (16 - yw) / 16, 0.5, 1.0)))
-    for discard in (1.0, 4.0):
-        test(f'guard band discard {discard:g} outside viewport X scale 16',
-             key, guard_band=(WIDE_GUARD_BAND, WIDE_GUARD_BAND),
-             viewport_x=(16.0, 32.0), guard_band_discard=(discard, discard))
     key = add('rectangle guard band', quad(constant(0.5), corners=RECTANGLE),
               pm4.PRIM_RECTANGLE_LIST)
     for name, guard_band in NARROW_GUARD_BANDS:
         test(f'rectangle guard band {name}', key, guard_band=guard_band)
 
+    def discard_test(name, window_x, window_y=(TOP, BOTTOM),
+                     w_reciprocal=False, rectangle=False, **state):
+        """A draw spanning window_x and window_y (two triangles or a
+        rectangle list) under viewport X scale 16 (window X 16 to 48), the
+        guard band at NDC +-4 and discard 1 unless state changes them, at NDC
+        Z 0.5 (0.125 with W 2 given as 1/W)."""
+        state.setdefault('viewport_x', (16.0, 32.0))
+        state.setdefault('viewport_y', (-16.0, 16.0))
+        state.setdefault('guard_band', wide)
+        if w_reciprocal:
+            state.setdefault('vte_cntl', VTE_W_RECIPROCAL)
+        (x_scale, x_offset), (y_scale, y_offset) = (state['viewport_x'],
+                                                    state['viewport_y'])
+        x0, x1 = window_x
+        y0, y1 = window_y
+
+        def position(cx, cy):
+            xw = x0 + (cx - LEFT) * (x1 - x0) / (RIGHT - LEFT)
+            yw = y0 + (cy - TOP) * (y1 - y0) / (BOTTOM - TOP)
+            ndc = ((xw - x_offset) / x_scale, (yw - y_offset) / y_scale)
+            if w_reciprocal:
+                return (ndc[0] * 2, ndc[1] * 2, 0.25, 0.5)
+            return ndc + (0.5, 1.0)
+        key = add(f'discard {name}', vertices(
+            position, corners=RECTANGLE if rectangle else TRIANGLES),
+            pm4.PRIM_RECTANGLE_LIST if rectangle else pm4.PRIM_TRIANGLE_LIST)
+        test(f'discard {name}', key, **state)
+
+    # Right of the viewport, window X 50 to 66 (NDC X 1.125 to 2.125). Below
+    # viewport Y scale -8 offset 16 (window Y 8 to 24) over the whole width,
+    # window Y 26 to 34 (NDC Y -1.25 to -2.25). The other axis is on both
+    # sides of the band.
+    right = (50.0, 66.0)
+    for discard in ((1.0, 4.0), (4.0, 1.0)):
+        adjustments = f'X {discard[0]:g} Y {discard[1]:g}'
+        discard_test(f'{adjustments} right of viewport', right,
+                     guard_band_discard=discard)
+        discard_test(f'{adjustments} below viewport Y scale -8', (LEFT, RIGHT),
+                     (26.0, 34.0), viewport_x=(32.0, 32.0),
+                     viewport_y=(-8.0, 16.0), guard_band_discard=discard)
+    # Every vertex outside the band, on both sides of it.
+    discard_test('both sides', (4.0, 60.0))
+    # W 2 given as 1/W with the viewport over the render target: NDC X 0.5 to
+    # 0.75 (window X 48 to 56), outside the band at 1 if it bounds the raw X
+    # (2 * NDC X) by the raw W (1/2).
+    for discard in (1.0, 4.0):
+        discard_test(f'{discard:g} at W 2 as 1/W', (48.0, 56.0),
+                     w_reciprocal=True, viewport_x=(32.0, 32.0),
+                     guard_band_discard=(discard, discard))
+    discard_test('rectangle right of viewport', right, rectangle=True)
+    discard_test('no clip right of viewport', right,
+                 clip_cntl=CLIP_CNTL | CLIP_DISABLE)
+    # The nearest vertices at NDC X 1 and one ulp past it.
+    discard_test('edge at 1', (48.0, 64.0))
+    discard_test('edge past 1', (48.0 + 16 * 2.0 ** -23, 64.0))
+    # A point centered at window X 50.375 (NDC X 1.1484375), Y 16.375, with
+    # PA_SU_POINT_SIZE 0x80 a half size of 8 (12.4 fixed point): X 42.375 to
+    # 58.375, reaching into the viewport. A line from window X 50 to 62 at Y
+    # 16, 1 pixel wide with PA_SU_LINE_CNTL 8 from the initial state, the ends
+    # at pixel centers where the diamond exit rule and the host's agree.
+    for name, primitive, corners, registers in (
+            ('point', pm4.PRIM_POINT_LIST, ((50.375, 16.375),),
+             [('PA_SU_POINT_SIZE', [0x00800080])]),
+            ('line', pm4.PRIM_LINE_LIST, ((50.0, 16.0), (62.0, 16.0)), [])):
+        key = add(f'discard {name}', vertices(viewport_x_16, corners=corners),
+                  primitive)
+        for discard in (1.0, 4.0):
+            test(f'discard {discard:g} {name} right of viewport', key,
+                 viewport_x=(16.0, 32.0), guard_band=wide,
+                 guard_band_discard=(discard, discard), registers=registers)
+
     # Clip-space planes kept where X Y Z W . plane >= 0, with W 1: X =
     # (window X - 32) / 32, Y = (16 - window Y) / 16.
     clip_all = CLIP_CNTL | 0x3F
-    wide = (WIDE_GUARD_BAND, WIDE_GUARD_BAND)
     uncut = (0.0, 0.0, 0.0, 1.0)
     from_row_11 = (0.0, -1.0, 0.0, 43 / 128)  # Window Y >= 10.625.
     test('all planes', both, clip_cntl=clip_all, guard_band=wide,
