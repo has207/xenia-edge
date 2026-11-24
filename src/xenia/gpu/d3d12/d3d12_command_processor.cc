@@ -2955,7 +2955,8 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
           render_target_cache_->depth_float24_convert_in_pixel_shader(),
       host_render_targets_used, pixel_shader && pixel_shader->writes_depth(),
       !host_render_targets_used || xenos_sample_positions_used_);
-  gviargs.SetupRegisterValues(regs, window_offset_tiles != 0);
+  gviargs.SetupRegisterValues(regs, window_offset_tiles != 0,
+                              pipeline_cache_->raw_clipping_supported());
 
   if (gviargs == previous_viewport_info_args_) {
     viewport_info = previous_viewport_info_;

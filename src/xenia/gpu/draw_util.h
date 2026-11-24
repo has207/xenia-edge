@@ -114,12 +114,32 @@ static bool IsPrimitivePolygonal(const RegisterFile& regs) {
       regs.Get<reg::VGT_DRAW_INITIATOR>().prim_type);
 }
 
-// Whether the depth is clamped instead of clipped at the near and far planes.
-// Rectangle lists are never clipped there.
-inline bool IsDepthClampedAtZPlanes(const RegisterFile& regs) {
-  return regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable ||
-         regs.Get<reg::VGT_DRAW_INITIATOR>().prim_type ==
+// Whether the primitives are clipped. Rectangle lists never are.
+inline bool ArePrimitivesClipped(const RegisterFile& regs) {
+  return !regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable &&
+         regs.Get<reg::VGT_DRAW_INITIATOR>().prim_type !=
              xenos::PrimitiveType::kRectangleList;
+}
+
+// Whether the near and far planes are clipped with 2 clip distances from the
+// raw vertex shader position, before the PA_CL_VTE_CNTL formats convert it.
+// Needs host clip distances and depth clamping. The user clip planes and the
+// vertex kill cull distance take their share of the 8 host clip and cull
+// distances first.
+inline bool IsZClippedWithClipDistances(const RegisterFile& regs,
+                                        bool raw_clipping_supported) {
+  auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
+  return raw_clipping_supported && ArePrimitivesClipped(regs) &&
+         (pa_cl_vte_cntl.vtx_z_fmt || !pa_cl_vte_cntl.vtx_w0_fmt) &&
+         xe::bit_count(regs.Get<reg::PA_CL_CLIP_CNTL>().ucp_ena) + 1 + 2 <= 8;
+}
+
+// Whether the host clamps the depth instead of clipping at the near and far
+// planes.
+inline bool IsDepthClampedAtZPlanes(const RegisterFile& regs,
+                                    bool raw_clipping_supported) {
+  return !ArePrimitivesClipped(regs) ||
+         IsZClippedWithClipDistances(regs, raw_clipping_supported);
 }
 
 // Whether with the current state, any samples to rasterize (for any reason, not
@@ -447,7 +467,8 @@ struct GetViewportInfoArgs {
   }
 
   void SetupRegisterValues(const RegisterFile& regs,
-                           bool window_offset_in_edram) {
+                           bool window_offset_in_edram,
+                           bool raw_clipping_supported) {
     pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
     pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
     pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
@@ -464,7 +485,7 @@ struct GetViewportInfoArgs {
     }
     depth_format = regs.Get<reg::RB_DEPTH_INFO>().depth_format;
     msaa_samples = regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
-    depth_clamped = IsDepthClampedAtZPlanes(regs);
+    depth_clamped = IsDepthClampedAtZPlanes(regs, raw_clipping_supported);
   }
   XE_FORCEINLINE
   bool operator==(const GetViewportInfoArgs& prev) const {

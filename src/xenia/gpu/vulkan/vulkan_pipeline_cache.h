@@ -180,6 +180,9 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
       uint32_t normalized_color_mask,
       bool apply_polygon_offset_in_shader) const;
 
+  // GuestSpirvShaderCache::Host, also for the viewport.
+  bool raw_clipping_supported() const override;
+
   // The ucode interpreter placeholder defers translation by not calling this on
   // the draw thread; the creation thread calls it (passing its own worker
   // translator, since the shared one is single-threaded). nullptr uses the

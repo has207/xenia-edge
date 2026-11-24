@@ -1979,8 +1979,7 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
   struct_per_vertex_members.reserve(kOutputPerVertexMemberCount);
   struct_per_vertex_members.push_back(type_float4_);
 
-  // Only allocate ClipDistance/CullDistance arrays when user clip planes are
-  // actually enabled (count > 0).
+  // Only allocate the ClipDistance and CullDistance arrays that are written.
   uint32_t user_clip_plane_count =
       shader_modification.vertex.user_clip_plane_count;
   uint32_t clip_distance_count = 0;
@@ -1995,15 +1994,20 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
   if (shader_modification.vertex.vertex_kill_and) {
     ++cull_distance_count;
   }
+  if (shader_modification.vertex.z_clip_distances) {
+    clip_distance_count += 2;
+  }
   output_per_vertex_clip_distance_member_index_ = 0;
   output_per_vertex_cull_distance_member_index_ = 0;
   if (clip_distance_count > 0) {
+    builder_->addCapability(spv::CapabilityClipDistance);
     output_per_vertex_clip_distance_member_index_ =
         static_cast<unsigned int>(struct_per_vertex_members.size());
     struct_per_vertex_members.push_back(builder_->makeArrayType(
         type_float_, builder_->makeUintConstant(clip_distance_count), 0));
   }
   if (cull_distance_count > 0) {
+    builder_->addCapability(spv::CapabilityCullDistance);
     output_per_vertex_cull_distance_member_index_ =
         static_cast<unsigned int>(struct_per_vertex_members.size());
     struct_per_vertex_members.push_back(builder_->makeArrayType(
@@ -3041,6 +3045,36 @@ void SpirvShaderTranslator::CompleteVertexOrTessEvalShaderInMain() {
           spv::StorageClassOutput, output_per_vertex_, id_vector_temp_);
       builder_->createStore(distance, distance_ptr);
     }
+  }
+
+  // Clip the raw position before the PA_CL_VTE_CNTL formats convert it. At the
+  // near and far planes the host clamps the depth instead of clipping the
+  // converted position.
+  uint32_t raw_clip_distance_index =
+      shader_modification.vertex.user_clip_plane_cull ? 0
+                                                      : user_clip_plane_count;
+  auto store_raw_clip_distance = [&](spv::Id distance) {
+    id_vector_temp_.clear();
+    id_vector_temp_.push_back(builder_->makeIntConstant(
+        int(output_per_vertex_clip_distance_member_index_)));
+    id_vector_temp_.push_back(
+        builder_->makeIntConstant(int(raw_clip_distance_index++)));
+    builder_->createStore(distance, builder_->createAccessChain(
+                                        spv::StorageClassOutput,
+                                        output_per_vertex_, id_vector_temp_));
+  };
+  if (shader_modification.vertex.z_clip_distances) {
+    spv::Id guest_position_z =
+        builder_->createCompositeExtract(guest_position, type_float_, 2);
+    spv::Id guest_position_w =
+        builder_->createCompositeExtract(guest_position, type_float_, 3);
+    store_raw_clip_distance(
+        shader_modification.vertex.z_clip_near_at_minus_w
+            ? builder_->createNoContractionBinOp(
+                  spv::OpFAdd, type_float_, guest_position_z, guest_position_w)
+            : guest_position_z);
+    store_raw_clip_distance(builder_->createNoContractionBinOp(
+        spv::OpFSub, type_float_, guest_position_w, guest_position_z));
   }
 
   // Apply the NDC scale and offset for guest to host viewport transformation.

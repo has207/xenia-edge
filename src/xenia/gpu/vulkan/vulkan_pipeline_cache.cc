@@ -109,6 +109,12 @@ bool VulkanPipelineCache::precise_interpolation_supported() const {
   return cvars::precise_interpolation;
 }
 
+bool VulkanPipelineCache::raw_clipping_supported() const {
+  const ui::vulkan::VulkanDevice::Properties& device_properties =
+      command_processor_.GetVulkanDevice()->properties();
+  return device_properties.depthClamp && device_properties.shaderClipDistance;
+}
+
 bool VulkanPipelineCache::Initialize() {
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();
@@ -1355,7 +1361,8 @@ bool VulkanPipelineCache::GetCurrentStateDescription(
       primitive_processing_result.host_primitive_reset_enabled;
 
   description_out.depth_clamp_enable =
-      device_properties.depthClamp && draw_util::IsDepthClampedAtZPlanes(regs);
+      device_properties.depthClamp &&
+      draw_util::IsDepthClampedAtZPlanes(regs, raw_clipping_supported());
 
   // TODO(Triang3l): Tessellation.
   bool primitive_polygonal = draw_util::IsPrimitivePolygonal(regs);
@@ -1482,14 +1489,21 @@ bool VulkanPipelineCache::ArePipelineRequirementsMet(
     return false;
   }
 
+  SpirvShaderTranslator::Modification vertex_shader_modification(
+      description.vertex_shader_modification);
   VkShaderStageFlags vertex_shader_stage =
       Shader::IsHostVertexShaderTypeDomain(
-          SpirvShaderTranslator::Modification(
-              description.vertex_shader_modification)
-              .vertex.host_vertex_shader_type)
+          vertex_shader_modification.vertex.host_vertex_shader_type)
           ? VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
           : VK_SHADER_STAGE_VERTEX_BIT;
   if (!(guest_shader_vertex_stages_ & vertex_shader_stage)) {
+    return false;
+  }
+
+  // Clip distances from the raw position, possibly in pipeline storage from
+  // another device.
+  if (vertex_shader_modification.vertex.z_clip_distances &&
+      !raw_clipping_supported()) {
     return false;
   }
 
@@ -1553,13 +1567,11 @@ VkShaderModule VulkanPipelineCache::GetGeometryShader(GeometryShaderKey key) {
     return it->second;
   }
 
-  // When user clip planes are present, the max count is used to reduce
-  // variants.
   std::vector<unsigned int> shader_code =
       BuildGuestPrimitiveGeometryShaderSpirv(
           BuiltinGeometryShaderType(uint32_t(key.type)), key.interpolator_count,
-          key.user_clip_plane_count > 0 ? 6u : 0u,
-          bool(key.user_clip_plane_cull), bool(key.has_vertex_kill_and),
+          key.user_clip_plane_count, bool(key.user_clip_plane_cull),
+          bool(key.z_clip_distances), bool(key.has_vertex_kill_and),
           bool(key.has_point_size), bool(key.has_point_coordinates),
           spirv_version_, denorm_flush_to_zero_float32_,
           signed_zero_inf_nan_preserve_float32_, rounding_mode_rte_float32_);

@@ -100,6 +100,13 @@ class SpirvShaderTranslator : public ShaderTranslator {
       // in SPIR-V the spacing lives in the domain shader). Discrete uses equal
       // spacing, continuous and adaptive use fractional even.
       xenos::TessellationMode tessellation_mode : 2;
+      // Clip at the near and far planes with 2 clip distances from the raw
+      // position, after the user clip plane clip distances (see
+      // draw_util::IsZClippedWithClipDistances).
+      uint32_t z_clip_distances : 1;
+      // With z_clip_distances, whether the near plane is at Z = -W (OpenGL
+      // clip space) rather than at Z = 0.
+      uint32_t z_clip_near_at_minus_w : 1;
     } vertex;
     struct PixelShaderModification {
       // uint32_t 0.

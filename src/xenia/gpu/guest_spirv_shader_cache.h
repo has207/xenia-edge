@@ -66,6 +66,11 @@ class GuestSpirvShaderCache {
     // subclass (not the shared base, so it can't be read through the base ref).
     virtual bool depth_float24_round() const = 0;
     virtual bool depth_float24_convert_in_pixel_shader() const = 0;
+
+    // Whether the host can clip the raw vertex shader position with clip
+    // distances and clamp the depth (see
+    // draw_util::IsZClippedWithClipDistances).
+    virtual bool raw_clipping_supported() const = 0;
   };
 
   GuestSpirvShaderCache(Host& host, const RegisterFile& register_file,
@@ -106,12 +111,13 @@ class GuestSpirvShaderCache {
     struct {
       PipelineGeometryShader type : 3;
       uint32_t interpolator_count : 5;
-      // Raw enabled count (0-6). Vulkan keys on this too but always builds 6.
+      // Enabled count (0-6).
       uint32_t user_clip_plane_count : 3;
       uint32_t user_clip_plane_cull : 1;
       uint32_t has_vertex_kill_and : 1;
       uint32_t has_point_size : 1;
       uint32_t has_point_coordinates : 1;
+      uint32_t z_clip_distances : 1;
     };
     GeometryShaderKey() : key(0) { static_assert_size(*this, sizeof(key)); }
     struct Hasher {

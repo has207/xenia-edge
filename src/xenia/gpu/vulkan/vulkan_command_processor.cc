@@ -3957,7 +3957,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
           render_target_cache_->GetSampleLocationsInfo(
               render_pass_key.msaa_samples,
               render_pass_key.depth_and_color_used) != nullptr);
-  gviargs.SetupRegisterValues(regs, window_offset_tiles != 0);
+  gviargs.SetupRegisterValues(regs, window_offset_tiles != 0,
+                              pipeline_cache_->raw_clipping_supported());
   // The host clips at the Z planes without depthClamp.
   gviargs.depth_clamped &= uint32_t(device_properties.depthClamp);
 

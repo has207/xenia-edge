@@ -27,8 +27,9 @@ namespace gpu {
 std::vector<unsigned int> BuildGuestPrimitiveGeometryShaderSpirv(
     BuiltinGeometryShaderType type, uint32_t interpolator_count,
     uint32_t user_clip_plane_count, bool user_clip_plane_cull,
-    bool has_vertex_kill_and, bool has_point_size, bool has_point_coordinates,
-    unsigned int spirv_version, bool denorm_flush_to_zero_float32,
+    bool z_clip_distances, bool has_vertex_kill_and, bool has_point_size,
+    bool has_point_coordinates, unsigned int spirv_version,
+    bool denorm_flush_to_zero_float32,
     bool signed_zero_inf_nan_preserve_float32, bool rounding_mode_rte_float32) {
   std::vector<spv::Id> id_vector_temp;
   std::vector<unsigned int> uint_vector_temp;
@@ -77,6 +78,9 @@ std::vector<unsigned int> BuildGuestPrimitiveGeometryShaderSpirv(
     cull_distance_count = user_clip_plane_count;
   } else {
     clip_distance_count = user_clip_plane_count;
+  }
+  if (z_clip_distances) {
+    clip_distance_count += 2;
   }
   cull_distance_count += has_vertex_kill_and;
 

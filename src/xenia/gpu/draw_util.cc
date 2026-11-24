@@ -703,8 +703,8 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       }
     }
     if (args->depth_clamped) {
-      // Unclipped Z is clamped to 0...1 after the viewport transform, not to
-      // the viewport's Z range.
+      // The depth is clamped to 0...1 after the viewport transform, not to the
+      // viewport's Z range.
       z_min = 0.0f;
       z_max = 1.0f;
       ndc_scale[2] = scale_z;

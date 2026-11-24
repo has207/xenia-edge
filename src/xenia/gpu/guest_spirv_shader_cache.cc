@@ -12,6 +12,7 @@
 #include "xenia/base/assert.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
+#include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/register_file.h"
 #include "xenia/gpu/render_target_cache.h"
 #include "xenia/gpu/spirv_shader_translator.h"
@@ -75,6 +76,13 @@ uint64_t GuestSpirvShaderCache::GetVertexShaderModification(
   modification.vertex.vertex_kill_and =
       uint32_t((shader.writes_point_size_edge_flag_kill_vertex() & 0b100) &&
                !pa_cl_clip_cntl.vtx_kill_or);
+
+  if (draw_util::IsZClippedWithClipDistances(regs,
+                                             host_.raw_clipping_supported())) {
+    modification.vertex.z_clip_distances = 1;
+    modification.vertex.z_clip_near_at_minus_w =
+        uint32_t(!pa_cl_clip_cntl.dx_clip_space_def);
+  }
 
   // For kPointListAsTriangleStrip the bit means output coordinates (only the
   // Vulkan fallback uses that host type). Otherwise it means output point size.
@@ -253,6 +261,7 @@ bool GuestSpirvShaderCache::GetGeometryShaderKey(
   key.has_vertex_kill_and = vertex_mod.vertex.vertex_kill_and;
   key.has_point_size = vertex_mod.vertex.output_point_parameters;
   key.has_point_coordinates = pixel_mod.pixel.param_gen_point;
+  key.z_clip_distances = vertex_mod.vertex.z_clip_distances;
   key_out = key;
   return true;
 }
