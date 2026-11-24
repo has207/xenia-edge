@@ -1,16 +1,16 @@
-"""Near and far Z clipping with clipping enabled: Direct3D's PA_CL_CLIP_CNTL
-(dx_clip_space_def) and PA_CL_VTE_CNTL (viewport transform, W not
-reciprocal) and a 64x32 viewport (X scale 32 offset 32, Y scale -16 offset
+"""Z, guard band and user plane clipping with clipping enabled: Direct3D's
+PA_CL_CLIP_CNTL (dx_clip_space_def) and PA_CL_VTE_CNTL (viewport transform, W
+not reciprocal) and a 64x32 viewport (X scale 32 offset 32, Y scale -16 offset
 16, Z scale 1 offset 0 unless a test changes them), into a D24S8 depth buffer
 resolved raw like the depth suite.
 
 Each test first fills the render target with a quad at NDC Z 0.5 writing
 stencil 0x11, then draws its own with stencil 0x5A (depth ALWAYS with writes,
 stencil REPLACE, no culling). A pixel's stencil says whether the test's draw
-covered it and its depth what Z it got. Every draw spans window X -2 to 66 and
-Y -2 to 34 (NDC X +-1.0625, Y +-1.125, inside the guard band) as two
-triangles or a rectangle list. NDC Z is a function of window X only so every
-row should read the same:
+covered it and its depth what Z it got. Unless a test changes them, every draw
+spans window X -2 to 66 and Y -2 to 34 (NDC X +-1.0625, Y +-1.125, inside the
+guard band of 2) as two triangles or a rectangle list. NDC Z is a function of
+window X only so every row should read the same:
 - ramps: NDC Z = base + (x - x0) * slope, crossing a plane (Z = 0 or 1) 3/8
   pixel past a pixel center (integer window coordinates). A clipped edge and
   a clamped one then differ by whole columns even if the samples sit a
@@ -28,13 +28,31 @@ row should read the same:
   0.5 or scale 1 offset 0. Constant Z at and next to -1.
 - Clipping disabled and D24FS8.
 - PA_CL_VTE_CNTL with W given as 1/W (vtx_w0_fmt 0) or Z as Z/W (vtx_z_fmt 1)
-  on 'both ramp' at W 2. With 1/W = float32(1/3): Z at and next to 3.
+  on 'both ramp' at W 2. With 1/W = float32(1/3): Z at and next to 3. Both
+  formats on the OpenGL ramp, Z/W at W 1.5. In OpenGL clip space with
+  1/W = 1/2, Z at and past -1/2.
 - Z computed by the vertex shader as a product (r1.z *= r2.x) landing a
   fraction of an ulp past 1 (or -1 in OpenGL clip space) where rounding toward
   zero keeps it on the plane and rounding to nearest may push it past. Also a
   1 x 1 control and -2^-140, a denormal product past the near plane.
 - Rectangle lists (the Resolve's three corners) at constant Z past either
   plane and on 'both ramp', some also with viewport Z scale 0.5 offset 0.25.
+- The guard band (PA_CL_GB_HORZ_CLIP_ADJ and PA_CL_GB_VERT_CLIP_ADJ) at 2
+  unless a test changes it. Narrowed on one axis, its edges sit 3/8 pixel
+  outside columns 16 and 48 or rows 8 and 24 if it bounds the raw XY by the
+  raw W. The other axis is at NDC +-4. Variants: NDC Z 0.5 with W 1 and 2;
+  W 2 given as 1/W at NDC Z 0.125; XY given as XY/W (vtx_xy_fmt 1). With a
+  viewport half as wide as the scissor: whether anything outside the viewport
+  is drawn up to the guard band, and a draw wholly outside the viewport with
+  the discard adjustments (PA_CL_GB_HORZ_DISC_ADJ and PA_CL_GB_VERT_DISC_ADJ,
+  1 unless a test changes them) at 1 and 4. A rectangle list under the
+  narrowed guard band.
+- All 6 user clip planes enabled on 'both ramp' together with the Z planes
+  and the guard band. Where they shouldn't cut, the user planes are W >= 0
+  and the guard band is at NDC +-4. Variants: only the Z planes cutting; one
+  user plane cutting rows 0 to 10 (each of the 6); the guard band cutting
+  outside columns 24 to 40 or rows 8 to 24; all 6 user planes cutting
+  (columns 19 to 44, rows 11 to 21 and two diagonal corners).
 - Last since an unknown bit may hang the GPU: each PA_CL_CLIP_CNTL bit outside
   the user clip plane and clip space fields on 'both ramp' (bits 26 and 27
   disable near and far Z clipping on later AMD GPUs).
@@ -61,9 +79,17 @@ CLIP_DISABLE = 1 << 16
 VTE_CNTL = 0x43F  # viewport scale and offset, vtx_w0_fmt (W not reciprocal)
 VTE_W_RECIPROCAL = VTE_CNTL & ~(1 << 10)
 VTE_Z_DIVIDED = VTE_CNTL | (1 << 9)  # vtx_z_fmt
+VTE_XY_DIVIDED = VTE_CNTL | (1 << 8)  # vtx_xy_fmt
 FILL_STENCIL = 0x11
 LEFT, RIGHT, TOP, BOTTOM = -2.0, 66.0, -2.0, 34.0
 SLOPE_FINE = 2.0 ** -20
+GUARD_BAND = (2.0, 2.0)
+# Guard band NDC bounds placing the edges at window X 15.625 and 48.375 or Y
+# 7.625 and 24.375, and one where it doesn't cut.
+NARROW_GUARD_BAND_X, NARROW_GUARD_BAND_Y = 131 / 256, 67 / 128
+WIDE_GUARD_BAND = 4.0
+NARROW_GUARD_BANDS = (('X', (NARROW_GUARD_BAND_X, WIDE_GUARD_BAND)),
+                      ('Y', (WIDE_GUARD_BAND, NARROW_GUARD_BAND_Y)))
 # PA_CL_CLIP_CNTL bits other than ucp_ena (0-5), ps_ucp_mode (14-15),
 # clip_disable (16) and dx_clip_space_def (19).
 CLIP_BITS = list(range(6, 14)) + [17, 18] + list(range(20, 32))
@@ -116,11 +142,25 @@ def product(ulps, negative=False):
     return (-float(a) if negative else float(a)), float(b)
 
 
-def clip_state(clip_cntl=CLIP_CNTL, vte_cntl=VTE_CNTL, z=(1.0, 0.0)):
-    return [('PA_CL_CLIP_CNTL', [clip_cntl]),
-            ('PA_CL_VTE_CNTL', [vte_cntl]),
-            ('PA_CL_VPORT_XSCALE',
-             [f2w(v) for v in (32.0, 32.0, -16.0, 16.0, z[0], z[1])])]
+def clip_state(clip_cntl=CLIP_CNTL, vte_cntl=VTE_CNTL, z=(1.0, 0.0),
+               guard_band=GUARD_BAND, user_clip_planes=None,
+               viewport_x=(32.0, 32.0), guard_band_discard=(1.0, 1.0)):
+    """z and viewport_x are the viewport Z and X scale and offset, guard_band
+    and guard_band_discard the horizontal and vertical clip and discard
+    adjustments, user_clip_planes the 6 planes' XYZW if they're written."""
+    state = [('PA_CL_CLIP_CNTL', [clip_cntl]),
+             ('PA_CL_VTE_CNTL', [vte_cntl]),
+             ('PA_CL_VPORT_XSCALE',
+              [f2w(v) for v in (viewport_x[0], viewport_x[1], -16.0, 16.0,
+                                z[0], z[1])]),
+             ('PA_CL_GB_HORZ_CLIP_ADJ', [f2w(guard_band[0])]),
+             ('PA_CL_GB_VERT_CLIP_ADJ', [f2w(guard_band[1])]),
+             ('PA_CL_GB_HORZ_DISC_ADJ', [f2w(guard_band_discard[0])]),
+             ('PA_CL_GB_VERT_DISC_ADJ', [f2w(guard_band_discard[1])])]
+    if user_clip_planes:
+        state.append(('PA_CL_UCP_0_X',
+                      [f2w(v) for plane in user_clip_planes for v in plane]))
+    return state
 
 
 def build(suite):
@@ -143,9 +183,9 @@ def build(suite):
               vector_mask=0x4, src1=x.r(gpugen.INPUT_REGISTER),
               src2=x.r(gpugen.INPUT_REGISTER + 1, 'xxxx'))])
 
-    def test(name, key, clip_cntl=CLIP_CNTL, vte_cntl=VTE_CNTL, z=(1.0, 0.0),
-             fmt=depth.D24S8, shader=plain):
-        after = clip_state(clip_cntl, vte_cntl, z) + [
+    def test(name, key, fmt=depth.D24S8, shader=plain, **state):
+        """state goes to clip_state."""
+        after = clip_state(**state) + [
             ('RB_STENCILREFMASK', [rb.STENCILREFMASK])]
         rb.test(suite, name, 'zero', rb.registers(depth_format=fmt),
                 depth.RESOLVE, draw=draws[key],
@@ -182,7 +222,8 @@ def build(suite):
         test(f'both ramp viewport Z scale {z[0]:g} offset {z[1]:g}', both,
              z=z)
 
-    gl = add('OpenGL both ramp', quad(ramp(15.375, 1 / 16, -1.0)))
+    gl_ramp = ramp(15.375, 1 / 16, -1.0)
+    gl = add('OpenGL both ramp', quad(gl_ramp))
     test('OpenGL both ramp', gl, clip_cntl=0, z=(0.5, 0.5))
     test('OpenGL both ramp viewport Z scale 1 offset 0', gl, clip_cntl=0)
     for name, z in (('-1', -1.0), ('-1-2^-23', -1 - 2.0 ** -23)):
@@ -237,6 +278,87 @@ def build(suite):
     for name in ('Z -1', 'Z 2', 'both ramp'):
         test(f'rectangle {name} viewport Z scale 0.5 offset 0.25',
              f'rectangle {name}', z=(0.5, 0.25))
+
+    key = 'OpenGL both ramp W 2 as 1/W'
+    test(key, add(key, quad(gl_ramp, (2.0, 2.0), w_reciprocal=True)),
+         clip_cntl=0, vte_cntl=VTE_W_RECIPROCAL, z=(0.5, 0.5))
+    # Z at -W and W in window X 7.375 and 55.375.
+    key = 'OpenGL both ramp W 1.5 Z as Z/W'
+    test(key, add(key, quad(gl_ramp, (1.5, 1.5), z_divided=True)),
+         clip_cntl=0, vte_cntl=VTE_Z_DIVIDED, z=(0.5, 0.5))
+    # 1/W = 1/2, clip-space X and Y for W 2, Z at and past -1/2 (the near
+    # plane if the clipper takes the raw W).
+    for name, z in (('-1/2', -0.5), ('-1/2-2^-24', -0.5 - 2.0 ** -24)):
+        key = f'OpenGL 1/W 1/2 Z {name}'
+        test(key, add(key, vertices(
+                 lambda xw, yw, z=z: ((xw - 32) / 32 * 2, (16 - yw) / 16 * 2,
+                                      z, 0.5))),
+             clip_cntl=0, vte_cntl=VTE_W_RECIPROCAL, z=(0.5, 0.5))
+
+    # The raw XY over the raw W is `ratio` times the NDC XY, the guard band
+    # for NDC bounds b being b * ratio.
+    for suffix, vertex_data, ratio, vte_cntl in (
+            ('', quad(constant(0.5)), 1.0, VTE_CNTL),
+            (' W 2', quad(constant(0.5), (2.0, 2.0)), 1.0, VTE_CNTL),
+            (' W 2 as 1/W',
+             quad(constant(0.125), (2.0, 2.0), w_reciprocal=True), 4.0,
+             VTE_W_RECIPROCAL),
+            (' W 2 XY as XY/W', vertices(
+                lambda xw, yw: ((xw - 32) / 32, (16 - yw) / 16, 1.0, 2.0)),
+             0.5, VTE_XY_DIVIDED)):
+        key = add(f'guard band{suffix}', vertex_data)
+        for name, bounds in NARROW_GUARD_BANDS:
+            test(f'guard band {name}{suffix}', key, vte_cntl=vte_cntl,
+                 guard_band=tuple(b * ratio for b in bounds))
+    # Viewport X scale 16 (window X 16 to 48) under the full scissor, the draw
+    # spanning NDC X +-2.125: the guard band edges at window X 7.625 and
+    # 56.375, or past the render target.
+    key = add('guard band viewport X scale 16', vertices(
+        lambda xw, yw: ((xw - 32) / 16, (16 - yw) / 16, 0.5, 1.0)))
+    for name, guard_band in (('X', (195 / 128, WIDE_GUARD_BAND)),
+                             ('4', (WIDE_GUARD_BAND, WIDE_GUARD_BAND))):
+        test(f'guard band {name} viewport X scale 16', key,
+             guard_band=guard_band, viewport_x=(16.0, 32.0))
+    # The same viewport with a draw only right of it, window X 50 to 66 (NDC X
+    # 1.125 to 2.125), inside the guard band.
+    key = add('guard band outside viewport X scale 16', vertices(
+        lambda xw, yw: ((50 + (xw - LEFT) * 16 / (RIGHT - LEFT) - 32) / 16,
+                        (16 - yw) / 16, 0.5, 1.0)))
+    for discard in (1.0, 4.0):
+        test(f'guard band discard {discard:g} outside viewport X scale 16',
+             key, guard_band=(WIDE_GUARD_BAND, WIDE_GUARD_BAND),
+             viewport_x=(16.0, 32.0), guard_band_discard=(discard, discard))
+    key = add('rectangle guard band', quad(constant(0.5), corners=RECTANGLE),
+              pm4.PRIM_RECTANGLE_LIST)
+    for name, guard_band in NARROW_GUARD_BANDS:
+        test(f'rectangle guard band {name}', key, guard_band=guard_band)
+
+    # Clip-space planes kept where X Y Z W . plane >= 0, with W 1: X =
+    # (window X - 32) / 32, Y = (16 - window Y) / 16.
+    clip_all = CLIP_CNTL | 0x3F
+    wide = (WIDE_GUARD_BAND, WIDE_GUARD_BAND)
+    uncut = (0.0, 0.0, 0.0, 1.0)
+    from_row_11 = (0.0, -1.0, 0.0, 43 / 128)  # Window Y >= 10.625.
+    test('all planes', both, clip_cntl=clip_all, guard_band=wide,
+         user_clip_planes=[uncut] * 6)
+    for i in range(6):
+        test(f'all planes user plane {i}', both, clip_cntl=clip_all,
+             guard_band=wide,
+             user_clip_planes=[from_row_11 if j == i else uncut
+                               for j in range(6)])
+    # Edges at window X 23.625 and 40.375 or Y 7.625 and 24.375.
+    for name, guard_band in (('X', (67 / 256, WIDE_GUARD_BAND)),
+                             ('Y', (WIDE_GUARD_BAND, NARROW_GUARD_BAND_Y))):
+        test(f'all planes guard band {name}', both, clip_cntl=clip_all,
+             guard_band=guard_band, user_clip_planes=[uncut] * 6)
+    test('all planes 6 user planes cutting', both, clip_cntl=clip_all,
+         guard_band=wide, user_clip_planes=[
+             (1.0, 0.0, 0.0, 107 / 256),  # Window X >= 18.625.
+             (-1.0, 0.0, 0.0, 99 / 256),  # Window X <= 44.375.
+             from_row_11,
+             (0.0, 1.0, 0.0, 43 / 128),  # Window Y <= 21.375.
+             (2.0, -1.0, 0.0, 117 / 128),  # Window X + Y >= 33.375.
+             (-2.0, 1.0, 0.0, 109 / 128)])  # Window X + Y <= 61.625.
 
     for bit in CLIP_BITS:
         test(f'both ramp clip bit {bit}', both,
