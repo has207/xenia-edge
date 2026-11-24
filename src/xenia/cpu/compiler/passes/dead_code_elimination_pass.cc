@@ -24,8 +24,12 @@ using xe::cpu::hir::Instr;
 using xe::cpu::hir::Value;
 
 // Whether an instruction whose value goes unused can go. A guest load still
-// faults, and a volatile instruction has effects of its own.
+// faults, a volatile instruction has effects of its own, and so does a pack
+// that sets VSCR[SAT].
 static bool IsRemovable(const Instr* i) {
+  if (i->opcode == &OPCODE_PACK_info && (i->flags & PACK_TYPE_SET_SAT)) {
+    return false;
+  }
   return !(i->opcode->flags & (OPCODE_FLAG_VOLATILE | OPCODE_FLAG_MEMORY));
 }
 

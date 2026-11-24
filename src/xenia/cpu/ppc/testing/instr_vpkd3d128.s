@@ -921,3 +921,110 @@ test_vpkd3d128_ulong_4202020_nan_0:
   blr
   #_ REGISTER_OUT v3 [7FC00000, 40400001, 7FC00000, 7FC00000]
   #_ REGISTER_OUT v4 [CDCDCDCD, CDCDCDCD, 08000000, 00180000]
+# VSCR[SAT] after vpkd3d128, as measured on a console: an element outside its
+# field's range sets it, even one the mask doesn't write; a lane with no
+# field, a NaN and the half float formats never do.
+test_vpkd3d128_sat_in_range:
+  #_ REGISTER_IN v3 [40400001, 40400002, 403FFFFF, 40400000]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 4, 2, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010000]
+test_vpkd3d128_sat_short4_unwritten:
+  #_ REGISTER_IN v3 [40408000, 40400001, 40400002, 40400003]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 4, 1, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010001]
+test_vpkd3d128_sat_short2_y:
+  #_ REGISTER_IN v3 [40400001, 403F8000, 00000000, 00000000]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 1, 1, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010001]
+test_vpkd3d128_sat_short2_no_zw_field:
+  #_ REGISTER_IN v3 [40400001, 40400002, 00000000, 3F800000]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 1, 1, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010000]
+test_vpkd3d128_sat_short4_nan:
+  #_ REGISTER_IN v3 [7FC00000, 40400001, FFC00000, 40400002]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 4, 2, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010000]
+test_vpkd3d128_sat_d3dcolor:
+  #_ REGISTER_IN v3 [40400000, 40400100, 40400001, 40400002]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 0, 1, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010001]
+test_vpkd3d128_sat_d3dcolor_nan:
+  #_ REGISTER_IN v3 [7FC00000, 40400001, 40400002, 40400003]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 0, 1, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010000]
+test_vpkd3d128_sat_uint_2101010_w:
+  #_ REGISTER_IN v3 [40400001, 40400002, 40400003, 40400004]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 2, 1, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010001]
+test_vpkd3d128_sat_ulong_4202020_x:
+  #_ REGISTER_IN v3 [40480000, 40400001, 40400002, 40400003]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 6, 2, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010001]
+test_vpkd3d128_sat_float16_2:
+  #_ REGISTER_IN v3 [7F7FFFFF, FF7FFFFF, 7F800000, 00000001]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 3, 1, 0
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010000]
+# The pack sets SAT itself: overwriting its result keeps it, and so does a
+# later saturating instruction in the same block.
+test_vpkd3d128_sat_dead_result:
+  #_ REGISTER_IN v3 [40408000, 40400001, 40400002, 40400003]
+  #_ REGISTER_IN v5 [00000000, 00000000, 00000000, 00000000]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vpkd3d128 v4, v3, 4, 1, 0
+  vor v4, v5, v5
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010001]
+test_vpkd3d128_sat_kept_by_later_op:
+  #_ REGISTER_IN v3 [40408000, 40400001, 40400002, 40400003]
+  #_ REGISTER_IN v7 [00000000, 00000000, 00000000, 00000000]
+  #_ REGISTER_IN v8 [00000000, 00000000, 00000000, 00000000]
+  #_ REGISTER_IN v9 [00000000, 00000000, 00000000, 00010000]
+  mtvscr v9
+  vaddsws v6, v7, v8
+  vpkd3d128 v4, v3, 4, 1, 0
+  vaddsws v6, v7, v8
+  mfvscr v10
+  blr
+  #_ REGISTER_OUT v10 [00000000, 00000000, 00000000, 00010001]

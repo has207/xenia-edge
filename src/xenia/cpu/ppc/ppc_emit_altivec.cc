@@ -31,7 +31,7 @@ Value* CalculateEA_0(PPCHIRBuilder& f, uint32_t ra, uint32_t rb);
 // Sets VSCR[SAT] if any lane of saturated is nonzero. SAT stays set until
 // mtvscr clears it. It's kept in vscr_sat, which mfvscr merges into the low
 // bit of VSCR, so a saturating instruction only ORs one byte. DID_SATURATE is
-// whether any lane is nonzero (a vptest on x64; ARM64 returns 0 for now).
+// whether any lane is nonzero (vptest on x64, umaxv on ARM64).
 static void SetSatIfAny(PPCHIRBuilder& f, Value* saturated) {
   f.StoreSAT(f.Or(f.LoadSAT(), f.DidSaturate(saturated)));
 }
@@ -86,49 +86,6 @@ static void StoreSatForConvert(PPCHIRBuilder& f, Value* v, Value* input,
                          ? f.VectorCompareSGE(lowest_v, input, FLOAT32_TYPE)
                          : f.VectorCompareSGT(lowest_v, input, FLOAT32_TYPE);
   SetSatIfAny(f, f.Or(too_large, too_small));
-}
-
-// VSCR[SAT] after vpkd3d128: an element outside the range of its field
-// saturates, even one the mask doesn't write. The fields hold 3.0 + k * 2^-22,
-// so the bounds are those floats, and lanes the format has no field for get
-// infinite ones. A NaN packs as the field's minimum without setting SAT, and
-// the compares are false for it. The half float formats never set it.
-static void StoreSatForPackD3D(PPCHIRBuilder& f, Value* input, uint32_t type) {
-  struct Bounds {
-    uint32_t low[4];
-    uint32_t high[4];
-  };
-  static const Bounds kBounds[] = {
-      // D3DCOLOR: 0 to 255
-      {{0x40400000, 0x40400000, 0x40400000, 0x40400000},
-       {0x404000FF, 0x404000FF, 0x404000FF, 0x404000FF}},
-      // SHORT_2: -32767 to 32767 in x and y
-      {{0x403F8001, 0x403F8001, 0xFF800000, 0xFF800000},
-       {0x40407FFF, 0x40407FFF, 0x7F800000, 0x7F800000}},
-      // UINT_2101010: -511 to 511 in x, y and z, 0 to 3 in w
-      {{0x403FFE01, 0x403FFE01, 0x403FFE01, 0x40400000},
-       {0x404001FF, 0x404001FF, 0x404001FF, 0x40400003}},
-      // FLOAT16_2
-      {{0}, {0}},
-      // SHORT_4: -32767 to 32767
-      {{0x403F8001, 0x403F8001, 0x403F8001, 0x403F8001},
-       {0x40407FFF, 0x40407FFF, 0x40407FFF, 0x40407FFF}},
-      // FLOAT16_4
-      {{0}, {0}},
-      // ULONG_4202020: -524287 to 524287 in x, y and z, 0 to 15 in w
-      {{0x40380001, 0x40380001, 0x40380001, 0x40400000},
-       {0x4047FFFF, 0x4047FFFF, 0x4047FFFF, 0x4040000F}},
-  };
-  if (type == 3 || type == 5 || type > 6) {
-    return;
-  }
-  const Bounds& bounds = kBounds[type];
-  Value* low = f.LoadConstantVec128(
-      vec128i(bounds.low[0], bounds.low[1], bounds.low[2], bounds.low[3]));
-  Value* high = f.LoadConstantVec128(
-      vec128i(bounds.high[0], bounds.high[1], bounds.high[2], bounds.high[3]));
-  SetSatIfAny(f, f.Or(f.VectorCompareSGT(low, input, FLOAT32_TYPE),
-                      f.VectorCompareSGT(input, high, FLOAT32_TYPE)));
 }
 
 // Most of this file comes from:
@@ -2185,22 +2142,21 @@ int InstrEmit_vpkd3d128(PPCHIRBuilder& f, const InstrData& i) {
   uint32_t pack = i.VX128_4.IMM & 0x3;
   uint32_t shift = i.VX128_4.z;
   Value* v = f.LoadVR(vb);
-  StoreSatForPackD3D(f, v, type);
   switch (type) {
     case 0:  // VPACK_D3DCOLOR
-      v = f.Pack(v, PACK_TYPE_D3DCOLOR);
+      v = f.Pack(v, PACK_TYPE_D3DCOLOR | PACK_TYPE_SET_SAT);
       break;
     case 1:  // VPACK_NORMSHORT2
-      v = f.Pack(v, PACK_TYPE_SHORT_2);
+      v = f.Pack(v, PACK_TYPE_SHORT_2 | PACK_TYPE_SET_SAT);
       break;
     case 2:  // VPACK_NORMPACKED32 2_10_10_10 w_z_y_x
-      v = f.Pack(v, PACK_TYPE_UINT_2101010);
+      v = f.Pack(v, PACK_TYPE_UINT_2101010 | PACK_TYPE_SET_SAT);
       break;
     case 3:  // VPACK_FLOAT16_2 DXGI_FORMAT_R16G16_FLOAT
       v = f.Pack(v, PACK_TYPE_FLOAT16_2);
       break;
     case 4:  // VPACK_NORMSHORT4
-      v = f.Pack(v, PACK_TYPE_SHORT_4);
+      v = f.Pack(v, PACK_TYPE_SHORT_4 | PACK_TYPE_SET_SAT);
       break;
     case 5:  // VPACK_FLOAT16_4 DXGI_FORMAT_R16G16B16A16_FLOAT
       v = f.Pack(v, PACK_TYPE_FLOAT16_4);
@@ -2208,7 +2164,7 @@ int InstrEmit_vpkd3d128(PPCHIRBuilder& f, const InstrData& i) {
     case 6:  // VPACK_NORMPACKED64 4_20_20_20 w_z_y_x
       // Used in 54540829 and other installments in the series, pretty rarely in
       // general.
-      v = f.Pack(v, PACK_TYPE_ULONG_4202020);
+      v = f.Pack(v, PACK_TYPE_ULONG_4202020 | PACK_TYPE_SET_SAT);
       break;
     default:
       assert_unhandled_case(type);

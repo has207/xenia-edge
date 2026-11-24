@@ -19,6 +19,7 @@
 #include "third_party/half/include/half.hpp"
 #include "xenia/base/cvar.h"
 #include "xenia/cpu/backend/x64/x64_stack_layout.h"
+#include "xenia/cpu/ppc/ppc_context.h"
 
 DEFINE_bool(xop_rotates, false, "rotate via xop", "x64");
 
@@ -2947,6 +2948,61 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         break;
     }
   }
+  // VSCR[SAT] is sticky, so saturating only ever stores 1.
+  static void EmitSetSat(X64Emitter& e) {
+    e.mov(e.byte[e.GetContextReg() + offsetof(ppc::PPCContext, vscr_sat)], 1);
+  }
+  // Clamps src to [low, high] into xmm3 and returns it. With
+  // PACK_TYPE_SET_SAT, a lane in lanes that the clamp moved sets VSCR[SAT],
+  // which a NaN never does. A pack tends to saturate always or never, so the
+  // store sits inline behind a branch the predictor learns. With blend_nan, a
+  // NaN lane packs as nan_min, else as low. src must stay intact until dest is
+  // written.
+  static Xmm EmitClamp(X64Emitter& e, const EmitArgType& i, const Xmm& src,
+                       XmmConst low, XmmConst high, uint32_t lanes,
+                       bool blend_nan, XmmConst nan_min) {
+    if (blend_nan) {
+      // MAXPS and MINPS return their second operand when either is a NaN, so
+      // a NaN in src comes through both.
+      e.vmovaps(e.xmm3, e.GetXmmConstPtr(low));
+      e.vmaxps(e.xmm3, e.xmm3, src);
+      e.vmovaps(e.xmm2, e.GetXmmConstPtr(high));
+      e.vminps(e.xmm3, e.xmm2, e.xmm3);
+    } else {
+      e.vmaxps(e.xmm3, src, e.GetXmmConstPtr(low));
+      e.vminps(e.xmm3, e.xmm3, e.GetXmmConstPtr(high));
+    }
+    if (i.instr->flags & PACK_TYPE_SET_SAT) {
+      if (i.src1.is_constant) {
+        const vec128_t& value = i.src1.constant();
+        const auto& bounds_low = *static_cast<const vec128_t*>(
+            e.backend()->LookupXMMConstantAddress(low));
+        const auto& bounds_high = *static_cast<const vec128_t*>(
+            e.backend()->LookupXMMConstantAddress(high));
+        for (uint32_t lane = 0; lane < 4; ++lane) {
+          const float f = value.f32[lane];
+          if ((lanes & (1u << lane)) &&
+              (f < bounds_low.f32[lane] || f > bounds_high.f32[lane])) {
+            EmitSetSat(e);
+            break;
+          }
+        }
+      } else {
+        Xbyak::Label not_saturated;
+        e.vcmpneq_oqps(e.xmm2, e.xmm3, src);
+        e.vmovmskps(e.eax, e.xmm2);
+        e.test(e.al, lanes);
+        e.jz(not_saturated, e.T_SHORT);
+        EmitSetSat(e);
+        e.L(not_saturated);
+      }
+    }
+    if (blend_nan) {
+      // nan_min is at most low in every lane, so only a NaN changes.
+      e.vmaxps(e.xmm3, e.xmm3, e.GetXmmConstPtr(nan_min));
+    }
+    return e.xmm3;
+  }
   static void EmitD3DCOLOR(X64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->IsConstantZero());
     Xmm src;
@@ -2960,13 +3016,13 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     // are valid - max before min to pack NaN as zero (5454082B is heavily
     // affected by the order - packs 0xFFFFFFFF in matrix code to get a 0
     // constant).
-    e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMM3333));
-    e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackD3DCOLORSat));
+    Xmm clamped = EmitClamp(e, i, src, XMM3333, XMMPackD3DCOLORSat, 0b1111,
+                            false, XMM3333);
     // Extract bytes.
     // RGBA (XYZW) -> ARGB (WXYZ)
     // w = ((src1.uw & 0xFF) << 24) | ((src1.ux & 0xFF) << 16) |
     //     ((src1.uy & 0xFF) << 8) | (src1.uz & 0xFF)
-    e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackD3DCOLOR));
+    e.vpshufb(i.dest, clamped, e.GetXmmConstPtr(XMMPackD3DCOLOR));
   }
   static void EmitFLOAT16_2(X64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->IsConstantZero());
@@ -3005,12 +3061,10 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     }
     // Saturate. A NaN packs as 0x8000, the minimum that unpacks back to a NaN,
     // where the clamp would give 0x8001.
-    e.vcmpunordps(e.xmm2, src, src);
-    e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackSHORT_Min));
-    e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_Max));
-    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_NaN), e.xmm2);
+    Xmm clamped = EmitClamp(e, i, src, XMMPackSHORT_Min, XMMPackSHORT_Max,
+                            0b0011, true, XMMPackSHORT_NaN);
     // Pack.
-    e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_2));
+    e.vpshufb(i.dest, clamped, e.GetXmmConstPtr(XMMPackSHORT_2));
   }
   static void EmitSHORT_4(X64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->IsConstantZero());
@@ -3023,12 +3077,10 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     }
     // Saturate. A NaN packs as 0x8000, the minimum that unpacks back to a NaN,
     // where the clamp would give 0x8001.
-    e.vcmpunordps(e.xmm2, src, src);
-    e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackSHORT_Min));
-    e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_Max));
-    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_NaN), e.xmm2);
+    Xmm clamped = EmitClamp(e, i, src, XMMPackSHORT_Min, XMMPackSHORT_Max,
+                            0b1111, true, XMMPackSHORT_NaN);
     // Pack.
-    e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMPackSHORT_4));
+    e.vpshufb(i.dest, clamped, e.GetXmmConstPtr(XMMPackSHORT_4));
   }
   static void EmitUINT_2101010(X64Emitter& e, const EmitArgType& i) {
     // https://www.opengl.org/registry/specs/ARB/vertex_type_2_10_10_10_rev.txt
@@ -3043,13 +3095,12 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     }
     // Saturate. A NaN packs as the minimum, 0x200, which unpacks back to a
     // NaN, where the clamp would give 0x201 (and 0 for W).
-    e.vcmpunordps(e.xmm2, src, src);
-    e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackUINT_2101010_MinUnpacked));
-    e.vminps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackUINT_2101010_MaxUnpacked));
-    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackUINT_2101010_NaN),
-                e.xmm2);
+    Xmm clamped = EmitClamp(e, i, src, XMMPackUINT_2101010_MinUnpacked,
+                            XMMPackUINT_2101010_MaxUnpacked, 0b1111, true,
+                            XMMPackUINT_2101010_NaN);
     // Remove the unneeded bits of the floats.
-    e.vpand(i.dest, e.GetXmmConstPtr(XMMPackUINT_2101010_MaskUnpacked));
+    e.vpand(i.dest, clamped,
+            e.GetXmmConstPtr(XMMPackUINT_2101010_MaskUnpacked));
     if (e.IsFeatureEnabled(kX64EmitAVX2)) {
       // Shift the components up.
       e.vpsllvd(i.dest, i.dest, e.GetXmmConstPtr(XMMPackUINT_2101010_Shift));
@@ -3082,15 +3133,13 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     }
     // Saturate. A NaN packs as the minimum, 0x80000, which unpacks back to a
     // NaN, where the clamp would give 0x80001 (and 0 for W).
-    e.vcmpunordps(e.xmm2, src, src);
-    e.vmaxps(i.dest, src, e.GetXmmConstPtr(XMMPackULONG_4202020_MinUnpacked));
-    e.vminps(i.dest, i.dest,
-             e.GetXmmConstPtr(XMMPackULONG_4202020_MaxUnpacked));
-    e.vblendvps(i.dest, i.dest, e.GetXmmConstPtr(XMMPackULONG_4202020_NaN),
-                e.xmm2);
+    Xmm clamped = EmitClamp(e, i, src, XMMPackULONG_4202020_MinUnpacked,
+                            XMMPackULONG_4202020_MaxUnpacked, 0b1111, true,
+                            XMMPackULONG_4202020_NaN);
     // Remove the unneeded bits of the floats (so excess nibbles will also be
     // cleared).
-    e.vpand(i.dest, e.GetXmmConstPtr(XMMPackULONG_4202020_MaskUnpacked));
+    e.vpand(i.dest, clamped,
+            e.GetXmmConstPtr(XMMPackULONG_4202020_MaskUnpacked));
     // Store Y and W shifted left by 4 so vpshufb can be used with them.
     e.vpslld(e.xmm0, i.dest, 4);
     // Place XZ where they're supposed to be.

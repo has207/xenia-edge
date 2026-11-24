@@ -115,7 +115,14 @@ enum PackType : uint16_t {
   PACK_TYPE_16_IN_32 = 8,
 
   PACK_TYPE_MODE = 0x000F,  // just to get the mode
-                            // Unpack to low or high parts.
+
+  // vpkd3d128: the pack also sets VSCR[SAT] when an element outside the range
+  // of its field saturates, even one the mask doesn't write. A NaN packs as
+  // the field's minimum without setting it. The PACK then writes the context,
+  // so it is never dead and a tracked vscr_sat doesn't survive it.
+  PACK_TYPE_SET_SAT = 1 << 4,
+
+  // Unpack to low or high parts.
   PACK_TYPE_TO_LO = 0 << 12,
   PACK_TYPE_TO_HI = 1 << 12,
 

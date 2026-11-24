@@ -17,6 +17,7 @@
 #include "xenia/cpu/backend/a64/a64_seq_util.h"
 #include "xenia/cpu/backend/a64/a64_stack_layout.h"
 #include "xenia/cpu/hir/instr.h"
+#include "xenia/cpu/ppc/ppc_context.h"
 
 namespace xe {
 namespace cpu {
@@ -1361,10 +1362,50 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
         break;
     }
   }
+  // With PACK_TYPE_SET_SAT, the register the clamp is compared with: src, or
+  // a copy in v3 when the clamp writes over it. -1 without the flag.
+  static int SatSource(A64Emitter& e, const EmitArgType& i, int s, int d) {
+    if (!(i.instr->flags & hir::PACK_TYPE_SET_SAT)) {
+      return -1;
+    }
+    if (s != d) {
+      return s;
+    }
+    e.mov(VReg(3).b16, VReg(s).b16);
+    return 3;
+  }
+  // Sets VSCR[SAT] when the clamp in d moved a lane of source that isn't a
+  // NaN: lanes 0 and 1 with low_two_lanes, else all four. A pack tends to
+  // saturate always or never, so the store sits inline behind a branch the
+  // predictor learns. Clobbers v0, v1 and x0.
+  static void EmitSetSatIfClamped(A64Emitter& e, int source, int d,
+                                  bool low_two_lanes) {
+    if (source < 0) {
+      return;
+    }
+    e.fcmeq(VReg(1).s4, VReg(d).s4, VReg(source).s4);
+    e.fcmeq(VReg(0).s4, VReg(source).s4, VReg(source).s4);
+    e.bic(VReg(0).b16, VReg(0).b16, VReg(1).b16);
+    if (low_two_lanes) {
+      e.fmov(e.x0, DReg(0));
+    } else {
+      e.umaxv(SReg(0), VReg(0).s4);
+      e.fmov(e.w0, SReg(0));
+    }
+    // VSCR[SAT] is sticky, so saturating only ever stores 1.
+    constexpr int32_t sat_offset =
+        static_cast<int32_t>(offsetof(ppc::PPCContext, vscr_sat));
+    auto& not_saturated = e.NewCachedLabel();
+    e.cbz(e.x0, not_saturated);
+    e.mov(e.w0, 1);
+    e.strb(e.w0, ptr(e.GetContextReg(), sat_offset));
+    e.LKeepingRemapBound(not_saturated);
+  }
   static void EmitD3DCOLOR(A64Emitter& e, const EmitArgType& i) {
     assert_true(i.src2.value->IsConstantZero());
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
+    int sat_source = SatSource(e, i, s, d);
     // Clamp to [3.0f, 3.0f + 255*2^-22].
     e.fmov(VReg(0).s4, 3.0f);
     // fmaxnm/fminnm: NaN operand returns the non-NaN value (pack NaN as zero).
@@ -1372,6 +1413,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     LoadV128Const(e, 0, vec128i(0x404000FFu));  // 3.0f + 255*2^-22
     e.fminnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    EmitSetSatIfClamped(e, sat_source, d, false);
     // TBL: extract low byte from each lane, reorder RGBA->ARGB in lane 3.
     // Control: bytes 0-11=0xFF (->0), bytes 12-15={0x08,0x04,0x00,0x0C}
     vec128_t ctrl;
@@ -1384,12 +1426,14 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     assert_true(i.src2.value->IsConstantZero());
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
+    int sat_source = SatSource(e, i, s, d);
     // Clamp to [PackSHORT_Min, PackSHORT_Max]. FMAX and FMIN keep a NaN, which
     // FMAXNM then replaces with 0x403F8000 so it packs as 0x8000.
     LoadV128Const(e, 0, vec128i(0x403F8001u));
     e.fmax(VReg(d).s4, VReg(s).s4, VReg(0).s4);
     LoadV128Const(e, 0, vec128i(0x40407FFFu));
     e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    EmitSetSatIfClamped(e, sat_source, d, true);
     LoadV128Const(e, 0, vec128i(0x403F8000u));
     e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     // TBL: extract low 2 bytes from lanes 0,1 -> pack into lane 3.
@@ -1404,11 +1448,13 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     assert_true(i.src2.value->IsConstantZero());
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
+    int sat_source = SatSource(e, i, s, d);
     // A NaN packs as 0x8000, as in EmitSHORT_2.
     LoadV128Const(e, 0, vec128i(0x403F8001u));
     e.fmax(VReg(d).s4, VReg(s).s4, VReg(0).s4);
     LoadV128Const(e, 0, vec128i(0x40407FFFu));
     e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    EmitSetSatIfClamped(e, sat_source, d, false);
     LoadV128Const(e, 0, vec128i(0x403F8000u));
     e.fmaxnm(VReg(d).s4, VReg(d).s4, VReg(0).s4);
     // TBL ctrl for PACK_SHORT_4: bytes 8-11={0x04,0x05,0x00,0x01},
@@ -1512,6 +1558,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     // Inline PACK: clamp magic floats, extract bit fields, shift, OR-fold.
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
+    int sat_source = SatSource(e, i, s, d);
 
     // Clamp to valid range: fmax(src, min) then fmin(result, max).
     // XYZ min=0x403FFE01 (-511), max=0x404001FF (+511)
@@ -1527,6 +1574,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     e.mov(e.x0, 0x40400003404001FFull);
     e.ins(VReg(0).d2[1], e.x0);
     e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    EmitSetSatIfClamped(e, sat_source, d, false);
 
     // A NaN kept by the clamp packs as the minimum, 0x200, and 0 in W.
     e.mov(e.x0, 0x403FFE00403FFE00ull);
@@ -1561,6 +1609,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     // 20-bit fields cross 32-bit boundaries, so use scalar GPR packing.
     int s = SrcVReg(e, i.src1, 2);
     int d = i.dest.reg().getIdx();
+    int sat_source = SatSource(e, i, s, d);
 
     // Clamp: fmax(src, min) then fmin(result, max).
     // XYZ min=0x40400000+(-524287)=0x40380001, max=0x40400000+524287=0x4047FFFF
@@ -1576,6 +1625,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
     e.mov(e.x0, 0x4040000F4047FFFFull);
     e.ins(VReg(0).d2[1], e.x0);
     e.fmin(VReg(d).s4, VReg(d).s4, VReg(0).s4);
+    EmitSetSatIfClamped(e, sat_source, d, false);
 
     // A NaN kept by the clamp packs as the minimum, 0x80000, and 0 in W.
     e.mov(e.x0, 0x4038000040380000ull);

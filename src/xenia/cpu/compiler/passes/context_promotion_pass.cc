@@ -183,6 +183,11 @@ void ContextPromotionPass::PromoteBlock(Block* block) {
     if (i->opcode->flags & OPCODE_FLAG_VOLATILE) {
       // Volatile instruction - requires all context values be flushed.
       validity.reset();
+    } else if (i->opcode == &OPCODE_PACK_info &&
+               (i->flags & PACK_TYPE_SET_SAT)) {
+      // The pack may set VSCR[SAT] itself. A later load reads it back, which
+      // also keeps any earlier store from looking dead.
+      InvalidateTrackedRange(offsetof(ppc::PPCContext, vscr_sat), 1);
     } else if (i->opcode == &OPCODE_LOAD_CONTEXT_info) {
       const uint32_t offset = static_cast<uint32_t>(i->src1.offset);
       const TypeName type = i->dest->type;
