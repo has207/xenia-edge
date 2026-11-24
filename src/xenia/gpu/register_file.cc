@@ -34,8 +34,7 @@ RegisterFile::RegisterFile() {
   values[XE_GPU_REG_VGT_HOS_REUSE_DEPTH] = 0x0000000E;
   values[XE_GPU_REG_VGT_VERTEX_REUSE_BLOCK_CNTL] = 0x0000000E;
   values[XE_GPU_REG_VGT_OUT_DEALLOC_CNTL] = 0x00000010;
-  // Guard-band clip/discard adjust (2.0 clip, 1.0 discard); hardwired on
-  // hardware.
+  // Guard band clip and discard adjust reset values.
   values[XE_GPU_REG_PA_CL_GB_VERT_CLIP_ADJ] = 0x40000000;  // 2.0f
   values[XE_GPU_REG_PA_CL_GB_VERT_DISC_ADJ] = 0x3F800000;  // 1.0f
   values[XE_GPU_REG_PA_CL_GB_HORZ_CLIP_ADJ] = 0x40000000;  // 2.0f

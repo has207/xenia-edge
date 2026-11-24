@@ -2805,7 +2805,10 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
   async_draw.interpreter_eligible = CanInterpretVertexShader(
       *vertex_shader, active_vertex_shader_ucode_address(),
       primitive_processing_result.host_vertex_shader_type,
-      primitive_processing_result.host_primitive_type);
+      primitive_processing_result.host_primitive_type,
+      vertex_shader_modification.vertex.z_clip_distances ||
+          vertex_shader_modification.vertex.guard_band_clip_distances ||
+          vertex_shader_modification.vertex.discard_band_cull_distances);
   const AsyncPipelinePlan async_plan = PlanAsyncPipeline(async_draw);
   void* pipeline_handle;
   ID3D12RootSignature* root_signature;
@@ -4422,6 +4425,15 @@ bool D3D12CommandProcessor::UpdateBindingsMesa(
     sc.ndc_scale[i] = viewport_info.ndc_scale[i];
     sc.ndc_offset[i] = viewport_info.ndc_offset[i];
   }
+
+  sc.guard_band_clip_adj[0] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_CLIP_ADJ);
+  sc.guard_band_clip_adj[1] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_CLIP_ADJ);
+  sc.guard_band_discard_adj[0] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_DISC_ADJ);
+  sc.guard_band_discard_adj[1] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_DISC_ADJ);
 
   // User clip planes.
   auto pa_cl_clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();

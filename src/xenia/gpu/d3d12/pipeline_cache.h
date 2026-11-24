@@ -132,6 +132,7 @@ class PipelineCache : public GuestSpirvShaderCache::Host {
     return render_target_cache_.depth_float24_convert_in_pixel_shader();
   }
   bool raw_clipping_supported() const override { return true; }
+  bool cull_distances_supported() const override { return true; }
   // Converts already-translated SPIR-V to signed Mesa DXIL, caching it by
   // (ucode hash, modification). Returns nullptr on failure. Thread safe (cache
   // guarded by mesa_dxil_cache_mutex_, conversion serialized internally), so it
@@ -417,6 +418,8 @@ class PipelineCache : public GuestSpirvShaderCache::Host {
       uint32_t has_point_size : 1;
       uint32_t has_point_coordinates : 1;
       uint32_t z_clip_distances : 1;
+      uint32_t guard_band_clip_distances : 1;
+      uint32_t discard_band_cull_distances : 1;
     };
 
     GeometryShaderKey() : key(0) { static_assert_size(*this, sizeof(key)); }

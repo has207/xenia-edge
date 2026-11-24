@@ -115,6 +115,10 @@ bool VulkanPipelineCache::raw_clipping_supported() const {
   return device_properties.depthClamp && device_properties.shaderClipDistance;
 }
 
+bool VulkanPipelineCache::cull_distances_supported() const {
+  return command_processor_.GetVulkanDevice()->properties().shaderCullDistance;
+}
+
 bool VulkanPipelineCache::Initialize() {
   const ui::vulkan::VulkanDevice* const vulkan_device =
       command_processor_.GetVulkanDevice();
@@ -1500,10 +1504,13 @@ bool VulkanPipelineCache::ArePipelineRequirementsMet(
     return false;
   }
 
-  // Clip distances from the raw position, possibly in pipeline storage from
-  // another device.
-  if (vertex_shader_modification.vertex.z_clip_distances &&
-      !raw_clipping_supported()) {
+  // Clip and cull distances from the raw position, possibly in pipeline
+  // storage from another device.
+  if (((vertex_shader_modification.vertex.z_clip_distances ||
+        vertex_shader_modification.vertex.guard_band_clip_distances) &&
+       !raw_clipping_supported()) ||
+      (vertex_shader_modification.vertex.discard_band_cull_distances &&
+       !cull_distances_supported())) {
     return false;
   }
 
@@ -1571,7 +1578,8 @@ VkShaderModule VulkanPipelineCache::GetGeometryShader(GeometryShaderKey key) {
       BuildGuestPrimitiveGeometryShaderSpirv(
           BuiltinGeometryShaderType(uint32_t(key.type)), key.interpolator_count,
           key.user_clip_plane_count, bool(key.user_clip_plane_cull),
-          bool(key.z_clip_distances), bool(key.has_vertex_kill_and),
+          bool(key.z_clip_distances), bool(key.guard_band_clip_distances),
+          bool(key.discard_band_cull_distances), bool(key.has_vertex_kill_and),
           bool(key.has_point_size), bool(key.has_point_coordinates),
           spirv_version_, denorm_flush_to_zero_float32_,
           signed_zero_inf_nan_preserve_float32_, rounding_mode_rte_float32_);

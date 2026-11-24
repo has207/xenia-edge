@@ -71,6 +71,9 @@ class GuestSpirvShaderCache {
     // distances and clamp the depth (see
     // draw_util::IsZClippedWithClipDistances).
     virtual bool raw_clipping_supported() const = 0;
+    // Whether the host has cull distances (see
+    // draw_util::IsDiscardBandCulledWithCullDistances).
+    virtual bool cull_distances_supported() const = 0;
   };
 
   GuestSpirvShaderCache(Host& host, const RegisterFile& register_file,
@@ -118,6 +121,8 @@ class GuestSpirvShaderCache {
       uint32_t has_point_size : 1;
       uint32_t has_point_coordinates : 1;
       uint32_t z_clip_distances : 1;
+      uint32_t guard_band_clip_distances : 1;
+      uint32_t discard_band_cull_distances : 1;
     };
     GeometryShaderKey() : key(0) { static_assert_size(*this, sizeof(key)); }
     struct Hasher {

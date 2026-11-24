@@ -612,6 +612,8 @@ void SpirvShaderTranslator::StartTranslation() {
        type_uint_},
       {"vertex_base_index", offsetof(SystemConstants, vertex_base_index),
        type_int_},
+      {"guard_band_clip_adj", offsetof(SystemConstants, guard_band_clip_adj),
+       type_float2_},
       {"ndc_scale", offsetof(SystemConstants, ndc_scale), type_float3_},
       {"point_vertex_diameter_min",
        offsetof(SystemConstants, point_vertex_diameter_min), type_float_},
@@ -639,6 +641,8 @@ void SpirvShaderTranslator::StartTranslation() {
        type_uint_},
       {"edram_depth_base_dwords_scaled",
        offsetof(SystemConstants, edram_depth_base_dwords_scaled), type_uint_},
+      {"guard_band_discard_adj",
+       offsetof(SystemConstants, guard_band_discard_adj), type_float2_},
       {"color_exp_bias", offsetof(SystemConstants, color_exp_bias),
        type_float4_},
       {"edram_poly_offset_front_scale",
@@ -1994,8 +1998,14 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderBeforeMain() {
   if (shader_modification.vertex.vertex_kill_and) {
     ++cull_distance_count;
   }
+  if (shader_modification.vertex.discard_band_cull_distances) {
+    cull_distance_count += 4;
+  }
   if (shader_modification.vertex.z_clip_distances) {
     clip_distance_count += 2;
+  }
+  if (shader_modification.vertex.guard_band_clip_distances) {
+    clip_distance_count += 4;
   }
   output_per_vertex_clip_distance_member_index_ = 0;
   output_per_vertex_cull_distance_member_index_ = 0;
@@ -3047,9 +3057,10 @@ void SpirvShaderTranslator::CompleteVertexOrTessEvalShaderInMain() {
     }
   }
 
-  // Clip the raw position before the PA_CL_VTE_CNTL formats convert it. At the
-  // near and far planes the host clamps the depth instead of clipping the
-  // converted position.
+  // Clip and cull the raw position before the PA_CL_VTE_CNTL formats convert
+  // it. At the near and far planes the host clamps the depth instead of
+  // clipping the converted position. At the guard band the host viewport
+  // doesn't clip X and Y.
   uint32_t raw_clip_distance_index =
       shader_modification.vertex.user_clip_plane_cull ? 0
                                                       : user_clip_plane_count;
@@ -3063,18 +3074,81 @@ void SpirvShaderTranslator::CompleteVertexOrTessEvalShaderInMain() {
                                         spv::StorageClassOutput,
                                         output_per_vertex_, id_vector_temp_));
   };
-  if (shader_modification.vertex.z_clip_distances) {
-    spv::Id guest_position_z =
-        builder_->createCompositeExtract(guest_position, type_float_, 2);
+  if (shader_modification.vertex.z_clip_distances ||
+      shader_modification.vertex.guard_band_clip_distances ||
+      shader_modification.vertex.discard_band_cull_distances) {
     spv::Id guest_position_w =
         builder_->createCompositeExtract(guest_position, type_float_, 3);
-    store_raw_clip_distance(
-        shader_modification.vertex.z_clip_near_at_minus_w
-            ? builder_->createNoContractionBinOp(
-                  spv::OpFAdd, type_float_, guest_position_z, guest_position_w)
-            : guest_position_z);
-    store_raw_clip_distance(builder_->createNoContractionBinOp(
-        spv::OpFSub, type_float_, guest_position_w, guest_position_z));
+    if (shader_modification.vertex.z_clip_distances) {
+      spv::Id guest_position_z =
+          builder_->createCompositeExtract(guest_position, type_float_, 2);
+      store_raw_clip_distance(shader_modification.vertex.z_clip_near_at_minus_w
+                                  ? builder_->createNoContractionBinOp(
+                                        spv::OpFAdd, type_float_,
+                                        guest_position_z, guest_position_w)
+                                  : guest_position_z);
+      store_raw_clip_distance(builder_->createNoContractionBinOp(
+          spv::OpFSub, type_float_, guest_position_w, guest_position_z));
+    }
+    if (shader_modification.vertex.guard_band_clip_distances) {
+      // -adj * W <= X, Y <= adj * W.
+      id_vector_temp_.clear();
+      id_vector_temp_.push_back(
+          builder_->makeIntConstant(kSystemConstantGuardBandClipAdj));
+      spv::Id guard_band_w = builder_->createNoContractionBinOp(
+          spv::OpVectorTimesScalar, type_float2_,
+          builder_->createLoad(builder_->createAccessChain(
+                                   spv::StorageClassUniform,
+                                   uniform_system_constants_, id_vector_temp_),
+                               spv::NoPrecision),
+          guest_position_w);
+      for (uint32_t i = 0; i < 2; ++i) {
+        spv::Id guest_position_axis =
+            builder_->createCompositeExtract(guest_position, type_float_, i);
+        spv::Id guard_band_w_axis =
+            builder_->createCompositeExtract(guard_band_w, type_float_, i);
+        store_raw_clip_distance(builder_->createNoContractionBinOp(
+            spv::OpFAdd, type_float_, guard_band_w_axis, guest_position_axis));
+        store_raw_clip_distance(builder_->createNoContractionBinOp(
+            spv::OpFSub, type_float_, guard_band_w_axis, guest_position_axis));
+      }
+    }
+    if (shader_modification.vertex.discard_band_cull_distances) {
+      // Primitives wholly past -adj * W or adj * W in X or Y are culled.
+      id_vector_temp_.clear();
+      id_vector_temp_.push_back(
+          builder_->makeIntConstant(kSystemConstantGuardBandDiscardAdj));
+      spv::Id discard_band_w = builder_->createNoContractionBinOp(
+          spv::OpVectorTimesScalar, type_float2_,
+          builder_->createLoad(builder_->createAccessChain(
+                                   spv::StorageClassUniform,
+                                   uniform_system_constants_, id_vector_temp_),
+                               spv::NoPrecision),
+          guest_position_w);
+      uint32_t cull_distance_index =
+          (shader_modification.vertex.user_clip_plane_cull
+               ? user_clip_plane_count
+               : 0) +
+          shader_modification.vertex.vertex_kill_and;
+      for (uint32_t i = 0; i < 2; ++i) {
+        spv::Id guest_position_axis =
+            builder_->createCompositeExtract(guest_position, type_float_, i);
+        spv::Id discard_band_w_axis =
+            builder_->createCompositeExtract(discard_band_w, type_float_, i);
+        for (spv::Op op : {spv::OpFAdd, spv::OpFSub}) {
+          id_vector_temp_.clear();
+          id_vector_temp_.push_back(builder_->makeIntConstant(
+              int(output_per_vertex_cull_distance_member_index_)));
+          id_vector_temp_.push_back(
+              builder_->makeIntConstant(int(cull_distance_index++)));
+          builder_->createStore(
+              builder_->createNoContractionBinOp(
+                  op, type_float_, discard_band_w_axis, guest_position_axis),
+              builder_->createAccessChain(spv::StorageClassOutput,
+                                          output_per_vertex_, id_vector_temp_));
+        }
+      }
+    }
   }
 
   // Apply the NDC scale and offset for guest to host viewport transformation.

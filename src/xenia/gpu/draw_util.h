@@ -134,6 +134,31 @@ inline bool IsZClippedWithClipDistances(const RegisterFile& regs,
          xe::bit_count(regs.Get<reg::PA_CL_CLIP_CNTL>().ucp_ena) + 1 + 2 <= 8;
 }
 
+// Whether X and Y are clipped at the guard band with 4 clip distances from the
+// raw vertex shader position, before the PA_CL_VTE_CNTL formats convert it.
+// Needs host clip distances and depth clamping. Left out when they don't fit in
+// the 8 host clip and cull distances after the user clip planes, the vertex
+// kill cull distance and the Z clip distances.
+inline bool IsGuardBandClippedWithClipDistances(const RegisterFile& regs,
+                                                bool raw_clipping_supported) {
+  auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
+  return raw_clipping_supported && ArePrimitivesClipped(regs) &&
+         (pa_cl_vte_cntl.vtx_xy_fmt || !pa_cl_vte_cntl.vtx_w0_fmt) &&
+         xe::bit_count(regs.Get<reg::PA_CL_CLIP_CNTL>().ucp_ena) + 1 +
+                 (IsZClippedWithClipDistances(regs, true) ? 2 : 0) + 4 <=
+             8;
+}
+
+// Whether primitives with every vertex past the discard band,
+// PA_CL_GB_HORZ_DISC_ADJ and PA_CL_GB_VERT_DISC_ADJ times the raw W, are culled
+// with 4 cull distances from the raw vertex shader position. Triangles and
+// quads only need them where the band doesn't cover the scissor. Not with the
+// XY/W and 1/W formats, which leave no room next to the Z and guard band clip
+// distances. Left out when they don't fit in the 8 host clip and cull distances
+// after the user clip planes and the vertex kill cull distance.
+bool IsDiscardBandCulledWithCullDistances(const RegisterFile& regs,
+                                          bool cull_distances_supported);
+
 // Whether the host clamps the depth instead of clipping at the near and far
 // planes.
 inline bool IsDepthClampedAtZPlanes(const RegisterFile& regs,
@@ -356,12 +381,10 @@ bool IsPixelShaderNeededWithRasterization(const Shader& shader,
 
 struct ViewportInfo {
   // Offset from render target UV = 0 to +UV.
-  // For simplicity of cropping to the maximum size on the host; to match the
-  // Direct3D 12 clipping / scissoring behavior with a fractional viewport, to
-  // floor(TopLeftXY) ... floor(TopLeftXY + WidthHeight), on the real AMD, Intel
-  // and Nvidia hardware (not WARP); as well as to hide the differences between
-  // 0 and 8+ viewportSubPixelBits on Vulkan, and to prevent any numerical error
-  // in bound checking in host APIs, viewport bounds are returned as integers.
+  // For simplicity of cropping to the maximum size on the host, to hide the
+  // differences between 0 and 8+ viewportSubPixelBits on Vulkan, and to prevent
+  // any numerical error in bound checking in host APIs, viewport bounds are
+  // returned as integers.
   // The offset may be negative, down to -maxViewportDimensions (Vulkan's
   // viewportBoundsRange always covers twice that), and the extent is at most
   // maxViewportDimensions. All fractional offsetting, including the half-pixel
@@ -403,6 +426,10 @@ struct GetViewportInfoArgs {
           // The host clamps the depth instead of clipping at the Z planes (see
           // IsDepthClampedAtZPlanes).
           uint32_t depth_clamped : 1;
+          // The host doesn't clip X and Y: rectangle lists, or the guard band
+          // clipped with clip distances (see
+          // IsGuardBandClippedWithClipDistances).
+          uint32_t xy_unclipped : 1;
         };
         uint32_t packed_portions;
       };
@@ -422,6 +449,10 @@ struct GetViewportInfoArgs {
       float PA_CL_VPORT_YOFFSET;
       float PA_CL_VPORT_ZOFFSET;
       uint32_t padding_set_to_0;
+      // group 5
+      float PA_CL_GB_HORZ_CLIP_ADJ;
+      float PA_CL_GB_VERT_CLIP_ADJ;
+      uint32_t padding_2_set_to_0[2];
     };
 #if XE_ARCH_AMD64 == 1
     struct {
@@ -431,8 +462,10 @@ struct GetViewportInfoArgs {
                         // pa_su_vtx_cntl
       __m128i third4;   // pa_sc_window_offset, PA_CL_VPORT_XSCALE,
                         // PA_CL_VPORT_YSCALE, PA_CL_VPORT_ZSCALE
-      __m128i last4;    // PA_CL_VPORT_XOFFSET, PA_CL_VPORT_YOFFSET,
+      __m128i fourth4;  // PA_CL_VPORT_XOFFSET, PA_CL_VPORT_YOFFSET,
                         // PA_CL_VPORT_ZOFFSET, padding_set_to_0
+      __m128i last4;    // PA_CL_GB_HORZ_CLIP_ADJ, PA_CL_GB_VERT_CLIP_ADJ,
+                        // padding_2_set_to_0
     };
 #endif
   };
@@ -451,6 +484,8 @@ struct GetViewportInfoArgs {
              bool _pixel_shader_writes_depth, bool _xenos_sample_positions) {
     packed_portions = 0;
     padding_set_to_0 = 0;  // important to zero this
+    padding_2_set_to_0[0] = 0;
+    padding_2_set_to_0[1] = 0;
     draw_resolution_scale_x = _draw_resolution_scale_x;
     draw_resolution_scale_y = _draw_resolution_scale_y;
     draw_resolution_scale_x_divisor = _draw_resolution_scale_x_divisor;
@@ -479,6 +514,8 @@ struct GetViewportInfoArgs {
     PA_CL_VPORT_XOFFSET = regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_XOFFSET);
     PA_CL_VPORT_YOFFSET = regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET);
     PA_CL_VPORT_ZOFFSET = regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_ZOFFSET);
+    PA_CL_GB_HORZ_CLIP_ADJ = regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_CLIP_ADJ);
+    PA_CL_GB_VERT_CLIP_ADJ = regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_CLIP_ADJ);
     pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
     if (window_offset_in_edram) {
       pa_sc_window_offset.value = 0;
@@ -486,6 +523,9 @@ struct GetViewportInfoArgs {
     depth_format = regs.Get<reg::RB_DEPTH_INFO>().depth_format;
     msaa_samples = regs.Get<reg::RB_SURFACE_INFO>().msaa_samples;
     depth_clamped = IsDepthClampedAtZPlanes(regs, raw_clipping_supported);
+    xy_unclipped =
+        !ArePrimitivesClipped(regs) ||
+        IsGuardBandClippedWithClipDistances(regs, raw_clipping_supported);
   }
   XE_FORCEINLINE
   bool operator==(const GetViewportInfoArgs& prev) const {
@@ -511,6 +551,8 @@ struct GetViewportInfoArgs {
     EQC(PA_CL_VPORT_YOFFSET);
     EQC(PA_CL_VPORT_ZOFFSET);
     EQC(pa_sc_window_offset.value);
+    EQC(PA_CL_GB_HORZ_CLIP_ADJ);
+    EQC(PA_CL_GB_VERT_CLIP_ADJ);
 
 #undef EQC
     return result;
@@ -520,13 +562,16 @@ struct GetViewportInfoArgs {
 
     __m128i mask3 = _mm_cmpeq_epi32(third4, prev.third4);
     __m128i unified1 = _mm_and_si128(mask1, mask2);
-    __m128i mask4 = _mm_cmpeq_epi32(last4, prev.last4);
+    __m128i mask4 = _mm_cmpeq_epi32(fourth4, prev.fourth4);
+    __m128i mask5 = _mm_cmpeq_epi32(last4, prev.last4);
 
     __m128i unified2 = _mm_and_si128(unified1, mask3);
 
     __m128i unified3 = _mm_and_si128(unified2, mask4);
 
-    return _mm_movemask_epi8(unified3) == 0xFFFF;
+    __m128i unified4 = _mm_and_si128(unified3, mask5);
+
+    return _mm_movemask_epi8(unified4) == 0xFFFF;
 
 #endif
   }

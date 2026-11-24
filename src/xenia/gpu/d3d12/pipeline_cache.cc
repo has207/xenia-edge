@@ -742,6 +742,7 @@ const std::vector<uint8_t>* PipelineCache::GetGuestMesaGeometryDxil(
   std::vector<unsigned int> spirv = BuildGuestPrimitiveGeometryShaderSpirv(
       BuiltinGeometryShaderType(uint32_t(key.type)), key.interpolator_count,
       key.user_clip_plane_count, key.user_clip_plane_cull, key.z_clip_distances,
+      key.guard_band_clip_distances, key.discard_band_cull_distances,
       key.has_vertex_kill_and, key.has_point_size, key.has_point_coordinates,
       features.spirv_version, features.denorm_flush_to_zero_float32,
       features.signed_zero_inf_nan_preserve_float32,
@@ -750,7 +751,7 @@ const std::vector<uint8_t>* PipelineCache::GetGuestMesaGeometryDxil(
   // the vertex shader does. Cull planes contribute no clip inputs.
   uint32_t input_clip_size =
       (key.user_clip_plane_cull ? 0 : key.user_clip_plane_count) +
-      (key.z_clip_distances ? 2 : 0);
+      (key.z_clip_distances ? 2 : 0) + (key.guard_band_clip_distances ? 4 : 0);
   std::vector<uint8_t> dxil = SpirvToDxilCompiler::Translate(
       spirv.data(), spirv.size(), SpirvToDxilCompiler::Stage::kGeometry,
       /*lower_to_bindless=*/true, input_clip_size);
@@ -1824,6 +1825,10 @@ bool PipelineCache::GetGeometryShaderKey(
       vertex_shader_modification.vertex.output_point_parameters;
   key.has_point_coordinates = pixel_shader_modification.pixel.param_gen_point;
   key.z_clip_distances = vertex_shader_modification.vertex.z_clip_distances;
+  key.guard_band_clip_distances =
+      vertex_shader_modification.vertex.guard_band_clip_distances;
+  key.discard_band_cull_distances =
+      vertex_shader_modification.vertex.discard_band_cull_distances;
   key_out = key;
   return true;
 }

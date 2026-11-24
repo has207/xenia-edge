@@ -37,8 +37,9 @@ enum class BuiltinGeometryShaderType : uint32_t {
 std::vector<unsigned int> BuildGuestPrimitiveGeometryShaderSpirv(
     BuiltinGeometryShaderType type, uint32_t interpolator_count,
     uint32_t user_clip_plane_count, bool user_clip_plane_cull,
-    bool z_clip_distances, bool has_vertex_kill_and, bool has_point_size,
-    bool has_point_coordinates, unsigned int spirv_version,
+    bool z_clip_distances, bool guard_band_clip_distances,
+    bool discard_band_cull_distances, bool has_vertex_kill_and,
+    bool has_point_size, bool has_point_coordinates, unsigned int spirv_version,
     bool denorm_flush_to_zero_float32,
     bool signed_zero_inf_nan_preserve_float32, bool rounding_mode_rte_float32);
 

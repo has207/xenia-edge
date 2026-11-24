@@ -340,47 +340,30 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
   //
   // - Clipping is enabled:
   //
-  //   Drawing "as normal", primarily for the game world. Draws are clipped to
-  //   the (-w, -w, 0) ... (w, w, w) or (-w, -w, -w) ... (w, w, w) clip space.
+  //   Drawing "as normal", primarily for the game world. Draws are clipped in
+  //   Z to 0 <= z <= w or -w <= z <= w. In X and Y they're clipped to the
+  //   guard band (|x| <= PA_CL_GB_HORZ_CLIP_ADJ * w,
+  //   |y| <= PA_CL_GB_VERT_CLIP_ADJ * w) rather than to the viewport.
   //
   //   Ideally all offsets in pixels (window offset, half-pixel offset) are
   //   post-clip, and thus they would need to be applied via the host viewport
   //   (also the Direct3D 11.3 specification defines this as the correct way of
   //   reproducing the original Direct3D 9 half-pixel offset behavior).
   //
-  //   However, in reality, only WARP actually truly clips to -W...W, with the
-  //   viewport fractional offset actually accurately making samples outside the
-  //   fractional rectangle unable to be covered. AMD, Intel and Nvidia, in
-  //   Direct3D 12, all don't truly clip even a really huge primitive to -W...W.
-  //   Instead, primitives still overflow the fractional rectangle and cover
-  //   samples outside of it. The actual viewport scissor is floor(TopLeftX,
-  //   TopLeftY) ... floor(TopLeftX + Width, TopLeftY + Height), with flooring
-  //   and addition in float32 (with 0x3F7FFFFF TopLeftXY, or 1.0f - ULP, all
-  //   the samples in the top row / left column can be covered, while with
-  //   0x3F800000, or 1.0f, none of them can be).
-  //
-  //   We are reproducing the same behavior here - what would happen if we'd be
-  //   passing the guest values directly to Direct3D 12. Also, for consistency
-  //   across hardware and APIs (especially Vulkan with viewportSubPixelBits
-  //   being 0 rather than at least 8 on some devices - Arm Mali, Imagination
-  //   PowerVR), and for simplicity of math, and also for exact calculations in
-  //   bounds checking in validation layers of the host APIs, we are returning
-  //   integer viewport coordinates, handling the fractional offset in the
+  //   The host viewport covers the guard band, rounded to the guest pixels
+  //   whose centers are inside it, or 8192 guest pixels each way where X and
+  //   Y aren't clipped. For consistency across hardware and APIs
+  //   (especially Vulkan with viewportSubPixelBits being 0 rather than at
+  //   least 8 on some devices - Arm Mali, Imagination PowerVR), and for
+  //   simplicity of math, and also for exact calculations in bounds checking
+  //   in validation layers of the host APIs, we are returning integer
+  //   viewport coordinates, handling the fractional offset in the
   //   vertex shaders instead, via ndc_scale and ndc_offset - it shouldn't
   //   significantly affect precision that we will be doing the offsetting in
   //   W-scaled rather than W-divided units, the ratios of exponents involved in
   //   the calculations stay the same, and everything ends up being 16.8 anyway
   //   on most hardware, so small precision differences are very unlikely to
   //   affect coverage.
-  //
-  // FIXME(Triang3l): Overestimate or more properly round the viewport scissor
-  // boundaries if this flooring causes gaps on the bottom / right side in real
-  // games if any are found using fractional viewport coordinates. Viewport
-  // scissoring is not an inherent result of the viewport scale / offset, these
-  // are used merely for transformation of coordinates; rather, it's done by
-  // intersecting the viewport and scissor rectangles in the guest driver and
-  // writing the common portion to PA_SC_WINDOW_SCISSOR, so how the scissor is
-  // computed for a fractional viewport is entirely up to the guest.
   //
   //   Even though Xbox 360 games are designed for Direct3D, with 0...W range of
   //   Z in clip space, the GPU also allows -W...W. Since Xenia is not targeting
@@ -478,6 +461,8 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
     offset_add_xy[0] += 0.5f;
     offset_add_xy[1] += 0.5f;
   }
+  // The guard band is around the offset in guest pixels.
+  float clip_offset_add_xy[] = {offset_add_xy[0], offset_add_xy[1]};
   // Only scale the whole pixel part of the viewport offset. Keep the Xenos
   // sample offset in host pixels since programmed sample positions don't scale
   // (see kXenosSamplePositions2x).
@@ -560,10 +545,10 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
 
     // XY.
     for (uint32_t i = 0; i < 2; ++i) {
-      // With resolution scaling, do all viewport XY scissoring in guest pixels
-      // if fractional and for the half-pixel offset - we treat guest pixels as
-      // a whole, and also the half-pixel offset would be irreversible in guest
-      // vertices if we did flooring in host pixels.
+      // With resolution scaling, do all XY clipping in guest pixels if
+      // fractional and for the half-pixel offset - we treat guest pixels as a
+      // whole and the half-pixel offset would also be irreversible in guest
+      // vertices if we rounded in host pixels.
       //
       // The start may be negative, down to -max, instead of being cropped at
       // 0. With a window offset (predicated tiling in 4D5307DF draws its
@@ -578,12 +563,24 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
       float scale_axis = scale_xy[i];
       float scale_axis_abs = std::abs(scale_xy[i]);
       float axis_max_unscaled_float = float(xy_max_unscaled[i]);
-      int32_t axis_1_int = int32_t(std::floor(xe::clamp_float(
-          offset_axis + scale_axis_abs, 0.0f, axis_max_unscaled_float)));
-      int32_t axis_0_int = int32_t(std::floor(
-          xe::clamp_float(offset_axis - scale_axis_abs,
-                          float(axis_1_int) - axis_max_unscaled_float,
-                          axis_max_unscaled_float)));
+      // X and Y are clipped at the guard band, not at the viewport. Keep the
+      // guest pixels whose centers are inside it.
+      float clip_offset_axis = offset_base_xy[i] + clip_offset_add_xy[i];
+      float clip_axis_abs = float(xenos::kTexture2DCubeMaxWidthHeight);
+      if (!args->xy_unclipped) {
+        float guard_band_axis =
+            i ? args->PA_CL_GB_VERT_CLIP_ADJ : args->PA_CL_GB_HORZ_CLIP_ADJ;
+        clip_axis_abs =
+            xe::clamp_float(scale_axis_abs * guard_band_axis, 0.0f,
+                            float(xenos::kTexture2DCubeMaxWidthHeight));
+      }
+      int32_t axis_1_int = int32_t(
+          std::ceil(xe::clamp_float(clip_offset_axis + clip_axis_abs - 0.5f,
+                                    0.0f, axis_max_unscaled_float)));
+      int32_t axis_0_int = int32_t(
+          std::ceil(xe::clamp_float(clip_offset_axis - clip_axis_abs - 0.5f,
+                                    float(axis_1_int) - axis_max_unscaled_float,
+                                    axis_max_unscaled_float)));
       uint32_t axis_extent_int =
           axis_1_int > 0 ? uint32_t(axis_1_int - axis_0_int) : 0;
       viewport_info_out.xy_offset[i] =
@@ -609,7 +606,7 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
                            (float(axis_0_int) + axis_extent_rounded * 0.5f)) *
                           2.0f * inv_axis_extent_rounded;
       } else {
-        // Empty viewport (everything outside the viewport scissor).
+        // Empty viewport (nothing inside the guard band).
         ndc_scale_axis = 1.0f;
         ndc_offset_axis = 0.0f;
       }
@@ -745,6 +742,68 @@ void GetHostViewportInfo(GetViewportInfoArgs* XE_RESTRICT args,
     viewport_info_out.ndc_offset[i] = ndc_offset[i];
   }
 }
+
+bool IsDiscardBandCulledWithCullDistances(const RegisterFile& regs,
+                                          bool cull_distances_supported) {
+  auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
+  if (!cull_distances_supported || !ArePrimitivesClipped(regs) ||
+      pa_cl_vte_cntl.vtx_xy_fmt || !pa_cl_vte_cntl.vtx_w0_fmt ||
+      xe::bit_count(regs.Get<reg::PA_CL_CLIP_CNTL>().ucp_ena) + 1 + 4 > 8) {
+    return false;
+  }
+  auto pa_su_sc_mode_cntl = regs.Get<reg::PA_SU_SC_MODE_CNTL>();
+  if (!IsPrimitivePolygonal(regs) ||
+      (pa_su_sc_mode_cntl.poly_mode == xenos::PolygonModeEnable::kDualMode &&
+       (pa_su_sc_mode_cntl.polymode_front_ptype !=
+            xenos::PolygonType::kTriangles ||
+        pa_su_sc_mode_cntl.polymode_back_ptype !=
+            xenos::PolygonType::kTriangles))) {
+    // Point sprites and lines, also polygons drawn as them, reach past their
+    // vertices.
+    return true;
+  }
+  // The band is a window rectangle. Nothing with every vertex past it covers a
+  // pixel center in the scissor if it covers the scissor.
+  Scissor scissor;
+  GetScissor(regs, scissor, false);
+  if (!scissor.extent[0] || !scissor.extent[1]) {
+    return false;
+  }
+  auto pa_sc_window_offset = regs.Get<reg::PA_SC_WINDOW_OFFSET>();
+  bool window_offset = pa_su_sc_mode_cntl.vtx_window_offset_enable;
+  float scale[] = {
+      pa_cl_vte_cntl.vport_x_scale_ena
+          ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_XSCALE)
+          : 1.0f,
+      pa_cl_vte_cntl.vport_y_scale_ena
+          ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YSCALE)
+          : 1.0f,
+  };
+  float offset[] = {
+      (pa_cl_vte_cntl.vport_x_offset_ena
+           ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_XOFFSET)
+           : 0.0f) +
+          (window_offset ? float(pa_sc_window_offset.window_x_offset) : 0.0f),
+      (pa_cl_vte_cntl.vport_y_offset_ena
+           ? regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET)
+           : 0.0f) +
+          (window_offset ? float(pa_sc_window_offset.window_y_offset) : 0.0f),
+  };
+  float discard_adj[] = {
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_DISC_ADJ),
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_DISC_ADJ),
+  };
+  for (uint32_t i = 0; i < 2; ++i) {
+    float extent = std::abs(scale[i]) * discard_adj[i];
+    // Written to be true for NaN.
+    if (!(float(scissor.offset[i]) >= offset[i] - extent &&
+          float(scissor.offset[i] + scissor.extent[i]) <= offset[i] + extent)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 template <bool clamp_to_surface_pitch>
 static inline void GetScissorTmpl(const RegisterFile& XE_RESTRICT regs,
                                   Scissor& XE_RESTRICT scissor_out,

@@ -97,12 +97,14 @@ inline AsyncPipelinePlan PlanAsyncPipeline(const AsyncPipelineDraw& draw) {
 // place of its translation, as far as the shader and the primitive go: a plain
 // vertex shader with static control flow and no texture fetch or memory
 // export. It reads the ucode from shared memory, so not one loaded inline
-// (address 0).
+// (address 0). It doesn't clip or cull the raw position (raw_clipped) with clip
+// and cull distances.
 inline bool CanInterpretVertexShader(
     const Shader& vertex_shader, uint32_t ucode_address,
     Shader::HostVertexShaderType host_vertex_shader_type,
-    xenos::PrimitiveType host_primitive_type) {
+    xenos::PrimitiveType host_primitive_type, bool raw_clipped) {
   return cvars::async_shader_vs_interpreter && ucode_address != 0 &&
+         !raw_clipped &&
          host_vertex_shader_type == Shader::HostVertexShaderType::kVertex &&
          host_primitive_type != xenos::PrimitiveType::kPointList &&
          host_primitive_type != xenos::PrimitiveType::kRectangleList &&

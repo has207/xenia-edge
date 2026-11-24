@@ -182,6 +182,7 @@ class VulkanPipelineCache : public GuestSpirvShaderCache::Host {
 
   // GuestSpirvShaderCache::Host, also for the viewport.
   bool raw_clipping_supported() const override;
+  bool cull_distances_supported() const override;
 
   // The ucode interpreter placeholder defers translation by not calling this on
   // the draw thread; the creation thread calls it (passing its own worker

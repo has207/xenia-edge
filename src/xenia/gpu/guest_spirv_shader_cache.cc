@@ -83,6 +83,12 @@ uint64_t GuestSpirvShaderCache::GetVertexShaderModification(
     modification.vertex.z_clip_near_at_minus_w =
         uint32_t(!pa_cl_clip_cntl.dx_clip_space_def);
   }
+  modification.vertex.guard_band_clip_distances =
+      uint32_t(draw_util::IsGuardBandClippedWithClipDistances(
+          regs, host_.raw_clipping_supported()));
+  modification.vertex.discard_band_cull_distances =
+      uint32_t(draw_util::IsDiscardBandCulledWithCullDistances(
+          regs, host_.cull_distances_supported()));
 
   // For kPointListAsTriangleStrip the bit means output coordinates (only the
   // Vulkan fallback uses that host type). Otherwise it means output point size.
@@ -262,6 +268,9 @@ bool GuestSpirvShaderCache::GetGeometryShaderKey(
   key.has_point_size = vertex_mod.vertex.output_point_parameters;
   key.has_point_coordinates = pixel_mod.pixel.param_gen_point;
   key.z_clip_distances = vertex_mod.vertex.z_clip_distances;
+  key.guard_band_clip_distances = vertex_mod.vertex.guard_band_clip_distances;
+  key.discard_band_cull_distances =
+      vertex_mod.vertex.discard_band_cull_distances;
   key_out = key;
   return true;
 }

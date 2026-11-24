@@ -107,6 +107,14 @@ class SpirvShaderTranslator : public ShaderTranslator {
       // With z_clip_distances, whether the near plane is at Z = -W (OpenGL
       // clip space) rather than at Z = 0.
       uint32_t z_clip_near_at_minus_w : 1;
+      // Clip X and Y at the guard band with 4 clip distances from the raw
+      // position, after the user clip plane and Z clip distances (see
+      // draw_util::IsGuardBandClippedWithClipDistances).
+      uint32_t guard_band_clip_distances : 1;
+      // Cull primitives wholly past the discard band with 4 cull distances
+      // from the raw position, after the user clip plane and vertex kill cull
+      // distances (see draw_util::IsDiscardBandCulledWithCullDistances).
+      uint32_t discard_band_cull_distances : 1;
     } vertex;
     struct PixelShaderModification {
       // uint32_t 0.
@@ -328,7 +336,9 @@ class SpirvShaderTranslator : public ShaderTranslator {
     uint32_t vertex_index_count;
     xenos::Endian vertex_index_endian;
     int32_t vertex_base_index;
-    uint32_t padding_after_vertex_index[3];
+    uint32_t padding_after_vertex_index;
+    // PA_CL_GB_HORZ_CLIP_ADJ and PA_CL_GB_VERT_CLIP_ADJ.
+    float guard_band_clip_adj[2];
 
     float ndc_scale[3];
     float point_vertex_diameter_min;
@@ -369,7 +379,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
 
     uint32_t edram_32bpp_tile_pitch_dwords_scaled;
     uint32_t edram_depth_base_dwords_scaled;
-    uint32_t padding_after_depth_info[2];
+    // PA_CL_GB_HORZ_DISC_ADJ and PA_CL_GB_VERT_DISC_ADJ.
+    float guard_band_discard_adj[2];
 
     float color_exp_bias[4];
 
@@ -1279,6 +1290,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
     kSystemConstantVertexIndexCount,
     kSystemConstantVertexIndexEndian,
     kSystemConstantVertexBaseIndex,
+    kSystemConstantGuardBandClipAdj,
     kSystemConstantNdcScale,
     kSystemConstantPointVertexDiameterMin,
     kSystemConstantNdcOffset,
@@ -1293,6 +1305,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
     kSystemConstantZpdFsiCounterIndex,
     kSystemConstantEdram32bppTilePitchDwordsScaled,
     kSystemConstantEdramDepthBaseDwordsScaled,
+    kSystemConstantGuardBandDiscardAdj,
     kSystemConstantColorExpBias,
     kSystemConstantEdramPolyOffsetFrontScale,
     kSystemConstantEdramPolyOffsetBackScale,

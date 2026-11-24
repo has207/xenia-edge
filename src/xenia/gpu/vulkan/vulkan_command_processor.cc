@@ -3645,7 +3645,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type,
         CanInterpretVertexShader(
             *vertex_shader, active_vertex_shader_ucode_address_,
             primitive_processing_result.host_vertex_shader_type,
-            primitive_processing_result.host_primitive_type);
+            primitive_processing_result.host_primitive_type,
+            vertex_shader_modification.vertex.z_clip_distances ||
+                vertex_shader_modification.vertex.guard_band_clip_distances ||
+                vertex_shader_modification.vertex.discard_band_cull_distances);
     // The shaders the draw's thread readies are translated now for their
     // sampler bindings. Whether the draw can use a stand-in is known only once
     // the render targets are updated, so this assumes it can unless the
@@ -6536,6 +6539,20 @@ void VulkanCommandProcessor::UpdateSystemConstantValues(
     dirty |= system_constants_.ndc_offset[i] != viewport_info.ndc_offset[i];
     system_constants_.ndc_scale[i] = viewport_info.ndc_scale[i];
     system_constants_.ndc_offset[i] = viewport_info.ndc_offset[i];
+  }
+
+  float guard_band_clip_adj[] = {
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_CLIP_ADJ),
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_CLIP_ADJ)};
+  float guard_band_discard_adj[] = {
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_DISC_ADJ),
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_DISC_ADJ)};
+  for (uint32_t i = 0; i < 2; ++i) {
+    dirty |= system_constants_.guard_band_clip_adj[i] != guard_band_clip_adj[i];
+    system_constants_.guard_band_clip_adj[i] = guard_band_clip_adj[i];
+    dirty |= system_constants_.guard_band_discard_adj[i] !=
+             guard_band_discard_adj[i];
+    system_constants_.guard_band_discard_adj[i] = guard_band_discard_adj[i];
   }
 
   // User clip planes, for vertex and domain shaders.

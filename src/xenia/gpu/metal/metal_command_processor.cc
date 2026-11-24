@@ -6538,6 +6538,12 @@ MetalCommandProcessor::GetCurrentSpirvVertexShaderModification(
     modification.vertex.z_clip_near_at_minus_w =
         uint32_t(!pa_cl_clip_cntl.dx_clip_space_def);
   }
+  modification.vertex.guard_band_clip_distances =
+      uint32_t(draw_util::IsGuardBandClippedWithClipDistances(
+          regs, /*raw_clipping_supported=*/true));
+  modification.vertex.discard_band_cull_distances =
+      uint32_t(draw_util::IsDiscardBandCulledWithCullDistances(
+          regs, /*cull_distances_supported=*/false));
 
   modification.vertex.output_point_parameters =
       uint32_t((shader.writes_point_size_edge_flag_kill_vertex() & 0b001) &&
@@ -7018,6 +7024,14 @@ void MetalCommandProcessor::UpdateSpirvSystemConstantValues(
     consts.ndc_scale[i] = viewport_info.ndc_scale[i];
     consts.ndc_offset[i] = viewport_info.ndc_offset[i];
   }
+  consts.guard_band_clip_adj[0] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_CLIP_ADJ);
+  consts.guard_band_clip_adj[1] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_CLIP_ADJ);
+  consts.guard_band_discard_adj[0] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_HORZ_DISC_ADJ);
+  consts.guard_band_discard_adj[1] =
+      regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_DISC_ADJ);
 
   // Point rendering (matching Vulkan backend).
   auto pa_su_point_size = regs.Get<reg::PA_SU_POINT_SIZE>();

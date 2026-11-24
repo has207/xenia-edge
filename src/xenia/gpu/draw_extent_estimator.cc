@@ -15,6 +15,7 @@
 #include "xenia/base/cvar.h"
 #include "xenia/base/memory.h"
 #include "xenia/base/profiling.h"
+#include "xenia/gpu/draw_util.h"
 #include "xenia/gpu/registers.h"
 #include "xenia/gpu/ucode.h"
 #include "xenia/gpu/xenos.h"
@@ -22,9 +23,10 @@
 
 DEFINE_bool(
     execute_unclipped_draw_vs_on_cpu, true,
-    "Execute the vertex shader for draws with clipping disabled, primarily "
-    "screen-space draws (such as clears), on the CPU when possible to estimate "
-    "the extent of the EDRAM involved in the draw.\n"
+    "Execute the vertex shader for unclipped draws (with clipping disabled or "
+    "rectangle lists), primarily screen-space draws (such as clears), on the "
+    "CPU when possible to estimate the extent of the EDRAM involved in the "
+    "draw.\n"
     "Enabling this may significantly improve GPU performance as otherwise up "
     "to the entire EDRAM may be considered used in draws without clipping, "
     "potentially resulting in spurious EDRAM range ownership transfer round "
@@ -295,7 +297,7 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
   scissor_bottom = std::min(scissor_bottom, screen_scissor_bottom);
   uint32_t max_y = uint32_t(std::max(scissor_bottom, int32_t(0)));
 
-  if (regs.Get<reg::PA_CL_CLIP_CNTL>().clip_disable) {
+  if (!draw_util::ArePrimitivesClipped(regs)) {
     // Actual extent from the vertices.
     if (try_to_estimate_vertex_max_y &&
         cvars::execute_unclipped_draw_vs_on_cpu) {
@@ -327,38 +329,41 @@ uint32_t DrawExtentEstimator::EstimateMaxY(bool try_to_estimate_vertex_max_y,
             max_y, EstimateVertexMaxY(vertex_shader, window_offset_in_edram));
       }
     }
-  } else {
-    // Viewport. Though the Xenos itself doesn't have an implicit viewport
-    // scissor (it's set by Direct3D 9 when a viewport is used), on hosts, it
-    // usually exists and can't be disabled.
+  } else if (!regs.Get<reg::PA_CL_VTE_CNTL>().vtx_xy_fmt &&
+             regs.Get<reg::PA_CL_VTE_CNTL>().vtx_w0_fmt) {
+    // X and Y are clipped to the guard band rather than to the viewport, like
+    // in draw_util::GetHostViewportInfo. With XY given as XY/W or W as 1/W the
+    // guard band doesn't bound the window position, keeping only the scissor
+    // bound.
     auto pa_cl_vte_cntl = regs.Get<reg::PA_CL_VTE_CNTL>();
-    float viewport_bottom = 0.0f;
+    float guard_band_bottom = 0.0f;
     // First calculate all the integer.0 or integer.5 offsetting exactly at full
     // precision.
     if (regs.Get<reg::PA_SU_SC_MODE_CNTL>().vtx_window_offset_enable &&
         !window_offset_in_edram) {
-      viewport_bottom += float(window_y_offset);
+      guard_band_bottom += float(window_y_offset);
     }
     if (regs.Get<reg::PA_SU_VTX_CNTL>().pix_center ==
         xenos::PixelCenter::kD3DZero) {
-      viewport_bottom += 0.5f;
+      guard_band_bottom += 0.5f;
     }
-    // Then apply the floating-point viewport offset.
+    // Then apply the floating-point viewport offset and the guard band.
     if (pa_cl_vte_cntl.vport_y_offset_ena) {
-      viewport_bottom += regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET);
+      guard_band_bottom += regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YOFFSET);
     }
-    viewport_bottom +=
+    float scale_y_abs =
         pa_cl_vte_cntl.vport_y_scale_ena
             ? std::abs(regs.Get<float>(XE_GPU_REG_PA_CL_VPORT_YSCALE))
             : 1.0f;
-    // Using floor, or, rather, truncation (because maxing with zero anyway)
-    // similar to how viewport scissoring behaves on real AMD, Intel and Nvidia
-    // GPUs on Direct3D 12 (but not WARP), also like in
-    // draw_util::GetHostViewportInfo.
-    // max(0.0f, viewport_bottom) to drop NaN and < 0 - max picks the first
-    // argument in the !(a < b) case (always for NaN), min as float (max_y is
-    // well below 2^24) to safely drop very large values.
-    max_y = uint32_t(std::min(float(max_y), std::max(0.0f, viewport_bottom)));
+    guard_band_bottom += xe::clamp_float(
+        scale_y_abs * regs.Get<float>(XE_GPU_REG_PA_CL_GB_VERT_CLIP_ADJ), 0.0f,
+        float(xenos::kTexture2DCubeMaxWidthHeight));
+    // The rows with their centers above the edge, like in
+    // draw_util::GetHostViewportInfo. max(0.0f, ...) to drop NaN and < 0 - max
+    // picks the first argument in the !(a < b) case (always for NaN), min as
+    // float (max_y is well below 2^24) to safely drop very large values.
+    max_y = uint32_t(std::min(
+        float(max_y), std::ceil(std::max(0.0f, guard_band_bottom - 0.5f))));
   }
 
   return max_y;
