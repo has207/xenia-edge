@@ -114,7 +114,8 @@ X_STATUS XFile::QueryDirectoryInternal(X_FILE_DIRECTORY_INFORMATION* out_info,
   out_info->next_entry_offset = 0;
   out_info->file_index = static_cast<uint32_t>(find_index_);
   out_info->creation_time = entry->create_timestamp();
-  out_info->last_access_time = entry->access_timestamp();
+  // FATX lists the write time as the access time.
+  out_info->last_access_time = entry->write_timestamp();
   out_info->last_write_time = entry->write_timestamp();
   out_info->change_time = entry->write_timestamp();
   out_info->end_of_file = entry->size();
