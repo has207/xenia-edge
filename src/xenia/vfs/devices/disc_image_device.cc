@@ -77,6 +77,7 @@ DiscImageDevice::Error DiscImageDevice::Verify(ParseState* state) {
   state->game_offset = partition->game_offset;
   state->root_sector = partition->root_sector;
   state->root_size = partition->root_size;
+  state->creation_time = partition->creation_time;
   state->root_offset =
       state->game_offset + (state->root_sector * kGdfxSectorSize);
 
@@ -91,6 +92,9 @@ DiscImageDevice::Error DiscImageDevice::ReadAllEntries(
     ParseState* state, const uint8_t* root_buffer) {
   auto root_entry = new DiscImageEntry(this, nullptr, "", mmap_.get());
   root_entry->attributes_ = kFileAttributeDirectory;
+  root_entry->create_timestamp_ = state->creation_time;
+  root_entry->access_timestamp_ = state->creation_time;
+  root_entry->write_timestamp_ = state->creation_time;
   root_entry_ = std::unique_ptr<Entry>(root_entry);
 
   if (!ReadEntry(state, root_buffer, 0, root_entry)) {
@@ -131,10 +135,10 @@ bool DiscImageDevice::ReadEntry(ParseState* state, const uint8_t* buffer,
   entry->size_ = length;
   entry->allocation_size_ = xe::round_up(length, bytes_per_sector());
 
-  // Set to January 1, 1970 (UTC) in 100-nanosecond intervals
-  entry->create_timestamp_ = 10000 * 11644473600000LL;
-  entry->access_timestamp_ = 10000 * 11644473600000LL;
-  entry->write_timestamp_ = 10000 * 11644473600000LL;
+  // The volume's time, as on a console. Games check cached copies against it.
+  entry->create_timestamp_ = state->creation_time;
+  entry->access_timestamp_ = state->creation_time;
+  entry->write_timestamp_ = state->creation_time;
 
   if (attributes & kFileAttributeDirectory) {
     // Folder.

@@ -68,6 +68,7 @@ class DiscImageDevice : public Device {
     size_t root_sector;  // Offset (sector) of root.
     size_t root_offset;  // Offset (bytes) of root.
     size_t root_size;    // Size (bytes) of root.
+    uint64_t creation_time;
   } ParseState;
 
   Error Verify(ParseState* state);

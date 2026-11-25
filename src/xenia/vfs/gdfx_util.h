@@ -48,6 +48,8 @@ struct GdfxPartitionInfo {
   size_t game_offset;
   uint32_t root_sector;
   uint32_t root_size;
+  // A FILETIME. Entries have no times of their own, a console reports this one.
+  uint64_t creation_time = 0;
 };
 
 inline bool GdfxVerifyMagic(const uint8_t* data, size_t size, size_t offset) {
@@ -63,19 +65,20 @@ inline std::optional<GdfxPartitionInfo> GdfxFindPartition(const uint8_t* data,
     // Magic is at sector 32 of the game partition.
     if (GdfxVerifyMagic(data, size, offset + (32 * kGdfxSectorSize))) {
       size_t sector32_offset = offset + (32 * kGdfxSectorSize);
-      if (sector32_offset + 28 > size) {
+      if (sector32_offset + 36 > size) {
         continue;
       }
 
       const uint8_t* fs_ptr = data + sector32_offset;
       uint32_t root_sector = xe::load<uint32_t>(fs_ptr + 20);
       uint32_t root_size = xe::load<uint32_t>(fs_ptr + 24);
+      uint64_t creation_time = xe::load<uint64_t>(fs_ptr + 28);
 
       if (root_size < 13 || root_size > 32 * 1024 * 1024) {
         continue;
       }
 
-      return GdfxPartitionInfo{offset, root_sector, root_size};
+      return GdfxPartitionInfo{offset, root_sector, root_size, creation_time};
     }
   }
   return std::nullopt;
