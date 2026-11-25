@@ -103,8 +103,7 @@ XContentContainerDevice::Result SvodContainerDevice::Read() {
   struct {
     uint32_t block;
     uint32_t size;
-    uint32_t creation_date;
-    uint32_t creation_time;
+    uint64_t creation_time;  // A FILETIME, not FAT date and time words.
   } root_data;
   static_assert_size(root_data, 0x10);
 
@@ -115,8 +114,7 @@ XContentContainerDevice::Result SvodContainerDevice::Read() {
     return Result::kReadError;
   }
 
-  const uint64_t root_creation_timestamp =
-      decode_fat_timestamp(root_data.creation_date, root_data.creation_time);
+  const uint64_t root_creation_timestamp = root_data.creation_time;
 
   auto root_entry = new SvodContainerEntry(this, nullptr, "", &files_);
   root_entry->attributes_ = kFileAttributeDirectory;
