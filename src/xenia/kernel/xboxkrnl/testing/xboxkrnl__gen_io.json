@@ -1,6 +1,6 @@
 {
  "corpus": "io",
- "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-21",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-25",
  "steps": [
   {
    "scenario": "tree",
@@ -1804,6 +1804,640 @@
    "args": [
     {
      "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 0
+    },
+    {
+     "value": 3222274048
+    },
+    {
+     "pointer": "attributes",
+     "offset": 48
+    },
+    {
+     "pointer": "iosb",
+     "offset": 8
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 128
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 5
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtWriteFile",
+   "export": "NtWriteFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "write iosb": "0000000000000200"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "write iosb",
+     "offset": 64
+    },
+    {
+     "pointer": "data",
+     "offset": 72
+    },
+    {
+     "value": 512
+    },
+    {
+     "pointer": "offset",
+     "offset": 584
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "set all times",
+   "export": "NtSetInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "set iosb[:0x4]": "00000000"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "pointer": "set iosb",
+     "offset": 592
+    },
+    {
+     "pointer": "information",
+     "offset": 600
+    },
+    {
+     "value": 40
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 640
+    },
+    {
+     "value": 2148532224
+    },
+    {
+     "pointer": "attributes",
+     "offset": 680
+    },
+    {
+     "pointer": "iosb",
+     "offset": 648
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 33
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 696
+    },
+    {
+     "value": 3222274048
+    },
+    {
+     "pointer": "attributes",
+     "offset": 744
+    },
+    {
+     "pointer": "iosb",
+     "offset": 704
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "stamp write time",
+   "export": "NtSetInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "set iosb[:0x4]": "00000000"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "pointer": "set iosb",
+     "offset": 760
+    },
+    {
+     "pointer": "information",
+     "offset": 768
+    },
+    {
+     "value": 40
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtQueryInformationFile",
+   "export": "NtQueryInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "query iosb": "0000000000000038",
+    "network open information[:0x20]": "01d710b41600600001d848b362b7fb0001d97fe98505d60001d97fe98505d600"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "pointer": "query iosb",
+     "offset": 808
+    },
+    {
+     "pointer": "network open information",
+     "offset": 816
+    },
+    {
+     "value": 56
+    },
+    {
+     "value": 34
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "list while open, stamp write time",
+   "export": "NtQueryDirectoryFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "list iosb[:0x4]": "00000000",
+    "directory information+0x8[:0x20]": "01d710b41600600001d97fe98505d60001d97fe98505d60001d97fe98505d600"
+   },
+   "args": [
+    {
+     "variable": "directory"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "list iosb",
+     "offset": 872
+    },
+    {
+     "pointer": "directory information",
+     "offset": 880
+    },
+    {
+     "value": 256
+    },
+    {
+     "pointer": "mask",
+     "offset": 1144
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "list after close, stamp write time",
+   "export": "NtQueryDirectoryFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "list iosb[:0x4]": "00000000",
+    "directory information+0x8[:0x20]": "01d710b41600600001d97fe98505d60001d97fe98505d60001d97fe98505d600"
+   },
+   "args": [
+    {
+     "variable": "directory"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "list iosb",
+     "offset": 1152
+    },
+    {
+     "pointer": "directory information",
+     "offset": 1160
+    },
+    {
+     "value": 256
+    },
+    {
+     "pointer": "mask",
+     "offset": 1424
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 1432
+    },
+    {
+     "value": 3222274048
+    },
+    {
+     "pointer": "attributes",
+     "offset": 1480
+    },
+    {
+     "pointer": "iosb",
+     "offset": 1440
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "stamp write time past an even second",
+   "export": "NtSetInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "set iosb[:0x4]": "00000000"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "pointer": "set iosb",
+     "offset": 1496
+    },
+    {
+     "pointer": "information",
+     "offset": 1504
+    },
+    {
+     "value": 40
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtQueryInformationFile",
+   "export": "NtQueryInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "query iosb": "0000000000000038",
+    "network open information[:0x20]": "01d710b41600600001d848b362b7fb0001dbefe81d43df0001dbefe81d43df00"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "pointer": "query iosb",
+     "offset": 1544
+    },
+    {
+     "pointer": "network open information",
+     "offset": 1552
+    },
+    {
+     "value": 56
+    },
+    {
+     "value": 34
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "list while open, stamp write time past an even second",
+   "export": "NtQueryDirectoryFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "list iosb[:0x4]": "00000000",
+    "directory information+0x8[:0x20]": "01d710b41600600001dbefe81d43df0001dbefe81d43df0001dbefe81d43df00"
+   },
+   "args": [
+    {
+     "variable": "directory"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "list iosb",
+     "offset": 1608
+    },
+    {
+     "pointer": "directory information",
+     "offset": 1616
+    },
+    {
+     "value": 256
+    },
+    {
+     "pointer": "mask",
+     "offset": 1880
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "list after close, stamp write time past an even second",
+   "export": "NtQueryDirectoryFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "list iosb[:0x4]": "00000000",
+    "directory information+0x8[:0x20]": "01d710b41600600001dbefe81d43df0001dbefe81d43df0001dbefe81d43df00"
+   },
+   "args": [
+    {
+     "variable": "directory"
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "list iosb",
+     "offset": 1888
+    },
+    {
+     "pointer": "directory information",
+     "offset": 1896
+    },
+    {
+     "value": 256
+    },
+    {
+     "pointer": "mask",
+     "offset": 2160
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtCreateFile",
+   "export": "NtCreateFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "iosb": "0000000000000001"
+   },
+   "args": [
+    {
+     "pointer": "handle",
+     "offset": 2168
+    },
+    {
+     "value": 2148532224
+    },
+    {
+     "pointer": "attributes",
+     "offset": 2216
+    },
+    {
+     "pointer": "iosb",
+     "offset": 2176
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 3
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 96
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtQueryInformationFile",
+   "export": "NtQueryInformationFile",
+   "r3": "0000000000000000",
+   "capture": {
+    "query iosb": "0000000000000038",
+    "network open information[:0x20]": "01d710b41600600001d848b362b7fb0001dbefe81d43df0001dbefe81d43df00"
+   },
+   "args": [
+    {
+     "variable": "handle"
+    },
+    {
+     "pointer": "query iosb",
+     "offset": 2232
+    },
+    {
+     "pointer": "network open information",
+     "offset": 2240
+    },
+    {
+     "value": 56
+    },
+    {
+     "value": 34
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "handle"
+    }
+   ]
+  },
+  {
+   "scenario": "stamp times listed with folder",
+   "name": "NtClose",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "directory"
     }
    ]
   },

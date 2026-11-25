@@ -1,6 +1,7 @@
 """File corpus: a plain open, opens of a path's target directory, which open
 the directory holding the last component and say whether that exists, failed
-opens, a file's basic information, times set on a file, a write past the end
+opens, a file's basic information, times set on a file, a write time stamped
+by name and read back from its folder's listing, a write past the end
 of a sized file, an overwritten file sized again, a written file's size listed
 with its folder, a rename to a \\?? path and back, and names under
 \\System?? next to \\??. Everything is under
@@ -189,17 +190,20 @@ def read(s, handle, size):
            capture=[iosb, data.prefix(0x10), data + (size - 0x10)])
 
 
-def list_file(s, directory, mask, name):
+def list_file(s, directory, mask, name, times=False):
     """NtQueryDirectoryFile for `mask` from the start, capturing the end of
-    file listed and the name's length. FATX's Information isn't the point, so
-    only the status is captured."""
+    file listed and the name's length, or with `times` the four times instead.
+    FATX's Information isn't the point, so only the status is captured."""
     iosb = s.alloc(8, 'list iosb')
     info = s.alloc(DIRECTORY_INFORMATION_SIZE, 'directory information',
                    fill=0)
+    if times:
+        parts = [(info + 0x8).prefix(0x20)]
+    else:
+        parts = [(info + 0x28).prefix(8), (info + 0x3C).prefix(4)]
     s.call('NtQueryDirectoryFile', directory, 0, 0, 0, iosb, info,
            DIRECTORY_INFORMATION_SIZE, ansi(s, mask, 'mask'), 1,
-           capture=[iosb.prefix(4), (info + 0x28).prefix(8),
-                    (info + 0x3C).prefix(4)], name=name)
+           capture=[iosb.prefix(4), *parts], name=name)
 
 
 def rename(s, handle, root, path, name):
@@ -329,6 +333,41 @@ def build(corpus):
               'set write time without write access')
     query_attributes(s, handle, times=True)
     s.call('NtClose', handle)
+
+    # A write time stamped through a handle opened by name, as titles stamp
+    # the copies they cache, read back from the folder's listing, which
+    # FindFirstFile reads, as well as through handles.
+    s = corpus.scenario('stamp times listed with folder')
+    path = ROOT + '\\stamped'
+    access = GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE
+    handle = create(s, path, access, FILE_ATTRIBUTE_NORMAL,
+                    FILE_OVERWRITE_IF,
+                    FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+                    capture_status=False)
+    write(s, handle)
+    set_times(s, handle, CREATION_TIME, ACCESS_TIME, REWRITE_TIME,
+              'set all times')
+    s.call('NtClose', handle)
+    directory = create(s, ROOT, GENERIC_READ | SYNCHRONIZE, 0, FILE_OPEN,
+                       FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+                       variable='directory')
+    for write_time, name in (
+            (WRITE_TIME, 'stamp write time'),
+            (EVEN_WRITE_TIME, 'stamp write time past an even second')):
+        handle = create(s, path, access, 0, FILE_OPEN,
+                        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT)
+        set_times(s, handle, 0, 0, write_time, name)
+        query_attributes(s, handle, times=True)
+        list_file(s, directory, 'stamped', f'list while open, {name}',
+                  times=True)
+        s.call('NtClose', handle)
+        list_file(s, directory, 'stamped', f'list after close, {name}',
+                  times=True)
+    handle = create(s, path, GENERIC_READ | SYNCHRONIZE, 0, FILE_OPEN,
+                    FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT)
+    query_attributes(s, handle, times=True)
+    s.call('NtClose', handle)
+    s.call('NtClose', directory)
 
     s = corpus.scenario('set end of file')
     handle = create(s, FILE, GENERIC_WRITE | SYNCHRONIZE, 0, FILE_OPEN,
