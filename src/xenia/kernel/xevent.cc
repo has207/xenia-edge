@@ -73,11 +73,6 @@ void XEvent::InitializeNative(void* native_ptr,
 
 int32_t XEvent::Set(uint32_t priority_increment, bool wait) {
   set_priority_increment(priority_increment);
-  if (manual_reset_) {
-    // Releases every waiter parked right now, even if the event is reset
-    // before they run. Must precede the wake below.
-    pulse_epoch_.fetch_add(1);
-  }
   // KeSetEvent returns the signal state from before.
   int32_t old_signal_state;
   {
@@ -87,6 +82,12 @@ int32_t XEvent::Set(uint32_t priority_increment, bool wait) {
     kevent->header.signal_state = 1;
     host_signaled_ = true;
     event_->Set();
+    if (manual_reset_) {
+      // Releases every waiter parked right now, even if the event is reset
+      // before they run. Bumped after the state so a waiter that sees it can't
+      // reset the event before this set lands, and before the wake below.
+      pulse_epoch_.fetch_add(1);
+    }
   }
   WakeCooperativeWaiters();
   return old_signal_state;
@@ -105,16 +106,18 @@ int32_t XEvent::Pulse(uint32_t priority_increment, bool wait) {
     Set(priority_increment, wait);
     return old_signal_state;
   }
-  if (manual_reset_) {
-    // Releases every waiter parked right now. Must precede the wake below.
-    pulse_epoch_.fetch_add(1);
-  }
   {
     auto global_lock = global_critical_region_.Acquire();
     event_->Pulse();
     // Pulse leaves the event reset after releasing waiters.
     kevent->header.signal_state = 0;
     host_signaled_ = false;
+    if (manual_reset_) {
+      // Releases every waiter parked right now. Bumped after the state so a
+      // waiter that sees it can't set the event before this reset lands, and
+      // before the wake below.
+      pulse_epoch_.fetch_add(1);
+    }
   }
   WakeCooperativeWaiters();
   return old_signal_state;
