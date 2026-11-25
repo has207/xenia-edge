@@ -1243,21 +1243,22 @@ int InstrEmit_srawx(PPCHIRBuilder& f, const InstrData& i) {
   // CA <- s & ((r&¬m)[32:63]≠0)
   // if n == 0: rA <- sign_extend(rS), XER[CA] = 0
   // if n >= 32: rA <- 64 sign bits of rS, XER[CA] = sign bit of lo_32(rS)
-  Value* rt = f.Truncate(f.LoadGPR(i.X.RT), INT32_TYPE);
+  // Sign extended, a shift of 32 already gives the 64 sign bits any shift of
+  // 32 or more does, and shifting a negative value back can't restore it, so
+  // CA needs no separate test for those shifts.
+  Value* rt =
+      f.SignExtend(f.Truncate(f.LoadGPR(i.X.RT), INT32_TYPE), INT64_TYPE);
   Value* sh =
       f.And(f.Truncate(f.LoadGPR(i.X.RB), INT8_TYPE), f.LoadConstantInt8(0x3F));
-  Value* clamp_sh = f.Min(sh, f.LoadConstantInt8(0x1F));
+  Value* clamp_sh = f.Min(sh, f.LoadConstantInt8(0x20));
   Value* v = f.Sha(rt, clamp_sh);
 
   // CA is set if any bits are shifted out of the right and if the result
-  // is negative. A shift of 32 or more shifts out every bit, which the
-  // clamped compare misses for 0x80000000.
-  Value* ca = f.And(f.IsTrue(f.Shr(rt, 31)),
-                    f.Or(f.CompareNE(f.Shl(v, clamp_sh), rt),
-                         f.CompareUGT(sh, f.LoadConstantInt8(0x1F))));
+  // is negative.
+  Value* ca =
+      f.And(f.IsTrue(f.Shr(rt, 63)), f.CompareNE(f.Shl(v, clamp_sh), rt));
   f.StoreCA(ca);
 
-  v = f.SignExtend(v, INT64_TYPE);
   f.StoreGPR(i.X.RA, v);
   if (i.X.Rc) {
     f.UpdateCR(0, v);
