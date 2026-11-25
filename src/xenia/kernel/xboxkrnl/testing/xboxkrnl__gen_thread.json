@@ -1,0 +1,1044 @@
+{
+ "corpus": "thread",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-24",
+ "steps": [
+  {
+   "scenario": "background processors",
+   "name": "query",
+   "export": "KeQueryBackgroundProcessors",
+   "r3": "000000000000003C",
+   "args": []
+  },
+  {
+   "scenario": "ExCreateThread, AffinityCpu4",
+   "name": "parent cpu",
+   "export": "current cpu",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ExCreateThread, AffinityCpu4",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message": "0000000082030000000000040d000101000d0000000000040a0d1100"
+   },
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "value": 268435456
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, AffinityCpu4",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, AffinityCpu4",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, no affinity",
+   "name": "parent cpu",
+   "export": "current cpu",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ExCreateThread, no affinity",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message": "0000000082030000000000000d000101000d0000000000000a0d1100"
+   },
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, no affinity",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, no affinity",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, SystemThread",
+   "name": "parent cpu",
+   "export": "current cpu",
+   "r3": "0000000000000000",
+   "args": []
+  },
+  {
+   "scenario": "ExCreateThread, SystemThread",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "completed": false,
+   "capture": {
+    "message": "000003e5000000000000000000000000000000000000000000000000"
+   },
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, SystemThread",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000102",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, SystemThread",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "reference",
+   "export": "ObReferenceObjectByHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "kthread",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "set 0x10",
+   "export": "KeSetAffinityThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "previous before 0x10": "00000001"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 16
+    },
+    {
+     "pointer": "previous before 0x10",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "cpu after 0x10",
+   "export": "kthread cpu",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "set 0x3c",
+   "export": "KeSetAffinityThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "previous before 0x3c": "00000010"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 60
+    },
+    {
+     "pointer": "previous before 0x3c",
+     "offset": 56
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "cpu after 0x3c",
+   "export": "kthread cpu",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "set 0x3f",
+   "export": "KeSetAffinityThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "previous before 0x3f": "00000020"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 63
+    },
+    {
+     "pointer": "previous before 0x3f",
+     "offset": 64
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "cpu after 0x3f",
+   "export": "kthread cpu",
+   "r3": "0000000000000005",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "set 0x5",
+   "export": "KeSetAffinityThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "previous before 0x5": "00000020"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 5
+    },
+    {
+     "pointer": "previous before 0x5",
+     "offset": 72
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "cpu after 0x5",
+   "export": "kthread cpu",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "ObDereferenceObject",
+   "export": "ObDereferenceObject",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "resume",
+   "export": "NtResumeThread",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "suspend count": "00000001",
+    "message": "0000000082030000000000020d000101000d0000000000020a0d1100"
+   },
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "pointer": "suspend count",
+     "offset": 80
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 88
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetAffinityThread masks",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 32
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "reference",
+   "export": "ObReferenceObjectByHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "kthread",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "initial words",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "initial words": "0d000101000d0000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "initial words",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "initial base",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "set -1",
+   "export": "KeSetBasePriorityThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 18446744073709551615
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "base after -1",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "words after -1",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "words after -1": "0c000101000c0000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "words after -1",
+     "offset": 64
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "set -2",
+   "export": "KeSetBasePriorityThread",
+   "r3": "FFFFFFFFFFFFFFFF",
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 18446744073709551614
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "base after -2",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "FFFFFFFFFFFFFFFE",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "words after -2",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "words after -2": "0b000101000b0000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "words after -2",
+     "offset": 80
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "set +1",
+   "export": "KeSetBasePriorityThread",
+   "r3": "FFFFFFFFFFFFFFFE",
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 1
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "base after +1",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "words after +1",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "words after +1": "0e000101000e0000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "words after +1",
+     "offset": 96
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "set +2",
+   "export": "KeSetBasePriorityThread",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 2
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "base after +2",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "words after +2",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "words after +2": "0f000101000f0000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "words after +2",
+     "offset": 112
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "set +15",
+   "export": "KeSetBasePriorityThread",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 15
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "base after +15",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "words after +15",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "words after +15": "1100010100110000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "words after +15",
+     "offset": 128
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "set -15",
+   "export": "KeSetBasePriorityThread",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 18446744073709551601
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "base after -15",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "FFFFFFFFFFFFFFFD",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "words after -15",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "words after -15": "0a000101000a0000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "words after -15",
+     "offset": 144
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "set +0",
+   "export": "KeSetBasePriorityThread",
+   "r3": "FFFFFFFFFFFFFFFD",
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "base after +0",
+   "export": "KeQueryBasePriorityThread",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "words after +0",
+   "export": "kthread words",
+   "r3": "0000000000000000",
+   "capture": {
+    "words after +0": "0d000101000d0000010000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "kthread"
+    },
+    {
+     "pointer": "words after +0",
+     "offset": 160
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "ObDereferenceObject",
+   "export": "ObDereferenceObject",
+   "args": [
+    {
+     "variable": "kthread"
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "resume",
+   "export": "NtResumeThread",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "suspend count": "00000001",
+    "message": "0000000082030000000000000d000101000d0000000000000a0d1100"
+   },
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "pointer": "suspend count",
+     "offset": 176
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 184
+    }
+   ]
+  },
+  {
+   "scenario": "KeSetBasePriorityThread increments",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "executor kthread",
+   "export": "current kthread",
+   "args": []
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "move to CPU 3",
+   "export": "KeSetAffinityThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "previous affinity": "00000001"
+   },
+   "args": [
+    {
+     "variable": "executor"
+    },
+    {
+     "value": 8
+    },
+    {
+     "pointer": "previous affinity",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "parent cpu",
+   "export": "current cpu",
+   "r3": "0000000000000003",
+   "args": []
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "create",
+   "export": "ExCreateThread",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message": "0000000082030008000000030d000101000d0000000000030a0d1100"
+   },
+   "args": [
+    {
+     "pointer": "thread handle",
+     "offset": 40
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 0
+    },
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 8
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "wait for exit",
+   "export": "NtWaitForSingleObjectEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 0
+    },
+    {
+     "pointer": "exit timeout",
+     "offset": 48
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "close",
+   "export": "NtClose",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "thread"
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "move back",
+   "export": "KeSetAffinityThread",
+   "r3": "0000000000000000",
+   "capture": {
+    "affinity before restore": "00000008"
+   },
+   "args": [
+    {
+     "variable": "executor"
+    },
+    {
+     "variable": "previous affinity"
+    },
+    {
+     "pointer": "affinity before restore",
+     "offset": 56
+    }
+   ]
+  },
+  {
+   "scenario": "ExCreateThread, parent moved to CPU 3",
+   "name": "parent cpu after move back",
+   "export": "current cpu",
+   "r3": "0000000000000000",
+   "args": []
+  }
+ ]
+}

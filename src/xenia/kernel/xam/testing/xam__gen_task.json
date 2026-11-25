@@ -1,0 +1,278 @@
+{
+ "corpus": "task",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-24",
+ "steps": [
+  {
+   "scenario": "type 2, foreground without the privilege",
+   "name": "schedule",
+   "export": "XamTaskSchedule",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message": "00000000820300000000000505000202000500000000000502050900"
+   },
+   "args": [
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "pointer": "args",
+     "offset": 32
+    },
+    {
+     "pointer": "task handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "type 2, foreground without the privilege",
+   "name": "close",
+   "export": "XamTaskCloseHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "task"
+    }
+   ]
+  },
+  {
+   "scenario": "type 2, foreground kept by 0x20000000",
+   "name": "schedule",
+   "export": "XamTaskSchedule",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message": "0000000082030000000000050d000202000d0000000000050a0d1100"
+   },
+   "args": [
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "pointer": "args",
+     "offset": 32
+    },
+    {
+     "pointer": "task handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "type 2, foreground kept by 0x20000000",
+   "name": "close",
+   "export": "XamTaskCloseHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "task"
+    }
+   ]
+  },
+  {
+   "scenario": "type 2, no other flags",
+   "name": "schedule",
+   "export": "XamTaskSchedule",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message": "00000000820300000000000505000202000500000000000502050900"
+   },
+   "args": [
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "pointer": "args",
+     "offset": 32
+    },
+    {
+     "pointer": "task handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "type 2, no other flags",
+   "name": "close",
+   "export": "XamTaskCloseHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "task"
+    }
+   ]
+  },
+  {
+   "scenario": "type 2, CPU from value2",
+   "name": "schedule",
+   "export": "XamTaskSchedule",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message": "00000000820300000000000305000202000500000000000302050900"
+   },
+   "args": [
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "pointer": "args",
+     "offset": 32
+    },
+    {
+     "pointer": "task handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "type 2, CPU from value2",
+   "name": "close",
+   "export": "XamTaskCloseHandle",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "task"
+    }
+   ]
+  },
+  {
+   "scenario": "type 8",
+   "name": "schedule",
+   "export": "XamTaskSchedule",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message[:0x8]": "0000000082030000",
+    "message+0xc[:0x8]": "0600020200050000",
+    "message+0x18[:0x4]": "02050900"
+   },
+   "args": [
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "pointer": "args",
+     "offset": 32
+    },
+    {
+     "pointer": "task handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "type 8",
+   "name": "close",
+   "export": "XamTaskCloseHandle",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "variable": "task"
+    }
+   ]
+  },
+  {
+   "scenario": "type 8, 0x04000008",
+   "name": "schedule",
+   "export": "XamTaskSchedule",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message[:0x8]": "0000000082030000",
+    "message+0xc[:0x8]": "0600020200050000",
+    "message+0x18[:0x4]": "02050900"
+   },
+   "args": [
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "pointer": "args",
+     "offset": 32
+    },
+    {
+     "pointer": "task handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "type 8, 0x04000008",
+   "name": "close",
+   "export": "XamTaskCloseHandle",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "variable": "task"
+    }
+   ]
+  },
+  {
+   "scenario": "type 8, 0x00402008",
+   "name": "schedule",
+   "export": "XamTaskSchedule",
+   "r3": "0000000000000000",
+   "completed": true,
+   "capture": {
+    "message[:0x8]": "0000000082030000",
+    "message+0xc[:0x8]": "0600020200050000",
+    "message+0x18[:0x4]": "02050900"
+   },
+   "args": [
+    {
+     "routine": "probe"
+    },
+    {
+     "pointer": "message",
+     "offset": 0
+    },
+    {
+     "pointer": "args",
+     "offset": 32
+    },
+    {
+     "pointer": "task handle",
+     "offset": 40
+    }
+   ]
+  },
+  {
+   "scenario": "type 8, 0x00402008",
+   "name": "close",
+   "export": "XamTaskCloseHandle",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "variable": "task"
+    }
+   ]
+  }
+ ]
+}
