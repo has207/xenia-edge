@@ -15,13 +15,24 @@ fs goes through Aurora's FTP server, Hdd: being /Hdd1, logging in as
 XBDM_FTP_USER and XBDM_FTP_PASS (xboxftp by default). XBDM's sendfile hung the
 console. debug watch opens a notification channel and writes each notification
 as a JSON line with its first word as Type and the whole line as Raw.
+
+Two more, which run.py doesn't use, look at a console by hand:
+
+    xbdm.py drives
+    xbdm.py dir --path CONSOLE
+
+drives lists the drives XBDM names, a running title's game and cache drives
+among them. dir lists a folder, each entry with its size and its creation and
+change times.
 """
 
 import argparse
+import datetime
 import ftplib
 import json
 import ntpath
 import os
+import re
 import select
 import socket
 import struct
@@ -118,6 +129,41 @@ def launch(c, args):
               f'directory="{ntpath.dirname(args.xex)}"')
 
 
+def fields(line):
+    """The key=value pairs of a response line, bare words mapping to True.
+    A quoted value can hold spaces."""
+    return {key: value.strip('"') if eq else True
+            for key, eq, value in re.findall(r'(\w+)(=?)("[^"]*"|\S*)', line)}
+
+
+def filetime(hi, lo):
+    ticks = (int(hi, 16) << 32) | int(lo, 16)
+    if not ticks:
+        return '0'
+    when = datetime.datetime(1601, 1, 1) + datetime.timedelta(
+        microseconds=ticks // 10)
+    return f'{when:%Y-%m-%d %H:%M:%S}.{ticks % 10**7:07d} ({ticks:#x})'
+
+
+def drives(c, args):
+    for line in c.multiline('drivelist'):
+        print(fields(line).get('drivename', line))
+
+
+def dir_list(c, args):
+    keys = ('name', 'sizehi', 'sizelo', 'createhi', 'createlo', 'changehi',
+            'changelo')
+    for line in c.multiline(f'dirlist name="{args.path}"'):
+        f = fields(line)
+        if not all(isinstance(f.get(key), str) for key in keys):
+            raise XbdmError(f'dirlist: unexpected line {line!r}')
+        size = (int(f['sizehi'], 16) << 32) | int(f['sizelo'], 16)
+        kind = 'dir ' if f.get('directory') else 'file'
+        print(f'{kind} {f["name"]}  size {size}\n'
+              f'  create {filetime(f["createhi"], f["createlo"])}\n'
+              f'  change {filetime(f["changehi"], f["changelo"])}')
+
+
 def mem_peek(c, args):
     data = ''.join(c.multiline(f'getmem addr={int(args.addr, 0):#x} '
                                f'length=4'))
@@ -173,6 +219,10 @@ def main():
     p = sub.add_parser('launch')
     p.add_argument('--xex', required=True)
     p.set_defaults(run=launch)
+    sub.add_parser('drives').set_defaults(run=drives)
+    p = sub.add_parser('dir')
+    p.add_argument('--path', required=True)
+    p.set_defaults(run=dir_list)
     mem = sub.add_parser('mem').add_subparsers(dest='mem', required=True)
     for name, run in (('peek', mem_peek), ('poke', mem_poke)):
         p = mem.add_parser(name)
