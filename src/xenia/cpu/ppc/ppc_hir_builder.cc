@@ -78,6 +78,7 @@ PPCBuiltins* PPCHIRBuilder::builtins() const { return frontend_->builtins(); }
 void PPCHIRBuilder::Reset() {
   function_ = nullptr;
   dynamic_code_ = false;
+  vscr_sat_observable_ = true;
   start_address_ = 0;
   instr_count_ = 0;
   instr_offset_list_ = NULL;
@@ -96,6 +97,7 @@ bool PPCHIRBuilder::Emit(GuestFunction* function, uint32_t flags) {
 
   function_ = function;
   dynamic_code_ = frontend_->processor()->IsDynamicCode(module);
+  vscr_sat_observable_ = frontend_->processor()->vscr_sat_observable();
   start_address_ = function_->address();
   // chrispy: i've seen this one happen, not sure why but i think from trying to
   // precompile twice i've also seen ones with a start and end address that are

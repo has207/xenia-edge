@@ -45,6 +45,8 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   GuestFunction* function() const { return function_; }
   // Whether the function is code the guest wrote at runtime.
   bool dynamic_code() const { return dynamic_code_; }
+  // Whether guest code can read the VSCR[SAT] saturating instructions set.
+  bool vscr_sat_observable() const { return vscr_sat_observable_; }
   Function* LookupFunction(uint32_t address);
   Label* LookupLabel(uint32_t address);
 
@@ -137,6 +139,7 @@ class PPCHIRBuilder : public hir::HIRBuilder {
   bool with_debug_info_;
   GuestFunction* function_;
   bool dynamic_code_;
+  bool vscr_sat_observable_;
   uint64_t start_address_;
   uint64_t instr_count_;
   Instr** instr_offset_list_;

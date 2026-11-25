@@ -1431,6 +1431,11 @@ void XexModule::Precompile() {
   if (!has_code()) {
     return;
   }
+  // Title DLLs are flagged executable too. Emulator::CompleteLaunch checks the
+  // launched executable again after plugins patch it.
+  if (ReadsVscr()) {
+    processor_->NoteVscrSatReader(name());
+  }
   unsigned high_code = this->high_address_ - this->low_address_;
 
   mbedtls_sha1(memory()->TranslateVirtual(this->low_address_), high_code,
@@ -1456,6 +1461,23 @@ void XexModule::Precompile() {
   if (!is_executable()) {
     PrecompileDiscoveredFunctions();
   }
+}
+
+bool XexModule::ReadsVscr() const {
+  for (const PESection& section : pe_sections_) {
+    if (!(section.flags & kXEPESectionContainsCode)) {
+      continue;
+    }
+    const auto* words =
+        memory()->TranslateVirtual<const xe::be<uint32_t>*>(section.address);
+    for (uint32_t i = 0; i < section.size / 4; ++i) {
+      // mfvscr, by opcode and XO alone as the decoder matches it
+      if ((words[i] & 0xFC0007FF) == 0x10000604) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 bool XexModule::Unload() {
   if (!loaded_) {

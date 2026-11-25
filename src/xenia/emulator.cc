@@ -2525,6 +2525,8 @@ static std::string format_version(xex2_version version) {
 X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
                                   const std::string_view module_path) {
   const bool boot_animation = std::exchange(boot_animation_requested_, false);
+  // Before any of the launch's modules load.
+  processor_->BeginVscrSatCensus();
   // The window icon and on_launch listeners need the UI thread.
   X_STATUS result = X_STATUS_UNSUCCESSFUL;
   display_window_->app_context().CallInUIThreadSynchronous(
@@ -2538,6 +2540,8 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   // Off the UI thread and after plugins, which patch code in place.
   auto module = kernel_state_->GetExecutableModule();
   kernel_state_->xam_state()->dash_mouse()->Attach(module->xex_module());
+  processor_->FinishVscrSatCensus(!module->xex_module() ||
+                                  module->xex_module()->ReadsVscr());
   if (module->xex_module()) {
     module->xex_module()->PrecompileDiscoveredFunctions();
     module->xex_module()->PrecompileStaticInitializers();

@@ -135,6 +135,20 @@ class Processor {
   DataFaultHook data_fault_hook() const { return data_fault_hook_.load(); }
   void set_data_fault_hook(DataFaultHook hook) { data_fault_hook_.store(hook); }
 
+  // Whether guest code can read VSCR[SAT], so saturating vector instructions
+  // have to set it. Only mfvscr reads it.
+  bool vscr_sat_observable() const {
+    return vscr_sat_observable_.load(std::memory_order_relaxed);
+  }
+  // A launch keeps VSCR[SAT] observable until FinishVscrSatCensus.
+  void BeginVscrSatCensus();
+  // A module with an mfvscr loaded. After the census, code compiled before it
+  // has not set VSCR[SAT].
+  void NoteVscrSatReader(std::string_view module_name);
+  // VSCR[SAT] stays observable if the executable or a module loaded with it
+  // reads it, or the guest runs code it writes.
+  void FinishVscrSatCensus(bool executable_reads);
+
   // Lets guest code run from committed memory that no module claims.
   void EnableDynamicCode();
   bool dynamic_code_enabled() const {
@@ -390,6 +404,11 @@ class Processor {
   // Consulted after modules_, so a loaded module always takes precedence.
   std::unique_ptr<Module> dynamic_code_module_;
   std::atomic<bool> dynamic_code_enabled_{false};
+  std::atomic<bool> vscr_sat_observable_{true};
+  // Guards the census, and observable's changes during and after it.
+  std::mutex vscr_sat_mutex_;
+  bool vscr_sat_census_ = false;
+  bool vscr_sat_reader_ = false;
   std::atomic<bool> keep_dynamic_context_stores_{false};
   std::atomic<SyscallHook> syscall_hook_{nullptr};
   std::atomic<CodeFaultHook> code_fault_hook_{nullptr};

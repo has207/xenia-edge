@@ -899,12 +899,48 @@ Module* Processor::LookupModule(uint32_t address) {
   return nullptr;
 }
 
+void Processor::BeginVscrSatCensus() {
+  std::lock_guard<std::mutex> lock(vscr_sat_mutex_);
+  vscr_sat_reader_ = false;
+  vscr_sat_census_ = true;
+  vscr_sat_observable_.store(true);
+}
+
+void Processor::NoteVscrSatReader(std::string_view module_name) {
+  std::lock_guard<std::mutex> lock(vscr_sat_mutex_);
+  if (vscr_sat_census_) {
+    vscr_sat_reader_ = true;
+    return;
+  }
+  if (!vscr_sat_observable_.exchange(true)) {
+    XELOGW("{} reads VSCR[SAT], which code compiled before it doesn't set",
+           module_name);
+  }
+}
+
+void Processor::FinishVscrSatCensus(bool executable_reads) {
+  std::lock_guard<std::mutex> lock(vscr_sat_mutex_);
+  const bool observable =
+      executable_reads || vscr_sat_reader_ || dynamic_code_enabled();
+  vscr_sat_observable_.store(observable);
+  vscr_sat_census_ = false;
+  XELOGI("VSCR[SAT] {}", observable ? "is read, saturation sets it"
+                                    : "is never read, saturation skips it");
+}
+
 void Processor::EnableDynamicCode() {
   auto global_lock = global_critical_region_.Acquire();
   if (!dynamic_code_module_) {
     dynamic_code_module_ = std::make_unique<DynamicCodeModule>(this);
   }
   dynamic_code_enabled_.store(true, std::memory_order_relaxed);
+  // Code the guest writes can read it.
+  std::lock_guard<std::mutex> lock(vscr_sat_mutex_);
+  if (!vscr_sat_observable_.exchange(true)) {
+    XELOGW(
+        "Dynamic code may read VSCR[SAT], which code compiled before it "
+        "doesn't set");
+  }
 }
 
 Function* Processor::LookupFunction(uint32_t address) {

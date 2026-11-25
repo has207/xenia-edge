@@ -31,8 +31,12 @@ Value* CalculateEA_0(PPCHIRBuilder& f, uint32_t ra, uint32_t rb);
 // Sets VSCR[SAT] if any lane of saturated is nonzero. SAT stays set until
 // mtvscr clears it. It's kept in vscr_sat, which mfvscr merges into the low
 // bit of VSCR, so a saturating instruction only ORs one byte. DID_SATURATE is
-// whether any lane is nonzero (vptest on x64, umaxv on ARM64).
+// whether any lane is nonzero (vptest on x64, umaxv on ARM64). Without an
+// mfvscr to read it SAT isn't set, and the dead lane checks go.
 static void SetSatIfAny(PPCHIRBuilder& f, Value* saturated) {
+  if (!f.vscr_sat_observable()) {
+    return;
+  }
   f.StoreSAT(f.Or(f.LoadSAT(), f.DidSaturate(saturated)));
 }
 
@@ -2141,22 +2145,23 @@ int InstrEmit_vpkd3d128(PPCHIRBuilder& f, const InstrData& i) {
   uint32_t type = i.VX128_4.IMM >> 2;
   uint32_t pack = i.VX128_4.IMM & 0x3;
   uint32_t shift = i.VX128_4.z;
+  const uint32_t sat = f.vscr_sat_observable() ? PACK_TYPE_SET_SAT : 0;
   Value* v = f.LoadVR(vb);
   switch (type) {
     case 0:  // VPACK_D3DCOLOR
-      v = f.Pack(v, PACK_TYPE_D3DCOLOR | PACK_TYPE_SET_SAT);
+      v = f.Pack(v, PACK_TYPE_D3DCOLOR | sat);
       break;
     case 1:  // VPACK_NORMSHORT2
-      v = f.Pack(v, PACK_TYPE_SHORT_2 | PACK_TYPE_SET_SAT);
+      v = f.Pack(v, PACK_TYPE_SHORT_2 | sat);
       break;
     case 2:  // VPACK_NORMPACKED32 2_10_10_10 w_z_y_x
-      v = f.Pack(v, PACK_TYPE_UINT_2101010 | PACK_TYPE_SET_SAT);
+      v = f.Pack(v, PACK_TYPE_UINT_2101010 | sat);
       break;
     case 3:  // VPACK_FLOAT16_2 DXGI_FORMAT_R16G16_FLOAT
       v = f.Pack(v, PACK_TYPE_FLOAT16_2);
       break;
     case 4:  // VPACK_NORMSHORT4
-      v = f.Pack(v, PACK_TYPE_SHORT_4 | PACK_TYPE_SET_SAT);
+      v = f.Pack(v, PACK_TYPE_SHORT_4 | sat);
       break;
     case 5:  // VPACK_FLOAT16_4 DXGI_FORMAT_R16G16B16A16_FLOAT
       v = f.Pack(v, PACK_TYPE_FLOAT16_4);
@@ -2164,7 +2169,7 @@ int InstrEmit_vpkd3d128(PPCHIRBuilder& f, const InstrData& i) {
     case 6:  // VPACK_NORMPACKED64 4_20_20_20 w_z_y_x
       // Used in 54540829 and other installments in the series, pretty rarely in
       // general.
-      v = f.Pack(v, PACK_TYPE_ULONG_4202020 | PACK_TYPE_SET_SAT);
+      v = f.Pack(v, PACK_TYPE_ULONG_4202020 | sat);
       break;
     default:
       assert_unhandled_case(type);
