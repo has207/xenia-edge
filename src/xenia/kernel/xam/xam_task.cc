@@ -24,6 +24,34 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
+// X_TASK_ARGS flags. The low bits are the task type.
+constexpr uint32_t kTaskTypeMask = 0x1F;
+// A task with a thread of its own.
+constexpr uint32_t kTaskTypeDedicated = 2;
+// Runs at the title's priorities rather than the system's.
+constexpr uint32_t kTaskForeground = 0x00080000;
+// Keeps kTaskForeground for a title without the ForegroundTasks privilege.
+constexpr uint32_t kTaskForegroundUnchecked = 0x20000000;
+// value2 is the CPU a dedicated task runs on.
+constexpr uint32_t kTaskCpuInValue2 = 0x80000000;
+// Where XAM puts a dedicated task otherwise.
+constexpr uint32_t kTaskDedicatedCpu = 5;
+
+static bool KeepsForeground(uint32_t flags) {
+  if (!(flags & kTaskForeground)) {
+    return false;
+  }
+  if (flags & kTaskForegroundUnchecked) {
+    return true;
+  }
+  auto module = kernel_state()->GetExecutableModule();
+  uint32_t system_flags = 0;
+  return module &&
+         XSUCCEEDED(module->GetOptHeader<uint32_t>(XEX_HEADER_SYSTEM_FLAGS,
+                                                   &system_flags)) &&
+         (system_flags & XEX_SYSTEM_FOREGROUND_TASKS);
+}
+
 dword_result_t XamTaskSchedule_entry(lpvoid_t callback, lpvoid_t message,
                                      pointer_t<X_TASK_ARGS> optional_ptr,
                                      lpdword_t handle_ptr,
@@ -31,21 +59,38 @@ dword_result_t XamTaskSchedule_entry(lpvoid_t callback, lpvoid_t message,
   // TODO(gibbed): figure out what this is for
   *handle_ptr = 12345;
 
+  uint32_t flags = 0;
+  uint32_t value2 = 0;
   if (optional_ptr) {
-    auto v1 = optional_ptr->flags;   // 4, 8, 0x4000008, 0x402008, etc
-    auto v2 = optional_ptr->value2;  // 10, 1000, 0xea60, etc
-
-    XELOGI("Got xam task args: v1 = {:08X}, v2 = {:08X}", v1.get(), v2.get());
+    flags = optional_ptr->flags;
+    value2 = optional_ptr->value2;
+    XELOGI("Got xam task args: v1 = {:08X}, v2 = {:08X}", flags, value2);
   }
+  const bool dedicated =
+      optional_ptr && (flags & kTaskTypeMask) == kTaskTypeDedicated;
 
   uint32_t stack_size = kernel_state()->GetExecutableModule()->stack_size();
 
   // Stack must be aligned to 16kb pages
   stack_size = std::max((uint32_t)0x4000, ((stack_size + 0xFFF) & 0xFFFFF000));
 
+  // XAM creates a dedicated task's thread suspended, sets its CPU and
+  // priorities, then resumes it.
+  uint32_t creation_flags = 0;
+  if (dedicated) {
+    uint32_t cpu = kTaskDedicatedCpu;
+    // An out-of-range CPU keeps the default.
+    if ((flags & kTaskCpuInValue2) && value2 < 6) {
+      cpu = value2;
+    }
+    creation_flags = X_CREATE_SUSPENDED | (uint32_t(1) << (24 + cpu));
+  }
+
+  // TODO: A type 8 task goes on a queue XAM's worker pool (CPUs 3 and 4)
+  // takes tasks from, rather than getting a thread of its own.
   auto thread = object_ref<XThread>(new XThread(
-      kernel_state(), stack_size, 0, callback, message.guest_address(), 0, true,
-      false, kernel_state()->GetSystemProcess()));
+      kernel_state(), stack_size, 0, callback, message.guest_address(),
+      creation_flags, true, false, kernel_state()->GetSystemProcess()));
 
   X_STATUS result = thread->Create();
 
@@ -53,6 +98,21 @@ dword_result_t XamTaskSchedule_entry(lpvoid_t callback, lpvoid_t message,
     // Failed!
     XELOGE("XAM task creation failed: {:08X}", result);
     return result;
+  }
+
+  if (dedicated) {
+    if (KeepsForeground(flags)) {
+      // XAM's KeSetPriorityClassThread(1) gives the thread the title's
+      // priority class, and its KeSetBasePriorityThread(0) the title's base.
+      auto* process = kernel_state()->memory()->TranslateVirtual<X_KPROCESS*>(
+          kernel_state()->GetTitleProcess());
+      auto* kthread = thread->guest_object<X_KTHREAD>();
+      kthread->process_priority_class = process->process_priority_class;
+      kthread->base_priority_copy = process->default_thread_priority;
+      kthread->max_dynamic_priority = process->max_dynamic_priority;
+      thread->SetBasePriority(0);
+    }
+    thread->Resume();
   }
 
   XELOGD("XAM task ({:08X}) scheduled asynchronously",
