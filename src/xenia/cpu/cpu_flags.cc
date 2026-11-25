@@ -24,6 +24,13 @@ DEFINE_bool(accurate_vmx_denormal_flush, false,
             "a title that clears VSCR.NJ through mtvscr.",
             "CPU");
 
+DEFINE_bool(accurate_fpscr_status, false,
+            "Set the FPSCR exception summary bits (FX, VX, OX) from what each "
+            "floating-point instruction raises, as hardware does. No known "
+            "title reads them, so this only costs performance in float heavy "
+            "code. Off, they keep what the guest last wrote there.",
+            "CPU");
+
 DEFINE_bool(disassemble_functions, false,
             "Disassemble functions during generation.", "CPU");
 

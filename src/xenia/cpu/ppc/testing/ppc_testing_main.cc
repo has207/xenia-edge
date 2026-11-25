@@ -805,6 +805,8 @@ int main(const std::vector<std::string>& args) {
   if (test_names.empty() && !cvars::test_name.empty()) {
     test_names.push_back(cvars::test_name);
   }
+  // The expected FPSCR and CR1 values come from hardware.
+  cvars::accurate_fpscr_status = true;
   return RunTests(test_names) ? 0 : 1;
 }
 

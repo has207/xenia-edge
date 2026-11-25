@@ -17,6 +17,8 @@ DECLARE_string(load_module_map);
 
 DECLARE_bool(accurate_vmx_denormal_flush);
 
+DECLARE_bool(accurate_fpscr_status);
+
 DECLARE_bool(disassemble_functions);
 
 DECLARE_bool(no_round_to_single);

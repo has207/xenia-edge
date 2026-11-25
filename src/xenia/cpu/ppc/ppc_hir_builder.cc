@@ -79,6 +79,7 @@ void PPCHIRBuilder::Reset() {
   function_ = nullptr;
   dynamic_code_ = false;
   vscr_sat_observable_ = true;
+  track_fpscr_status_ = true;
   start_address_ = 0;
   instr_count_ = 0;
   instr_offset_list_ = NULL;
@@ -98,6 +99,7 @@ bool PPCHIRBuilder::Emit(GuestFunction* function, uint32_t flags) {
   function_ = function;
   dynamic_code_ = frontend_->processor()->IsDynamicCode(module);
   vscr_sat_observable_ = frontend_->processor()->vscr_sat_observable();
+  track_fpscr_status_ = cvars::accurate_fpscr_status;
   start_address_ = function_->address();
   // chrispy: i've seen this one happen, not sure why but i think from trying to
   // precompile twice i've also seen ones with a start and end address that are
@@ -494,13 +496,6 @@ void PPCHIRBuilder::StoreFPSCR(Value* value) {
 // Writes FX, FEX, VX and OX, the four bits CR1 mirrors. FEX needs the exception
 // enable bits, which nothing sets, so it stays zero.
 void PPCHIRBuilder::StoreFPSCRSummary(Value* raised, bool update_cr1) {
-  /*
-    chrispy: i stubbed this out at one point because all it does is waste
-     memory and CPU time, however, this introduced issues with raiden
-    (substitute w/ titleid later) which probably means they stash stuff in the
-    fpscr?
-
-  */
   // FX summarizes every exception, not just the invalid ones.
   Value* fx = IsTrue(raised);
   Value* vx = IsTrue(And(raised, LoadConstantUint32(FP_EXCEPTION_INVALID)));
@@ -527,12 +522,25 @@ void PPCHIRBuilder::StoreFPSCRSummary(Value* raised, bool update_cr1) {
   StoreFPSCR(bits);
 }
 
+bool PPCHIRBuilder::SkipFPSCRStatus(bool update_cr1) {
+  if (track_fpscr_status_) {
+    return false;
+  }
+  if (update_cr1) {
+    CopyFPSCRToCR1();
+  }
+  return true;
+}
+
 void PPCHIRBuilder::ClearFPSCRExceptions(bool update_cr1) {
+  if (SkipFPSCRStatus(update_cr1)) {
+    return;
+  }
   StoreFPSCRSummary(LoadConstantUint32(0), update_cr1);
 }
 
 void PPCHIRBuilder::BeginFPSCRUpdate(bool update_cr1) {
-  if (update_cr1) {
+  if (update_cr1 && track_fpscr_status_) {
     ClearFpExceptions();
   }
 }
@@ -568,6 +576,9 @@ Value* PPCHIRBuilder::FpInvalidFromOperands(
 
 void PPCHIRBuilder::UpdateFPSCR(std::initializer_list<Value*> operands,
                                 bool update_cr1, Value* suppress) {
+  if (SkipFPSCRStatus(update_cr1)) {
+    return;
+  }
   if (!update_cr1) {
     ClearFPSCRExceptions(false);
     return;
@@ -613,7 +624,7 @@ uint32_t PPCHIRBuilder::SingleRangeFlag(bool update_cr1) const {
 }
 
 Value* PPCHIRBuilder::SnapshotFpExceptions(bool update_cr1) {
-  return update_cr1 ? LoadFpExceptions() : nullptr;
+  return (update_cr1 && track_fpscr_status_) ? LoadFpExceptions() : nullptr;
 }
 
 // The rounding to single never happened for an operand outside the single
@@ -623,6 +634,9 @@ Value* PPCHIRBuilder::SnapshotFpExceptions(bool update_cr1) {
 void PPCHIRBuilder::UpdateFPSCRForUnroundedSingle(
     std::initializer_list<Value*> operands, bool update_cr1, Value* quirk,
     Value* before_rounding) {
+  if (SkipFPSCRStatus(update_cr1)) {
+    return;
+  }
   if (!update_cr1) {
     ClearFPSCRExceptions(false);
     return;
@@ -636,6 +650,9 @@ void PPCHIRBuilder::UpdateFPSCRForUnroundedSingle(
 void PPCHIRBuilder::UpdateFPSCRForMultiplyAdd(Value* a, Value* c, Value* b,
                                               bool update_cr1,
                                               Value* suppress) {
+  if (SkipFPSCRStatus(update_cr1)) {
+    return;
+  }
   if (!update_cr1) {
     ClearFPSCRExceptions(false);
     return;
@@ -661,6 +678,9 @@ void PPCHIRBuilder::UpdateFPSCRForMultiplyAdd(Value* a, Value* c, Value* b,
 
 void PPCHIRBuilder::UpdateFPSCRForEstimate(Value* b, bool is_sqrt_estimate,
                                            bool update_cr1) {
+  if (SkipFPSCRStatus(update_cr1)) {
+    return;
+  }
   if (!update_cr1) {
     ClearFPSCRExceptions(false);
     return;
@@ -698,6 +718,9 @@ void PPCHIRBuilder::UpdateFPSCRForConvertToInteger(Value* b,
                                                    RoundMode round_mode,
                                                    bool to_int64,
                                                    bool update_cr1) {
+  if (SkipFPSCRStatus(update_cr1)) {
+    return;
+  }
   if (!update_cr1) {
     ClearFPSCRExceptions(false);
     return;
