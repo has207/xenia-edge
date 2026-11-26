@@ -98,7 +98,7 @@ X_STATUS AudioSystem::Setup(kernel::KernelState* kernel_state) {
   worker_thread_->set_name("Audio Worker");
   worker_thread_->Create();
   // Set high priority for this thread for better pacing.
-  worker_thread_->SetPriority(24);
+  worker_thread_->thread()->set_priority(threading::ThreadPriority::kHighest);
   return X_STATUS_SUCCESS;
 }
 

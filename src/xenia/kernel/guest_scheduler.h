@@ -46,9 +46,6 @@ class GuestScheduler {
   explicit GuestScheduler(KernelState* kernel_state);
   ~GuestScheduler();
 
-  // True if the cooperative scheduler is active (gated by the cvar).
-  static bool enabled();
-
   // Starts the per-CPU dispatch threads the first time it is called (no-op
   // after).
   void EnsureStarted();

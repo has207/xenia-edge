@@ -1718,8 +1718,7 @@ void KernelState::QueueDpc(uint32_t dpc_ptr, uint32_t arg1, uint32_t arg2) {
 
 void KernelState::StartProcessorDpcThread(uint8_t cpu) {
   auto& dpcs = processor_dpcs_[cpu];
-  if (dpcs.started.load(std::memory_order_acquire) ||
-      !GuestScheduler::enabled()) {
+  if (dpcs.started.load(std::memory_order_acquire)) {
     return;
   }
   auto global_lock = global_critical_region_.Acquire();
@@ -1833,7 +1832,7 @@ void KernelState::EmulateCPInterruptDPC(uint32_t interrupt_callback,
                                         uint32_t source, uint32_t cpu) {
   // Source 0 is vblank, where the console's graphics DPC enters background
   // mode. Before the callback check, which the console also does without one.
-  if (source == 0 && GuestScheduler::enabled()) {
+  if (source == 0) {
     guest_scheduler()->EnterBackgroundMode();
   }
   if (!interrupt_callback) {

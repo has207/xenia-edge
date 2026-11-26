@@ -1880,14 +1880,7 @@ void Emulator::RelaunchTitle(const std::string& host_path,
 }
 
 bool Emulator::CanRelaunchInProcess() {
-  if (!cvars::in_process_title_relaunch) {
-    return false;
-  }
-#if XE_PLATFORM_WIN32
-  return true;
-#else
-  return kernel::GuestScheduler::enabled();
-#endif
+  return cvars::in_process_title_relaunch;
 }
 
 void Emulator::ResetTitle() {
@@ -2272,10 +2265,10 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   }
 
   if (!(ex->pc() >= code_base && ex->pc() < code_end)) {
-    // Not in JIT'd guest code. In host-thread mode let the OS default handler
-    // deal with it. In fiber mode the faulting thread is the shared dispatch
-    // loop, so if a fiber is current halt just that fiber to keep the
-    // dispatcher and the other fibers alive.
+    // Not in JIT'd guest code. On a host-routine thread let the OS default
+    // handler deal with it. On a fiber the faulting thread is the shared
+    // dispatch loop, so halt just that fiber to keep the dispatcher and the
+    // other fibers alive.
     if (auto* fiber_self = kernel::XThread::GetCurrentFiberThread()) {
       // ASLR moves the absolute PC each run, so log a stable module offset that
       // resolves against the pdb with "ln xenia_edge+<offset>".
@@ -2394,9 +2387,10 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   }
   ReportGuestCrash(FormatGuestCrashDump(current_thread, pc, fault));
 
-  // Halt the crashed thread without unwinding the rest of the emulator. Host
-  // mode suspends self. Fiber mode diverts the resume PC to a halt thunk, since
-  // calling Suspend here would yield from inside the exception handler.
+  // Halt the crashed thread without unwinding the rest of the emulator. A
+  // host-routine thread suspends itself. A fiber diverts the resume PC to a
+  // halt thunk, since calling Suspend here would yield from inside the
+  // exception handler.
   if (current_thread->fiber()) {
     DivertToThunk(ex, &HaltCrashedFiberThunk);
     return true;

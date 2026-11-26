@@ -39,7 +39,7 @@ bool XIOCompletion::WaitForNotification(const uint64_t* timeout,
   auto ms = timeout ? std::chrono::milliseconds(TimeoutTicksToMs(*timeout))
                     : std::chrono::milliseconds::max();
 
-  if (GuestScheduler::enabled() && XThread::GetCurrentFiberThread()) {
+  if (XThread::GetCurrentFiberThread()) {
     // Acquire at zero timeout and yield between polls, rather than blocking
     // the dispatch host thread.
     auto* scheduler = kernel_state()->guest_scheduler();

@@ -15,7 +15,6 @@
 
 #include "xenia/base/logging.h"
 #include "xenia/base/mutex.h"
-#include "xenia/kernel/guest_scheduler.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/kernel/xthread.h"
 
@@ -58,16 +57,11 @@ void XTimer::Initialize(uint32_t timer_type) {
   switch (timer_type) {
     case 0:  // NotificationTimer
       timer_ = xe::threading::Timer::CreateManualResetTimer();
-      manual_reset_ = true;
-      if (GuestScheduler::enabled()) {
-        signal_ = xe::threading::Event::CreateManualResetEvent(false);
-      }
+      signal_ = xe::threading::Event::CreateManualResetEvent(false);
       break;
     case 1:  // SynchronizationTimer
       timer_ = xe::threading::Timer::CreateSynchronizationTimer();
-      if (GuestScheduler::enabled()) {
-        signal_ = xe::threading::Event::CreateAutoResetEvent(false);
-      }
+      signal_ = xe::threading::Event::CreateAutoResetEvent(false);
       break;
     default:
       assert_always();
@@ -128,10 +122,8 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
   // The previous expiry must not be able to queue the APC while it is reused.
   timer_->Cancel();
   RemoveApc();
-  if (signal_) {
-    // KeSetTimer clears the signal state.
-    signal_->Reset();
-  }
+  // KeSetTimer clears the signal state.
+  signal_->Reset();
 
   // This callback will only be issued when the timer is fired.
   // Capture values by value to avoid racing with a future SetTimer() call.
@@ -152,48 +144,41 @@ X_STATUS XTimer::SetTimer(int64_t due_time, uint32_t period_ms,
     cb_thread = apc_thread_.get();
     cb_apc = apc_ptr_;
   }
-  std::function<void()> callback = nullptr;
   const uint32_t native = guest_object();
-  if (routine || signal_ || dpc || native) {
-    // Signal and unwait cooperative waiters, as the timer DPC does.
-    xe::threading::Event* signal = signal_.get();
-    const bool periodic = period_ms != 0;
-    callback = [this, signal, cb_thread, cb_apc, routine, routine_arg, dpc,
-                native, periodic]() {
-      if (signal) {
-        signal->Set();
+  // Signal and unwait cooperative waiters, as the timer DPC does.
+  xe::threading::Event* signal = signal_.get();
+  const bool periodic = period_ms != 0;
+  std::function<void()> callback = [this, signal, cb_thread, cb_apc, routine,
+                                    routine_arg, dpc, native, periodic]() {
+    signal->Set();
+    if (native) {
+      // Signal the guest KTIMER. A one-shot expiry also leaves the timer
+      // queue.
+      auto header = memory()->TranslateVirtual<X_DISPATCH_HEADER*>(native);
+      header->signal_state = 1;
+      if (!periodic) {
+        header->inserted = 0;
       }
-      if (native) {
-        // Signal the guest KTIMER. A one-shot expiry also leaves the timer
-        // queue.
-        auto header = memory()->TranslateVirtual<X_DISPATCH_HEADER*>(native);
-        header->signal_state = 1;
-        if (!periodic) {
-          header->inserted = 0;
-        }
-      }
-      if (dpc) {
-        // The time it expired at is the DPC's system arguments.
-        const uint64_t time = xe::Clock::QueryGuestSystemTime();
-        kernel_state()->QueueDpc(dpc, uint32_t(time), uint32_t(time >> 32));
-      }
-      if (cb_thread) {
-        // Queue APC to call back routine with (arg, low, high).
-        // It'll be executed on the thread that requested the timer.
-        uint64_t time = xe::Clock::QueryGuestSystemTime();
-        uint32_t time_low = static_cast<uint32_t>(time);
-        uint32_t time_high = static_cast<uint32_t>(time >> 32);
-        XELOGD(
-            "XTimer enqueuing timer callback to {:08X}({:08X}, {:08X}, "
-            "{:08X})",
-            routine, routine_arg, time_low, time_high);
-        cb_thread->InsertOwnedApc(cb_apc, time_low, time_high);
-      }
-      if (signal) {
-        WakeCooperativeWaiters();
-      }
-    };
-  }
+    }
+    if (dpc) {
+      // The time it expired at is the DPC's system arguments.
+      const uint64_t time = xe::Clock::QueryGuestSystemTime();
+      kernel_state()->QueueDpc(dpc, uint32_t(time), uint32_t(time >> 32));
+    }
+    if (cb_thread) {
+      // Queue APC to call back routine with (arg, low, high).
+      // It'll be executed on the thread that requested the timer.
+      uint64_t time = xe::Clock::QueryGuestSystemTime();
+      uint32_t time_low = static_cast<uint32_t>(time);
+      uint32_t time_high = static_cast<uint32_t>(time >> 32);
+      XELOGD(
+          "XTimer enqueuing timer callback to {:08X}({:08X}, {:08X}, "
+          "{:08X})",
+          routine, routine_arg, time_low, time_high);
+      cb_thread->InsertOwnedApc(cb_apc, time_low, time_high);
+    }
+    WakeCooperativeWaiters();
+  };
 
   bool result;
   if (!period_ms) {
@@ -218,16 +203,7 @@ X_STATUS XTimer::Cancel() {
   return result ? X_STATUS_SUCCESS : X_STATUS_UNSUCCESSFUL;
 }
 
-bool XTimer::IsSignaled() {
-  if (signal_) {
-    return signal_->Query().state != 0;
-  }
-  // A zero wait on the host timer would consume a synchronization timer's
-  // signal so only a notification timer can be read.
-  return manual_reset_ && xe::threading::Wait(timer_.get(), false,
-                                              std::chrono::milliseconds(0)) ==
-                              xe::threading::WaitResult::kSuccess;
-}
+bool XTimer::IsSignaled() { return signal_->Query().state != 0; }
 
 void XTimer::RemoveApc() {
   if (apc_thread_) {

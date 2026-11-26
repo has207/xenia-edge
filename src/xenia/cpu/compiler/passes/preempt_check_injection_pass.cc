@@ -14,8 +14,6 @@
 #include "xenia/base/cvar.h"
 #include "xenia/cpu/hir/hir_builder.h"
 
-DECLARE_bool(guest_scheduler);
-
 // Defined here rather than in a backend: the backends are mutually exclusive by
 // target arch, and both emitters read this.
 DEFINE_bool(
@@ -40,9 +38,7 @@ PreemptCheckInjectionPass::~PreemptCheckInjectionPass() {}
 bool PreemptCheckInjectionPass::Run(HIRBuilder* builder) {
   // The bool return is pass success, not whether anything changed, and Compile
   // aborts the whole function on false.
-  //
-  // Read the cvar here, not in the ctor, so a per-title override applies.
-  if (!cvars::guest_scheduler || !builder->first_block()) {
+  if (!builder->first_block()) {
     return true;
   }
   // Blocks are laid out in guest address order, so every intra-function cycle

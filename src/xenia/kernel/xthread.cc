@@ -12,9 +12,6 @@
 #if XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC
 #include <pthread.h>
 #endif
-#if !XE_PLATFORM_WIN32
-#include <signal.h>
-#endif
 
 #include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
@@ -29,12 +26,6 @@
 #include "xenia/kernel/user_module.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
-
-DEFINE_bool(ignore_thread_priorities, false,
-            "Ignores game-specified thread priorities.", "Kernel");
-UPDATE_from_bool(ignore_thread_priorities, 2026, 4, 9, 12, true);
-DEFINE_bool(ignore_thread_affinities, true,
-            "Ignores game-specified thread affinities.", "Kernel");
 
 #if 0
 DEFINE_int64(stack_size_multiplier_hack, 1,
@@ -455,14 +446,10 @@ X_STATUS XThread::Create() {
   // Always retain when starting - the thread owns itself until exited.
   RetainHandle();
 
-  if (GuestScheduler::enabled() && !is_host_thread()) {
-    // Cooperative fiber path: the guest thread runs on a fiber the scheduler
-    // multiplexes onto its dispatch host thread instead of its own host OS
-    // thread. The scheduler binds our TLS (SetCurrentThread) before switching
-    // to this fiber, so the entry doesn't repeat it. Host-routine threads
-    // (XHostThread) stay real host threads unless created on a fiber, since
-    // they run host loops and blocking calls and their thread() is used
-    // elsewhere.
+  if (!is_host_thread()) {
+    // The thread runs on a fiber the scheduler multiplexes onto its dispatch
+    // host thread. The scheduler binds our TLS (SetCurrentThread) before
+    // switching to this fiber, so the entry doesn't repeat it.
     fiber_exit_event_ = xe::threading::Event::CreateManualResetEvent(false);
     xe::threading::Fiber::CreationParameters fiber_params;
     fiber_params.stack_size = 16_MiB;
@@ -488,6 +475,8 @@ X_STATUS XThread::Create() {
         xe::Profiler::CreateThreadLog(thread_name_.c_str());
     kernel_state()->guest_scheduler()->EnsureStarted();
   } else {
+    // Host-routine threads (XHostThread) not created on a fiber run host loops
+    // and blocking calls on their own host thread.
     xe::threading::Thread::CreationParameters params;
 
     params.create_suspended = true;
@@ -528,10 +517,6 @@ X_STATUS XThread::Create() {
     // Set the thread name based on host ID (for easier debugging).
     if (thread_name_.empty()) {
       set_name(fmt::format("XThread{:04X}", thread_->system_id()));
-    }
-
-    if (creation_params_.creation_flags & 0x60) {
-      thread_->set_priority(creation_params_.creation_flags & 0x20 ? 1 : 0);
     }
   }
 
@@ -707,14 +692,9 @@ X_STATUS XThread::Terminate(int exit_code) {
     ReleaseHandle();
 #endif
     xe::threading::Thread::Exit(exit_code);
-  } else if (thread_) {
-    thread_->Terminate(exit_code);
-#if !(XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC)
-    ReleaseHandle();
-#endif
   } else {
-    // Fiber-backed guest thread terminated from another host thread. Signal
-    // the exit event first so waits on the thread object resolve.
+    // Terminated from another host thread. Signal the exit event first so
+    // waits on the thread object resolve.
     fiber_exit_event_->Set();
     // It may be parked mid-wait, where nothing else will unwind its
     // registration and a dead entry gates every other waiter on that object.
@@ -795,13 +775,6 @@ void XThread::Execute() {
         thread_state_, address, args.data(), args.size()));
     next_address = 0;
   } catch (const FiberReentryException& e) {
-#if XE_PLATFORM_LINUX
-    // Ensure SIGRTMIN (used for thread suspend) is not left blocked.
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGRTMIN);
-    pthread_sigmask(SIG_UNBLOCK, &set, nullptr);
-#endif
     next_address = e.address;
   }
 
@@ -813,12 +786,6 @@ void XThread::Execute() {
         exit_code = static_cast<int>(thread_state_->context()->r[3]);
       }
     } catch (const FiberReentryException& e) {
-#if XE_PLATFORM_LINUX
-      sigset_t set;
-      sigemptyset(&set);
-      sigaddset(&set, SIGRTMIN);
-      pthread_sigmask(SIG_UNBLOCK, &set, nullptr);
-#endif
       next_address = e.address;
     }
   }
@@ -981,11 +948,7 @@ void XThread::RundownAPCs() {
   xboxkrnl::xeRundownApcs(thread_state_->context());
 }
 
-int32_t XThread::QueryPriority() {
-  // Fiber-backed guest threads have no host thread, so report the guest
-  // priority.
-  return thread_ ? thread_->priority() : priority_;
-}
+int32_t XThread::QueryPriority() { return priority_; }
 
 int32_t XThread::QueryBasePriority() {
   // KiQueryBasePriorityThread, the increment being base minus class base, or
@@ -998,36 +961,13 @@ int32_t XThread::QueryBasePriority() {
   return int32_t(kt->base_priority) - int32_t(kt->base_priority_copy);
 }
 
-// Map Xenon's 0-31 priority range across the available host priority levels.
-// Priority 18 (0x12) is the Xenon real-time threshold — threads at or above
-// it don't get quantum decay on real hardware.
-static int32_t GuestPriorityToHost(int32_t guest_priority) {
-  if (guest_priority >= 24) {
-    return xe::threading::ThreadPriority::kHighest;
-  } else if (guest_priority >= 17) {
-    return xe::threading::ThreadPriority::kAboveNormal;
-  } else if (guest_priority >= 10) {
-    return xe::threading::ThreadPriority::kNormal;
-  } else if (guest_priority >= 5) {
-    return xe::threading::ThreadPriority::kBelowNormal;
-  } else {
-    return xe::threading::ThreadPriority::kLowest;
-  }
-}
-
 void XThread::PublishPriority(int32_t priority) {
   priority_ = priority;
   if (is_guest_thread()) {
     guest_object<X_KTHREAD>()->priority = static_cast<uint8_t>(priority);
   }
-  // No host thread under the cooperative scheduler, which orders by priority_.
-  if (!cvars::ignore_thread_priorities && thread_) {
-    thread_->set_priority(GuestPriorityToHost(priority));
-  }
   // The ready queue is indexed by priority, so a queued thread has to move.
-  if (GuestScheduler::enabled()) {
-    kernel_state()->guest_scheduler()->RequeueForPriority(this);
-  }
+  kernel_state()->guest_scheduler()->RequeueForPriority(this);
 }
 
 void XThread::SetPriority(int32_t increment) {
@@ -1175,20 +1115,8 @@ void XThread::SetActiveCpu(uint8_t cpu_index) {
     thread_object.current_cpu = cpu_index;
   }
 
-  if (xe::threading::logical_processor_count() >= 6) {
-    // Pin only guest threads; host service threads (XHostThread) keep a
-    // thread_ under the cooperative scheduler and must not be pinned.
-    if (!cvars::ignore_thread_affinities && thread_ && is_guest_thread()) {
-      thread_->set_affinity_mask(uint64_t(1) << cpu_index);
-    }
-  } else {
-    // there no good reason why we need to log this... we don't perfectly
-    // emulate the 360's scheduler in any way
-    // XELOGW("Too few processor cores - scheduling will be wonky");
-  }
-
   // The ready queues are per CPU, so a queued thread has to move.
-  if (cpu_index != previous_cpu && GuestScheduler::enabled()) {
+  if (cpu_index != previous_cpu) {
     kernel_state()->guest_scheduler()->MigrateForAffinity(this);
   }
 }

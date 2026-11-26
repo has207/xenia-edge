@@ -476,9 +476,7 @@ class Emulator {
                      const std::string& package_path = {});
 
   // Whether a title launch replaces the running title in-process rather than
-  // in a new process. Outside Windows only with the guest scheduler: a guest
-  // thread on its own host thread stops there through pthread_cancel, which
-  // can leave a lock it holds taken for good, while a fiber stops parked.
+  // in a new process.
   static bool CanRelaunchInProcess();
 
   // Stops the current title and returns the kernel to a fresh, idle state

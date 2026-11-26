@@ -537,9 +537,8 @@ class XThread : public XObject, public cpu::Thread {
 
   xe::threading::Thread* thread() { return thread_.get(); }
 
-  // The fiber this guest thread runs on when the cooperative scheduler is
-  // active (null under the host-thread model). Created in the fiber path of
-  // Create().
+  // The fiber this thread runs on, null for a host-routine thread with its own
+  // host thread. Created in Create().
   xe::threading::Fiber* fiber() const { return fiber_.get(); }
 
   // The fiber to dispatch, the user mode fiber while one is running.
@@ -813,14 +812,13 @@ class XThread : public XObject, public cpu::Thread {
   void RundownAPCs();
   cpu::ppc::PPCContext* ApcQueueContext();
 
-  // Publishes a new effective priority to the guest KTHREAD field, the host
-  // thread and the scheduler's ready queue. Every change goes through here.
+  // Publishes a new effective priority to the guest KTHREAD field and the
+  // scheduler's ready queue. Every change goes through here.
   void PublishPriority(int32_t priority);
 
   xe::threading::WaitHandle* GetWaitHandle() override {
-    // Under the cooperative scheduler there is no host thread, so a
-    // fiber-backed thread exposes an event signaled on exit for other threads
-    // to wait on.
+    // A fiber-backed thread has no host thread, so it exposes an event
+    // signaled on exit for other threads to wait on.
     if (thread_) {
       return thread_.get();
     }
@@ -863,8 +861,8 @@ class XThread : public XObject, public cpu::Thread {
   uint32_t reentry_address_ = 0;
 #endif
 
-  // When the cooperative scheduler is active, the guest thread runs on this
-  // fiber instead of its own host thread (cpu::Thread::thread_).
+  // The fiber this thread runs on instead of its own host thread
+  // (cpu::Thread::thread_), which only a host-routine thread has.
   std::unique_ptr<xe::threading::Fiber> fiber_;
   xe::threading::Fiber* active_fiber_ = nullptr;
   std::unique_ptr<UserMode> user_mode_;

@@ -243,8 +243,6 @@ GuestScheduler::GuestScheduler(KernelState* kernel_state)
 
 GuestScheduler::~GuestScheduler() { Shutdown(); }
 
-bool GuestScheduler::enabled() { return cvars::guest_scheduler; }
-
 int GuestScheduler::DispatchCpuOf(uint8_t guest_cpu) const {
   // Wrap rather than fold to 0: an out-of-range guest CPU is already unusual,
   // and folding every one of them onto CPU 0 stacks them on the dispatch
@@ -1253,7 +1251,7 @@ void GuestScheduler::EnsureIoWorker() {
 }
 
 bool GuestScheduler::CurrentThreadOffloadsBlockingCalls() {
-  if (!enabled() || !XThread::GetCurrentFiberThread()) {
+  if (!XThread::GetCurrentFiberThread()) {
     return false;
   }
   // The offloaded call can need the global critical region itself, and only
@@ -1262,7 +1260,7 @@ bool GuestScheduler::CurrentThreadOffloadsBlockingCalls() {
 }
 
 void GuestScheduler::WaitOnFence(xe::threading::Fence& fence) {
-  XThread* self = enabled() ? XThread::GetCurrentFiberThread() : nullptr;
+  XThread* self = XThread::GetCurrentFiberThread();
   if (!self) {
     fence.Wait();
     return;

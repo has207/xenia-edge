@@ -544,8 +544,8 @@ class PosixConditionBase {
   // care about.
   void NotifyAll() {
     // bionic's pthread_cond_broadcast issues the futex syscall even with no
-    // sleeper. Under the cooperative scheduler guest waits are fibers, so
-    // nearly every signal is uncontended and paid a syscall for nothing.
+    // sleeper. Guest waits are fibers, so nearly every signal is uncontended
+    // and paid a syscall for nothing.
     // parked_waiters_ is only touched under mutex_, held by every caller.
     if (parked_waiters_ != 0) {
       cond_.notify_all();

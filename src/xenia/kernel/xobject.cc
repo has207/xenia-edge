@@ -570,7 +570,7 @@ X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode,
     return X_STATUS_SUCCESS;
   }
 
-  if (GuestScheduler::enabled() && XThread::GetCurrentFiberThread()) {
+  if (XThread::GetCurrentFiberThread()) {
     // Cooperative path: poll the host primitive (preserving its exact
     // semantics) and yield the fiber between polls instead of blocking the
     // dispatch host thread.
@@ -707,7 +707,7 @@ X_STATUS XObject::Wait(uint32_t wait_reason, uint32_t processor_mode,
 X_STATUS XObject::SignalAndWait(XObject* signal_object, XObject* wait_object,
                                 uint32_t wait_reason, uint32_t processor_mode,
                                 uint32_t alertable, uint64_t* opt_timeout) {
-  if (GuestScheduler::enabled() && XThread::GetCurrentFiberThread()) {
+  if (XThread::GetCurrentFiberThread()) {
     auto* scheduler = wait_object->kernel_state()->guest_scheduler();
     auto* self = XThread::GetCurrentThread();
     uint64_t deadline_ms = opt_timeout ? Clock::QueryHostUptimeMillis() +
@@ -856,8 +856,7 @@ X_STATUS XObject::WaitMultiple(uint32_t count, XObject** objects,
   };
   resolve_handles();
 
-  if (GuestScheduler::enabled() && count > 0 &&
-      XThread::GetCurrentFiberThread()) {
+  if (count > 0 && XThread::GetCurrentFiberThread()) {
     // Cooperative path: poll (WaitAny/WaitAll at zero timeout, preserving the
     // host primitives' atomic acquire) and yield between polls. WaitMultiple is
     // static, so reach the scheduler through an object.

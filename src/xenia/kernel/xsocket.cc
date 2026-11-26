@@ -981,15 +981,9 @@ void XSocket::SetHostNonBlocking(bool enable) {
   }
 }
 
-// The guest thread RunCooperatively parks between attempts, null when it runs
-// them just once.
-static XThread* CooperativeThread() {
-  return GuestScheduler::enabled() ? XThread::GetCurrentFiberThread() : nullptr;
-}
-
 void XSocket::RunCooperatively(asio::error_code& ec, RetryMode mode,
                                const std::function<void()>& attempt) {
-  XThread* self = CooperativeThread();
+  XThread* self = XThread::GetCurrentFiberThread();
   if (!self || guest_non_blocking_) {
     attempt();
     return;
@@ -1068,7 +1062,7 @@ X_STATUS XSocket::Connect(N_XSOCKADDR* name, int name_len) {
     if (!guest_non_blocking_) {
       bool started = false;
       RunCooperatively(ec, RetryMode::kConnect, [&]() {
-        if (!CooperativeThread()) {
+        if (!XThread::GetCurrentFiberThread()) {
           tcp_socket_->connect(endpoint, ec);
         } else if (!started) {
           started = true;
@@ -2040,7 +2034,7 @@ int XSocket::SystemLinkSend(const uint8_t* buf, uint32_t buf_len,
 
 uint32_t XSocket::SystemLinkWait(RetryMode mode) const {
   // RunCooperatively retries on a fiber so only a host thread waits here.
-  if (guest_non_blocking_ || CooperativeThread()) {
+  if (guest_non_blocking_ || XThread::GetCurrentFiberThread()) {
     return 0;
   }
   // No socket timeout bounds a connect or accept.

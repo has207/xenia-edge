@@ -11,13 +11,6 @@
 
 DEFINE_bool(log_high_frequency_kernel_calls, false,
             "Log kernel calls with the kHighFrequency tag.", "Logging");
-DEFINE_bool(
-    guest_scheduler, true,
-    "Run guest threads as cooperative fibers driven by an in-kernel scheduler "
-    "instead of mapping each to its own host OS thread. Requires a restart to "
-    "take effect.",
-    "Kernel");
-UPDATE_from_bool(guest_scheduler, 2026, 8, 1, 13, false);
 DEFINE_uint32(
     guest_scheduler_quantum_us, 1000,
     "Cooperative-scheduler timeslice in microseconds. A guest fiber running "
