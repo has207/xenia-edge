@@ -123,17 +123,17 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.version }}
         run: |
+          tag=$TAG
+
           cd linux_artifacts
           # For Linux, just rename the AppImage (no need to zip a single file)
-          mv xenia_edge.AppImage ../xenia_edge_linux.AppImage
+          mv xenia_edge.AppImage ../xenia_edge_${tag}_linux.AppImage
           cd ../windows_artifacts
-          7z a ../xenia_edge_windows.zip * -xr!'*.pdb' -mx9 -bb3
+          7z a ../xenia_edge_${tag}_windows.zip * -xr!'*.pdb' -mx9 -bb3
           cd ../macos_artifacts
           # macOS DMG is already a single distributable file; just hoist it.
-          mv xenia_edge_macos.dmg ../xenia_edge_macos.dmg
+          mv xenia_edge_macos.dmg ../xenia_edge_${tag}_macos.dmg
           cd ..
-
-          tag=$TAG
 
           # Build release body: commit list since last release + compare URL
           prev_tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
@@ -157,6 +157,6 @@ jobs:
 
           # Create release
           gh release create $tag --verify-tag \
-            xenia_edge_linux.AppImage xenia_edge_windows.zip \
-            xenia_edge_macos.dmg \
+            xenia_edge_${tag}_linux.AppImage xenia_edge_${tag}_windows.zip \
+            xenia_edge_${tag}_macos.dmg \
             -t "xenia_edge $tag" --notes-file release_notes.md
