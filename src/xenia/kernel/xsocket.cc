@@ -218,6 +218,18 @@ const std::map<uint32_t, uint32_t> supported_controls = {
 const std::map<uint32_t, int> supported_levels = {{0xFFFF, SOL_SOCKET},
                                                   {0x6, IPPROTO_TCP}};
 
+// Winsock FD_* flags split into asio wait_read / wait_write groups.
+namespace {
+constexpr uint32_t kFD_READ = 1;
+constexpr uint32_t kFD_WRITE = 2;
+constexpr uint32_t kFD_OOB = 4;
+constexpr uint32_t kFD_ACCEPT = 8;
+constexpr uint32_t kFD_CONNECT = 16;
+constexpr uint32_t kFD_CLOSE = 32;
+constexpr uint32_t kReadEvents = kFD_READ | kFD_ACCEPT | kFD_CLOSE | kFD_OOB;
+constexpr uint32_t kWriteEvents = kFD_WRITE | kFD_CONNECT;
+}  // namespace
+
 // asio error_code -> Winsock WSAE* code. Guests look up by Winsock value;
 // returning raw POSIX errno makes recoverable errors look fatal (e.g. COD4
 // MP treats unrecognized recvfrom error as a hard init failure).
@@ -1281,6 +1293,7 @@ object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
   RunCooperatively(ec, RetryMode::kAccept, [&]() {
     acceptor_->accept(*new_socket, peer_endpoint, ec);
   });
+  ReenableHostEvents(kFD_ACCEPT);
 
   if (ec) {
     last_error_ = AsioErrorToWSAError(ec);
@@ -1301,6 +1314,14 @@ object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
   if (guest_non_blocking_) {
     socket->SetHostNonBlocking(true);
     socket->guest_non_blocking_ = true;
+  }
+  // It takes over the listener's WSAEventSelect too.
+  std::lock_guard lock(select_mutex_);
+  if (selected_event_ && selected_event_flags_) {
+    std::lock_guard accepted_lock(socket->select_mutex_);
+    socket->selected_event_ = selected_event_;
+    socket->selected_event_flags_ = selected_event_flags_;
+    socket->ArmHostReady(selected_event_flags_);
   }
 
   return socket;
@@ -1386,6 +1407,7 @@ int XSocket::Recv(uint8_t* buf, uint32_t buf_len, uint32_t flags) {
           tcp_socket_->receive(asio::buffer(buf, buf_len), flags, ec);
     });
   }
+  ReenableHostEvents(kFD_READ);
 
   // A stream peer that closed the connection reads as 0 bytes.
   if (ec == asio::error::eof) {
@@ -1438,6 +1460,7 @@ int XSocket::RecvFrom(uint8_t* buf, uint32_t buf_len, uint32_t flags,
           tcp_socket_->receive(asio::buffer(buf, buf_len), flags, ec);
     });
   }
+  ReenableHostEvents(kFD_READ);
 
   // A stream peer that closed the connection reads as 0 bytes.
   if (ec == asio::error::eof) {
@@ -1479,6 +1502,10 @@ int XSocket::Send(const uint8_t* buf, uint32_t buf_len, uint32_t flags) {
 
   if (ec) {
     last_error_ = AsioErrorToWSAError(ec);
+    // A send that would block re-enables FD_WRITE.
+    if (last_error_ == 10035) {
+      ReenableHostEvents(kFD_WRITE);
+    }
     return -1;
   }
 
@@ -1527,6 +1554,10 @@ int XSocket::SendTo(uint8_t* buf, uint32_t buf_len, uint32_t flags,
 
   if (ec) {
     last_error_ = AsioErrorToWSAError(ec);
+    // A send that would block re-enables FD_WRITE.
+    if (last_error_ == 10035) {
+      ReenableHostEvents(kFD_WRITE);
+    }
     return -1;
   }
 
@@ -1618,18 +1649,6 @@ bool XSocket::IsOverlappedPending(const XWSAOVERLAPPED* overlapped) const {
   return overlapped_receives_->Pending(overlapped);
 }
 
-// Winsock FD_* flags split into asio wait_read / wait_write groups.
-namespace {
-constexpr uint32_t kFD_READ = 1;
-constexpr uint32_t kFD_WRITE = 2;
-constexpr uint32_t kFD_OOB = 4;
-constexpr uint32_t kFD_ACCEPT = 8;
-constexpr uint32_t kFD_CONNECT = 16;
-constexpr uint32_t kFD_CLOSE = 32;
-constexpr uint32_t kReadEvents = kFD_READ | kFD_ACCEPT | kFD_CLOSE | kFD_OOB;
-constexpr uint32_t kWriteEvents = kFD_WRITE | kFD_CONNECT;
-}  // namespace
-
 int XSocket::WSAEventSelect(object_ref<XEvent> event, uint32_t flags) {
   if (!tcp_socket_ && !udp_socket_ && !acceptor_ && !system_link_stream_) {
     last_error_ = uint32_t(X_WSAError::X_WSAENOTSOCK);
@@ -1661,6 +1680,9 @@ int XSocket::WSAEventSelect(object_ref<XEvent> event, uint32_t flags) {
       udp_socket_->cancel(cancel_ec);
     }
   }
+  ++select_generation_;
+  host_read_wait_ = false;
+  host_write_wait_ = false;
 
   selected_event_ = std::move(event);
   selected_event_flags_ = flags;
@@ -1676,42 +1698,54 @@ int XSocket::WSAEventSelect(object_ref<XEvent> event, uint32_t flags) {
     return 0;
   }
 
-  if (flags == 0 || !selected_event_) {
-    return 0;
-  }
-
-  const bool want_read = (flags & kReadEvents) != 0;
-  const bool want_write = (flags & kWriteEvents) != 0;
-
-  // Capture strong refs so the socket and event outlive any pending wait.
-  auto handler = [self = retain_object(this),
-                  ev = selected_event_](const asio::error_code& wait_ec) {
-    if (wait_ec) {
-      return;  // cancelled or socket closed
-    }
-    ev->Set(0, false);
-  };
-
-  if (want_read) {
-    if (acceptor_) {
-      acceptor_->async_wait(asio::socket_base::wait_read, handler);
-    } else if (tcp_socket_) {
-      tcp_socket_->async_wait(asio::socket_base::wait_read, handler);
-    } else if (udp_socket_) {
-      udp_socket_->async_wait(asio::socket_base::wait_read, handler);
-    }
-  }
-  if (want_write) {
-    if (acceptor_) {
-      acceptor_->async_wait(asio::socket_base::wait_write, handler);
-    } else if (tcp_socket_) {
-      tcp_socket_->async_wait(asio::socket_base::wait_write, handler);
-    } else if (udp_socket_) {
-      udp_socket_->async_wait(asio::socket_base::wait_write, handler);
-    }
-  }
-
+  ArmHostReady(flags);
   return 0;
+}
+
+void XSocket::ArmHostReady(uint32_t events) {
+  if (!selected_event_) {
+    return;
+  }
+  // Only a listener accepts, and it does nothing else.
+  events &= selected_event_flags_ & (acceptor_ ? kFD_ACCEPT : ~kFD_ACCEPT);
+  auto wait = [this](bool read) {
+    (read ? host_read_wait_ : host_write_wait_) = true;
+    // Strong refs so the socket and event outlive the wait.
+    auto handler = [self = retain_object(this), ev = selected_event_,
+                    generation = select_generation_,
+                    read](const asio::error_code& wait_ec) {
+      {
+        std::lock_guard lock(self->select_mutex_);
+        if (generation == self->select_generation_) {
+          (read ? self->host_read_wait_ : self->host_write_wait_) = false;
+        }
+      }
+      // A cancelled wait or a closed socket sets nothing.
+      if (!wait_ec) {
+        ev->Set(0, false);
+      }
+    };
+    const auto type =
+        read ? asio::socket_base::wait_read : asio::socket_base::wait_write;
+    if (acceptor_) {
+      acceptor_->async_wait(type, handler);
+    } else if (tcp_socket_) {
+      tcp_socket_->async_wait(type, handler);
+    } else if (udp_socket_) {
+      udp_socket_->async_wait(type, handler);
+    }
+  };
+  if ((events & kReadEvents) && !host_read_wait_) {
+    wait(true);
+  }
+  if ((events & kWriteEvents) && !host_write_wait_) {
+    wait(false);
+  }
+}
+
+void XSocket::ReenableHostEvents(uint32_t events) {
+  std::lock_guard lock(select_mutex_);
+  ArmHostReady(events);
 }
 
 bool XSocket::QueuePacket(uint32_t src_ip, uint16_t src_port,

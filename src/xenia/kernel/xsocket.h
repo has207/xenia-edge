@@ -261,6 +261,11 @@ class XSocket : public XObject {
   // Hooks the WSAEventSelect event and the overlapped receives up to the
   // System Link port or stream. select_mutex_ held.
   void ArmSystemLinkReady();
+  // Waits for the host socket to be ready for the selected FD_* events, one
+  // wait per direction. select_mutex_ held.
+  void ArmHostReady(uint32_t events);
+  // Waits again after the call that re-enables events, as Winsock does.
+  void ReenableHostEvents(uint32_t events);
 
   // Reads the local or remote address into xenia's own layout. Some hosts lay
   // sockaddr_in out differently.
@@ -327,6 +332,11 @@ class XSocket : public XObject {
   std::mutex select_mutex_;
   object_ref<XEvent> selected_event_;
   uint32_t selected_event_flags_ = 0;
+  // A host wait pending for each direction. A wait of an earlier selection,
+  // with an older generation, leaves them alone.
+  bool host_read_wait_ = false;
+  bool host_write_wait_ = false;
+  uint32_t select_generation_ = 0;
 
   // A socket of a title running System Link.
   bool on_system_link_ = false;
