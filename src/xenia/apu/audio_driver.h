@@ -31,8 +31,6 @@ class AudioDriver {
   virtual void Shutdown() = 0;
 
   virtual void SubmitFrame(float* samples) = 0;
-  virtual void Pause() = 0;
-  virtual void Resume() = 0;
   virtual void SetVolume(float volume) = 0;
 };
 

@@ -40,10 +40,6 @@ class XEvent : public XObject {
   void Query(uint32_t* out_type, uint32_t* out_state);
   void Clear();
 
-  bool Save(ByteStream* stream) override;
-  static object_ref<XEvent> Restore(KernelState* kernel_state,
-                                    ByteStream* stream);
-
   uint32_t cooperative_pulse_epoch() const override {
     return pulse_epoch_.load();
   }

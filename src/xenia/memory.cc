@@ -23,7 +23,6 @@
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/base/arm64_load_store.h"
 #include "xenia/base/assert.h"
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/exception_handler.h"
@@ -2242,28 +2241,6 @@ void Memory::DumpMap() {
   XELOGE("");
 }
 
-bool Memory::Save(ByteStream* stream) {
-  XELOGD("Serializing memory...");
-  heaps_.v00000000.Save(stream);
-  heaps_.v40000000.Save(stream);
-  heaps_.v80000000.Save(stream);
-  heaps_.v90000000.Save(stream);
-  heaps_.physical.Save(stream);
-
-  return true;
-}
-
-bool Memory::Restore(ByteStream* stream) {
-  XELOGD("Restoring memory...");
-  heaps_.v00000000.Restore(stream);
-  heaps_.v40000000.Restore(stream);
-  heaps_.v80000000.Restore(stream);
-  heaps_.v90000000.Restore(stream);
-  heaps_.physical.Restore(stream);
-
-  return true;
-}
-
 uint32_t FromPageAccess(xe::memory::PageAccess protect) {
   switch (protect) {
     case memory::PageAccess::kNoAccess:
@@ -2374,80 +2351,6 @@ void BaseHeap::DumpMap() {
            heap_base_ + (heap_size_ - 1),
            page_table_.size() - empty_span_start);
   }
-}
-
-bool BaseHeap::Save(ByteStream* stream) {
-  XELOGD("Heap {:08X}-{:08X}", heap_base_, heap_base_ + (heap_size_ - 1));
-
-  for (size_t i = 0; i < page_table_.size(); i++) {
-    auto& page = page_table_[i];
-    stream->Write(page.qword);
-    if (!page.state) {
-      // Unallocated.
-      continue;
-    }
-
-    // TODO(DrChat): write compressed with snappy.
-    if (page.state & kMemoryAllocationCommit) {
-      void* addr = TranslateRelative(i * page_size_);
-
-      memory::PageAccess old_access;
-      memory::Protect(addr, page_size_, memory::PageAccess::kReadWrite,
-                      &old_access);
-
-      stream->Write(addr, page_size_);
-
-      memory::Protect(addr, page_size_, old_access, nullptr);
-    }
-  }
-
-  return true;
-}
-
-bool BaseHeap::Restore(ByteStream* stream) {
-  XELOGD("Heap {:08X}-{:08X}", heap_base_, heap_base_ + (heap_size_ - 1));
-
-  for (size_t i = 0; i < page_table_.size(); i++) {
-    auto& page = page_table_[i];
-    page.qword = stream->Read<uint64_t>();
-    if (!page.state) {
-      // Unallocated.
-      continue;
-    }
-
-    memory::PageAccess page_access = memory::PageAccess::kNoAccess;
-    if ((page.current_protect & kMemoryProtectRead) &&
-        IsWritableProtect(page.current_protect)) {
-      page_access = memory::PageAccess::kReadWrite;
-    } else if (page.current_protect & kMemoryProtectRead) {
-      page_access = memory::PageAccess::kReadOnly;
-    }
-
-    // Commit the memory if it isn't already. We do not need to reserve any
-    // memory, as the mapping has already taken care of that.
-    if (page.state & kMemoryAllocationCommit) {
-      xe::memory::AllocFixed(TranslateRelative(i * page_size_), page_size_,
-                             memory::AllocationType::kCommit,
-                             memory::PageAccess::kReadWrite);
-    }
-
-    // Now read into memory. We'll set R/W protection first, then set the
-    // protection back to its previous state.
-    // TODO(DrChat): read compressed with snappy.
-    if (page.state & kMemoryAllocationCommit) {
-      void* addr = TranslateRelative(i * page_size_);
-      xe::memory::Protect(addr, page_size_, memory::PageAccess::kReadWrite,
-                          nullptr);
-
-      stream->Read(addr, page_size_);
-
-      xe::memory::Protect(addr, page_size_, page_access, nullptr);
-    }
-  }
-
-  RebuildFreeBlocks();
-
-  return true;
 }
 
 void BaseHeap::RebuildFreeBlocks() {

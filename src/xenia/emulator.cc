@@ -19,7 +19,6 @@
 #include "third_party/fmt/include/fmt/format.h"
 #include "xenia/apu/audio_system.h"
 #include "xenia/base/assert.h"
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/cvar.h"
 #include "xenia/base/debugging.h"
@@ -214,10 +213,7 @@ Emulator::Emulator(const std::filesystem::path& command_line,
       kernel_state_(),
       main_thread_(),
       title_id_(std::nullopt),
-      game_info_database_(),
-      paused_(false),
-      restoring_(false),
-      restore_fence_() {
+      game_info_database_() {
   if (cvars::priority_class != 0) {
     if (SetProcessPriorityClass(cvars::priority_class)) {
       XELOGI("Higher priority class request: Successful. New priority: {}",
@@ -299,7 +295,6 @@ void Emulator::Shutdown() {
   title_name_.clear();
   title_version_.clear();
   game_info_database_.reset();
-  paused_ = false;
   boot_animation_requested_ = false;
 
   XELOGI("Emulator::Shutdown: teardown complete");
@@ -1601,164 +1596,6 @@ X_STATUS Emulator::InstallContentPackage(
   return error_code;
 }
 
-void Emulator::Pause() {
-  if (paused_) {
-    return;
-  }
-  paused_ = true;
-
-  // Don't hold the lock on this (so any waits follow through)
-  graphics_system_->Pause();
-  audio_system_->Pause();
-
-  auto lock = global_critical_region::AcquireDirect();
-  auto threads =
-      kernel_state()->object_table()->GetObjectsByType<kernel::XThread>(
-          kernel::XObject::Type::Thread);
-  auto current_thread = kernel::XThread::IsInThread()
-                            ? kernel::XThread::GetCurrentThread()
-                            : nullptr;
-  for (auto thread : threads) {
-    // Don't pause ourself or host threads.
-    if (thread == current_thread || !thread->can_debugger_suspend()) {
-      continue;
-    }
-
-    if (thread->is_running()) {
-      thread->thread()->Suspend(nullptr);
-    }
-  }
-
-  XELOGD("! EMULATOR PAUSED !");
-}
-
-void Emulator::Resume() {
-  if (!paused_) {
-    return;
-  }
-  paused_ = false;
-  XELOGD("! EMULATOR RESUMED !");
-
-  graphics_system_->Resume();
-  audio_system_->Resume();
-
-  auto threads =
-      kernel_state()->object_table()->GetObjectsByType<kernel::XThread>(
-          kernel::XObject::Type::Thread);
-  for (auto thread : threads) {
-    if (!thread->can_debugger_suspend()) {
-      // Don't pause host threads.
-      continue;
-    }
-
-    if (!thread->is_running()) {
-      thread->thread()->Resume(nullptr);
-    }
-  }
-}
-
-bool Emulator::SaveToFile(const std::filesystem::path& path) {
-  Pause();
-
-  filesystem::CreateEmptyFile(path);
-  auto map = MappedMemory::Open(path, MappedMemory::Mode::kReadWrite, 0, 2_GiB);
-  if (!map) {
-    return false;
-  }
-
-  // Save the emulator state to a file
-  ByteStream stream(map->data(), map->size());
-  stream.Write(kEmulatorSaveSignature);
-  stream.Write(title_id_.has_value());
-  if (title_id_.has_value()) {
-    stream.Write(title_id_.value());
-  }
-
-  // It's important we don't hold the global lock here! XThreads need to step
-  // forward (possibly through guarded regions) without worry!
-  processor_->Save(&stream);
-  graphics_system_->Save(&stream);
-  audio_system_->Save(&stream);
-  kernel_state_->Save(&stream);
-  memory_->Save(&stream);
-  map->Close(stream.offset());
-
-  Resume();
-  return true;
-}
-
-bool Emulator::RestoreFromFile(const std::filesystem::path& path) {
-  // Restore the emulator state from a file
-  auto map = MappedMemory::Open(path, MappedMemory::Mode::kReadWrite);
-  if (!map) {
-    return false;
-  }
-
-  restoring_ = true;
-
-  // Terminate any loaded titles.
-  Pause();
-  kernel_state_->TerminateTitle();
-
-  auto lock = global_critical_region::AcquireDirect();
-  ByteStream stream(map->data(), map->size());
-  if (stream.Read<uint32_t>() != kEmulatorSaveSignature) {
-    return false;
-  }
-
-  auto has_title_id = stream.Read<bool>();
-  std::optional<uint32_t> title_id;
-  if (!has_title_id) {
-    title_id = {};
-  } else {
-    title_id = stream.Read<uint32_t>();
-  }
-  if (title_id_.has_value() != title_id.has_value() ||
-      title_id_.value() != title_id.value()) {
-    // Swapping between titles is unsupported at the moment.
-    assert_always();
-    return false;
-  }
-
-  if (!processor_->Restore(&stream)) {
-    XELOGE("Could not restore processor!");
-    return false;
-  }
-  if (!graphics_system_->Restore(&stream)) {
-    XELOGE("Could not restore graphics system!");
-    return false;
-  }
-  if (!audio_system_->Restore(&stream)) {
-    XELOGE("Could not restore audio system!");
-    return false;
-  }
-  if (!kernel_state_->Restore(&stream)) {
-    XELOGE("Could not restore kernel state!");
-    return false;
-  }
-  if (!memory_->Restore(&stream)) {
-    XELOGE("Could not restore memory!");
-    return false;
-  }
-
-  // Update the main thread.
-  auto threads =
-      kernel_state_->object_table()->GetObjectsByType<kernel::XThread>();
-  for (auto thread : threads) {
-    if (thread->main_thread()) {
-      main_thread_ = thread;
-      break;
-    }
-  }
-
-  Resume();
-
-  restore_fence_.Signal();
-  restoring_ = false;
-
-  return true;
-}
-
 void Emulator::RelaunchTitle(const std::string& host_path,
                              const std::string& launch_module,
                              uint32_t launch_flags,
@@ -2254,14 +2091,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   auto code_base = code_cache->execute_base_address();
   auto code_end = code_base + code_cache->total_size();
 
-  if (!processor()->is_debugger_attached() && debugging::IsDebuggerAttached()) {
-    // If Xenia's debugger isn't attached but another one is, pass it to that
-    // debugger.
+  if (debugging::IsDebuggerAttached()) {
+    // Pass it to the attached host debugger.
     return false;
-  } else if (processor()->is_debugger_attached()) {
-    // Let the debugger handle this exception. It may decide to continue past
-    // it (if it was a stepping breakpoint, etc).
-    return processor()->OnUnhandledException(ex);
   }
 
   if (!(ex->pc() >= code_base && ex->pc() < code_end)) {
@@ -2409,17 +2241,8 @@ void Emulator::ReportGuestCrash(const std::string& crash_msg) {
   }
   FlushLog();
 
-  // Only pause the entire emulator if debugging is enabled. After the dump,
-  // since Pause() can block (e.g. waiting on the GPU/audio systems).
-  if (cvars::debug) {
-    Pause();
-  }
-
-  std::string crash_dlg = fmt::format(
-      "The guest has crashed.\n\n"
-      "Xenia has now paused itself.\n\n"
-      "{}",
-      crash_msg);
+  std::string crash_dlg =
+      fmt::format("The guest has crashed.\n\n{}", crash_msg);
   // Display a dialog telling the user the guest has crashed.
   if (display_window_ && imgui_drawer_) {
     display_window_->app_context().CallInUIThreadSynchronous([this,
@@ -2437,16 +2260,14 @@ void Emulator::WaitUntilExit() {
       xe::threading::Wait(main_thread_->wait_handle(), false);
     }
 
-    if (restoring_) {
-      restore_fence_.Wait();
-    } else if (relaunching_) {
+    if (relaunching_) {
       // RelaunchTitle is running on another thread - wait for it to finish
       // and set the new main_thread_, then loop back to wait on it.
       while (relaunching_) {
         xe::threading::Sleep(std::chrono::milliseconds(10));
       }
     } else {
-      // Not restoring/relaunching and the thread exited. We're finished.
+      // Not relaunching and the thread exited. We're finished.
       break;
     }
   }
@@ -2561,7 +2382,7 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
     PrepareSystemTitle();
   }
 
-  // Drops only the launch suspend, so a debugger break still holds.
+  // Drops the launch suspend.
   if (!boot_animation || !PlayBootAnimation()) {
     main_thread_->Resume();
   }

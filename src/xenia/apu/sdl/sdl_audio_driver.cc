@@ -118,18 +118,6 @@ void SDLAudioDriver::SubmitFrame(float* frame) {
   }
 }
 
-void SDLAudioDriver::Pause() {
-  if (sdl_stream_) {
-    SDL_PauseAudioStreamDevice(sdl_stream_);
-  }
-}
-
-void SDLAudioDriver::Resume() {
-  if (sdl_stream_) {
-    SDL_ResumeAudioStreamDevice(sdl_stream_);
-  }
-}
-
 void SDLAudioDriver::Shutdown() {
   if (sdl_stream_) {
     // SDL_OpenAudioDeviceStream-created streams own the underlying logical

@@ -27,8 +27,6 @@ class NopAudioDriver : public AudioDriver {
 
   bool Initialize() override;
   void SubmitFrame(float* frame) override;
-  void Pause() override {}
-  void Resume() override {}
   void SetVolume(float volume) override {}
   void Shutdown() override {}
 

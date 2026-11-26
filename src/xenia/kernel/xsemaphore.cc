@@ -9,7 +9,6 @@
 
 #include "xenia/kernel/xsemaphore.h"
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/guest_scheduler.h"
 #include "xenia/kernel/kernel_state.h"
@@ -140,53 +139,6 @@ void XSemaphore::SyncFromGuest() {
   if (released) {
     WakeCooperativeWaiters();
   }
-}
-
-bool XSemaphore::Save(ByteStream* stream) {
-  if (!SaveObject(stream)) {
-    return false;
-  }
-
-  // Get the free number of slots from the semaphore.
-  uint32_t free_count = 0;
-  while (
-      threading::Wait(semaphore_.get(), false, std::chrono::milliseconds(0)) ==
-      threading::WaitResult::kSuccess) {
-    free_count++;
-  }
-
-  XELOGD("XSemaphore {:08X} (count {}/{})", handle(), free_count,
-         maximum_count_);
-
-  // Restore the semaphore back to its previous count.
-  semaphore_->Release(free_count, nullptr);
-
-  stream->Write(maximum_count_);
-  stream->Write(free_count);
-
-  return true;
-}
-
-object_ref<XSemaphore> XSemaphore::Restore(KernelState* kernel_state,
-                                           ByteStream* stream) {
-  auto sem = new XSemaphore(nullptr);
-  sem->kernel_state_ = kernel_state;
-
-  if (!sem->RestoreObject(stream)) {
-    return nullptr;
-  }
-
-  sem->maximum_count_ = stream->Read<uint32_t>();
-  auto free_count = stream->Read<uint32_t>();
-  XELOGD("XSemaphore {:08X} (count {}/{})", sem->handle(), free_count,
-         sem->maximum_count_);
-
-  sem->semaphore_ =
-      threading::Semaphore::Create(free_count, sem->maximum_count_);
-  assert_not_null(sem->semaphore_);
-  sem->host_count_ = static_cast<int32_t>(free_count);
-
-  return object_ref<XSemaphore>(sem);
 }
 
 }  // namespace kernel

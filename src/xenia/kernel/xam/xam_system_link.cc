@@ -406,7 +406,6 @@ bool EthernetIntercept::Start() {
         return 0;
       },
       kernel_state_->GetSystemProcess(), true));
-  thread_->set_can_debugger_suspend(true);
   thread_->set_name("XNet Ethernet Intercept");
   if (XFAILED(thread_->Create())) {
     thread_.reset();

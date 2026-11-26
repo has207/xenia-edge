@@ -47,10 +47,6 @@ class XmaDecoder {
   uint32_t ReadRegister(uint32_t addr);
   void WriteRegister(uint32_t addr, uint32_t value);
 
-  bool is_paused() const { return paused_.load(std::memory_order_acquire); }
-  void Pause();
-  void Resume();
-
   void SignalWork() {
     if (work_event_) {
       work_event_->Set();
@@ -79,10 +75,6 @@ class XmaDecoder {
   std::atomic<bool> worker_running_ = {false};
   kernel::object_ref<kernel::XHostThread> worker_thread_;
   std::unique_ptr<xe::threading::Event> work_event_ = nullptr;
-
-  std::atomic<bool> paused_ = false;
-  xe::threading::Fence pause_fence_;   // Signaled when worker paused.
-  xe::threading::Fence resume_fence_;  // Signaled when resume requested.
 
   XmaRegisterFile register_file_;
 

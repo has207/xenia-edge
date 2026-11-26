@@ -12,7 +12,6 @@
 
 #include <algorithm>
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/threading.h"
@@ -31,11 +30,6 @@ XFile::XFile(KernelState* kernel_state, vfs::File* file, bool synchronous,
       is_synchronous_(synchronous),
       is_alertable_(alertable),
       is_buffered_(buffered) {
-  async_event_ = threading::Event::CreateManualResetEvent(false);
-  assert_not_null(async_event_);
-}
-
-XFile::XFile() : XObject(kObjectType), completion_port_lock_() {
   async_event_ = threading::Event::CreateManualResetEvent(false);
   assert_not_null(async_event_);
 }
@@ -566,61 +560,6 @@ void XFile::RemoveIOCompletionPort(uint32_t key) {
       break;
     }
   }
-}
-
-bool XFile::Save(ByteStream* stream) {
-  // XELOGD("XFile {:08X} ({})", handle(),
-  //        file_->entry()->absolute_path().c_str());
-
-  if (!SaveObject(stream)) {
-    return false;
-  }
-
-  stream->Write(std::string_view(file_->entry()->absolute_path()));
-  stream->Write<uint64_t>(position_);
-  stream->Write(file_access());
-  stream->Write<bool>(
-      (file_->entry()->attributes() & vfs::kFileAttributeDirectory) != 0);
-  stream->Write<bool>(is_synchronous_);
-  stream->Write<bool>(is_buffered_);
-
-  return true;
-}
-
-object_ref<XFile> XFile::Restore(KernelState* kernel_state,
-                                 ByteStream* stream) {
-  auto file = new XFile();
-  file->kernel_state_ = kernel_state;
-  if (!file->RestoreObject(stream)) {
-    delete file;
-    return nullptr;
-  }
-
-  auto abs_path = stream->Read<std::string>();
-  uint64_t position = stream->Read<uint64_t>();
-  auto access = stream->Read<uint32_t>();
-  auto is_directory = stream->Read<bool>();
-  auto is_synchronous = stream->Read<bool>();
-  auto is_buffered = stream->Read<bool>();
-
-  // XELOGD("XFile {:08X} ({})", file->handle(), abs_path);
-
-  vfs::File* vfs_file = nullptr;
-  vfs::FileAction action;
-  auto res = kernel_state->file_system()->OpenFile(
-      nullptr, abs_path, vfs::FileDisposition::kOpen, access, is_directory,
-      false, &vfs_file, &action);
-  if (XFAILED(res)) {
-    // XELOGE("Failed to open XFile: error {:08X}", res);
-    return object_ref<XFile>(file);
-  }
-
-  file->file_ = vfs_file;
-  file->position_ = position;
-  file->is_synchronous_ = is_synchronous;
-  file->is_buffered_ = is_buffered;
-
-  return object_ref<XFile>(file);
 }
 
 void XFile::NotifyCompletion(X_STATUS status, uint32_t num_bytes,

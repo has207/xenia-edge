@@ -43,8 +43,6 @@ class XAudio2AudioDriver : public AudioDriver {
   // have initialized MTA).
   // https://devblogs.microsoft.com/oldnewthing/?p=4613
   void SubmitFrame(float* frame) override;
-  void Pause() override;
-  void Resume() override;
   void SetVolume(float volume) override;
   void Shutdown() override;
 

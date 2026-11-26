@@ -113,13 +113,6 @@ class GraphicsSystem {
   void RequestEndTracing();
   bool is_tracing_stream() const;
 
-  bool is_paused() const { return paused_; }
-  void Pause();
-  void Resume();
-
-  bool Save(ByteStream* stream);
-  bool Restore(ByteStream* stream);
-
   static std::pair<uint16_t, uint16_t> GetInternalDisplayResolution();
 
   std::pair<uint32_t, uint32_t> GetScaledAspectRatio() const {
@@ -174,8 +167,6 @@ class GraphicsSystem {
 
   RegisterFile* register_file_;
   std::unique_ptr<CommandProcessor> command_processor_;
-
-  bool paused_ = false;
 
   uint32_t scaled_aspect_x_ = 0;
   uint32_t scaled_aspect_y_ = 0;

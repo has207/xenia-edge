@@ -63,7 +63,6 @@ class Window;
 
 namespace xe {
 
-constexpr fourcc_t kEmulatorSaveSignature = make_fourcc("XSAV");
 static constexpr std::string_view kDefaultGameSymbolicLink = "GAME:";
 static constexpr std::string_view kDefaultPartitionSymbolicLink = "D:";
 static constexpr std::string_view kDefaultUpdateSymbolicLink = "UPDATE:";
@@ -459,12 +458,6 @@ class Emulator {
   X_STATUS InstallContentPackage(const std::filesystem::path& path,
                                  ContentInstallEntry& installation_info);
 
-  void Pause();
-  void Resume();
-  bool is_paused() const { return paused_; }
-  bool SaveToFile(const std::filesystem::path& path);
-  bool RestoreFromFile(const std::filesystem::path& path);
-
   // Full in-process relaunch: terminates threads, Shutdown(), Setup(),
   // then launches with new params. Must be called from a non-guest thread.
   // keep_xbox_game leaves an original Xbox game in the drive for the XeFu
@@ -630,7 +623,7 @@ class Emulator {
   static void SetPersistentEmulatorFlags(uint64_t new_flags);
   static bool ExceptionCallbackThunk(Exception* ex, void* data);
   bool ExceptionCallback(Exception* ex);
-  // Logs a guest crash dump and tells the user, pausing first with --debug.
+  // Logs a guest crash dump and tells the user.
   void ReportGuestCrash(const std::string& crash_msg);
 
   std::string RemountAndResolveLaunchPath(const std::string& launch_path);
@@ -720,8 +713,6 @@ class Emulator {
   uint8_t current_disc_number_ = 0;
   std::unique_ptr<kernel::util::GameInfoDatabase> game_info_database_;
 
-  bool paused_;
-  bool restoring_;
   std::atomic<bool> relaunching_{false};
   bool boot_animation_requested_ = false;
   // Held across a launch and a whole relaunch so title teardown waits for a
@@ -730,7 +721,6 @@ class Emulator {
   // Relaunch requests so far, to drop one a newer request replaced while it
   // waited for the lock.
   std::atomic<uint64_t> relaunch_requests_{0};
-  threading::Fence restore_fence_;  // Fired on restore finish.
 
   // Persisted across Shutdown/Setup for relaunch.
   bool require_cpu_backend_ = false;

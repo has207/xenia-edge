@@ -13,7 +13,6 @@
 
 #include "xenia/kernel/kernel_state.h"
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/emulator.h"
 #include "xenia/hid/input_system.h"
@@ -588,16 +587,11 @@ object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
 
   // The boot animation is a DLL with no entry point.
   if (module->is_dll_module() && !module->entry_point()) {
-    auto thread = GetKernelModule<xboxkrnl::XboxkrnlModule>("xboxkrnl.exe")
-                      ->StartBootAnimation(module, /*main_thread=*/true);
-    if (thread) {
-      emulator()->processor()->PreLaunch();
-    }
-    return thread;
+    return GetKernelModule<xboxkrnl::XboxkrnlModule>("xboxkrnl.exe")
+        ->StartBootAnimation(module, /*main_thread=*/true);
   }
 
-  // Create a thread to run in.
-  // We start suspended so we can run the debugger prep.
+  // Create a thread to run in, suspended until the launch finishes.
   // The console's XexStartExecutable always starts it on CPU 0.
   auto thread = object_ref<XThread>(new XThread(
       kernel_state(), module->stack_size(), 0, module->entry_point(), 0,
@@ -611,9 +605,6 @@ object_ref<XThread> KernelState::LaunchModule(object_ref<UserModule> module) {
     XELOGE("Could not create launch thread: {:08X}", result);
     return nullptr;
   }
-
-  // Waits for a debugger client, if desired.
-  emulator()->processor()->PreLaunch();
 
   return thread;
 }
@@ -710,9 +701,6 @@ void KernelState::SetExecutableModule(object_ref<UserModule> module) {
     dispatch_thread_ = object_ref<XHostThread>(new XHostThread(
         this, 128 * 1024, 0,
         [this]() {
-          // As we run guest callbacks the debugger must be able to suspend us.
-          dispatch_thread_->set_can_debugger_suspend(true);
-
           while (true) {
             std::function<void()> fn;
             {
@@ -1286,8 +1274,6 @@ void KernelState::OnThreadExit(XThread* thread) {
                            xe::countof(args));
     }
   }
-
-  emulator()->processor()->OnThreadExit(thread->thread_id());
 }
 
 object_ref<XThread> KernelState::GetThreadByID(uint32_t thread_id) {
@@ -1498,77 +1484,6 @@ void KernelState::CompleteOverlappedDeferredEx(
   dispatch_cond_.notify_all();
 }
 
-bool KernelState::Save(ByteStream* stream) {
-  XELOGD("Serializing the kernel...");
-  stream->Write(kKernelSaveSignature);
-
-  // Save the object table
-  object_table_.Save(stream);
-
-  // Write the TLS allocation bitmap
-  // We save XThreads absolutely first, as they will execute code upon save
-  // (which could modify the kernel state)
-  auto threads = object_table_.GetObjectsByType<XThread>();
-  uint32_t* num_threads_ptr =
-      reinterpret_cast<uint32_t*>(stream->data() + stream->offset());
-  stream->Write(static_cast<uint32_t>(threads.size()));
-
-  size_t num_threads = threads.size();
-  XELOGD("Serializing {} threads...", threads.size());
-  for (auto thread : threads) {
-    if (!thread->is_guest_thread()) {
-      // Don't save host threads. They can be reconstructed on startup.
-      num_threads--;
-      continue;
-    }
-
-    if (!thread->Save(stream)) {
-      XELOGD("Failed to save thread \"{}\"", thread->name());
-      num_threads--;
-    }
-  }
-
-  *num_threads_ptr = static_cast<uint32_t>(num_threads);
-
-  // Save all other objects
-  auto objects = object_table_.GetAllObjects();
-  uint32_t* num_objects_ptr =
-      reinterpret_cast<uint32_t*>(stream->data() + stream->offset());
-  stream->Write(static_cast<uint32_t>(objects.size()));
-
-  size_t num_objects = objects.size();
-  XELOGD("Serializing {} objects...", num_objects);
-  for (auto object : objects) {
-    auto prev_offset = stream->offset();
-
-    // A user module is a host object only to stay out of the title's handle
-    // numbering, so it still saves.
-    bool user_module = object->type() == XObject::Type::Module &&
-                       static_cast<XModule*>(object.get())->module_type() ==
-                           XModule::ModuleType::kUserModule;
-    if ((object->is_host_object() && !user_module) ||
-        object->type() == XObject::Type::Thread) {
-      // Don't save host objects or save XThreads again
-      num_objects--;
-      continue;
-    }
-
-    stream->Write<uint32_t>(static_cast<uint32_t>(object->type()));
-    if (!object->Save(stream)) {
-      XELOGD("Did not save object of type {}",
-             static_cast<uint32_t>(object->type()));
-      assert_always();
-
-      // Revert backwards and overwrite if a save failed.
-      stream->set_offset(prev_offset);
-      num_objects--;
-    }
-  }
-
-  *num_objects_ptr = static_cast<uint32_t>(num_objects);
-  return true;
-}
-
 // this only gets triggered once per ms at most, so fields other than tick count
 // will probably not be updated in a timely manner for guest code that uses them
 void KernelState::UpdateKeTimestampBundle() {
@@ -1608,49 +1523,6 @@ uint32_t KernelState::CreateKeTimestampBundle() {
   assert_always(
       "CreateKeTimestampBundle called but bundle not initialized during boot");
   return 0;
-}
-
-bool KernelState::Restore(ByteStream* stream) {
-  // Check the magic value.
-  if (stream->Read<uint32_t>() != kKernelSaveSignature) {
-    return false;
-  }
-
-  // Restore the object table
-  object_table_.Restore(stream);
-
-  // TLS bitmap is now stored per-process in X_KPROCESS structures (in guest
-  // memory) Skip reading old global TLS bitmap if present in old save files
-  auto num_bitmap_entries = stream->Read<uint32_t>();
-  for (uint32_t i = 0; i < num_bitmap_entries; i++) {
-    stream->Read<uint64_t>();  // Discard old data
-  }
-
-  uint32_t num_threads = stream->Read<uint32_t>();
-  XELOGD("Loading {} threads...", num_threads);
-  for (uint32_t i = 0; i < num_threads; i++) {
-    auto thread = XObject::Restore(this, XObject::Type::Thread, stream);
-    if (!thread) {
-      // Can't continue the restore or we risk misalignment.
-      assert_always();
-      return false;
-    }
-  }
-
-  uint32_t num_objects = stream->Read<uint32_t>();
-  XELOGD("Loading {} objects...", num_objects);
-  for (uint32_t i = 0; i < num_objects; i++) {
-    uint32_t type = stream->Read<uint32_t>();
-
-    auto obj = XObject::Restore(this, XObject::Type(type), stream);
-    if (!obj) {
-      // Can't continue the restore or we risk misalignment.
-      assert_always();
-      return false;
-    }
-  }
-
-  return true;
 }
 
 std::bitset<4> KernelState::GetConnectedUsers() const {
@@ -1734,7 +1606,6 @@ void KernelState::StartProcessorDpcThread(uint8_t cpu) {
         return 0;
       },
       GetSystemProcess(), true));
-  dpcs.thread->set_can_debugger_suspend(true);
   dpcs.thread->set_name(fmt::format("DPC Processor {}", cpu));
   if (XFAILED(dpcs.thread->Create())) {
     dpcs.thread.reset();

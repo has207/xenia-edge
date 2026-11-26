@@ -33,10 +33,6 @@ class XSemaphore : public XObject {
   [[nodiscard]] bool ReleaseSemaphore(int32_t release_count,
                                       int32_t* out_previous_count);
 
-  bool Save(ByteStream* stream) override;
-  static object_ref<XSemaphore> Restore(KernelState* kernel_state,
-                                        ByteStream* stream);
-
  protected:
   xe::threading::WaitHandle* GetWaitHandle() override {
     return semaphore_.get();

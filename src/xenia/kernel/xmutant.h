@@ -32,10 +32,6 @@ class XMutant : public XObject {
 
   X_STATUS ReleaseMutant(uint32_t priority_increment, bool abandon, bool wait);
 
-  bool Save(ByteStream* stream) override;
-  static object_ref<XMutant> Restore(KernelState* kernel_state,
-                                     ByteStream* stream);
-
   // Mark every mutant in |thread|'s mutants_list abandoned and unlink it.
   // Called from XThread::Exit/Terminate.
   static void AbandonAllOwnedByThread(KernelState* kernel_state,
@@ -55,8 +51,6 @@ class XMutant : public XObject {
   bool CooperativeMayAcquire(XThread* thread) override;
 
  private:
-  XMutant();
-
   // Signaled while unowned. A count rather than a host mutant, whose owner is
   // the host thread, which many guest threads share and can migrate between.
   std::unique_ptr<xe::threading::Semaphore> free_signal_;

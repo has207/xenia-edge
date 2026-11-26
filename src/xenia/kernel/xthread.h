@@ -39,8 +39,6 @@ class Function;
 }  // namespace cpu
 namespace kernel {
 
-constexpr fourcc_t kThreadSaveSignature = make_fourcc("THRD");
-
 class XEvent;
 
 enum IRQL_FLAGS : uint8_t {
@@ -404,7 +402,6 @@ class XThread : public XObject, public cpu::Thread {
     uint32_t guest_process;
   };
 
-  XThread(KernelState* kernel_state);
   XThread(KernelState* kernel_state, uint32_t stack_size,
           uint32_t xapi_thread_startup, uint32_t start_address,
           uint32_t start_context, uint32_t creation_flags, bool guest_thread,
@@ -789,14 +786,6 @@ class XThread : public XObject, public cpu::Thread {
   // to the host thread, or (for a fiber-backed thread) its exit event.
   xe::threading::WaitHandle* wait_handle() { return GetWaitHandle(); }
 
-  virtual bool Save(ByteStream* stream) override;
-  static object_ref<XThread> Restore(KernelState* kernel_state,
-                                     ByteStream* stream);
-
-  // Internal - do not use.
-  void AcquireMutantOnStartup(object_ref<XMutant> mutant) {
-    pending_mutant_acquires_.push_back(mutant);
-  }
   // Rebinds the per-host-thread TLS (XThread / cpu::Thread / ThreadState) so
   // |thread| becomes the current guest thread on the calling host thread. Used
   // on each fiber switch by the guest scheduler. Pass nullptr to clear.
@@ -826,8 +815,6 @@ class XThread : public XObject, public cpu::Thread {
   }
 
   CreationParams creation_params_ = {0};
-
-  std::vector<object_ref<XMutant>> pending_mutant_acquires_;
 
   uint32_t thread_id_ = 0;
   uint32_t tls_static_address_ = 0;

@@ -205,10 +205,6 @@ class XFile : public XObject {
   bool HasCompletionPort();
   void RemoveIOCompletionPort(uint32_t key);
 
-  bool Save(ByteStream* stream) override;
-  static object_ref<XFile> Restore(KernelState* kernel_state,
-                                   ByteStream* stream);
-
   bool is_synchronous() const { return is_synchronous_; }
   bool is_buffered() const { return is_buffered_; }
 
@@ -220,8 +216,6 @@ class XFile : public XObject {
   }
 
  private:
-  XFile();
-
   // Concurrency class this file's device allows for its offloaded calls.
   GuestScheduler::BlockingCallClass io_call_class() const;
 

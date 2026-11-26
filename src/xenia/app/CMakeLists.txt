@@ -82,7 +82,6 @@ target_link_libraries(xenia-app PRIVATE
   xxhash
   xenia-app-discord
   xenia-apu-sdl
-  xenia-debug-ui
   xenia-helper-sdl
   xenia-hid-sdl
 )
@@ -104,7 +103,6 @@ endif()
 if(WIN32)
   target_link_libraries(xenia-app PRIVATE
     xenia-apu-xaudio2
-    xenia-debug-gdb
     xenia-gpu-d3d12
     xenia-hid-keyboard
     xenia-ui-d3d12
