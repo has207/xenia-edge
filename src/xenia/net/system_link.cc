@@ -131,9 +131,8 @@ struct Inbox {
       if (error || packets.size() >= kInboxLimit) {
         return;
       }
-      if (packets.empty()) {
-        notify = ready;
-      }
+      // Every datagram signals, as on the console, not only the first.
+      notify = ready;
       packets.push_back(std::move(packet));
     }
     changed.notify_all();

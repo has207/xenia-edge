@@ -1913,9 +1913,7 @@ int XSocket::SystemLinkReceive(uint8_t* buf, uint32_t buf_len, uint32_t flags,
     last_error_ = SystemLinkError(ec, error);
     return -1;
   }
-  // Like Winsock, post FD_READ again while datagrams remain. The port only
-  // signals when its queue stops being empty, so a title that resets the
-  // event and reads one datagram would otherwise never hear of the rest.
+  // Like the console, post FD_READ again while datagrams remain.
   if (!peek && !system_link_stream_) {
     std::lock_guard<std::mutex> lock(select_mutex_);
     if (selected_event_ && (selected_event_flags_ & kFD_READ) &&
