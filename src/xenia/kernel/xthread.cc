@@ -1145,133 +1145,59 @@ uint32_t XThread::start_address() {
 }
 
 X_STATUS XThread::Resume(uint32_t* out_suspend_count) {
-  auto guest_thread = guest_object<X_KTHREAD>();
-  uint32_t unused_host_suspend_count = 0;
-
-  if (fiber_) {
-    // No host thread to resume, so drop the guest suspend count and unpark on a
-    // real suspended to runnable transition.
-    auto* count =
-        reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count);
-    uint8_t previous = count->load();
-    while (previous > 0 && !count->compare_exchange_weak(
-                               previous, static_cast<uint8_t>(previous - 1))) {
-    }
-    if (out_suspend_count) {
-      *out_suspend_count = previous;
-    }
-    if (previous == 1) {
-      kernel_state()->guest_scheduler()->ResumeThread(this);
-    }
-    return X_STATUS_SUCCESS;
-  }
-
-#if XE_PLATFORM_WIN32
-  uint8_t previous_suspend_count =
-      reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count)
-          ->fetch_sub(1);
-  if (out_suspend_count) {
-    *out_suspend_count = previous_suspend_count;
-  }
-
-  if (thread_->Resume(&unused_host_suspend_count)) {
-    return X_STATUS_SUCCESS;
-  } else {
+  if (!fiber_) {
+    // A host-routine thread only ever stops itself, for good.
     return X_STATUS_UNSUCCESSFUL;
   }
-#else
-  // Use mutex to protect suspend_count access and coordinate with SelfSuspend.
-  bool should_resume_host = false;
-  {
-    std::lock_guard<std::mutex> lock(suspend_mutex_);
-    uint8_t previous = guest_thread->suspend_count;
-    if (previous > 0) {
-      guest_thread->suspend_count--;
-    }
-    if (out_suspend_count) {
-      *out_suspend_count = previous;
-    }
-    should_resume_host = (guest_thread->suspend_count == 0);
-    suspend_cv_.notify_all();
+  // Drop the guest suspend count and unpark on a real suspended to runnable
+  // transition.
+  auto* count = reinterpret_cast<std::atomic_uint8_t*>(
+      &guest_object<X_KTHREAD>()->suspend_count);
+  uint8_t previous = count->load();
+  while (previous > 0 && !count->compare_exchange_weak(
+                             previous, static_cast<uint8_t>(previous - 1))) {
   }
-
-  // Try to resume host thread if fully resumed (for non-self-suspended case).
-  if (should_resume_host) {
-    thread_->Resume(&unused_host_suspend_count);
-  }
-  return X_STATUS_SUCCESS;
-#endif
-}
-
-X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
-  // this normally holds the apc lock for the thread, because it queues a kernel
-  // mode apc that does the actual suspension
-
-  X_KTHREAD* guest_thread = guest_object<X_KTHREAD>();
-
-  if (fiber_) {
-    // Bumps the guest suspend count and delivers the first one like a kernel
-    // APC. A count at the limit is left as it is.
-    auto* count =
-        reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count);
-    uint8_t previous = count->load();
-    do {
-      if (previous >= kMaxSuspendCount) {
-        return X_STATUS_SUSPEND_COUNT_EXCEEDED;
-      }
-    } while (!count->compare_exchange_weak(previous,
-                                           static_cast<uint8_t>(previous + 1)));
-    if (out_suspend_count) {
-      *out_suspend_count = previous;
-    }
-    if (this == XThread::GetCurrentFiberThread()) {
-      DeliverPendingSuspend();
-    } else if (previous == 0) {
-      kernel_state()->guest_scheduler()->SuspendThread(this);
-    }
-    return X_STATUS_SUCCESS;
-  }
-
-  uint8_t previous_suspend_count =
-      reinterpret_cast<std::atomic_uint8_t*>(&guest_thread->suspend_count)
-          ->fetch_add(1);
-  if (out_suspend_count) {
-    *out_suspend_count = previous_suspend_count;
-  }
-  // If we are suspending ourselves, we can't hold the lock.
-  uint32_t unused_host_suspend_count = 0;
-
-  // If we had suspend count wrap around and go back to 0 then thread is not
-  // suspended.
-  if (guest_thread->suspend_count == 0) {
-    return X_STATUS_SUCCESS;
-  }
-
-  if (thread_->Suspend(&unused_host_suspend_count)) {
-    return X_STATUS_SUCCESS;
-  } else {
-    return X_STATUS_UNSUCCESSFUL;
-  }
-}
-
-#if !XE_PLATFORM_WIN32
-X_STATUS XThread::SelfSuspend(uint32_t* out_suspend_count) {
-  auto guest_thread = guest_object<X_KTHREAD>();
-  if (fiber_) {
-    // Waiting on the condition variable would block the whole dispatch thread.
-    return Suspend(out_suspend_count);
-  }
-  std::unique_lock<std::mutex> lock(suspend_mutex_);
-  uint32_t previous = guest_thread->suspend_count;
-  guest_thread->suspend_count++;
   if (out_suspend_count) {
     *out_suspend_count = previous;
   }
-  suspend_cv_.wait(
-      lock, [guest_thread]() { return guest_thread->suspend_count == 0; });
+  if (previous == 1) {
+    kernel_state()->guest_scheduler()->ResumeThread(this);
+  }
   return X_STATUS_SUCCESS;
 }
-#endif  // !XE_PLATFORM_WIN32
+
+X_STATUS XThread::Suspend(uint32_t* out_suspend_count) {
+  if (!fiber_) {
+    // A host-routine thread only stops itself, such as on a crash, and nothing
+    // resumes it.
+    if (XThread::IsInThread(this)) {
+      while (true) {
+        xe::threading::Sleep(std::chrono::seconds(1));
+      }
+    }
+    return X_STATUS_UNSUCCESSFUL;
+  }
+  // Bumps the guest suspend count and delivers the first one like a kernel
+  // APC. A count at the limit is left as it is.
+  auto* count = reinterpret_cast<std::atomic_uint8_t*>(
+      &guest_object<X_KTHREAD>()->suspend_count);
+  uint8_t previous = count->load();
+  do {
+    if (previous >= kMaxSuspendCount) {
+      return X_STATUS_SUSPEND_COUNT_EXCEEDED;
+    }
+  } while (!count->compare_exchange_weak(previous,
+                                         static_cast<uint8_t>(previous + 1)));
+  if (out_suspend_count) {
+    *out_suspend_count = previous;
+  }
+  if (this == XThread::GetCurrentFiberThread()) {
+    DeliverPendingSuspend();
+  } else if (previous == 0) {
+    kernel_state()->guest_scheduler()->SuspendThread(this);
+  }
+  return X_STATUS_SUCCESS;
+}
 
 X_STATUS XThread::Delay(uint32_t processor_mode, uint32_t alertable,
                         uint64_t interval) {

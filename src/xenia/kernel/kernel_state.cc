@@ -1168,8 +1168,9 @@ void KernelState::TerminateTitle() {
 static void HandOffToHostUI(const Emulator::ExitToDashboardCallback& handler) {
   // Unattended, there's no game list to go back to.
   if (handler && !xe::IsUnattended() && handler()) {
-    // Park off guest code until the host's reset or exit ends us; Suspend can
-    // return on POSIX, so loop rather than fall through to TerminateTitle.
+    // Park off guest code until the host's reset or exit ends us. Suspend
+    // returns if the thread is resumed, so loop rather than fall through to
+    // TerminateTitle.
     auto* current_thread = XThread::GetCurrentThread();
     current_thread->Suspend(nullptr);
     // SpinYield parks a fiber, a host sleep would stall its dispatch thread.

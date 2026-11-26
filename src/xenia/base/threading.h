@@ -103,10 +103,6 @@ class Fence {
 // Returns the total number of logical processors in the host system.
 uint32_t logical_processor_count();
 
-// Enables the current process to set thread affinity.
-// Must be called at startup before attempting to set thread affinity.
-void EnableAffinityConfiguration();
-
 // Gets a stable thread-specific ID, but may not be. Use for informative
 // purposes only.
 uint32_t current_thread_system_id();
@@ -472,43 +468,13 @@ class Thread : public WaitHandle {
   // Sets the name of the thread, used in debugging and logging.
   virtual void set_name(std::string name) { name_ = std::move(name); }
 
-  // Returns the current priority value for the thread.
-  virtual int32_t priority() = 0;
-
   // Sets the priority value for the thread. This value, together with the
   // priority class of the thread's process, determines the thread's base
   // priority level. ThreadPriority contains useful constants.
   virtual void set_priority(int32_t new_priority) = 0;
 
-  // Returns the current processor affinity mask for the thread.
-  virtual uint64_t affinity_mask() = 0;
-
-  // Sets a processor affinity mask for the thread.
-  // A thread affinity mask is a bit vector in which each bit represents a
-  // logical processor that a thread is allowed to run on. A thread affinity
-  // mask must be a subset of the process affinity mask for the containing
-  // process of a thread.
-  virtual void set_affinity_mask(uint64_t new_affinity_mask) = 0;
-
-  // Adds a user-mode asynchronous procedure call request to the thread queue.
-  // When a user-mode APC is queued, the thread is not directed to call the APC
-  // function unless it is in an alertable state. After the thread is in an
-  // alertable state, the thread handles all pending APCs in first in, first out
-  // (FIFO) order, and the wait operation returns WaitResult::kUserCallback.
-  virtual void QueueUserCallback(std::function<void()> callback) = 0;
-
-  // Decrements a thread's suspend count. When the suspend count is decremented
-  // to zero, the execution of the thread is resumed.
-  virtual bool Resume(uint32_t* out_previous_suspend_count = nullptr) = 0;
-
-  // Suspends the specified thread.
-  virtual bool Suspend(uint32_t* out_previous_suspend_count = nullptr) = 0;
-
-  // Terminates the thread.
-  // No destructors are called, and this function does not return.
-  // The state of the thread object becomes signaled, releasing any other
-  // threads that had been waiting for the thread to terminate.
-  virtual void Terminate(int exit_code) = 0;
+  // Starts a thread created with create_suspended. No-op once it has started.
+  virtual void Resume() = 0;
 
  protected:
   std::string name_;

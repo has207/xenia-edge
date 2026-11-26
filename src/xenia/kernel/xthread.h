@@ -12,15 +12,11 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "xenia/base/mutex.h"
-#if !XE_PLATFORM_WIN32
-#include <condition_variable>
-#include <csignal>
-#include <mutex>
-#endif
 #if XE_PLATFORM_WIN32
 #include <csetjmp>
 #endif
@@ -525,13 +521,6 @@ class XThread : public XObject, public cpu::Thread {
   X_STATUS Delay(uint32_t processor_mode, uint32_t alertable,
                  uint64_t interval);
 
-#if !XE_PLATFORM_WIN32
-  // Performs self-suspension: increments suspend_count and blocks until
-  // another thread calls Resume() and suspend_count reaches 0. Stores the
-  // previous suspend_count value.
-  X_STATUS SelfSuspend(uint32_t* out_suspend_count);
-#endif
-
   xe::threading::Thread* thread() { return thread_.get(); }
 
   // The fiber this thread runs on, null for a host-routine thread with its own
@@ -832,12 +821,6 @@ class XThread : public XObject, public cpu::Thread {
   int32_t priority_ = 0;       // current effective priority (may be decayed)
   int32_t base_priority_ = 0;  // priority floor — decay never goes below this
   int32_t boost_amount_ = 0;   // accumulated priority boost above base
-
-#if !XE_PLATFORM_WIN32
-  // Condition variable for thread self-suspension.
-  std::mutex suspend_mutex_;
-  std::condition_variable suspend_cv_;
-#endif
 
   // Reentry mechanism for fiber-based stack switching.
   // On Linux, C++ exceptions are used instead of setjmp/longjmp so that
