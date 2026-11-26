@@ -2252,7 +2252,7 @@ void Emulator::WaitUntilExit() {
     if (main_thread_) {
       // Use wait_handle() rather than thread(): a fiber-backed main thread has
       // no host thread, only an exit event.
-      xe::threading::Wait(main_thread_->wait_handle(), false);
+      xe::threading::Wait(main_thread_->wait_handle());
     }
 
     if (relaunching_) {

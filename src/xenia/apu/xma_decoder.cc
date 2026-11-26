@@ -212,7 +212,7 @@ void XmaDecoder::WorkerThreadMain() {
     if (did_work) {
       continue;
     }
-    xe::threading::Wait(work_event_.get(), false);
+    xe::threading::Wait(work_event_.get());
   }
 }
 
@@ -225,7 +225,7 @@ void XmaDecoder::Shutdown() {
 
   if (worker_thread_) {
     // Wait for work thread.
-    xe::threading::Wait(worker_thread_->thread(), false);
+    xe::threading::Wait(worker_thread_->thread());
     worker_thread_.reset();
   }
 

@@ -836,7 +836,7 @@ size_t Processor::ResolveFunctionsInParallel(
     work();
   }
   for (auto& thread : threads) {
-    xe::threading::Wait(thread.get(), false);
+    xe::threading::Wait(thread.get());
   }
   return resolved;
 }

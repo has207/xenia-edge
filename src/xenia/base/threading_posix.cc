@@ -216,11 +216,6 @@ void NanoSleepPrecise(int64_t ns) {
 #endif
 }
 
-SleepResult AlertableSleep(std::chrono::microseconds duration) {
-  Sleep(duration);
-  return SleepResult::kSuccess;
-}
-
 TlsHandle AllocateTlsHandle() {
   auto key = static_cast<pthread_key_t>(-1);
   auto res = pthread_key_create(&key, nullptr);
@@ -1102,8 +1097,7 @@ template <>
 PosixConditionHandle<Thread>::PosixConditionHandle(pthread_t thread)
     : handle_(thread) {}
 
-WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
-                std::chrono::milliseconds timeout) {
+WaitResult Wait(WaitHandle* wait_handle, std::chrono::milliseconds timeout) {
   auto posix_wait_handle = dynamic_cast<PosixWaitHandle*>(wait_handle);
   if (posix_wait_handle == nullptr) {
     return WaitResult::kFailed;
@@ -1112,7 +1106,7 @@ WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
 }
 
 WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
-                         WaitHandle* wait_handle_to_wait_on, bool is_alertable,
+                         WaitHandle* wait_handle_to_wait_on,
                          std::chrono::milliseconds timeout) {
   auto result = WaitResult::kFailed;
   auto posix_wait_handle_to_signal =
@@ -1131,7 +1125,7 @@ WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
 
 std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
                                            size_t wait_handle_count,
-                                           bool wait_all, bool is_alertable,
+                                           bool wait_all,
                                            std::chrono::milliseconds timeout) {
   std::vector<PosixConditionBase*> conditions;
   conditions.reserve(wait_handle_count);

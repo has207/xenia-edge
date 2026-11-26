@@ -295,7 +295,7 @@ class Logger {
 
   ~Logger() {
     AppendLine(0, '\0', nullptr, 0, true);  // append a terminator
-    xe::threading::Wait(write_thread_.get(), true);
+    xe::threading::Wait(write_thread_.get());
   }
 
   void AddLogSink(std::unique_ptr<LogSink>&& sink) {

@@ -162,14 +162,6 @@ void PreciseSleep(std::chrono::nanoseconds duration) {
 
 void NanoSleepPrecise(int64_t ns) { NanoSleep(ns); }
 
-SleepResult AlertableSleep(std::chrono::microseconds duration) {
-  if (SleepEx(static_cast<DWORD>(duration.count() / 1000), true) ==
-      WAIT_IO_COMPLETION) {
-    return SleepResult::kAlerted;
-  }
-  return SleepResult::kSuccess;
-}
-
 TlsHandle AllocateTlsHandle() { return TlsAlloc(); }
 
 bool FreeTlsHandle(TlsHandle handle) { return TlsFree(handle) ? true : false; }
@@ -199,36 +191,23 @@ class Win32Handle : public T {
   HANDLE handle_ = nullptr;
 };
 
-WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
-                std::chrono::milliseconds timeout) {
+WaitResult Wait(WaitHandle* wait_handle, std::chrono::milliseconds timeout) {
   HANDLE handle = wait_handle->native_handle();
   DWORD result;
   DWORD timeout_dw = DWORD(timeout.count());
-  BOOL bAlertable = is_alertable ? true : false;
-  // todo: we might actually be able to use NtWaitForSingleObject even if its
-  // alertable, just need to study whether
-  // RtlDeactivateActivationContextUnsafeFast/RtlActivateActivationContext are
-  // actually needed for us
 #if XE_USE_NTDLL_FUNCTIONS == 1
-  if (bAlertable) {
-    result = WaitForSingleObjectEx(handle, timeout_dw, bAlertable);
-  } else {
-    LARGE_INTEGER timeout_big;
-    timeout_big.QuadPart = -10000LL * static_cast<int64_t>(timeout_dw);
-
-    result = NtWaitForSingleObjectPointer.invoke<NTSTATUS>(
-        handle, bAlertable, timeout_dw == INFINITE ? nullptr : &timeout_big);
-  }
+  LARGE_INTEGER timeout_big;
+  timeout_big.QuadPart = -10000LL * static_cast<int64_t>(timeout_dw);
+  result = NtWaitForSingleObjectPointer.invoke<NTSTATUS>(
+      handle, false, timeout_dw == INFINITE ? nullptr : &timeout_big);
 #else
-  result = WaitForSingleObjectEx(handle, timeout_dw, bAlertable);
+  result = WaitForSingleObject(handle, timeout_dw);
 #endif
   switch (result) {
     case WAIT_OBJECT_0:
       return WaitResult::kSuccess;
     case WAIT_ABANDONED:
       return WaitResult::kAbandoned;
-    case WAIT_IO_COMPLETION:
-      return WaitResult::kUserCallback;
     case WAIT_TIMEOUT:
       return WaitResult::kTimeout;
     default:
@@ -238,20 +217,17 @@ WaitResult Wait(WaitHandle* wait_handle, bool is_alertable,
 }
 
 WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
-                         WaitHandle* wait_handle_to_wait_on, bool is_alertable,
+                         WaitHandle* wait_handle_to_wait_on,
                          std::chrono::milliseconds timeout) {
   HANDLE handle_to_signal = wait_handle_to_signal->native_handle();
   HANDLE handle_to_wait_on = wait_handle_to_wait_on->native_handle();
-  DWORD result =
-      SignalObjectAndWait(handle_to_signal, handle_to_wait_on,
-                          DWORD(timeout.count()), is_alertable ? true : false);
+  DWORD result = SignalObjectAndWait(handle_to_signal, handle_to_wait_on,
+                                     DWORD(timeout.count()), false);
   switch (result) {
     case WAIT_OBJECT_0:
       return WaitResult::kSuccess;
     case WAIT_ABANDONED:
       return WaitResult::kAbandoned;
-    case WAIT_IO_COMPLETION:
-      return WaitResult::kUserCallback;
     case WAIT_TIMEOUT:
       return WaitResult::kTimeout;
     default:
@@ -262,7 +238,7 @@ WaitResult SignalAndWait(WaitHandle* wait_handle_to_signal,
 
 std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
                                            size_t wait_handle_count,
-                                           bool wait_all, bool is_alertable,
+                                           bool wait_all,
                                            std::chrono::milliseconds timeout) {
   xenia_assert(wait_handle_count <= 64);
   HANDLE handles[64];
@@ -270,9 +246,9 @@ std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
   for (size_t i = 0; i < wait_handle_count; ++i) {
     handles[i] = wait_handles[i]->native_handle();
   }
-  DWORD result = WaitForMultipleObjectsEx(
-      static_cast<DWORD>(wait_handle_count), handles, wait_all ? true : false,
-      DWORD(timeout.count()), is_alertable ? true : false);
+  DWORD result =
+      WaitForMultipleObjects(static_cast<DWORD>(wait_handle_count), handles,
+                             wait_all ? true : false, DWORD(timeout.count()));
   if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + wait_handle_count) {
     return std::pair<WaitResult, size_t>(WaitResult::kSuccess,
                                          result - WAIT_OBJECT_0);
@@ -282,8 +258,6 @@ std::pair<WaitResult, size_t> WaitMultiple(WaitHandle* wait_handles[],
                                          result - WAIT_ABANDONED_0);
   }
   switch (result) {
-    case WAIT_IO_COMPLETION:
-      return std::pair<WaitResult, size_t>(WaitResult::kUserCallback, 0);
     case WAIT_TIMEOUT:
       return std::pair<WaitResult, size_t>(WaitResult::kTimeout, 0);
     default:

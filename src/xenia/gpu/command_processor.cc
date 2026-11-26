@@ -558,7 +558,7 @@ void CommandProcessor::WorkerThreadMain() {
         // If we spin around too much, revert to a "low-power" state.
         if (loop_count > 500) {
           constexpr int wait_time_ms = 2;
-          xe::threading::Wait(write_ptr_index_event_.get(), true,
+          xe::threading::Wait(write_ptr_index_event_.get(),
                               std::chrono::milliseconds(wait_time_ms));
           // Strict ZPD may still owe the guest a report it's spinning on with
           // nothing left in the ring.

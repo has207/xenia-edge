@@ -145,7 +145,7 @@ void AudioSystem::WorkerThreadMain() {
 
     // No clients yet: park until one registers or we're told to stop.
     if (client_index == kMaximumClientCount) {
-      xe::threading::Wait(pending_work_event_.get(), true);
+      xe::threading::Wait(pending_work_event_.get());
       continue;
     }
 
@@ -155,8 +155,7 @@ void AudioSystem::WorkerThreadMain() {
                                         : 0;
     if (wake_target_us > now) {
       const std::chrono::milliseconds timeout((wake_target_us - now) / 1000);
-      auto result =
-          xe::threading::Wait(pending_work_event_.get(), true, timeout);
+      auto result = xe::threading::Wait(pending_work_event_.get(), timeout);
       if (result == xe::threading::WaitResult::kSuccess) {
         continue;
       }
@@ -172,7 +171,7 @@ void AudioSystem::WorkerThreadMain() {
 
     // Submit only if the host has a free output slot; otherwise drop (the host
     // queue is full, so it is already well buffered).
-    if (xe::threading::Wait(client_semaphores_[client_index].get(), false,
+    if (xe::threading::Wait(client_semaphores_[client_index].get(),
                             std::chrono::milliseconds(0)) !=
         xe::threading::WaitResult::kSuccess) {
       continue;
@@ -444,8 +443,8 @@ void AudioSystem::UnregisterClient(size_t index) {
   auto client_semaphore = client_semaphores_[index].get();
   xe::threading::WaitResult wait_result;
   do {
-    wait_result = xe::threading::Wait(client_semaphore, false,
-                                      std::chrono::milliseconds(0));
+    wait_result =
+        xe::threading::Wait(client_semaphore, std::chrono::milliseconds(0));
   } while (wait_result == xe::threading::WaitResult::kSuccess);
   assert_true(wait_result == xe::threading::WaitResult::kTimeout);
 }

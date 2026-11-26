@@ -336,7 +336,7 @@ void GuestScheduler::Shutdown() {
     // only leaves via the preempt flag, so keep raising it until the loop
     // drains.
     int waited_ms = 0;
-    while (xe::threading::Wait(cpu.host_thread.get(), false,
+    while (xe::threading::Wait(cpu.host_thread.get(),
                                std::chrono::milliseconds(50)) ==
            xe::threading::WaitResult::kTimeout) {
       {
@@ -365,7 +365,7 @@ void GuestScheduler::Shutdown() {
   // Every dispatch thread has exited, so no fiber reaches a safepoint again.
   xe::cpu::backend::preempt_yield_handler = nullptr;
   if (watchdog_thread_) {
-    xe::threading::Wait(watchdog_thread_.get(), false);
+    xe::threading::Wait(watchdog_thread_.get());
     watchdog_thread_.reset();
   }
   // Waits out a racing EnsureIoWorker or EnsureIoTimer and stops later ones
@@ -373,17 +373,17 @@ void GuestScheduler::Shutdown() {
   std::call_once(io_once_, [] {});
   std::call_once(io_timer_once_, [] {});
   if (io_timer_thread_) {
-    xe::threading::Wait(io_timer_thread_.get(), false);
+    xe::threading::Wait(io_timer_thread_.get());
     io_timer_thread_.reset();
   }
   // Before the leftover fibers are reclaimed, so no worker still writes into a
   // parked fiber's stack.
   if (io_thread_) {
-    xe::threading::Wait(io_thread_.get(), false);
+    xe::threading::Wait(io_thread_.get());
     io_thread_.reset();
   }
   for (auto& thread : io_pool_threads_) {
-    xe::threading::Wait(thread.get(), false);
+    xe::threading::Wait(thread.get());
   }
   io_pool_threads_.clear();
   // Free calls no worker is left to run.
@@ -1386,7 +1386,7 @@ void GuestScheduler::IoWorkerLoop() {
       }
     }
     if (!call) {
-      xe::threading::Wait(io_event_.get(), false);
+      xe::threading::Wait(io_event_.get());
       continue;
     }
     RunBlockingCall(call);
@@ -1874,13 +1874,12 @@ void GuestScheduler::RunLoop(int cpu_index) {
     }
     if (!have_blocked) {
       if (dispatched_any_.load()) {
-        xe::threading::Wait(cpu.ready_event.get(), false);
+        xe::threading::Wait(cpu.ready_event.get());
         cpu.parked.store(false);
         continue;
       }
       // Nothing has ever run, so poll instead of sleeping forever and say so.
-      xe::threading::Wait(cpu.ready_event.get(), false,
-                          std::chrono::seconds(1));
+      xe::threading::Wait(cpu.ready_event.get(), std::chrono::seconds(1));
       cpu.parked.store(false);
       bool warned = false;
       if (!dispatched_any_.load() &&
@@ -1894,7 +1893,7 @@ void GuestScheduler::RunLoop(int cpu_index) {
     now = Clock::QueryHostUptimeMillis();
     uint64_t due = cpu.next_timed_repoll_ms;
     uint64_t sleep_ms = due > now ? due - now : 0;
-    xe::threading::Wait(cpu.ready_event.get(), false,
+    xe::threading::Wait(cpu.ready_event.get(),
                         std::chrono::milliseconds(sleep_ms));
     cpu.parked.store(false);
     stats_.idle_wakes.fetch_add(1, std::memory_order_relaxed);
@@ -2169,7 +2168,7 @@ void GuestScheduler::WatchdogLoop() {
   while (!shutting_down_.load()) {
     if (period_us >= 1000) {
       // Event wait so Shutdown's Set is observed immediately.
-      xe::threading::Wait(watchdog_event_.get(), false,
+      xe::threading::Wait(watchdog_event_.get(),
                           std::chrono::milliseconds(period_us / 1000));
     } else {
       // Wait only takes milliseconds, so a sub-millisecond period sleeps

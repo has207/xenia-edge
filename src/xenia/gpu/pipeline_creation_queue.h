@@ -126,7 +126,7 @@ class PipelineCreationQueue {
       }
       cond_.notify_all();
       while (threads_.size() > count) {
-        xe::threading::Wait(threads_.back().get(), false);
+        xe::threading::Wait(threads_.back().get());
         threads_.pop_back();
       }
       // So threads can be added again later.
@@ -236,7 +236,7 @@ class PipelineCreationQueue {
     }
     if (await) {
       cond_.notify_one();
-      xe::threading::Wait(completion_event_.get(), false);
+      xe::threading::Wait(completion_event_.get());
     }
   }
 

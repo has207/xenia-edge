@@ -204,7 +204,7 @@ AudioMediaPlayer::~AudioMediaPlayer() {
   worker_running_ = false;
   resume_fence_.Signal();
   if (worker_thread_) {
-    xe::threading::Wait(worker_thread_.get(), false);
+    xe::threading::Wait(worker_thread_.get());
     worker_thread_.reset();
   }
   if (client_registered_) {
