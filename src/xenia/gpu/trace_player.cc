@@ -90,7 +90,7 @@ void TracePlayer::SeekCommand(int target_command) {
 }
 
 void TracePlayer::WaitOnPlayback() {
-  xe::threading::Wait(playback_event_.get(), true);
+  xe::threading::Wait(playback_event_.get());
 }
 
 void TracePlayer::PlayTrace(const uint8_t* trace_data, size_t trace_size,

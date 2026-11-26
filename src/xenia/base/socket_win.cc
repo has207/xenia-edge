@@ -227,7 +227,7 @@ class Win32SocketServer : public SocketServer {
 
     if (accept_thread_) {
       // Join thread, which should die because the socket is now invalid.
-      xe::threading::Wait(accept_thread_.get(), true);
+      xe::threading::Wait(accept_thread_.get());
       accept_thread_.reset();
     }
   }

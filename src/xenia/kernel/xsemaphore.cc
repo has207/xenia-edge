@@ -126,10 +126,10 @@ void XSemaphore::SyncFromGuest() {
       // already claimed.
       int32_t delta = host_count_ - guest_count;
       int32_t drained = 0;
-      while (drained < delta &&
-             xe::threading::Wait(semaphore_.get(), false,
-                                 std::chrono::milliseconds(0)) ==
-                 xe::threading::WaitResult::kSuccess) {
+      while (
+          drained < delta &&
+          xe::threading::Wait(semaphore_.get(), std::chrono::milliseconds(0)) ==
+              xe::threading::WaitResult::kSuccess) {
         ++drained;
       }
       host_count_ -= drained;

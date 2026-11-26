@@ -77,7 +77,7 @@ void PacingAudioDriver::Shutdown() {
   }
   if (thread) {
     wake_event_->Set();
-    xe::threading::Wait(thread.get(), false);
+    xe::threading::Wait(thread.get());
   }
 }
 
@@ -110,7 +110,7 @@ void PacingAudioDriver::ThreadMain() {
           deadlines_.front() - now);
     }
     lock.unlock();
-    xe::threading::Wait(wake_event_.get(), false, timeout);
+    xe::threading::Wait(wake_event_.get(), timeout);
     lock.lock();
   }
 }

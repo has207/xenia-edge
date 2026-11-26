@@ -1250,36 +1250,12 @@ X_STATUS XThread::Delay(uint32_t processor_mode, uint32_t alertable,
     return X_STATUS_SUCCESS;
   }
 
-  if (alertable) {
-    const uint64_t deadline = Clock::QueryHostUptimeMillis() + timeout_ms;
-    while (true) {
-      const uint64_t now = Clock::QueryHostUptimeMillis();
-      auto result = xe::threading::AlertableSleep(
-          std::chrono::milliseconds(deadline > now ? deadline - now : 0));
-      if (result != xe::threading::SleepResult::kAlerted) {
-        return X_STATUS_SUCCESS;
-      }
-      // Woken for a kernel APC, which runs before the delay goes on. Only a
-      // user APC ends it.
-      if (HasDeliverableKernelApc()) {
-        xboxkrnl::xeProcessKernelApcs(thread_state_->context());
-      }
-      if (HasPendingUserApc()) {
-        return X_STATUS_USER_APC;
-      }
-    }
+  // A host-routine thread sleeps its own host thread.
+  if (timeout_ms == 0) {
+    xe::threading::MaybeYield();
   } else {
-    if (timeout_ms == 0) {
-      if (priority_ <= xe::threading::ThreadPriority::kBelowNormal) {
-        xe::threading::NanoSleep(100);
-      } else {
-        xe::threading::MaybeYield();
-      }
-    } else {
-      xe::threading::Sleep(std::chrono::milliseconds(timeout_ms));
-    }
+    xe::threading::Sleep(std::chrono::milliseconds(timeout_ms));
   }
-
   return X_STATUS_SUCCESS;
 }
 

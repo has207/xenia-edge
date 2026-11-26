@@ -45,7 +45,7 @@ bool XIOCompletion::WaitForNotification(const uint64_t* timeout,
     auto* scheduler = kernel_state()->guest_scheduler();
     uint64_t deadline_ms = Clock::QueryHostUptimeMillis() + ms.count();
     while (true) {
-      auto poll = threading::Wait(notification_semaphore_.get(), false,
+      auto poll = threading::Wait(notification_semaphore_.get(),
                                   std::chrono::milliseconds(0));
       if (poll == threading::WaitResult::kSuccess) {
         break;
@@ -56,7 +56,7 @@ bool XIOCompletion::WaitForNotification(const uint64_t* timeout,
       scheduler->BlockCurrentThread();
     }
   } else {
-    auto res = threading::Wait(notification_semaphore_.get(), false, ms);
+    auto res = threading::Wait(notification_semaphore_.get(), ms);
     if (res != threading::WaitResult::kSuccess) {
       return false;
     }

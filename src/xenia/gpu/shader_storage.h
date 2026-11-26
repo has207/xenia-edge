@@ -395,7 +395,7 @@ class ShaderStorageWriter {
         storage_write_thread_shutdown_ = true;
       }
       storage_write_request_cond_.notify_one();
-      xe::threading::Wait(storage_write_thread_.get(), false);
+      xe::threading::Wait(storage_write_thread_.get());
       storage_write_thread_.reset();
     }
 
@@ -518,7 +518,7 @@ class ShaderStorageWriter {
     // The calling thread takes part too.
     analyze_function();
     for (auto& thread : analysis_threads) {
-      xe::threading::Wait(thread.get(), false);
+      xe::threading::Wait(thread.get());
     }
 
     XELOGI("Analyzed {} shaders in {} ms", shaders_to_analyze.size(),

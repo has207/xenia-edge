@@ -202,7 +202,7 @@ void PluginLoader::LoadTitlePlugins(const uint32_t title_id,
         fmt::format("Plugin Loader: {} Thread", entry.name));
     plugin_thread->Create();
 
-    xe::threading::Wait(plugin_thread->thread(), false);
+    xe::threading::Wait(plugin_thread->thread());
 
     is_any_plugin_loaded_ = true;
   }

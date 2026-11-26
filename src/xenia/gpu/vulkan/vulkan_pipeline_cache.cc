@@ -1135,7 +1135,7 @@ void VulkanPipelineCache::TranslateShadersForStorage(
   translate_function();
 
   for (auto& thread : translation_threads) {
-    xe::threading::Wait(thread.get(), false);
+    xe::threading::Wait(thread.get());
   }
 
   XELOGI("Translated {} shaders in {} ms", translations_completed.load(),

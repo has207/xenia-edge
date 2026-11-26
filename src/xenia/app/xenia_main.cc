@@ -781,7 +781,7 @@ void EmulatorApp::EmulatorThread() {
 
   // Now, we're going to use this thread to drive events related to emulation.
   while (!emulator_thread_quit_requested_.load(std::memory_order_relaxed)) {
-    xe::threading::Wait(emulator_thread_event_.get(), false);
+    xe::threading::Wait(emulator_thread_event_.get());
     emulator_->WaitUntilExit();
     if (xe::IsUnattended()) {
       xe::ExitUnattended(EXIT_SUCCESS, "title exited");

@@ -138,21 +138,6 @@ void Sleep(std::chrono::duration<Rep, Period> duration) {
   Sleep(std::chrono::duration_cast<std::chrono::microseconds>(duration));
 }
 
-enum class SleepResult {
-  kSuccess,
-  kAlerted,
-};
-// Sleeps the current thread for at least as long as the given duration.
-// The thread is put in an alertable state and may wake to dispatch user
-// callbacks. If this happens the sleep returns early with
-// SleepResult::kAlerted.
-SleepResult AlertableSleep(std::chrono::microseconds duration);
-template <typename Rep, typename Period>
-SleepResult AlertableSleep(std::chrono::duration<Rep, Period> duration) {
-  return AlertableSleep(
-      std::chrono::duration_cast<std::chrono::microseconds>(duration));
-}
-
 typedef uint32_t TlsHandle;
 constexpr TlsHandle kInvalidTlsHandle = UINT_MAX;
 
@@ -202,9 +187,6 @@ enum class WaitResult {
   // In a WaitAny the tuple will contain the index of the wait handle that
   // caused the wait to be satisfied.
   kSuccess,
-  // The wait was ended by one or more user-mode callbacks queued to the thread.
-  // This will occur when is_alertable is set true.
-  kUserCallback,
   // The time-out interval elapsed, and the object's state is nonsignaled.
   kTimeout,
   // The specified object is a mutex object that was not released by the thread
@@ -230,64 +212,54 @@ class WaitHandle {
   WaitHandle() = default;
 };
 
-// Waits until the wait handle is in the signaled state, an alert triggers and
-// a user callback is queued to the thread, or the timeout interval elapses.
-// If timeout is zero the call will return immediately instead of waiting and
-// if the timeout is max() the wait will not time out.
-WaitResult Wait(
-    WaitHandle* wait_handle, bool is_alertable,
-    std::chrono::milliseconds timeout = std::chrono::milliseconds::max());
+// Waits until the wait handle is in the signaled state or the timeout interval
+// elapses. If timeout is zero the call will return immediately instead of
+// waiting and if the timeout is max() the wait will not time out.
+WaitResult Wait(WaitHandle* wait_handle, std::chrono::milliseconds timeout =
+                                             std::chrono::milliseconds::max());
 
 // Signals one object and waits on another object as a single operation.
-// Waits until the wait handle is in the signaled state, an alert triggers and
-// a user callback is queued to the thread, or the timeout interval elapses.
-// If timeout is zero the call will return immediately instead of waiting and
-// if the timeout is max() the wait will not time out.
+// Waits until the wait handle is in the signaled state or the timeout interval
+// elapses. If timeout is zero the call will return immediately instead of
+// waiting and if the timeout is max() the wait will not time out.
 WaitResult SignalAndWait(
     WaitHandle* wait_handle_to_signal, WaitHandle* wait_handle_to_wait_on,
-    bool is_alertable,
     std::chrono::milliseconds timeout = std::chrono::milliseconds::max());
 
 std::pair<WaitResult, size_t> WaitMultiple(
     WaitHandle* wait_handles[], size_t wait_handle_count, bool wait_all,
-    bool is_alertable,
     std::chrono::milliseconds timeout = std::chrono::milliseconds::max());
 
-// Waits until all of the specified objects are in the signaled state, a
-// user callback is queued to the thread, or the time-out interval elapses.
+// Waits until all of the specified objects are in the signaled state or the
+// time-out interval elapses.
 // If timeout is zero the call will return immediately instead of waiting and
 // if the timeout is max() the wait will not time out.
 inline WaitResult WaitAll(
-    WaitHandle* wait_handles[], size_t wait_handle_count, bool is_alertable,
+    WaitHandle* wait_handles[], size_t wait_handle_count,
     std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) {
-  return WaitMultiple(wait_handles, wait_handle_count, true, is_alertable,
-                      timeout)
-      .first;
+  return WaitMultiple(wait_handles, wait_handle_count, true, timeout).first;
 }
 inline WaitResult WaitAll(
-    std::vector<WaitHandle*> wait_handles, bool is_alertable,
+    std::vector<WaitHandle*> wait_handles,
     std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) {
-  return WaitAll(wait_handles.data(), wait_handles.size(), is_alertable,
-                 timeout);
+  return WaitAll(wait_handles.data(), wait_handles.size(), timeout);
 }
 
-// Waits until any of the specified objects are in the signaled state, a
-// user callback is queued to the thread, or the time-out interval elapses.
+// Waits until any of the specified objects are in the signaled state or the
+// time-out interval elapses.
 // If timeout is zero the call will return immediately instead of waiting and
 // if the timeout is max() the wait will not time out.
 // The second argument of the return tuple indicates which wait handle caused
 // the wait to be satisfied or abandoned.
 inline std::pair<WaitResult, size_t> WaitAny(
-    WaitHandle* wait_handles[], size_t wait_handle_count, bool is_alertable,
+    WaitHandle* wait_handles[], size_t wait_handle_count,
     std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) {
-  return WaitMultiple(wait_handles, wait_handle_count, false, is_alertable,
-                      timeout);
+  return WaitMultiple(wait_handles, wait_handle_count, false, timeout);
 }
 inline std::pair<WaitResult, size_t> WaitAny(
-    std::vector<WaitHandle*> wait_handles, bool is_alertable,
+    std::vector<WaitHandle*> wait_handles,
     std::chrono::milliseconds timeout = std::chrono::milliseconds::max()) {
-  return WaitAny(wait_handles.data(), wait_handles.size(), is_alertable,
-                 timeout);
+  return WaitAny(wait_handles.data(), wait_handles.size(), timeout);
 }
 struct EventInfo {
   uint32_t type;

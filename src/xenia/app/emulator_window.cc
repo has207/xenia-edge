@@ -631,7 +631,7 @@ EmulatorWindow::~EmulatorWindow() {
   // this window and Thread::reset() does not join.
   gamepad_poll_running_ = false;
   if (gamepad_poll_thread_) {
-    xe::threading::Wait(gamepad_poll_thread_.get(), false);
+    xe::threading::Wait(gamepad_poll_thread_.get());
     gamepad_poll_thread_.reset();
   }
 
