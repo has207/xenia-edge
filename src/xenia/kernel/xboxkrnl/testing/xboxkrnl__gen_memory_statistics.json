@@ -1,0 +1,620 @@
+{
+ "corpus": "memory_statistics",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-27",
+ "steps": [
+  {
+   "scenario": "the title's available pages in its partition",
+   "name": "statistics now",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics now",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "the title's available pages in its partition",
+   "name": "title available pages at most the title partition's",
+   "export": "at most",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "variable": "title available now"
+    },
+    {
+     "value": 122880
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "statistics before",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics before",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 268435456
+    },
+    {
+     "value": 268439551
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "block allocated",
+   "export": "at most",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "statistics allocated",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics allocated",
+     "offset": 104
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "statistics freed",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics freed",
+     "offset": 208
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "title pages the block took",
+   "export": "difference",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "variable": "title available before"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "system pages the block took",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "system available before"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "title pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "variable": "title available freed"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 4 KB pages",
+   "name": "system pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "system available freed"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "statistics before",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics before",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 269484032
+    },
+    {
+     "value": 269549567
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "block allocated",
+   "export": "at most",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "statistics allocated",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics allocated",
+     "offset": 104
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "statistics freed",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics freed",
+     "offset": 208
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "title pages the block took",
+   "export": "difference",
+   "r3": "0000000000000010",
+   "args": [
+    {
+     "variable": "title available before"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "system pages the block took",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "system available before"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "title pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000000010",
+   "args": [
+    {
+     "variable": "title available freed"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 64 KB pages",
+   "name": "system pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "system available freed"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "statistics before",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics before",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 16777216
+    },
+    {
+     "value": 2147483652
+    },
+    {
+     "value": 402653184
+    },
+    {
+     "value": 419430399
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "block allocated",
+   "export": "at most",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "statistics allocated",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics allocated",
+     "offset": 104
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "statistics freed",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics freed",
+     "offset": 208
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "title pages the block took",
+   "export": "difference",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "title available before"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "system pages the block took",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "system available before"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "title pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "title available freed"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of title memory, 16 MB pages",
+   "name": "system pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "system available freed"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "statistics before",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics before",
+     "offset": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 33554431
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "block allocated",
+   "export": "at most",
+   "r3": "0000000000000001",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "statistics allocated",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics allocated",
+     "offset": 104
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "statistics freed",
+   "export": "MmQueryStatistics",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "statistics freed",
+     "offset": 208
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "title pages the block took",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "title available before"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "system pages the block took",
+   "export": "difference",
+   "r3": "0000000000000010",
+   "args": [
+    {
+     "variable": "system available before"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "title pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "title available freed"
+    },
+    {
+     "variable": "title available allocated"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of system memory, 64 KB pages",
+   "name": "system pages its free gave back",
+   "export": "difference",
+   "r3": "0000000000000010",
+   "args": [
+    {
+     "variable": "system available freed"
+    },
+    {
+     "variable": "system available allocated"
+    }
+   ]
+  }
+ ]
+}
