@@ -27,12 +27,6 @@
 #include "xenia/kernel/xboxkrnl/xboxkrnl_threading.h"
 #include "xenia/xbox.h"
 
-DEFINE_bool(
-    ignore_offset_for_ranged_allocations, false,
-    "Allows to ignore 4k offset for physical allocations with provided range. "
-    "Certain titles check if result matches provided lower range.",
-    "Memory");
-
 DECLARE_bool(scribble_heap);
 
 namespace xe {
@@ -753,18 +747,11 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
   // min_addr_range/max_addr_range are bounds in physical memory, not virtual.
   uint32_t heap_base = heap->heap_base();
   uint32_t heap_physical_address_offset = heap->GetPhysicalAddress(heap_base);
-  // TODO(Gliniak): Games like 545108B4 compares min_addr_range with value
-  // returned. 0x1000 offset causes it to go below that minimal range and goes
-  // haywire
-  if (min_addr_range && max_addr_range &&
-      cvars::ignore_offset_for_ranged_allocations) {
-    heap_physical_address_offset = 0;
-  }
-
   uint32_t heap_min_addr =
       xe::sat_sub(min_addr_range, heap_physical_address_offset);
+  // The console's last usable page is the one holding max_addr_range.
   uint32_t heap_max_addr =
-      xe::sat_sub(max_addr_range, heap_physical_address_offset);
+      xe::sat_sub(max_addr_range | 0xFFF, heap_physical_address_offset);
   uint32_t heap_size = heap->heap_size();
   heap_min_addr = heap_base + std::min(heap_min_addr, heap_size - 1);
   heap_max_addr = heap_base + std::min(heap_max_addr, heap_size - 1);
