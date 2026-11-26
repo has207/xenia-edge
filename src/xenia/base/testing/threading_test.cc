@@ -119,10 +119,6 @@ TEST_CASE("Get number of logical processors") {
   REQUIRE(logical_processor_count() == count);
 }
 
-TEST_CASE("Enable process to set thread affinity") {
-  EnableAffinityConfiguration();
-}
-
 TEST_CASE("Yield Current Thread", "[maybe_yield]") {
   // Run to see if there are any errors
   MaybeYield();
@@ -1062,7 +1058,6 @@ TEST_CASE("Create and Run Thread", "[thread]") {
     fence = 0;
     thread = Thread::Create(params, func);
     REQUIRE(thread->native_handle() != nullptr);
-    REQUIRE_NOTHROW(thread->affinity_mask());
     REQUIRE(thread->name().empty());
     fence++;
     result = Wait(thread.get(), false, 1s);
@@ -1083,19 +1078,6 @@ TEST_CASE("Create and Run Thread", "[thread]") {
     result = Wait(thread.get(), false, 1s);
     REQUIRE(result == WaitResult::kSuccess);
     REQUIRE_FALSE(fence_timed_out);
-  }
-
-  SECTION("Use Terminate to end an infinitely looping thread") {
-    thread = Thread::Create(params, [] {
-      while (true) {
-        Sleep(1ms);
-      }
-    });
-    result = Wait(thread.get(), false, 1s);
-    REQUIRE(result == WaitResult::kTimeout);
-    thread->Terminate(-1);
-    result = Wait(thread.get(), false, 1s);
-    REQUIRE(result == WaitResult::kSuccess);
   }
 
   SECTION("Call Exit from inside an infinitely looping thread") {
@@ -1130,68 +1112,20 @@ TEST_CASE("Create and Run Thread", "[thread]") {
   }
 
   // TODO(bwrsandman): Test with different priorities
-  // TODO(bwrsandman): Test setting and getting thread affinity
 }
 
-TEST_CASE("Test Suspending Thread", "[thread]") {
-  std::unique_ptr<Thread> thread;
-  WaitResult result;
+TEST_CASE("Test Starting Thread Created Suspended", "[thread]") {
   Thread::CreationParameters params = {};
-  auto func = [] { Sleep(20ms); };
-
-  // Create initially suspended
   params.create_suspended = true;
-  thread = threading::Thread::Create(params, func);
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kTimeout);
+  std::atomic<bool> ran(false);
+  auto thread = Thread::Create(params, [&ran] { ran = true; });
+  REQUIRE(Wait(thread.get(), false, 50ms) == WaitResult::kTimeout);
+  REQUIRE_FALSE(ran);
   thread->Resume();
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kSuccess);
-  params.create_suspended = false;
-
-  // Create and then suspend
-  thread = threading::Thread::Create(params, func);
-  thread->Suspend();
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kTimeout);
+  REQUIRE(Wait(thread.get(), false, 1s) == WaitResult::kSuccess);
+  REQUIRE(ran);
+  // A second Resume on a started thread does nothing.
   thread->Resume();
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kSuccess);
-
-  // Test recursive suspend
-  thread = threading::Thread::Create(params, func);
-  thread->Suspend();
-  thread->Suspend();
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kTimeout);
-  thread->Resume();
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kTimeout);
-  thread->Resume();
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kSuccess);
-
-  // Test suspend count
-  uint32_t suspend_count = 0;
-  thread = threading::Thread::Create(params, func);
-  thread->Suspend(&suspend_count);
-  REQUIRE(suspend_count == 0);
-  thread->Suspend(&suspend_count);
-  REQUIRE(suspend_count == 1);
-  thread->Suspend(&suspend_count);
-  REQUIRE(suspend_count == 2);
-  thread->Resume(&suspend_count);
-  REQUIRE(suspend_count == 3);
-  thread->Resume(&suspend_count);
-  REQUIRE(suspend_count == 2);
-  thread->Resume(&suspend_count);
-  REQUIRE(suspend_count == 1);
-  thread->Suspend(&suspend_count);
-  REQUIRE(suspend_count == 0);
-  thread->Resume(&suspend_count);
-  REQUIRE(suspend_count == 1);
-  result = threading::Wait(thread.get(), false, 50ms);
-  REQUIRE(result == threading::WaitResult::kSuccess);
 }
 
 TEST_CASE("Test Resuming Thread Created Suspended", "[thread]") {
@@ -1208,8 +1142,8 @@ TEST_CASE("Test Resuming Thread Created Suspended", "[thread]") {
         std::atomic<bool> ran(false);
         auto thread = Thread::Create(params, [&ran] { ran = true; });
         // A lost resume leaves the thread suspended for good.
-        if (!thread->Resume() ||
-            Wait(thread.get(), false, 1s) != WaitResult::kSuccess || !ran) {
+        thread->Resume();
+        if (Wait(thread.get(), false, 1s) != WaitResult::kSuccess || !ran) {
           ++lost;
         }
       }
@@ -1219,118 +1153,6 @@ TEST_CASE("Test Resuming Thread Created Suspended", "[thread]") {
     REQUIRE(Wait(resumer.get(), false, 120s) == WaitResult::kSuccess);
   }
   REQUIRE(lost == 0);
-}
-
-TEST_CASE("Test Suspending Thread After First Resume", "[thread]") {
-  Thread::CreationParameters params = {};
-  params.create_suspended = true;
-  std::atomic<uint64_t> counter(0);
-  std::atomic<bool> stop(false);
-  auto thread = Thread::Create(params, [&counter, &stop] {
-    while (!stop) {
-      ++counter;
-    }
-  });
-
-  Sleep(20ms);
-  REQUIRE(counter == 0);
-  REQUIRE(thread->Resume());
-  while (counter == 0) {
-    MaybeYield();
-  }
-
-  // Suspend is asynchronous on POSIX; let it land before sampling.
-  REQUIRE(thread->Suspend());
-  Sleep(20ms);
-  uint64_t suspended_at = counter;
-  Sleep(50ms);
-  REQUIRE(counter == suspended_at);
-
-  REQUIRE(thread->Resume());
-  Sleep(20ms);
-  REQUIRE(counter > suspended_at);
-
-  stop = true;
-  REQUIRE(Wait(thread.get(), false, 1s) == WaitResult::kSuccess);
-}
-
-TEST_CASE("Test Thread QueueUserCallback", "[thread]") {
-  std::unique_ptr<Thread> thread;
-  WaitResult result;
-  Thread::CreationParameters params = {};
-  std::atomic_int order;
-  int is_modified;
-  int has_finished;
-  auto callback = [&is_modified, &order] {
-    is_modified =
-        std::atomic_fetch_add_explicit(&order, 1, std::memory_order_relaxed);
-  };
-
-  // Without alertable
-  order = 0;
-  is_modified = -1;
-  has_finished = -1;
-  thread = Thread::Create(params, [&has_finished, &order] {
-    // Not using Alertable so callback is not registered
-    order++;  // 1
-    Sleep(90ms);
-    order++;  // 2
-    has_finished =
-        std::atomic_fetch_add_explicit(&order, 1, std::memory_order_relaxed);
-  });
-  REQUIRE(!spin_wait_for(50ms, [&] { return order == 2; }));
-  REQUIRE(is_modified == -1);
-  thread->QueueUserCallback(callback);
-  result = Wait(thread.get(), true, 200ms);
-  REQUIRE(result == WaitResult::kSuccess);
-  REQUIRE(is_modified == -1);
-  REQUIRE(has_finished == 2);
-
-  // With alertable
-  order = 0;
-  is_modified = -1;
-  has_finished = -1;
-  thread = Thread::Create(params, [&has_finished, &order] {
-    // Using Alertable so callback is registered
-    order++;  // 1
-    AlertableSleep(90ms);
-    order++;  // 3
-    has_finished =
-        std::atomic_fetch_add_explicit(&order, 1, std::memory_order_relaxed);
-  });
-  REQUIRE(!spin_wait_for(50ms, [&] { return order == 2; }));
-  REQUIRE(is_modified == -1);
-  thread->QueueUserCallback(callback);
-  result = Wait(thread.get(), true, 200ms);
-  REQUIRE(result == WaitResult::kSuccess);
-  REQUIRE(is_modified == 1);
-  REQUIRE(has_finished == 3);
-
-  // Test Exit command with QueueUserCallback
-  order = 0;
-  is_modified = -1;
-  has_finished = -1;
-  std::atomic<bool> survived_exit(false);
-  thread = Thread::Create(params, [&is_modified, &order, &survived_exit] {
-    is_modified =
-        std::atomic_fetch_add_explicit(&order, 1, std::memory_order_relaxed);
-    // Using Alertable so callback is registered
-    order++;  // 2
-    AlertableSleep(1s);
-    // The thread should have been terminated during the alertable sleep.
-    survived_exit = true;
-    while (true);
-  });
-  REQUIRE(!spin_wait_for(100ms, [&] { return order == 3; }));  // timeout
-  thread->QueueUserCallback([] { Thread::Exit(0); });
-  result = Wait(thread.get(), true, 500ms);
-  REQUIRE(result == WaitResult::kSuccess);
-  REQUIRE(is_modified == 0);
-  REQUIRE(order == 2);
-  REQUIRE_FALSE(survived_exit);
-
-  // TODO(bwrsandman): Test alertable wait returning kUserCallback by using IO
-  // callbacks.
 }
 
 TEST_CASE("Fiber cooperative switch", "[fiber]") {

@@ -287,30 +287,12 @@ dword_result_t NtSuspendThread_entry(dword_t handle,
     if (thread->type() == XObject::Type::Thread) {
       auto current_pcr = context->TranslateVirtualGPR<X_KPCR*>(context->r[13]);
 
-#if XE_PLATFORM_WIN32
       if (current_pcr->prcb_data.current_thread == thread->guest_object() ||
           !thread->guest_object<X_KTHREAD>()->terminated) {
         result = thread->Suspend(&suspend_count);
       } else {
         return X_STATUS_THREAD_IS_TERMINATING;
       }
-#else
-      // Handle self-suspension specially to avoid deadlock.
-      if (!thread->guest_object<X_KTHREAD>()->terminated) {
-        bool is_self_suspend =
-            (current_pcr->prcb_data.current_thread == thread->guest_object());
-
-        if (is_self_suspend) {
-          XELOGD("Thread {:X} self-suspending", thread->handle());
-          result = thread->SelfSuspend(&suspend_count);
-          XELOGD("Thread {:X} resumed", thread->handle());
-        } else {
-          result = thread->Suspend(&suspend_count);
-        }
-      } else {
-        return X_STATUS_THREAD_IS_TERMINATING;
-      }
-#endif
     } else {
       return X_STATUS_OBJECT_TYPE_MISMATCH;
     }
@@ -1448,14 +1430,9 @@ uint32_t xeInsertQueueApcAndWake(XThread* thread, XAPC* apc, uint32_t arg1,
   if (!xeKeInsertQueueApc(apc, arg1, arg2, 0, context)) {
     return 0;
   }
-  // Awaken a sleeping alertable thread to process real apcs. A host thread gets
-  // a no-op user callback to break its wait, a fiber gets a scheduler poke so
-  // its alertable poll re-runs.
-  if (thread->thread()) {
-    thread->thread()->QueueUserCallback([]() {});
-  } else {
-    context->kernel_state->guest_scheduler()->WakeAll();
-  }
+  // Pokes the scheduler so an alertable fiber's poll re-runs. A host-routine
+  // thread takes the APC at its next wait.
+  context->kernel_state->guest_scheduler()->WakeAll();
   return 1;
 }
 dword_result_t NtQueueApcThread_entry(dword_t thread_handle,

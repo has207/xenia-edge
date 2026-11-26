@@ -340,10 +340,6 @@ X_STATUS Emulator::Setup(
   // This can be adjusted dynamically, as well.
   Clock::set_guest_time_scalar(cvars::time_scalar);
 
-  // Before we can set thread affinity we must enable the process to use all
-  // logical processors.
-  xe::threading::EnableAffinityConfiguration();
-
   XELOGI("{}: Initializing Memory...", __func__);
   // Create memory system first, as it is required for other systems.
   memory_ = std::make_unique<Memory>();
@@ -2028,7 +2024,6 @@ void Emulator::HaltCrashedGuestThread(uint32_t pc, std::string_view fault) {
   if (thread->fiber()) {
     HaltCrashedFiberThunk();
   }
-  thread->Suspend(nullptr);
   while (true) {
     xe::threading::NanoSleep(int64_t(1'000'000'000));
   }

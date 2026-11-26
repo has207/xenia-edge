@@ -647,8 +647,8 @@ static void StartTitle(XamModule::LoaderData& loader_data,
                               std::move(new_data), true, package_path);
     }).detach();
 
-    // Stop running guest code; RelaunchTitle terminates us. Suspend can
-    // return on POSIX, so park rather than fall through to spawn.
+    // Stop running guest code; RelaunchTitle terminates us. Suspend returns
+    // if the thread is resumed, so park rather than fall through to spawn.
     current_thread->Suspend(nullptr);
     // SpinYield parks a fiber, a host sleep would stall its dispatch thread.
     while (true) {
