@@ -1395,8 +1395,7 @@ struct host_set {
 
   // False for a set holding a handle that isn't a socket's.
   bool Load(const x_fd_set* guest_set) {
-    assert_true(guest_set->fd_count < 64);
-    this->count = guest_set->fd_count;
+    this->count = std::min<uint32_t>(guest_set->fd_count, 64);
     for (uint32_t i = 0; i < this->count; ++i) {
       auto socket = kernel_state()->object_table()->LookupObject<XSocket>(
           static_cast<X_HANDLE>(guest_set->fd_array[i]));
@@ -1427,11 +1426,19 @@ struct host_set {
       }
       // Another guest thread can close a socket while select waits.
       const auto handle = this->sockets[i]->native_handle();
-      if (handle != static_cast<uint64_t>(-1)) {
-        FD_SET(handle, native_set);
-        max_handle = std::max(max_handle, static_cast<int>(handle));
-        ++stored;
+      if (handle == static_cast<uint64_t>(-1)) {
+        continue;
       }
+#if !XE_PLATFORM_WIN32
+      // A POSIX fd_set is a bitmap of FD_SETSIZE descriptors.
+      if (handle >= static_cast<uint64_t>(FD_SETSIZE)) {
+        XELOGE("NetDll_select: host socket {} is past FD_SETSIZE", handle);
+        continue;
+      }
+#endif  // !XE_PLATFORM_WIN32
+      FD_SET(handle, native_set);
+      max_handle = std::max(max_handle, static_cast<int>(handle));
+      ++stored;
     }
     return stored;
   }

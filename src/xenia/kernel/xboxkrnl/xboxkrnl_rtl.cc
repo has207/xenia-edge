@@ -297,9 +297,14 @@ void RtlCopyUnicodeString_entry(pointer_t<X_UNICODE_STRING> destination,
   if (length > 0) {
     auto dst_buf = kernel_memory()->TranslateVirtual(destination->pointer);
     auto src_buf = kernel_memory()->TranslateVirtual(source->pointer);
-    std::memcpy(dst_buf, src_buf, length * 2);
+    std::memcpy(dst_buf, src_buf, length);
   }
   destination->length = length;
+  // Terminated after the last whole character when there's room.
+  if (length < destination->maximum_length) {
+    kernel_memory()->TranslateVirtual<uint16_t*>(
+        destination->pointer)[length / 2] = 0;
+  }
 }
 DECLARE_XBOXKRNL_EXPORT1(RtlCopyUnicodeString, kNone, kImplemented);
 
