@@ -40,6 +40,10 @@ enum SystemHeapFlag : uint32_t {
   kSystemHeapDefault = kSystemHeapVirtual,
 };
 
+// The console's system partition is the first 32 MB of physical memory, the
+// title's is the rest.
+constexpr uint32_t kSystemPhysicalMemoryEnd = 0x02000000;
+
 enum class HeapType : uint8_t {
   kGuestVirtual,
   kGuestXex,

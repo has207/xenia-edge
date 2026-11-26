@@ -1,0 +1,2138 @@
+{
+ "corpus": "virtual_placement",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-26",
+ "steps": [
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "low 16 bits of first",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "low 16 bits of second",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, bottom-up",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, bottom-up",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, bottom-up",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00011000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, bottom-up",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, bottom-up",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, bottom-up",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, bottom-up",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, bottom-up",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "reserve third",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "third less second",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "third"
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "point at third",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "third"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, bottom-up",
+   "name": "release third",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 1056768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 1056768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "FFFFFFFFFFFF0000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "low 16 bits of first",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "low 16 bits of second",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 4 KB pages, top-down",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, top-down",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 1056768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, top-down",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00011000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 1056768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, top-down",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "FFFFFFFFFFFE0000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, top-down",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, top-down",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, top-down",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 4 KB pages, top-down",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 1056768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 1056768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "reserve third",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00001000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 1056768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "third less second",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "third"
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "point at third",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "third"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 4 KB pages, top-down",
+   "name": "release third",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "low 16 bits of first",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "low 16 bits of second",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, bottom-up",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, bottom-up",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, bottom-up",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00030000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, bottom-up",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, bottom-up",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, bottom-up",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, bottom-up",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, bottom-up",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "reserve third",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 536879104
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "third less second",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "third"
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "point at third",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "third"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, bottom-up",
+   "name": "release third",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 537927680
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 537927680
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "FFFFFFFFFFFF0000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "low 16 bits of first",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "low 16 bits of second",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "two one-page regions, 64 KB pages, top-down",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, top-down",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 537927680
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, top-down",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00030000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 537927680
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, top-down",
+   "name": "second less first",
+   "export": "difference",
+   "r3": "FFFFFFFFFFFD0000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, top-down",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, top-down",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, top-down",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region past 64 KB after one page, 64 KB pages, top-down",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "reserve first",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 537927680
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "reserve second",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 537927680
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "point at second",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "release second",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "reserve third",
+   "export": "NtAllocateVirtualMemory",
+   "r3": "0000000000000000",
+   "capture": {
+    "size": "00010000"
+   },
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 537927680
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "third less second",
+   "export": "difference",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "third"
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "point at first",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "release first",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "point at third",
+   "export": "RtlFillMemoryUlong",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "value": 4
+    },
+    {
+     "variable": "third"
+    }
+   ]
+  },
+  {
+   "scenario": "a region again after releasing it, 64 KB pages, top-down",
+   "name": "release third",
+   "export": "NtFreeVirtualMemory",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "pointer": "base",
+     "offset": 0
+    },
+    {
+     "pointer": "size",
+     "offset": 8
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 0
+    }
+   ]
+  }
+ ]
+}

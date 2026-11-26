@@ -1,0 +1,4770 @@
+{
+ "corpus": "physical_memory",
+ "source": "RGH Jasper, kernel and xam 2.0.17559, 2026-11-26",
+ "steps": [
+  {
+   "scenario": "window as large as the block ending on a page boundary, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F0000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 268435456
+    },
+    {
+     "value": 268500992
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010001000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending a byte short of a page, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F00FF000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 269484032
+    },
+    {
+     "value": 269549567
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending a byte short of a page, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010100000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending a byte short of a page, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window larger than the block, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F0230000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 270532608
+    },
+    {
+     "value": 270794752
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window larger than the block, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010231000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window larger than the block, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window starting inside a page, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F02FF000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 271583232
+    },
+    {
+     "value": 271646719
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window starting inside a page, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010300000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window starting inside a page, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment above the page size, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F040F000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 272629760
+    },
+    {
+     "value": 272695296
+    },
+    {
+     "value": 65536
+    }
+   ]
+  },
+  {
+   "scenario": "alignment above the page size, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010410000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment above the page size, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "low end above the high end, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 273743872
+    },
+    {
+     "value": 273678336
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "low end above the high end, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "low end above the high end, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B0600000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 274726912
+    },
+    {
+     "value": 274792448
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 64 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010600000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 64 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window a page larger than the block, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B0710000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 275775488
+    },
+    {
+     "value": 275906560
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window a page larger than the block, 64 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010710000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window a page larger than the block, 64 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window ending inside a page, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F0800000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 276824064
+    },
+    {
+     "value": 276891648
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window ending inside a page, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010801000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window ending inside a page, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window of one page, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F08FF000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 277872640
+    },
+    {
+     "value": 277872640
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window of one page, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010900000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window of one page, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window of one page for two pages, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 278921216
+    },
+    {
+     "value": 278921216
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window of one page for two pages, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window of one page for two pages, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size larger than the window, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 131072
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 279969792
+    },
+    {
+     "value": 280035328
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "size larger than the window, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size larger than the window, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size inside a page, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F0C0E000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 6144
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 281018368
+    },
+    {
+     "value": 281083904
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "size inside a page, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010C0F000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size inside a page, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000002000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size of one page, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B0D00000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 282066944
+    },
+    {
+     "value": 282132480
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "size of one page, 64 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010D00000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size of one page, 64 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window with no low end, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F0E00000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 283181056
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window with no low end, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010E01000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window with no low end, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window above physical memory, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 805306368
+    },
+    {
+     "value": 805371904
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window above physical memory, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window above physical memory, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window above physical memory, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 805306368
+    },
+    {
+     "value": 805371904
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window above physical memory, 64 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window above physical memory, 64 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a multiple of the page size, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F0F10000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 284164096
+    },
+    {
+     "value": 284233728
+    },
+    {
+     "value": 6144
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a multiple of the page size, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000010F11000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a multiple of the page size, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F100F000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 285212672
+    },
+    {
+     "value": 285286400
+    },
+    {
+     "value": 12288
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011010000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment and size of 64 KB in a window a page larger, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F10FF000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 286261248
+    },
+    {
+     "value": 286330880
+    },
+    {
+     "value": 65536
+    }
+   ]
+  },
+  {
+   "scenario": "alignment and size of 64 KB in a window a page larger, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011100000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment and size of 64 KB in a window a page larger, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of 4 bytes, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F1200000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 287309824
+    },
+    {
+     "value": 287375360
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of 4 bytes, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011201000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of 4 bytes, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment below the page size, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B1310000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 288358400
+    },
+    {
+     "value": 288489472
+    },
+    {
+     "value": 4096
+    }
+   ]
+  },
+  {
+   "scenario": "alignment below the page size, 64 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011310000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment below the page size, 64 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 16 MB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000D8000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 16777216
+    },
+    {
+     "value": 2147483652
+    },
+    {
+     "value": 402653184
+    },
+    {
+     "value": 419430400
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 16 MB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000018000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "window as large as the block ending on a page boundary, 16 MB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000001000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size of one page, 16 MB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000D9000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 2147483652
+    },
+    {
+     "value": 419430400
+    },
+    {
+     "value": 436207616
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "size of one page, 16 MB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000019000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "size of one page, 16 MB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000001000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F1400000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 2
+    },
+    {
+     "value": 289406976
+    },
+    {
+     "value": 289411072
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011401000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F1500000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 290455552
+    },
+    {
+     "value": 290459648
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011501000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only write-combined, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F1600000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1026
+    },
+    {
+     "value": 291504128
+    },
+    {
+     "value": 291508224
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only write-combined, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011601000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only write-combined, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only write-combined, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000402",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F1700000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1028
+    },
+    {
+     "value": 292552704
+    },
+    {
+     "value": 292556800
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011701000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000404",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F1800000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 516
+    },
+    {
+     "value": 293601280
+    },
+    {
+     "value": 293605376
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000011801000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000204",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection no protection, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 294649856
+    },
+    {
+     "value": 294653952
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection no protection, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection no protection, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection no protection, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection no access, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1
+    },
+    {
+     "value": 295698432
+    },
+    {
+     "value": 295702528
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection no access, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection no access, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection no access, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection execute read-write, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 64
+    },
+    {
+     "value": 296747008
+    },
+    {
+     "value": 296751104
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection execute read-write, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection execute read-write, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection execute read-write, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write and execute, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 20
+    },
+    {
+     "value": 297795584
+    },
+    {
+     "value": 297799680
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write and execute, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write and execute, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write and execute, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only and read-write, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 6
+    },
+    {
+     "value": 298844160
+    },
+    {
+     "value": 298848256
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only and read-write, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only and read-write, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-only and read-write, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write guard, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 260
+    },
+    {
+     "value": 299892736
+    },
+    {
+     "value": 299896832
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write guard, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write guard, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write guard, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached and write-combined, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 1540
+    },
+    {
+     "value": 300941312
+    },
+    {
+     "value": 300945408
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached and write-combined, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached and write-combined, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write uncached and write-combined, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection with both large page sizes, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 2684354564
+    },
+    {
+     "value": 301989888
+    },
+    {
+     "value": 302055424
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection with both large page sizes, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection with both large page sizes, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection with both large page sizes, 4 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B2100000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536871940
+    },
+    {
+     "value": 303038464
+    },
+    {
+     "value": 303104000
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 64 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012100000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 64 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 64 KB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000404",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 16 MB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000DA000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 16777216
+    },
+    {
+     "value": 2147484676
+    },
+    {
+     "value": 436207616
+    },
+    {
+     "value": 452984832
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 16 MB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "000000001A000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 16 MB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000001000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "protection read-write write-combined, 16 MB pages",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000404",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "title type, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2200000",
+   "args": [
+    {
+     "value": 1
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 304087040
+    },
+    {
+     "value": 304091136
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "title type, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012201000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "title type, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "system type, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 305135616
+    },
+    {
+     "value": 305139712
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "system type, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "system type, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "system type, 4 KB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 2
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "type past the last, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 3
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 306184192
+    },
+    {
+     "value": 306188288
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "type past the last, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "type past the last, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "allocate first",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2530000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 307232768
+    },
+    {
+     "value": 307494912
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "allocate second",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2520000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 307232768
+    },
+    {
+     "value": 307494912
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "physical address of first",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012531000",
+   "args": [
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "size of first",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "physical address of second",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012521000",
+   "args": [
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "size of second",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "free first",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "first"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "allocate third",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2538000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 32768
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 307232768
+    },
+    {
+     "value": 307494912
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "allocate fourth",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2510000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 307232768
+    },
+    {
+     "value": 307494912
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "physical address of third",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012539000",
+   "args": [
+    {
+     "variable": "third"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "size of third",
+   "export": "size if allocated",
+   "r3": "0000000000008000",
+   "args": [
+    {
+     "variable": "third"
+    },
+    {
+     "variable": "third"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "physical address of fourth",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012511000",
+   "args": [
+    {
+     "variable": "fourth"
+    }
+   ]
+  },
+  {
+   "scenario": "blocks top-down under blocks, 4 KB pages",
+   "name": "size of fourth",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "fourth"
+    },
+    {
+     "variable": "fourth"
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "allocate small",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2610000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 308346880
+    },
+    {
+     "value": 308350976
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "allocate large",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B2600000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 308281344
+    },
+    {
+     "value": 308412416
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "allocate again",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 308281344
+    },
+    {
+     "value": 308412416
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "physical address of small",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012611000",
+   "args": [
+    {
+     "variable": "small"
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "size of small",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "small"
+    },
+    {
+     "variable": "small"
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "physical address of large",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012600000",
+   "args": [
+    {
+     "variable": "large"
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "size of large",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "large"
+    },
+    {
+     "variable": "large"
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "physical address of again",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "64 KB pages skip a group a 4 KB block took",
+   "name": "size of again",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "again"
+    },
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2700000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 309329920
+    },
+    {
+     "value": 309395456
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "allocate taken",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 309329920
+    },
+    {
+     "value": 309395456
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "size of block after the free",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "physical address of block after the free",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "protect of block after the free",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "allocate again",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2700000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 309329920
+    },
+    {
+     "value": 309395456
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "physical address of again",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012701000",
+   "args": [
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "allocate a full window again before and after freeing it, 4 KB pages",
+   "name": "size of again",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "again"
+    },
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2800000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 131072
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 310378496
+    },
+    {
+     "value": 310509568
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "physical address 0x1234 in",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012802234",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 4660
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "size 0x10 in",
+   "export": "size if allocated",
+   "r3": "0000000000020000",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 16
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "size a page in",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 4096
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "size 64 KB in",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 65536
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "free 64 KB in",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block",
+     "delta": 65536
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "size after the free in it",
+   "export": "size if allocated",
+   "r3": "0000000000020000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "free block again",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 4 KB pages",
+   "name": "size after the frees",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B2900000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 131072
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 311427072
+    },
+    {
+     "value": 311558144
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "physical address 0x1234 in",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012901234",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 4660
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "size 0x10 in",
+   "export": "size if allocated",
+   "r3": "0000000000020000",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 16
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "size a page in",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 4096
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "size 64 KB in",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block",
+     "delta": 65536
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "free 64 KB in",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block",
+     "delta": 65536
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "size after the free in it",
+   "export": "size if allocated",
+   "r3": "0000000000020000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "free block again",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "free and query inside a block, 64 KB pages",
+   "name": "size after the frees",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "7 MB block filling its window with 4 byte alignment, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000FB000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 6815744
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 452984832
+    },
+    {
+     "value": 459800576
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "7 MB block filling its window with 4 byte alignment, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "000000001B001000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "7 MB block filling its window with 4 byte alignment, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000680000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 4 KB pages",
+   "name": "allocate",
+   "export": "MmAllocatePhysicalMemory",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 4 KB pages",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 4 KB pages",
+   "name": "region",
+   "export": "region",
+   "r3": "00000000E0000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 4 KB pages",
+   "name": "physical address less the address",
+   "export": "physical offset",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "physical"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 4 KB pages",
+   "name": "size",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 4 KB pages",
+   "name": "protect",
+   "export": "protect if allocated",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "allocate",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 4294967295
+    },
+    {
+     "value": 65536
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "region",
+   "export": "region",
+   "r3": "00000000E0000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "physical address less the address",
+   "export": "physical offset",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "physical"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "low 16 bits of the address",
+   "export": "low 16 bits",
+   "r3": "000000000000F000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "low 16 bits of the physical address",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "size",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1000 with alignment 0x10000, 4 KB pages",
+   "name": "protect",
+   "export": "protect if allocated",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1800 with alignment 0x0, 4 KB pages",
+   "name": "allocate",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 6144
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 4294967295
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1800 with alignment 0x0, 4 KB pages",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1800 with alignment 0x0, 4 KB pages",
+   "name": "region",
+   "export": "region",
+   "r3": "00000000E0000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1800 with alignment 0x0, 4 KB pages",
+   "name": "physical address less the address",
+   "export": "physical offset",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "physical"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1800 with alignment 0x0, 4 KB pages",
+   "name": "size",
+   "export": "size if allocated",
+   "r3": "0000000000002000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x1800 with alignment 0x0, 4 KB pages",
+   "name": "protect",
+   "export": "protect if allocated",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "allocate",
+   "export": "MmAllocatePhysicalMemory",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 536870916
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "region",
+   "export": "region",
+   "r3": "00000000A0000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "physical address less the address",
+   "export": "physical offset",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "low 16 bits of the address",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "low 16 bits of the physical address",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "size",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 64 KB pages",
+   "name": "protect",
+   "export": "protect if allocated",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "allocate",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 0
+    },
+    {
+     "value": 4294967295
+    },
+    {
+     "value": 262144
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "region",
+   "export": "region",
+   "r3": "00000000A0000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "physical address less the address",
+   "export": "physical offset",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "low 16 bits of the address",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "low 16 bits of the physical address",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "size",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemoryEx of 0x10000 with alignment 0x40000, 64 KB pages",
+   "name": "protect",
+   "export": "protect if allocated",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "allocate",
+   "export": "MmAllocatePhysicalMemory",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 2147483652
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "region",
+   "export": "region",
+   "r3": "00000000C0000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "physical address less the address",
+   "export": "physical offset",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "low 16 bits of the address",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "low 16 bits of the physical address",
+   "export": "low 16 bits",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "size",
+   "export": "size if allocated",
+   "r3": "0000000001000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "unranged MmAllocatePhysicalMemory of 0x1000 with alignment 0x0, 16 MB pages",
+   "name": "protect",
+   "export": "protect if allocated",
+   "r3": "0000000000000004",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two keeping bit 0, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2A10000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 312475648
+    },
+    {
+     "value": 312553472
+    },
+    {
+     "value": 12288
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two keeping bit 0, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012A11000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two keeping bit 0, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two under a block, 4 KB pages",
+   "name": "allocate blocker",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2B10000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 313593856
+    },
+    {
+     "value": 313593856
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two under a block, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2B0C000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 8192
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 313524224
+    },
+    {
+     "value": 313602048
+    },
+    {
+     "value": 12288
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two under a block, 4 KB pages",
+   "name": "physical address of blocker",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012B11000",
+   "args": [
+    {
+     "variable": "blocker"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two under a block, 4 KB pages",
+   "name": "size of blocker",
+   "export": "size if allocated",
+   "r3": "0000000000001000",
+   "args": [
+    {
+     "variable": "blocker"
+    },
+    {
+     "variable": "blocker"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two under a block, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012B0D000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment that is not a power of two under a block, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000002000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2C00000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 314572800
+    },
+    {
+     "value": 314638336
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012C01000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "size through the 64 KB window",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 2684354560
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "physical address through the 64 KB window",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 2684354560
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "protect through the 64 KB window",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 2684354560
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "size through the 16 MB window",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 3221225472
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "physical address through the 16 MB window",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012C01000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 3221225472
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "protect through the 16 MB window",
+   "export": "protect if allocated",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 3221225472
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "free through the 64 KB window",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "physical",
+     "delta": 2684354560
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "size after the free",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "allocate again",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000F2C00000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 314572800
+    },
+    {
+     "value": 314638336
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "physical address of again",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012C01000",
+   "args": [
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 4 KB pages through the other windows",
+   "name": "size of again",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "again"
+    },
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B2D00000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 315621376
+    },
+    {
+     "value": 315686912
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "physical address",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012D00000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "size through the 4 KB window",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 3758092288
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "physical address through the 4 KB window",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 3758092288
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "protect through the 4 KB window",
+   "export": "protect if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "physical",
+     "delta": 3758092288
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "free through the 4 KB window",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "physical",
+     "delta": 3758092288
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "size after the free",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "allocate again",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B2D00000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 315621376
+    },
+    {
+     "value": 315686912
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "physical address of again",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012D00000",
+   "args": [
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 64 KB pages through the other windows",
+   "name": "size of again",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "again"
+    },
+    {
+     "variable": "again"
+    }
+   ]
+  },
+  {
+   "scenario": "the 16 MB window onto memory nothing allocated",
+   "name": "physical address of a title page",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012E00000",
+   "args": [
+    {
+     "value": 3537895424
+    }
+   ]
+  },
+  {
+   "scenario": "the 16 MB window onto memory nothing allocated",
+   "name": "protect of a title page",
+   "export": "MmQueryAddressProtect",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "value": 3537895424
+    }
+   ]
+  },
+  {
+   "scenario": "the 16 MB window onto memory nothing allocated",
+   "name": "physical address of a system page",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000100000",
+   "args": [
+    {
+     "value": 3222274048
+    }
+   ]
+  },
+  {
+   "scenario": "the 16 MB window onto memory nothing allocated",
+   "name": "protect of a system page",
+   "export": "MmQueryAddressProtect",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "value": 3222274048
+    }
+   ]
+  },
+  {
+   "scenario": "the 16 MB window onto memory nothing allocated",
+   "name": "size of a title page",
+   "export": "MmQueryAllocationSize",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 3537895424
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 16 MB pages back to read-only after its free",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000DC000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 16777216
+    },
+    {
+     "value": 2147484676
+    },
+    {
+     "value": 469762048
+    },
+    {
+     "value": 486539264
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 16 MB pages back to read-only after its free",
+   "name": "protect of block",
+   "export": "protect if allocated",
+   "r3": "0000000000000404",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 16 MB pages back to read-only after its free",
+   "name": "free block",
+   "export": "free if allocated",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 16 MB pages back to read-only after its free",
+   "name": "physical address after the free",
+   "export": "MmGetPhysicalAddress",
+   "r3": "000000001C000000",
+   "args": [
+    {
+     "value": 3690987520
+    }
+   ]
+  },
+  {
+   "scenario": "a block of 16 MB pages back to read-only after its free",
+   "name": "protect after the free",
+   "export": "MmQueryAddressProtect",
+   "r3": "0000000000000002",
+   "args": [
+    {
+     "value": 3690987520
+    }
+   ]
+  },
+  {
+   "scenario": "the top of physical memory, 64 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 533397504
+    },
+    {
+     "value": 533463039
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "the top of physical memory, 64 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "the top of physical memory, 64 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "the top of physical memory, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 536805376
+    },
+    {
+     "value": 536809471
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "the top of physical memory, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "the top of physical memory, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "past the highest page, 4 KB pages",
+   "name": "allocate block",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 4096
+    },
+    {
+     "value": 4
+    },
+    {
+     "value": 536809472
+    },
+    {
+     "value": 536813567
+    },
+    {
+     "value": 0
+    }
+   ]
+  },
+  {
+   "scenario": "past the highest page, 4 KB pages",
+   "name": "physical address of block",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "past the highest page, 4 KB pages",
+   "name": "size of block",
+   "export": "size if allocated",
+   "r3": "0000000000000000",
+   "args": [
+    {
+     "variable": "block"
+    },
+    {
+     "variable": "block"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of three pages, 64 KB pages",
+   "name": "allocate first",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B2F50000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 317718528
+    },
+    {
+     "value": 318242816
+    },
+    {
+     "value": 196608
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of three pages, 64 KB pages",
+   "name": "allocate second",
+   "export": "MmAllocatePhysicalMemoryEx",
+   "r3": "00000000B2F40000",
+   "args": [
+    {
+     "value": 0
+    },
+    {
+     "value": 65536
+    },
+    {
+     "value": 536870916
+    },
+    {
+     "value": 317718528
+    },
+    {
+     "value": 318242816
+    },
+    {
+     "value": 196608
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of three pages, 64 KB pages",
+   "name": "physical address of first",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012F50000",
+   "args": [
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of three pages, 64 KB pages",
+   "name": "size of first",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "first"
+    },
+    {
+     "variable": "first"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of three pages, 64 KB pages",
+   "name": "physical address of second",
+   "export": "MmGetPhysicalAddress",
+   "r3": "0000000012F40000",
+   "args": [
+    {
+     "variable": "second"
+    }
+   ]
+  },
+  {
+   "scenario": "alignment of three pages, 64 KB pages",
+   "name": "size of second",
+   "export": "size if allocated",
+   "r3": "0000000000010000",
+   "args": [
+    {
+     "variable": "second"
+    },
+    {
+     "variable": "second"
+    }
+   ]
+  }
+ ]
+}

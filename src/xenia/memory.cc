@@ -3577,8 +3577,11 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
 bool PhysicalHeap::AllocSystemHeap(uint32_t size, uint32_t alignment,
                                    uint32_t allocation_type, uint32_t protect,
                                    bool top_down, uint32_t* out_address) {
-  return Alloc(size, alignment, allocation_type, protect, top_down,
-               out_address);
+  // Top-down in the system partition, leaving the title's memory alone.
+  const uint32_t physical_base = GetPhysicalAddress(heap_base_);
+  return AllocRange(
+      heap_base_, heap_base_ + (kSystemPhysicalMemoryEnd - 1) - physical_base,
+      size, alignment, allocation_type, protect, true, out_address);
 }
 
 bool PhysicalHeap::Decommit(uint32_t address, uint32_t size) {

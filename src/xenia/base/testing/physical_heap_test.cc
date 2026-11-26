@@ -302,7 +302,8 @@ TEST_CASE("PhysicalHeap vE0000000 AllocRange placement", "[memory]") {
   }
 }
 
-// SystemHeapAlloc with kSystemHeapPhysical: top-down on the 4KB heap.
+// SystemHeapAlloc with kSystemHeapPhysical: top-down in the system partition
+// on the 4KB heap.
 TEST_CASE("PhysicalHeap vE0000000 system heap", "[memory]") {
   Memory memory;
   VirtualHeap parent;
@@ -316,10 +317,11 @@ TEST_CASE("PhysicalHeap vE0000000 system heap", "[memory]") {
   uint32_t addr = 0;
   REQUIRE(heap.AllocSystemHeap(0x20, 0x20, kMemoryAllocationReserve,
                                kMemoryProtectRead, false, &addr));
-  CHECK(addr == 0xFFCFF000);
+  CHECK(addr == 0xE1FFE000);
+  CHECK(heap.GetPhysicalAddress(addr) == kSystemPhysicalMemoryEnd - 0x1000);
   REQUIRE(heap.AllocSystemHeap(0x1C, 0x20, kMemoryAllocationReserve,
                                kMemoryProtectRead, false, &addr));
-  CHECK(addr == 0xFFCFE000);
+  CHECK(addr == 0xE1FFD000);
 }
 
 // The 64KB page reserve Memory makes at startup, top-down under the last 64KB

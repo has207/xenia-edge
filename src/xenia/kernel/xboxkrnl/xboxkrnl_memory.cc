@@ -703,17 +703,27 @@ dword_result_t NtFreeEncryptedMemory_entry(dword_t region_type,
 }
 DECLARE_XBOXKRNL_EXPORT1(NtFreeEncryptedMemory, kMemory, kImplemented);
 
-uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
+uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t type, uint32_t region_size,
                                       uint32_t protect_bits,
                                       uint32_t min_addr_range,
                                       uint32_t max_addr_range,
                                       uint32_t alignment) {
-  // Type will usually be 0 (user request?), where 1 and 2 are sometimes made
-  // by D3D/etc.
+  // Type 1 takes the title's partition, type 2 the system's.
+  if (type != 1 && type != 2) {
+    return 0;
+  }
 
-  // Check protection bits.
-  if (!(protect_bits & (X_PAGE_READONLY | X_PAGE_READWRITE))) {
-    XELOGE("MmAllocatePhysicalMemoryEx: bad protection bits");
+  // Read-only or read-write, optionally uncached or write-combined, with one
+  // page size at most.
+  constexpr uint32_t kPageSizeFlags = X_MEM_LARGE_PAGES | X_MEM_16MB_PAGES;
+  const uint32_t access = protect_bits & ~kPageSizeFlags;
+  if ((protect_bits & kPageSizeFlags) == kPageSizeFlags ||
+      (access & ~(X_PAGE_READONLY | X_PAGE_READWRITE | X_PAGE_NOCACHE |
+                  X_PAGE_WRITECOMBINE)) ||
+      !(access & X_PAGE_READONLY) == !(access & X_PAGE_READWRITE) ||
+      ((access & X_PAGE_NOCACHE) && (access & X_PAGE_WRITECOMBINE))) {
+    XELOGE("MmAllocatePhysicalMemoryEx: bad protection bits {:08X}",
+           protect_bits);
     return 0;
   }
 
@@ -735,29 +745,35 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
     page_size = 16 * 1024 * 1024;
   }
 
-  // Round up the region size and alignment to the next page.
+  // The size rounds up to the page, the alignment down to whole 4 KB pages
+  // and then up to the page.
   uint32_t adjusted_size = xe::round_up(region_size, page_size);
-  uint32_t adjusted_alignment = xe::round_up(alignment, page_size);
+  uint32_t adjusted_alignment = xe::round_up(alignment & ~0xFFFu, page_size);
 
-  uint32_t allocation_type = kMemoryAllocationReserve | kMemoryAllocationCommit;
-  uint32_t protect = FromXdkProtectFlags(protect_bits);
-  bool top_down = true;
   auto heap = static_cast<PhysicalHeap*>(
       kernel_memory()->LookupHeapByType(true, page_size));
-  // min_addr_range/max_addr_range are bounds in physical memory, not virtual.
-  uint32_t heap_base = heap->heap_base();
-  uint32_t heap_physical_address_offset = heap->GetPhysicalAddress(heap_base);
-  uint32_t heap_min_addr =
-      xe::sat_sub(min_addr_range, heap_physical_address_offset);
-  // The console's last usable page is the one holding max_addr_range.
-  uint32_t heap_max_addr =
-      xe::sat_sub(max_addr_range | 0xFFF, heap_physical_address_offset);
-  uint32_t heap_size = heap->heap_size();
-  heap_min_addr = heap_base + std::min(heap_min_addr, heap_size - 1);
-  heap_max_addr = heap_base + std::min(heap_max_addr, heap_size - 1);
+  // The bounds are physical, the 4 KB pages holding them, inside the partition
+  // and what the heap maps.
+  const uint32_t partition_low = type == 1 ? kSystemPhysicalMemoryEnd : 0;
+  const uint32_t partition_high =
+      type == 1 ? 0x1FFFFFFF : kSystemPhysicalMemoryEnd - 1;
+  const uint32_t heap_base = heap->heap_base();
+  const uint32_t heap_physical_low = heap->GetPhysicalAddress(heap_base);
+  const uint32_t heap_physical_high =
+      heap->GetPhysicalAddress(heap_base + (heap->heap_size() - 1));
+  const uint32_t low =
+      std::max({min_addr_range & ~0xFFFu, partition_low, heap_physical_low});
+  const uint32_t high =
+      std::min({max_addr_range | 0xFFF, partition_high, heap_physical_high});
+  if (low > high) {
+    return 0;
+  }
   uint32_t base_address;
-  if (!heap->AllocRange(heap_min_addr, heap_max_addr, adjusted_size,
-                        adjusted_alignment, allocation_type, protect, top_down,
+  if (!heap->AllocRange(heap_base + (low - heap_physical_low),
+                        heap_base + (high - heap_physical_low), adjusted_size,
+                        adjusted_alignment,
+                        kMemoryAllocationReserve | kMemoryAllocationCommit,
+                        FromXdkProtectFlags(protect_bits), true,
                         &base_address)) {
     // Failed - assume no memory available.
     XELOGW("MmAllocatePhysicalMemoryEx: Allocation failed: {:08X} Size: {:08X}",
@@ -770,30 +786,75 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
   return base_address;
 }
 
+// Type 0 is the caller's own process type.
+static uint32_t PartitionType(uint32_t type, const ppc_context_t& context) {
+  if (type) {
+    return type;
+  }
+  return xeKeGetCurrentProcessType(context) == X_PROCTYPE_TITLE ? 1 : 2;
+}
+
 dword_result_t MmAllocatePhysicalMemoryEx_entry(
-    dword_t flags, dword_t region_size, dword_t protect_bits,
-    dword_t min_addr_range, dword_t max_addr_range, dword_t alignment) {
-  return xeMmAllocatePhysicalMemoryEx(flags, region_size, protect_bits,
-                                      min_addr_range, max_addr_range,
-                                      alignment);
+    dword_t type, dword_t region_size, dword_t protect_bits,
+    dword_t min_addr_range, dword_t max_addr_range, dword_t alignment,
+    const ppc_context_t& context) {
+  return xeMmAllocatePhysicalMemoryEx(PartitionType(type, context), region_size,
+                                      protect_bits, min_addr_range,
+                                      max_addr_range, alignment);
 }
 DECLARE_XBOXKRNL_EXPORT1(MmAllocatePhysicalMemoryEx, kMemory, kImplemented);
 
-dword_result_t MmAllocatePhysicalMemory_entry(dword_t flags,
-                                              dword_t region_size,
-                                              dword_t protect_bits) {
-  return xeMmAllocatePhysicalMemoryEx(flags, region_size, protect_bits, 0,
-                                      0xFFFFFFFFu, 0);
+dword_result_t MmAllocatePhysicalMemory_entry(dword_t type, dword_t region_size,
+                                              dword_t protect_bits,
+                                              const ppc_context_t& context) {
+  return xeMmAllocatePhysicalMemoryEx(PartitionType(type, context), region_size,
+                                      protect_bits, 0, 0xFFFFFFFFu, 0);
 }
 DECLARE_XBOXKRNL_EXPORT1(MmAllocatePhysicalMemory, kMemory, kImplemented);
+
+// The page of the parent physical heap behind an address in the A0, C0 or E0
+// window, which a console's page frame database answers for.
+static std::optional<uint32_t> PhysicalWindowPage(uint32_t address) {
+  auto heap = kernel_memory()->LookupHeap(address);
+  if (!heap || heap->heap_type() != HeapType::kGuestPhysical ||
+      heap->heap_base() < 0xA0000000) {
+    return std::nullopt;
+  }
+  return static_cast<PhysicalHeap*>(heap)->GetPhysicalAddress(address) &
+         ~0xFFFu;
+}
 
 void MmFreePhysicalMemory_entry(dword_t type, dword_t base_address) {
   // base_address = result of MmAllocatePhysicalMemory.
 
-  assert_true((base_address & 0x1F) == 0);
-
-  auto heap = kernel_state()->memory()->LookupHeap(base_address);
-  heap->Release(base_address);
+  // The block whose first page the address is in, through any window onto it.
+  // An address outside physical memory such as 0 frees nothing.
+  auto page = PhysicalWindowPage(base_address);
+  if (!page) {
+    return;
+  }
+  for (uint32_t page_size : {0x1000u, 0x10000u, 0x1000000u}) {
+    auto heap = static_cast<PhysicalHeap*>(
+        kernel_memory()->LookupHeapByType(true, page_size));
+    const uint32_t physical_low = heap->GetPhysicalAddress(heap->heap_base());
+    if (*page < physical_low || *page - physical_low >= heap->heap_size()) {
+      continue;
+    }
+    const uint32_t address = heap->heap_base() + (*page - physical_low);
+    HeapAllocationInfo info;
+    if (!heap->QueryRegionInfo(address, &info, page_size) || !info.state ||
+        info.allocation_base != address) {
+      continue;
+    }
+    // Xenia's own reservations, the 16 MB window's GPU writeback and XPS block
+    // at its base and the reserve-only ones, aren't the guest's to free.
+    if (!(info.state & kMemoryAllocationCommit) ||
+        (page_size == 0x1000000 && address == heap->heap_base())) {
+      return;
+    }
+    heap->Release(address);
+    return;
+  }
 }
 DECLARE_XBOXKRNL_EXPORT1(MmFreePhysicalMemory, kMemory, kImplemented);
 
@@ -806,6 +867,20 @@ dword_result_t MmQueryAddressProtect_entry(dword_t base_address) {
     access = 0;
   }
   access = !access ? 0 : ToXdkProtectFlags(access);
+  // Physical memory doesn't report PAGE_USER_READONLY.
+  if (PhysicalWindowPage(base_address)) {
+    access &= ~X_PAGE_USER_READONLY;
+  }
+  // The 16 MB window maps all of physical memory read-only, except where a
+  // block of 16 MB pages sets its own protection. The block at its base is
+  // Xenia's reservation for GPU writeback and XPS, not one of those.
+  if (heap && heap->page_size() == 16 * 1024 * 1024) {
+    HeapAllocationInfo info;
+    if (!access || (heap->QueryRegionInfo(base_address, &info, 1) &&
+                    info.allocation_base == heap->heap_base())) {
+      access = X_PAGE_READONLY;
+    }
+  }
 
   return access;
 }
@@ -840,9 +915,19 @@ void MmSetAddressProtect_entry(lpvoid_t base_address, dword_t region_size,
 DECLARE_XBOXKRNL_EXPORT1(MmSetAddressProtect, kMemory, kImplemented);
 
 dword_result_t MmQueryAllocationSize_entry(lpvoid_t base_address) {
+  // Only the first 4 KB page of a physical block reports its size.
+  if (auto page = PhysicalWindowPage(base_address.guest_address())) {
+    HeapAllocationInfo info;
+    if (!kernel_memory()->GetPhysicalHeap()->QueryRegionInfo(*page, &info,
+                                                             0x1000) ||
+        !info.state || info.allocation_base != *page) {
+      return 0;
+    }
+    return info.allocation_size;
+  }
   auto heap = kernel_state()->memory()->LookupHeap(base_address);
   uint32_t size;
-  if (!heap->QuerySize(base_address, &size)) {
+  if (!heap || !heap->QuerySize(base_address, &size)) {
     size = 0;
   }
 
@@ -937,6 +1022,16 @@ dword_result_t MmGetPhysicalAddress_entry(dword_t base_address) {
   assert_true(physical_address != UINT32_MAX);
   if (physical_address == UINT32_MAX) {
     physical_address = 0;
+  }
+  // The 4 KB and 64 KB windows only map a page of a block allocated in them,
+  // the 16 MB window maps all of physical memory.
+  if (PhysicalWindowPage(base_address)) {
+    auto heap = kernel_memory()->LookupHeap(base_address);
+    HeapAllocationInfo info;
+    if (heap->page_size() != 16 * 1024 * 1024 &&
+        (!heap->QueryRegionInfo(base_address, &info, 1) || !info.state)) {
+      return 0;
+    }
   }
   return physical_address;
 }
