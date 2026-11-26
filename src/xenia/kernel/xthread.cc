@@ -613,6 +613,8 @@ X_STATUS XThread::Exit(int exit_code) {
                                   old_irql);
 
   kernel_state()->OnThreadExit(this);
+  // A wait for the loader lock or in DllMain marked us running again.
+  kthread->thread_state = KTHREAD_STATE_TERMINATED;
 
   // Notify processor of our exit.
   emulator()->processor()->OnThreadExit(thread_id_);
