@@ -67,6 +67,7 @@ typedef uint32_t X_STATUS;
 #define X_STATUS_INVALID_DISPOSITION                    ((X_STATUS)0xC0000026L)
 #define X_STATUS_UNWIND                                 ((X_STATUS)0xC0000027L)
 #define X_STATUS_BAD_STACK                              ((X_STATUS)0xC0000028L)
+#define X_STATUS_INVALID_PARAMETER_MIX                  ((X_STATUS)0xC0000030L)
 #define X_STATUS_OBJECT_NAME_INVALID                    ((X_STATUS)0xC0000033L)
 #define X_STATUS_OBJECT_NAME_NOT_FOUND                  ((X_STATUS)0xC0000034L)
 #define X_STATUS_OBJECT_NAME_COLLISION                  ((X_STATUS)0xC0000035L)

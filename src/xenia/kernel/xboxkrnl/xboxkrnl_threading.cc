@@ -1146,6 +1146,17 @@ uint32_t xeNtWaitForMultipleObjectsEx(uint32_t count, xe::be<uint32_t>* handles,
     }
   }
 
+  // A wait for all can't name an object twice, by any handle.
+  if (wait_type == X_KWAIT_REASON::WaitAll) {
+    for (uint32_t i = 0; i < count; i++) {
+      for (uint32_t j = i + 1; j < count; j++) {
+        if (objects[i].get() == objects[j].get()) {
+          return X_STATUS_INVALID_PARAMETER_MIX;
+        }
+      }
+    }
+  }
+
   auto result =
       XObject::WaitMultiple(count, reinterpret_cast<XObject**>(&objects[0]),
                             wait_type, 6, wait_mode, alertable, timeout_ptr);
