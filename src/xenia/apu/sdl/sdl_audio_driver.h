@@ -32,8 +32,6 @@ class SDLAudioDriver : public AudioDriver {
 
   bool Initialize() override;
   void SubmitFrame(float* frame) override;
-  void Pause() override;
-  void Resume() override;
   void SetVolume(float volume) override { volume_ = volume; };
   void Shutdown() override;
 

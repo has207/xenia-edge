@@ -19,8 +19,6 @@
 #include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
-DECLARE_bool(debug);
-
 DEFINE_int32(
     console_type, -1,
     "Console Type Identifier: -1 - Retail, 0 - Development Kit, 1 - Test Kit",
@@ -72,9 +70,7 @@ dword_result_t DmGetConsoleType_entry(lpdword_t console_type_out) {
 }
 DECLARE_XBDM_EXPORT1(DmGetConsoleType, kDebug, kImplemented);
 
-dword_result_t DmIsDebuggerPresent_entry() {
-  return static_cast<uint32_t>(cvars::debug);
-}
+dword_result_t DmIsDebuggerPresent_entry() { return 0; }
 DECLARE_XBDM_EXPORT1(DmIsDebuggerPresent, kDebug, kStub);
 
 dword_result_t DmSendNotificationString_entry(lpstring_t notify_string_ptr) {
@@ -83,11 +79,6 @@ dword_result_t DmSendNotificationString_entry(lpstring_t notify_string_ptr) {
   }
 
   XELOGI("(DmSendNotificationString) {}", notify_string_ptr.value());
-
-  if (cpu::DebugListener* listener =
-          kernel_state()->processor()->debug_listener()) {
-    listener->OnDebugPrint(notify_string_ptr.value());
-  }
 
   return XBDM_SUCCESSFUL;
 }

@@ -15,10 +15,8 @@
 #include "xenia/base/profiling.h"
 #include "xenia/cpu/ppc/ppc_context.h"
 
-DECLARE_bool(debug);
 DECLARE_bool(disable_context_promotion);
 DECLARE_bool(store_all_context_values);
-DECLARE_bool(full_optimization_even_with_debug);
 
 namespace xe {
 namespace cpu {
@@ -106,9 +104,7 @@ DeadCRStoreEliminationPass::~DeadCRStoreEliminationPass() = default;
 bool DeadCRStoreEliminationPass::Run(HIRBuilder* builder) {
   SCOPE_profile_cpu_f("cpu");
 
-  if (cvars::disable_context_promotion ||
-      !(cvars::full_optimization_even_with_debug ||
-        (!cvars::debug && !cvars::store_all_context_values)) ||
+  if (cvars::disable_context_promotion || cvars::store_all_context_values ||
       (builder->attributes() & FUNCTION_ATTRIB_KEEP_CONTEXT_STORES)) {
     return true;
   }

@@ -13,7 +13,6 @@
 #include <pthread.h>
 #endif
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
@@ -45,9 +44,6 @@ const uint32_t XAPC::kOwnedKernelRoutine;
 using namespace xe::literals;
 
 uint32_t next_xthread_id_ = 0;
-
-XThread::XThread(KernelState* kernel_state)
-    : XObject(kernel_state, kObjectType), guest_thread_(true) {}
 
 XThread::XThread(KernelState* kernel_state, uint32_t stack_size,
                  uint32_t xapi_thread_startup, uint32_t start_address,
@@ -82,9 +78,6 @@ XThread::XThread(KernelState* kernel_state, uint32_t stack_size,
 XThread::~XThread() {
   // Unregister first to prevent lookups while deleting.
   kernel_state_->UnregisterThread(this);
-
-  // Notify processor of our impending destruction.
-  emulator()->processor()->OnThreadDestroyed(thread_id_);
 
   thread_.reset();
 
@@ -524,9 +517,6 @@ X_STATUS XThread::Create() {
   // the current CPU in KPCR and KTHREAD.
   SetActiveCpu(cpu_index);
 
-  // Notify processor of our creation.
-  emulator()->processor()->OnThreadCreated(handle(), thread_state_, this);
-
   if ((creation_params_.creation_flags & X_CREATE_SUSPENDED) == 0) {
     // Start the thread now that we're all setup.
     if (fiber_) {
@@ -603,9 +593,6 @@ X_STATUS XThread::Exit(int exit_code) {
   // A wait for the loader lock or in DllMain marked us running again.
   kthread->thread_state = KTHREAD_STATE_TERMINATED;
 
-  // Notify processor of our exit.
-  emulator()->processor()->OnThreadExit(thread_id_);
-
   if (fiber_) {
     // On a fiber, Thread::Exit() would kill the shared dispatch thread. Wake
     // our waiters, hand ourselves to the scheduler, and yield forever. The
@@ -674,9 +661,6 @@ X_STATUS XThread::Terminate(int exit_code) {
   thread->exit_time = Clock::QueryGuestSystemTime();
   thread->may_queue_apcs = 0;
   XMutant::AbandonAllOwnedByThread(kernel_state(), this);
-
-  // Notify processor of our exit.
-  emulator()->processor()->OnThreadExit(thread_id_);
 
   running_ = false;
   if (XThread::IsInThread(this)) {
@@ -1373,230 +1357,13 @@ X_STATUS XThread::Delay(uint32_t processor_mode, uint32_t alertable,
   return X_STATUS_SUCCESS;
 }
 
-struct ThreadSavedState {
-  uint32_t thread_id;
-  bool is_main_thread;  // Is this the main thread?
-  bool is_running;
-
-  uint32_t apc_head;
-  uint32_t tls_static_address;
-  uint32_t tls_dynamic_address;
-  uint32_t tls_total_size;
-  uint32_t pcr_address;
-  uint32_t stack_base;        // High address
-  uint32_t stack_limit;       // Low address
-  uint32_t stack_alloc_base;  // Allocation address
-  uint32_t stack_alloc_size;  // Allocation size
-
-  // Context (invalid if not running)
-  struct {
-    uint64_t lr;
-    uint64_t ctr;
-    uint64_t r[32];
-    double f[32];
-    vec128_t v[128];
-    uint32_t cr[8];
-    uint32_t fpscr;
-    uint8_t xer_ca;
-    uint8_t xer_ov;
-    uint8_t xer_so;
-    uint8_t vscr_sat;
-    uint32_t pc;
-  } context;
-};
-
-bool XThread::Save(ByteStream* stream) {
-  if (!guest_thread_) {
-    // Host XThreads are expected to be recreated on their own.
-    return false;
-  }
-
-  XELOGD("XThread {:08X} serializing...", handle());
-
-  uint32_t pc = 0;
-  if (running_) {
-    pc = emulator()->processor()->StepToGuestSafePoint(thread_id_);
-    if (!pc) {
-      XELOGE("XThread {:08X} failed to save: could not step to a safe point!",
-             handle());
-      assert_always();
-      return false;
-    }
-  }
-
-  if (!SaveObject(stream)) {
-    return false;
-  }
-
-  stream->Write(kThreadSaveSignature);
-  stream->Write(thread_name_);
-
-  ThreadSavedState state;
-  state.thread_id = thread_id_;
-  state.is_main_thread = main_thread_;
-  state.is_running = running_;
-  state.tls_static_address = tls_static_address_;
-  state.tls_dynamic_address = tls_dynamic_address_;
-  state.tls_total_size = tls_total_size_;
-  state.pcr_address = pcr_address_;
-  state.stack_base = stack_base_;
-  state.stack_limit = stack_limit_;
-  state.stack_alloc_base = stack_alloc_base_;
-  state.stack_alloc_size = stack_alloc_size_;
-
-  if (running_) {
-    // Context information
-    auto context = thread_state_->context();
-    state.context.lr = context->lr;
-    state.context.ctr = context->ctr;
-    std::memcpy(state.context.r, context->r, 32 * 8);
-    std::memcpy(state.context.f, context->f, 32 * 8);
-    std::memcpy(state.context.v, context->v, 128 * 16);
-    state.context.cr[0] = context->cr0.value;
-    state.context.cr[1] = context->cr1.value;
-    state.context.cr[2] = context->cr2.value;
-    state.context.cr[3] = context->cr3.value;
-    state.context.cr[4] = context->cr4.value;
-    state.context.cr[5] = context->cr5.value;
-    state.context.cr[6] = context->cr6.value;
-    state.context.cr[7] = context->cr7.value;
-    state.context.fpscr = context->fpscr.value;
-    state.context.xer_ca = context->xer_ca;
-    state.context.xer_ov = context->xer_ov;
-    state.context.xer_so = context->xer_so;
-    state.context.vscr_sat = context->vscr_sat;
-    state.context.pc = pc;
-  }
-
-  stream->Write(&state, sizeof(ThreadSavedState));
-  return true;
-}
-
-object_ref<XThread> XThread::Restore(KernelState* kernel_state,
-                                     ByteStream* stream) {
-  // Kind-of a hack, but we need to set the kernel state outside of the object
-  // constructor so it doesn't register a handle with the object table.
-  auto thread = new XThread(nullptr);
-  thread->kernel_state_ = kernel_state;
-
-  if (!thread->RestoreObject(stream)) {
-    return nullptr;
-  }
-
-  if (stream->Read<uint32_t>() != kThreadSaveSignature) {
-    XELOGE("Could not restore XThread - invalid magic!");
-    return nullptr;
-  }
-
-  XELOGD("XThread {:08X}", thread->handle());
-
-  thread->thread_name_ = stream->Read<std::string>();
-
-  ThreadSavedState state;
-  stream->Read(&state, sizeof(ThreadSavedState));
-  thread->thread_id_ = state.thread_id;
-  thread->main_thread_ = state.is_main_thread;
-  thread->running_ = state.is_running;
-  thread->tls_static_address_ = state.tls_static_address;
-  thread->tls_dynamic_address_ = state.tls_dynamic_address;
-  thread->tls_total_size_ = state.tls_total_size;
-  thread->pcr_address_ = state.pcr_address;
-  thread->stack_base_ = state.stack_base;
-  thread->stack_limit_ = state.stack_limit;
-  thread->stack_alloc_base_ = state.stack_alloc_base;
-  thread->stack_alloc_size_ = state.stack_alloc_size;
-
-  // Register now that we know our thread ID.
-  kernel_state->RegisterThread(thread);
-
-  thread->thread_state_ =
-      new cpu::ThreadState(kernel_state->processor(), thread->thread_id_,
-                           thread->stack_base_, thread->pcr_address_);
-
-  if (state.is_running) {
-    auto context = thread->thread_state_->context();
-    context->kernel_state = kernel_state;
-    context->lr = state.context.lr;
-    context->ctr = state.context.ctr;
-    std::memcpy(context->r, state.context.r, 32 * 8);
-    std::memcpy(context->f, state.context.f, 32 * 8);
-    std::memcpy(context->v, state.context.v, 128 * 16);
-    context->cr0.value = state.context.cr[0];
-    context->cr1.value = state.context.cr[1];
-    context->cr2.value = state.context.cr[2];
-    context->cr3.value = state.context.cr[3];
-    context->cr4.value = state.context.cr[4];
-    context->cr5.value = state.context.cr[5];
-    context->cr6.value = state.context.cr[6];
-    context->cr7.value = state.context.cr[7];
-    context->fpscr.value = state.context.fpscr;
-    context->xer_ca = state.context.xer_ca;
-    context->xer_ov = state.context.xer_ov;
-    context->xer_so = state.context.xer_so;
-    context->vscr_sat = state.context.vscr_sat;
-
-    // Always retain when starting - the thread owns itself until exited.
-    thread->RetainHandle();
-
-    xe::threading::Thread::CreationParameters params;
-    params.create_suspended = true;  // Not done restoring yet.
-    params.stack_size = 16_MiB;
-    thread->thread_ = xe::threading::Thread::Create(params, [thread, state]() {
-      // Set thread ID override. This is used by logging.
-      xe::threading::set_current_thread_id(thread->handle());
-
-      // Set name immediately, if we have one.
-      thread->thread_->set_name(thread->name());
-
-      // Profiler needs to know about the thread.
-      xe::Profiler::ThreadEnter(thread->name().c_str());
-
-      current_xthread_tls_ = thread;
-      current_thread_ = thread;
-
-      // Acquire any mutants
-      for (auto mutant : thread->pending_mutant_acquires_) {
-        uint64_t timeout = 0;
-        auto status = mutant->Wait(0, 0, 0, &timeout);
-        assert_true(status == X_STATUS_SUCCESS);
-      }
-      thread->pending_mutant_acquires_.clear();
-
-      // Execute user code.
-      thread->running_ = true;
-
-#if XE_PLATFORM_LINUX || XE_PLATFORM_ANDROID || XE_PLATFORM_MAC
-      pthread_cleanup_push(HostThreadExitCleanupThunk, thread);
-      uint32_t pc = state.context.pc;
-      thread->kernel_state_->processor()->ExecuteRaw(thread->thread_state_, pc);
-      pthread_cleanup_pop(1);
-#else
-      uint32_t pc = state.context.pc;
-      thread->kernel_state_->processor()->ExecuteRaw(thread->thread_state_, pc);
-      thread->OnHostThreadExitCleanup();
-#endif
-    });
-    assert_not_null(thread->thread_);
-
-    // Notify processor we were recreated.
-    thread->emulator()->processor()->OnThreadCreated(
-        thread->handle(), thread->thread_state(), thread);
-  }
-
-  return object_ref<XThread>(thread);
-}
-
 XHostThread::XHostThread(KernelState* kernel_state, uint32_t stack_size,
                          uint32_t creation_flags, std::function<int()> host_fn,
                          uint32_t guest_process, bool on_fiber)
     : XThread(kernel_state, stack_size, 0, 0, 0, creation_flags, false, false,
               guest_process),
       host_fn_(host_fn),
-      on_fiber_(on_fiber) {
-  // By default host threads are not debugger suspendable. If the thread runs
-  // any guest code this must be overridden.
-  can_debugger_suspend_ = false;
-}
+      on_fiber_(on_fiber) {}
 
 void XHostThread::Execute() {
   XELOGD(

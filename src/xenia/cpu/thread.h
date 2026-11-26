@@ -30,12 +30,6 @@ class Thread {
   static uint32_t GetCurrentThreadId();
   ThreadState* thread_state() const { return thread_state_; }
 
-  // True if the thread should be paused by the debugger.
-  // All threads that can run guest code must be stopped for the debugger to
-  // work properly.
-  bool can_debugger_suspend() const { return can_debugger_suspend_; }
-  void set_can_debugger_suspend(bool value) { can_debugger_suspend_ = value; }
-
   xe::threading::Thread* thread() { return thread_.get(); }
   const std::string& thread_name() const { return thread_name_; }
 
@@ -45,7 +39,6 @@ class Thread {
   ThreadState* thread_state_ = nullptr;
   std::unique_ptr<xe::threading::Thread> thread_ = nullptr;
 
-  bool can_debugger_suspend_ = true;
   std::string thread_name_;
 };
 

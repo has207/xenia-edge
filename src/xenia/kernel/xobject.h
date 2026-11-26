@@ -23,7 +23,6 @@
 #include "xenia/memory.h"
 
 namespace xe {
-class ByteStream;
 class Emulator;
 }  // namespace xe
 
@@ -186,7 +185,6 @@ class XObject {
     }
   }
 
-  XObject(Type type);
   XObject(KernelState* kernel_state, Type type, bool host_object = false);
   virtual ~XObject();
 
@@ -227,10 +225,6 @@ class XObject {
   bool TryRetain();
   void Release();
   X_STATUS Delete();
-
-  virtual bool Save(ByteStream* stream) { return false; }
-  static object_ref<XObject> Restore(KernelState* kernel_state, Type type,
-                                     ByteStream* stream);
 
   static constexpr bool is_handle_host_object(X_HANDLE handle) {
     return handle > XObject::kHandleHostBase && handle < XObject::kHandleBase;
@@ -287,9 +281,6 @@ class XObject {
   }
 
  protected:
-  bool SaveObject(ByteStream* stream);
-  bool RestoreObject(ByteStream* stream);
-
   // Called on successful wait.
   virtual void WaitCallback() {}
   virtual xe::threading::WaitHandle* GetWaitHandle() { return nullptr; }

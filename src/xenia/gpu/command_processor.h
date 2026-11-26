@@ -35,9 +35,6 @@
 #include "xenia/ui/presenter.h"
 
 namespace xe {
-
-class ByteStream;
-
 namespace gpu {
 
 enum class GPUSetting {
@@ -245,13 +242,6 @@ class CommandProcessor {
   void LogRegisterSet(uint32_t register_index, uint32_t value);
   void LogRegisterSets(uint32_t base_register_index, const uint32_t* values,
                        uint32_t n_values);
-
-  bool is_paused() const { return paused_; }
-  void Pause();
-  void Resume();
-
-  bool Save(ByteStream* stream);
-  bool Restore(ByteStream* stream);
 
  protected:
   struct IndexBufferInfo {
@@ -815,8 +805,6 @@ class CommandProcessor {
   // for reading it back from shared memory (the ucode interpreter placeholder).
   // 0 if unknown (loaded immediately, embedded in the command buffer).
   uint32_t active_vertex_shader_ucode_address_ = 0;
-
-  bool paused_ = false;
 
   // By default (such as for tools), post-processing is disabled.
   // "Desired" is for the external thread managing the post-processing effect.

@@ -9,7 +9,6 @@
 
 #include "xenia/kernel/xmutant.h"
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/guest_scheduler.h"
 #include "xenia/kernel/kernel_state.h"
@@ -61,21 +60,16 @@ void RemoveMutantOwned(Memory* memory, XMutant* mutant) {
 XMutant::XMutant(KernelState* kernel_state, bool host_object)
     : XObject(kernel_state, kObjectType, host_object) {}
 
-XMutant::XMutant() : XObject(kObjectType) {}
-
 XMutant::~XMutant() = default;
 
 void XMutant::Initialize(bool initial_owner) {
   assert_false(free_signal_);
 
-  // Skip on the Restore path -- RestoreObject already populated guest_object_.
-  if (guest_object() == 0) {
-    CreateNative<X_KMUTANT>();
-    auto* kmutant = memory()->TranslateVirtual<X_KMUTANT*>(guest_object());
-    // Don't touch header.wait_list: SetNativePointer stashes the handle there.
-    kmutant->header.type = X_OBJECT_TYPES::MutantObject;
-    kmutant->header.signal_state = initial_owner ? 0 : 1;
-  }
+  CreateNative<X_KMUTANT>();
+  auto* kmutant = memory()->TranslateVirtual<X_KMUTANT*>(guest_object());
+  // Don't touch header.wait_list: SetNativePointer stashes the handle there.
+  kmutant->header.type = X_OBJECT_TYPES::MutantObject;
+  kmutant->header.signal_state = initial_owner ? 0 : 1;
 
   free_signal_ = xe::threading::Semaphore::Create(initial_owner ? 0 : 1, 1);
   assert_not_null(free_signal_);
@@ -161,44 +155,6 @@ X_STATUS XMutant::ReleaseMutant(uint32_t priority_increment, bool abandon,
     WakeCooperativeWaiters();
   }
   return X_STATUS_SUCCESS;
-}
-
-bool XMutant::Save(ByteStream* stream) {
-  if (!SaveObject(stream)) {
-    return false;
-  }
-
-  XThread* owner = owning_thread_.load();
-  uint32_t owning_thread_handle = owner ? owner->handle() : 0;
-  stream->Write<uint32_t>(owning_thread_handle);
-  XELOGD("XMutant {:08X} (owner: {:08X})", handle(), owning_thread_handle);
-
-  return true;
-}
-
-object_ref<XMutant> XMutant::Restore(KernelState* kernel_state,
-                                     ByteStream* stream) {
-  auto mutant = new XMutant();
-  mutant->kernel_state_ = kernel_state;
-
-  if (!mutant->RestoreObject(stream)) {
-    delete mutant;
-    return nullptr;
-  }
-
-  mutant->Initialize(false);
-
-  auto owning_thread_handle = stream->Read<uint32_t>();
-  if (owning_thread_handle) {
-    // Do NOT pre-set owning_thread_: the queued Wait at thread start needs to
-    // hit the first-acquire branch in WaitCallback. Pre-setting it would land
-    // in the recursive branch and skip the chain insert.
-    auto owner_thread = kernel_state->object_table()->LookupObject<XThread>(
-        owning_thread_handle);
-    owner_thread->AcquireMutantOnStartup(retain_object(mutant));
-  }
-
-  return object_ref<XMutant>(mutant);
 }
 
 void XMutant::AbandonAllOwnedByThread(KernelState* ks, XThread* thread) {

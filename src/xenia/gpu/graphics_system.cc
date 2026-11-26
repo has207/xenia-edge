@@ -11,7 +11,6 @@
 
 #include <charconv>
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
@@ -257,8 +256,6 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
             return 0;
           },
           kernel_state->GetIdleProcess()));
-  // As we run vblank interrupts the debugger must be able to suspend us.
-  frame_limiter_worker_thread_->set_can_debugger_suspend(true);
   frame_limiter_worker_thread_->set_name("GPU Frame limiter");
   frame_limiter_worker_thread_->Create();
   // Linux only sleeps, so kLowest (nice 15) would just add wake-up latency.
@@ -515,29 +512,19 @@ void GraphicsSystem::InitializeShaderStorage(
     return;
   }
   if (blocking) {
-    if (command_processor_->is_paused()) {
-      // Safe to run on any thread while the command processor is paused, no
-      // race condition.
-      if (started_callback) {
-        started_callback();
-      }
-      command_processor_->InitializeShaderStorage(
-          cache_root, title_id, true, std::move(completion_callback));
-    } else {
-      xe::threading::Fence fence;
-      command_processor_->CallInThread(
-          [this, cache_root, title_id, &fence,
-           started_callback = std::move(started_callback),
-           completion_callback = std::move(completion_callback)]() mutable {
-            if (started_callback) {
-              started_callback();
-            }
-            command_processor_->InitializeShaderStorage(
-                cache_root, title_id, true, std::move(completion_callback));
-            fence.Signal();
-          });
-      fence.Wait();
-    }
+    xe::threading::Fence fence;
+    command_processor_->CallInThread(
+        [this, cache_root, title_id, &fence,
+         started_callback = std::move(started_callback),
+         completion_callback = std::move(completion_callback)]() mutable {
+          if (started_callback) {
+            started_callback();
+          }
+          command_processor_->InitializeShaderStorage(
+              cache_root, title_id, true, std::move(completion_callback));
+          fence.Signal();
+        });
+    fence.Wait();
   } else {
     command_processor_->CallInThread(
         [this, cache_root, title_id,
@@ -576,32 +563,6 @@ void GraphicsSystem::RequestEndTracing() {
 
 bool GraphicsSystem::is_tracing_stream() const {
   return command_processor_->is_tracing_stream();
-}
-
-void GraphicsSystem::Pause() {
-  paused_ = true;
-
-  command_processor_->Pause();
-}
-
-void GraphicsSystem::Resume() {
-  paused_ = false;
-
-  command_processor_->Resume();
-}
-
-bool GraphicsSystem::Save(ByteStream* stream) {
-  stream->Write<uint32_t>(interrupt_callback_);
-  stream->Write<uint32_t>(interrupt_callback_data_);
-
-  return command_processor_->Save(stream);
-}
-
-bool GraphicsSystem::Restore(ByteStream* stream) {
-  interrupt_callback_ = stream->Read<uint32_t>();
-  interrupt_callback_data_ = stream->Read<uint32_t>();
-
-  return command_processor_->Restore(stream);
 }
 
 std::pair<uint16_t, uint16_t> GraphicsSystem::GetInternalDisplayResolution() {

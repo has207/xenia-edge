@@ -10,7 +10,6 @@
 #include "xenia/kernel/xnotifylistener.h"
 
 #include "xenia/base/assert.h"
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/kernel_state.h"
 
@@ -100,42 +99,6 @@ bool XNotifyListener::DequeueNotification(XNotificationID id,
   *out_data = it->second.second;
   RemoveNotification(it);
   return true;
-}
-
-bool XNotifyListener::Save(ByteStream* stream) {
-  SaveObject(stream);
-
-  stream->Write(mask_);
-  stream->Write(max_version_);
-  stream->Write(notifications_.size());
-  for (const auto& [key, notification] : notifications_) {
-    stream->Write<uint32_t>(notification.first);
-    stream->Write<uint32_t>(notification.second);
-  }
-
-  return true;
-}
-
-object_ref<XNotifyListener> XNotifyListener::Restore(KernelState* kernel_state,
-                                                     ByteStream* stream) {
-  auto notify = new XNotifyListener(nullptr);
-  notify->kernel_state_ = kernel_state;
-
-  notify->RestoreObject(stream);
-
-  auto mask = stream->Read<uint64_t>();
-  auto is_system = stream->Read<uint32_t>();
-  auto max_version = stream->Read<uint32_t>();
-  notify->Initialize(mask, is_system, max_version);
-
-  auto notification_count_ = stream->Read<size_t>();
-  for (size_t i = 0; i < notification_count_; i++) {
-    const XNotificationID id = stream->Read<uint32_t>();
-    const uint32_t data = stream->Read<uint32_t>();
-    notify->notifications_[QueueKey(id)] = {id, data};
-  }
-
-  return object_ref<XNotifyListener>(notify);
 }
 
 }  // namespace kernel

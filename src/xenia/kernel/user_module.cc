@@ -9,7 +9,6 @@
 
 #include "xenia/kernel/user_module.h"
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/filesystem.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/string.h"
@@ -451,43 +450,6 @@ X_STATUS UserModule::GetOptHeader(const Memory* memory,
     return X_STATUS_NOT_FOUND;
   }
   return X_STATUS_SUCCESS;
-}
-
-bool UserModule::Save(ByteStream* stream) {
-  if (!XModule::Save(stream)) {
-    return false;
-  }
-
-  // A lot of the information stored on this class can be reconstructed at
-  // runtime.
-
-  return true;
-}
-
-object_ref<UserModule> UserModule::Restore(KernelState* kernel_state,
-                                           ByteStream* stream,
-                                           const std::string_view path) {
-  auto module = new UserModule(kernel_state);
-
-  // XModule::Save took care of this earlier...
-  // TODO: Find a nicer way to represent that here.
-  if (!module->RestoreObject(stream)) {
-    return nullptr;
-  }
-
-  auto result = module->LoadFromFile(path);
-  if (XFAILED(result)) {
-    XELOGD("UserModule::Restore LoadFromFile({}) FAILED - code {:08X}", path,
-           result);
-    return nullptr;
-  }
-
-  if (!kernel_state->RegisterUserModule(retain_object(module))) {
-    // Already loaded?
-    assert_always();
-  }
-
-  return object_ref<UserModule>(module);
 }
 
 void UserModule::Dump() {

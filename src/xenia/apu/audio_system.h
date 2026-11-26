@@ -23,8 +23,6 @@
 namespace xe {
 namespace apu {
 
-constexpr fourcc_t kAudioSaveSignature = make_fourcc("XAUD");
-
 class AudioDriver;
 class XmaDecoder;
 
@@ -88,13 +86,6 @@ class AudioSystem {
                                     uint32_t frequency, uint32_t channels,
                                     bool need_format_conversion) = 0;
 
-  bool Save(ByteStream* stream);
-  bool Restore(ByteStream* stream);
-
-  bool is_paused() const { return paused_; }
-  void Pause();
-  void Resume();
-
  protected:
   explicit AudioSystem(cpu::Processor* processor);
 
@@ -149,12 +140,8 @@ class AudioSystem {
 
   std::unique_ptr<xe::threading::Semaphore>
       client_semaphores_[kMaximumClientCount];
-  // Wakes the worker to re-scan clients on register, shutdown, and pause.
+  // Wakes the worker to re-scan clients on register and shutdown.
   std::unique_ptr<xe::threading::Event> pending_work_event_;
-
-  bool paused_ = false;
-  threading::Fence pause_fence_;
-  std::unique_ptr<threading::Event> resume_event_;
 };
 
 }  // namespace apu

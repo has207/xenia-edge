@@ -87,37 +87,9 @@ void PacingAudioDriver::SubmitFrame(float* samples) {
     return;
   }
   // Start from now if the previous frame has already finished.
-  next_deadline_ =
-      std::max(paused_ ? paused_at_ : Clock::now(), next_deadline_) +
-      frame_duration_;
+  next_deadline_ = std::max(Clock::now(), next_deadline_) + frame_duration_;
   deadlines_.push_back(next_deadline_);
   if (deadlines_.size() == 1) {
-    wake_event_->Set();
-  }
-}
-
-void PacingAudioDriver::Pause() {
-  // The worker checks paused_ before releasing pending frames.
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (paused_) {
-    return;
-  }
-  paused_ = true;
-  paused_at_ = Clock::now();
-}
-
-void PacingAudioDriver::Resume() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (!paused_) {
-    return;
-  }
-  const Clock::duration paused_for = Clock::now() - paused_at_;
-  for (Clock::time_point& deadline : deadlines_) {
-    deadline += paused_for;
-  }
-  next_deadline_ += paused_for;
-  paused_ = false;
-  if (running_) {
     wake_event_->Set();
   }
 }
@@ -126,18 +98,16 @@ void PacingAudioDriver::ThreadMain() {
   std::unique_lock<std::mutex> lock(mutex_);
   while (running_) {
     std::chrono::milliseconds timeout = std::chrono::milliseconds::max();
-    if (!paused_) {
-      const Clock::time_point now = Clock::now();
-      while (!deadlines_.empty() && deadlines_.front() <= now) {
-        deadlines_.pop_front();
-        // Hold the mutex so Pause and Shutdown wait for pending releases.
-        auto released = semaphore_->Release(1, nullptr);
-        assert_true(released);
-      }
-      if (!deadlines_.empty()) {
-        timeout = std::chrono::ceil<std::chrono::milliseconds>(
-            deadlines_.front() - now);
-      }
+    const Clock::time_point now = Clock::now();
+    while (!deadlines_.empty() && deadlines_.front() <= now) {
+      deadlines_.pop_front();
+      // Hold the mutex so Shutdown waits for pending releases.
+      auto released = semaphore_->Release(1, nullptr);
+      assert_true(released);
+    }
+    if (!deadlines_.empty()) {
+      timeout = std::chrono::ceil<std::chrono::milliseconds>(
+          deadlines_.front() - now);
     }
     lock.unlock();
     xe::threading::Wait(wake_event_.get(), false, timeout);

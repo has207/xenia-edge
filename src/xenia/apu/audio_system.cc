@@ -16,7 +16,6 @@
 #include "xenia/apu/nop_audio_driver.h"
 #include "xenia/apu/xma_decoder.h"
 #include "xenia/base/assert.h"
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/clock.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/math.h"
@@ -67,9 +66,6 @@ AudioSystem::AudioSystem(cpu::Processor* processor)
   assert_not_null(pending_work_event_);
 
   xma_decoder_ = std::make_unique<xe::apu::XmaDecoder>(processor_);
-
-  resume_event_ = xe::threading::Event::CreateAutoResetEvent(false);
-  assert_not_null(resume_event_);
 }
 
 AudioSystem::~AudioSystem() {
@@ -93,8 +89,6 @@ X_STATUS AudioSystem::Setup(kernel::KernelState* kernel_state) {
             return 0;
           },
           kernel_state->GetSystemProcess()));
-  // As we run audio callbacks the debugger must be able to suspend us.
-  worker_thread_->set_can_debugger_suspend(true);
   worker_thread_->set_name("Audio Worker");
   worker_thread_->Create();
   // Set high priority for this thread for better pacing.
@@ -152,10 +146,6 @@ void AudioSystem::WorkerThreadMain() {
     // No clients yet: park until one registers or we're told to stop.
     if (client_index == kMaximumClientCount) {
       xe::threading::Wait(pending_work_event_.get(), true);
-      if (paused_) {
-        pause_fence_.Signal();
-        xe::threading::Wait(resume_event_.get(), false);
-      }
       continue;
     }
 
@@ -168,10 +158,6 @@ void AudioSystem::WorkerThreadMain() {
       auto result =
           xe::threading::Wait(pending_work_event_.get(), true, timeout);
       if (result == xe::threading::WaitResult::kSuccess) {
-        if (paused_) {
-          pause_fence_.Signal();
-          xe::threading::Wait(resume_event_.get(), false);
-        }
         continue;
       }
 
@@ -238,8 +224,6 @@ void AudioSystem::Initialize() {}
 void AudioSystem::StopWorker() {
   worker_running_ = false;
   pending_work_event_->Set();
-  // A paused worker waits for the resume.
-  resume_event_->Set();
   if (worker_thread_) {
     worker_thread_->Wait(0, 0, 0, nullptr);
     worker_thread_.reset();
@@ -464,105 +448,6 @@ void AudioSystem::UnregisterClient(size_t index) {
                                       std::chrono::milliseconds(0));
   } while (wait_result == xe::threading::WaitResult::kSuccess);
   assert_true(wait_result == xe::threading::WaitResult::kTimeout);
-}
-
-bool AudioSystem::Save(ByteStream* stream) {
-  stream->Write(kAudioSaveSignature);
-
-  // Count the number of used clients first.
-  // Any gaps should be handled gracefully.
-  // Host clients aren't guest state.
-  uint32_t used_clients = 0;
-  for (int i = 0; i < kMaximumClientCount; i++) {
-    if (clients_[i].in_use && !clients_[i].host_client) {
-      used_clients++;
-    }
-  }
-
-  stream->Write(used_clients);
-  for (uint32_t i = 0; i < kMaximumClientCount; i++) {
-    auto& client = clients_[i];
-    if (!client.in_use || client.host_client) {
-      continue;
-    }
-
-    stream->Write(i);
-    stream->Write(client.callback);
-    stream->Write(client.callback_arg);
-    stream->Write(client.wrapped_callback_arg);
-  }
-
-  return true;
-}
-
-bool AudioSystem::Restore(ByteStream* stream) {
-  if (stream->Read<uint32_t>() != kAudioSaveSignature) {
-    XELOGE("AudioSystem::Restore - Invalid magic value!");
-    return false;
-  }
-
-  uint32_t num_clients = stream->Read<uint32_t>();
-  for (uint32_t i = 0; i < num_clients; i++) {
-    auto id = stream->Read<uint32_t>();
-    assert_true(id < kMaximumClientCount);
-
-    auto& client = clients_[id];
-
-    // Reset the semaphore and recreate the driver ourselves.
-    if (client.driver) {
-      UnregisterClient(id);
-    }
-
-    client.callback = stream->Read<uint32_t>();
-    client.callback_arg = stream->Read<uint32_t>();
-    client.wrapped_callback_arg = stream->Read<uint32_t>();
-
-    client.next_pump_us = 0;
-    client.in_use = true;
-
-    auto client_semaphore = client_semaphores_[id].get();
-    auto ret = client_semaphore->Release(queued_frames_, nullptr);
-    assert_true(ret);
-
-    AudioDriver* driver = nullptr;
-    auto status = CreateClientDriver(id, client_semaphore, &driver);
-    if (XFAILED(status)) {
-      XELOGE(
-          "AudioSystem::Restore - Call to CreateDriver failed with status "
-          "{:08X}",
-          status);
-      return false;
-    }
-
-    assert_not_null(driver);
-    client.driver = driver;
-  }
-
-  return true;
-}
-
-void AudioSystem::Pause() {
-  if (paused_) {
-    return;
-  }
-  paused_ = true;
-
-  // Kind of a hack, but it works.
-  pending_work_event_->Set();
-  pause_fence_.Wait();
-
-  xma_decoder_->Pause();
-}
-
-void AudioSystem::Resume() {
-  if (!paused_) {
-    return;
-  }
-  paused_ = false;
-
-  resume_event_->Set();
-
-  xma_decoder_->Resume();
 }
 
 X_STATUS AudioSystem::CreateClientDriver(size_t index,

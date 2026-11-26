@@ -26,11 +26,6 @@ std::unique_ptr<GuestFunction> NullBackend::CreateGuestFunction(
   return nullptr;
 }
 
-uint64_t NullBackend::CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
-                                                   uint64_t current_pc) {
-  return current_pc;
-}
-
 }  // namespace backend
 }  // namespace cpu
 }  // namespace xe

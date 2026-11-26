@@ -16,15 +16,8 @@
 #include "xenia/cpu/ppc/ppc_context.h"
 #include "xenia/cpu/processor.h"
 
-DECLARE_bool(debug);
-
 DEFINE_bool(store_all_context_values, false,
             "Don't strip dead context stores to aid in debugging.", "CPU");
-
-DEFINE_bool(full_optimization_even_with_debug, false,
-            "For developer use to analyze the quality of the generated code, "
-            "not intended for actual debugging of the code",
-            "CPU");
 
 DEFINE_bool(
     context_promote_vec128, true,
@@ -99,8 +92,7 @@ bool ContextPromotionPass::Run(HIRBuilder* builder) {
   // Remove all dead stores.
   // This will break debugging as we can't recover this information when
   // trying to extract stack traces/register values, so we don't do that.
-  if ((cvars::full_optimization_even_with_debug ||
-       (!cvars::debug && !cvars::store_all_context_values)) &&
+  if (!cvars::store_all_context_values &&
       !(builder->attributes() & FUNCTION_ATTRIB_KEEP_CONTEXT_STORES)) {
     block = builder->first_block();
     while (block) {

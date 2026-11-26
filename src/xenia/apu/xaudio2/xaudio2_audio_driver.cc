@@ -258,22 +258,6 @@ void XAudio2AudioDriver::SubmitFrame(float* frame) {
   }
 }
 
-void XAudio2AudioDriver::Pause() {
-  if (api_minor_version_ >= 8) {
-    objects_.api_2_8.pcm_voice->Stop();
-  } else {
-    objects_.api_2_7.pcm_voice->Stop();
-  }
-}
-
-void XAudio2AudioDriver::Resume() {
-  if (api_minor_version_ >= 8) {
-    objects_.api_2_8.pcm_voice->Start();
-  } else {
-    objects_.api_2_7.pcm_voice->Start();
-  }
-}
-
 void XAudio2AudioDriver::SetVolume(float volume) {
   volume_ = volume;
   ApplyVolume();

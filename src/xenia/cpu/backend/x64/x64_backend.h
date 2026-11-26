@@ -214,12 +214,6 @@ class X64Backend : public Backend {
   std::unique_ptr<GuestFunction> CreateGuestFunction(Module* module,
                                                      uint32_t address) override;
 
-  uint64_t CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
-                                        uint64_t current_pc) override;
-
-  void InstallBreakpoint(Breakpoint* breakpoint) override;
-  void InstallBreakpoint(Breakpoint* breakpoint, Function* fn) override;
-  void UninstallBreakpoint(Breakpoint* breakpoint) override;
   virtual void InitializeBackendContext(void* ctx) override;
   virtual void DeinitializeBackendContext(void* ctx) override;
   virtual void PrepareForReentry(void* ctx) override;
@@ -276,8 +270,6 @@ class X64Backend : public Backend {
   bool ExceptionCallback(Exception* ex);
   bool RedirectUncoveredCall(Exception* ex);
   static uint64_t ReleaseFaultingReservedStore(void* data, Exception* ex);
-
-  uintptr_t capstone_handle_ = 0;
 
   // Every live guest context, so code the guest overwrites can be forgotten on
   // the threads that cached it rather than only on the one that wrote it.

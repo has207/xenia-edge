@@ -38,9 +38,6 @@ class PacingAudioDriver final : public AudioDriver {
 
   // Discards the samples and schedules a frame slot release.
   void SubmitFrame(float* samples) override;
-  // Holds releases until Resume shifts pending deadlines by the pause duration.
-  void Pause() override;
-  void Resume() override;
   void SetVolume(float volume) override {}
 
  private:
@@ -55,8 +52,6 @@ class PacingAudioDriver final : public AudioDriver {
 
   std::mutex mutex_;
   bool running_ = false;
-  bool paused_ = false;
-  Clock::time_point paused_at_;
   Clock::time_point next_deadline_;
   // Pending frame deadlines in submission order.
   std::deque<Clock::time_point> deadlines_;

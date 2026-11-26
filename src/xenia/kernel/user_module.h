@@ -114,11 +114,6 @@ class UserModule : public XModule {
 
   void Dump();
 
-  bool Save(ByteStream* stream) override;
-  static object_ref<UserModule> Restore(KernelState* kernel_state,
-                                        ByteStream* stream,
-                                        const std::string_view path);
-
   // TODO(Gliniak): This shouldn't be required. It is used for initial DLL
   // initialization. Which should happen on main thread before main execution
   // which isn't really possible right now.

@@ -26,10 +26,6 @@
 #include "xenia/cpu/mmio_handler.h"
 #include "xenia/guest_pointers.h"
 namespace xe {
-class ByteStream;
-}  // namespace xe
-
-namespace xe {
 
 class Memory;
 
@@ -282,9 +278,6 @@ class BaseHeap {
   // Queries access across committed pages in the inclusive address range.
   xe::memory::PageAccess QueryRangeAccess(uint32_t low_address,
                                           uint32_t high_address);
-
-  bool Save(ByteStream* stream);
-  bool Restore(ByteStream* stream);
 
   void Reset();
 
@@ -874,9 +867,6 @@ class Memory {
 
   // Dumps a map of all allocated memory to the log.
   void DumpMap();
-
-  bool Save(ByteStream* stream);
-  bool Restore(ByteStream* stream);
 
   void SetMMIOExceptionRecordingCallback(cpu::MmioAccessRecordCallback callback,
                                          void* context);

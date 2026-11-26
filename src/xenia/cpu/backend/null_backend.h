@@ -26,9 +26,6 @@ class NullBackend : public Backend {
 
   std::unique_ptr<GuestFunction> CreateGuestFunction(Module* module,
                                                      uint32_t address) override;
-
-  uint64_t CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
-                                        uint64_t current_pc) override;
 };
 
 }  // namespace backend

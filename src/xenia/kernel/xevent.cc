@@ -9,7 +9,6 @@
 
 #include "xenia/kernel/xevent.h"
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/guest_scheduler.h"
 #include "xenia/kernel/kernel_state.h"
@@ -192,56 +191,6 @@ void XEvent::Query(uint32_t* out_type, uint32_t* out_state) {
   *out_state = state;
 }
 void XEvent::Clear() { Reset(); }
-
-bool XEvent::Save(ByteStream* stream) {
-  XELOGD("XEvent {:08X} ({})", handle(), manual_reset_ ? "manual" : "auto");
-  SaveObject(stream);
-
-  bool signaled = true;
-  auto result =
-      xe::threading::Wait(event_.get(), false, std::chrono::milliseconds(0));
-  if (result == xe::threading::WaitResult::kSuccess) {
-    signaled = true;
-  } else if (result == xe::threading::WaitResult::kTimeout) {
-    signaled = false;
-  } else {
-    assert_always();
-  }
-
-  if (signaled) {
-    // Reset the event in-case it's an auto-reset.
-    event_->Set();
-  }
-
-  stream->Write<bool>(signaled);
-  stream->Write<bool>(manual_reset_);
-
-  return true;
-}
-
-object_ref<XEvent> XEvent::Restore(KernelState* kernel_state,
-                                   ByteStream* stream) {
-  auto evt = new XEvent(nullptr);
-  evt->kernel_state_ = kernel_state;
-
-  evt->RestoreObject(stream);
-  bool signaled = stream->Read<bool>();
-  evt->manual_reset_ = stream->Read<bool>();
-
-  if (evt->manual_reset_) {
-    evt->event_ = xe::threading::Event::CreateManualResetEvent(false);
-  } else {
-    evt->event_ = xe::threading::Event::CreateAutoResetEvent(false);
-  }
-  assert_not_null(evt->event_);
-
-  if (signaled) {
-    evt->event_->Set();
-  }
-  evt->host_signaled_ = signaled;
-
-  return object_ref<XEvent>(evt);
-}
 
 }  // namespace kernel
 }  // namespace xe

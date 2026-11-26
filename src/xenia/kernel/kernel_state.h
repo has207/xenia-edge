@@ -34,7 +34,6 @@
 #include "xenia/vfs/virtual_file_system.h"
 
 namespace xe {
-class ByteStream;
 class Emulator;
 namespace cpu {
 class Processor;
@@ -53,8 +52,6 @@ struct XCONTENT_AGGREGATE_DATA;
 
 namespace xe {
 namespace kernel {
-
-constexpr fourcc_t kKernelSaveSignature = make_fourcc("KRNL");
 
 static constexpr const uint16_t kBaseKernelBuildVersion = 1888;
 
@@ -356,9 +353,6 @@ class KernelState {
       std::function<X_RESULT(uint32_t&, uint32_t&)> completion_callback,
       uint32_t overlapped_ptr, std::function<void()> pre_callback = nullptr,
       std::function<void()> post_callback = nullptr);
-
-  bool Save(ByteStream* stream);
-  bool Restore(ByteStream* stream);
 
   uint32_t notification_position_ = 2;
   XDeploymentType deployment_type_ = XDeploymentType::kOther;

@@ -9,7 +9,6 @@
 
 #include "xenia/kernel/util/object_table.h"
 
-#include "xenia/base/byte_stream.h"
 #include "xenia/base/logging.h"
 #include "xenia/kernel/xobject.h"
 #include "xenia/kernel/xthread.h"
@@ -477,55 +476,6 @@ X_STATUS ObjectTable::GetObjectByName(const std::string_view name,
   if (obj) {
     obj->RetainHandle();
     obj->Release();
-  }
-
-  return X_STATUS_SUCCESS;
-}
-
-bool ObjectTable::Save(ByteStream* stream) {
-  stream->Write<uint32_t>(host_table_capacity_);
-  for (uint32_t i = 0; i < host_table_capacity_; i++) {
-    auto& entry = host_table_[i];
-    stream->Write<int32_t>(entry.handle_ref_count);
-  }
-
-  stream->Write<uint32_t>(table_capacity_);
-  for (uint32_t i = 0; i < table_capacity_; i++) {
-    auto& entry = table_[i];
-    stream->Write<int32_t>(entry.handle_ref_count);
-  }
-
-  return true;
-}
-
-bool ObjectTable::Restore(ByteStream* stream) {
-  Resize(stream->Read<uint32_t>(), true);
-  for (uint32_t i = 0; i < host_table_capacity_; i++) {
-    auto& entry = host_table_[i];
-    // entry.object = nullptr;
-    entry.handle_ref_count = stream->Read<int32_t>();
-  }
-
-  Resize(stream->Read<uint32_t>(), false);
-  for (uint32_t i = 0; i < table_capacity_; i++) {
-    auto& entry = table_[i];
-    // entry.object = nullptr;
-    entry.handle_ref_count = stream->Read<int32_t>();
-  }
-
-  return true;
-}
-
-X_STATUS ObjectTable::RestoreHandle(X_HANDLE handle, XObject* object) {
-  const bool is_host_object = XObject::is_handle_host_object(handle);
-  uint32_t slot = GetHandleSlot(handle, is_host_object);
-  uint32_t capacity = is_host_object ? host_table_capacity_ : table_capacity_;
-  assert_true(capacity > slot);
-
-  if (capacity > slot) {
-    auto& entry = is_host_object ? host_table_[slot] : table_[slot];
-    entry.object = object;
-    object->Retain();
   }
 
   return X_STATUS_SUCCESS;

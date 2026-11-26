@@ -20,10 +20,6 @@
 #include "xenia/xbox.h"
 
 namespace xe {
-class ByteStream;
-}  // namespace xe
-
-namespace xe {
 namespace kernel {
 namespace util {
 
@@ -44,12 +40,6 @@ class ObjectTable {
   X_STATUS ReleaseHandleInLock(X_HANDLE handle);
   X_STATUS RemoveHandle(X_HANDLE handle);
 
-  bool Save(ByteStream* stream);
-  bool Restore(ByteStream* stream);
-
-  // Restores a XObject reference with a handle. Mainly for internal use - do
-  // not use.
-  X_STATUS RestoreHandle(X_HANDLE handle, XObject* object);
   template <typename T>
   object_ref<T> LookupObject(X_HANDLE handle, bool already_locked = false) {
     auto object = LookupObject(handle, already_locked);

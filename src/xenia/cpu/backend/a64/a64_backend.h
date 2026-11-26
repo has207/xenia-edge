@@ -224,12 +224,6 @@ class A64Backend : public Backend {
   std::unique_ptr<GuestFunction> CreateGuestFunction(Module* module,
                                                      uint32_t address) override;
 
-  uint64_t CalculateNextHostInstruction(ThreadDebugInfo* thread_info,
-                                        uint64_t current_pc) override;
-
-  void InstallBreakpoint(Breakpoint* breakpoint) override;
-  void InstallBreakpoint(Breakpoint* breakpoint, Function* fn) override;
-  void UninstallBreakpoint(Breakpoint* breakpoint) override;
   void InitializeBackendContext(void* ctx) override;
   void DeinitializeBackendContext(void* ctx) override;
   void PrepareForReentry(void* ctx) override;
@@ -276,8 +270,6 @@ class A64Backend : public Backend {
   static bool ExceptionCallbackThunk(Exception* ex, void* data);
   bool ExceptionCallback(Exception* ex);
   static uint64_t ReleaseFaultingReservedStore(void* data, Exception* ex);
-
-  uintptr_t capstone_handle_ = 0;
 
   std::unique_ptr<A64CodeCache> code_cache_;
   uintptr_t emitter_data_ = 0;

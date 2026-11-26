@@ -645,10 +645,6 @@ dword_result_t DbgPrint_entry(lpstring_t format, const ppc_context_t& ctx) {
   std::string str = string_util::rtrim(data.str());
   XELOGI("(DbgPrint) {}", str);
 
-  if (cpu::DebugListener* listener = ctx->processor->debug_listener()) {
-    listener->OnDebugPrint(str);
-  }
-
   return X_STATUS_SUCCESS;
 }
 DECLARE_XBOXKRNL_EXPORT1(DbgPrint, kNone, kImplemented);

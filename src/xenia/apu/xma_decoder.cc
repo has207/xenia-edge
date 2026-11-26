@@ -196,7 +196,6 @@ X_STATUS XmaDecoder::Setup(kernel::KernelState* kernel_state) {
               ->GetIdleProcess()));  // this one doesnt need any process
                                      // actually. never calls any guest code
   worker_thread_->set_name("XMA Decoder");
-  worker_thread_->set_can_debugger_suspend(true);
   worker_thread_->Create();
 
   return X_STATUS_SUCCESS;
@@ -208,11 +207,6 @@ void XmaDecoder::WorkerThreadMain() {
     bool did_work = false;
     for (uint32_t n = 0; n < kContextCount; n++) {
       did_work = contexts_[n]->Work() || did_work;
-    }
-
-    if (paused_) {
-      pause_fence_.Signal();
-      resume_fence_.Wait();
     }
 
     if (did_work) {
@@ -227,10 +221,6 @@ void XmaDecoder::Shutdown() {
 
   if (work_event_) {
     work_event_->Set();
-  }
-
-  if (paused_) {
-    Resume();
   }
 
   if (worker_thread_) {
@@ -398,24 +388,6 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
 #pragma warning(suppress : 4065)
     }
   }
-}
-
-void XmaDecoder::Pause() {
-  if (paused_) {
-    return;
-  }
-  paused_ = true;
-
-  pause_fence_.Wait();
-}
-
-void XmaDecoder::Resume() {
-  if (!paused_) {
-    return;
-  }
-  paused_ = false;
-
-  resume_fence_.Signal();
 }
 
 }  // namespace apu
