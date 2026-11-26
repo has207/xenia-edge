@@ -940,23 +940,24 @@ dword_result_t XamReadTile_entry(dword_t tile_type, dword_t title_id,
                                  lpdword_t output_ptr,
                                  lpdword_t buffer_size_ptr,
                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  // The console reads through it unchecked.
+  if (!buffer_size_ptr) {
+    return X_ERROR_FUNCTION_FAILED;
+  }
+
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
   if (!user) {
     user = kernel_state()->xam_state()->GetUserProfile(item_id);
-    if (!user) {
-      return X_ERROR_INVALID_PARAMETER;
-    }
-  }
-
-  if (!buffer_size_ptr) {
-    return X_ERROR_INVALID_PARAMETER;
   }
 
   auto run = [=](uint32_t& extended_error, uint32_t& length) {
-    std::span<const uint8_t> tile =
-        kernel_state()->xam_state()->user_tracker()->GetIcon(
-            user->xuid(), title_id, static_cast<XTileType>(tile_type.value()),
-            item_id);
+    // Without a user the console only searches caches that aren't kept here.
+    std::span<const uint8_t> tile;
+    if (user) {
+      tile = kernel_state()->xam_state()->user_tracker()->GetIcon(
+          user->xuid(), title_id, static_cast<XTileType>(tile_type.value()),
+          item_id);
+    }
 
     auto result = X_ERROR_SUCCESS;
 
@@ -974,9 +975,10 @@ dword_result_t XamReadTile_entry(dword_t tile_type, dword_t title_id,
       result = X_ERROR_INSUFFICIENT_BUFFER;
     }
 
+    // Every failure is ERROR_FUNCTION_FAILED, the extended error says why.
     extended_error = X_HRESULT_FROM_WIN32(result);
     length = 0;
-    return result;
+    return result ? X_ERROR_FUNCTION_FAILED : X_ERROR_SUCCESS;
   };
 
   if (!overlapped_ptr) {
