@@ -2662,15 +2662,6 @@ bool BaseHeap::AllocFixed(uint32_t base_address, uint32_t size,
 
   return true;
 }
-template <typename T>
-static inline T QuickMod(T value, uint32_t modv) {
-  if (xe::is_pow2(modv)) {
-    return value & (modv - 1);
-  } else {
-    return value % modv;
-  }
-}
-
 bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
                           uint32_t size, uint32_t alignment,
                           uint32_t allocation_type, uint32_t protect,
@@ -2679,11 +2670,12 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
 
   alignment = xe::round_up(alignment, page_size_);
   uint32_t page_count = get_page_count(size, page_size_);
-  low_address = std::max(heap_base_, xe::align(low_address, alignment));
+  low_address = std::max(heap_base_, low_address);
   high_address = std::min(heap_base_ + (heap_size_ - 1), high_address);
 
+  // The page holding the floor may start the block, the search aligns only
+  // the start.
   uint32_t low_page_number = (low_address - heap_base_) >> page_size_shift_;
-  // Round the ceiling to the page, the search aligns it to the stride below.
   uint32_t high_page_number =
       (high_address - heap_base_ + (page_size_ - 1)) >> page_size_shift_;
   low_page_number = std::min(uint32_t(page_table_.size()) - 1, low_page_number);
@@ -2703,7 +2695,34 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   uint32_t end_page_number = UINT_MAX;
   uint32_t page_scan_stride = alignment >> page_size_shift_;
 
-  if (top_down) {
+  if (top_down && !xe::is_pow2(page_scan_stride)) {
+    // The console's search, masking the start and restarting below a used
+    // page.
+    const uint32_t mask = ~(page_scan_stride - 1);
+    int64_t start = int64_t(high_page_number) - page_count;
+    while (start >= 0) {
+      const uint32_t candidate = uint32_t(start) & mask;
+      if (candidate < low_page_number) {
+        break;
+      }
+      // The lowest used page from the candidate on.
+      uint32_t used = candidate;
+      auto it = free_blocks_.upper_bound(candidate);
+      if (it != free_blocks_.begin()) {
+        --it;
+        const uint32_t block_end = it->first + it->second;
+        if (block_end > candidate) {
+          used = block_end;
+        }
+      }
+      if (used - candidate >= page_count) {
+        start_page_number = candidate;
+        end_page_number = candidate + page_count - 1;
+        break;
+      }
+      start = int64_t(used) - page_count;
+    }
+  } else if (top_down) {
     // Search free blocks from high addresses downward.
     // Find the first block that could overlap our range.
     auto it = free_blocks_.upper_bound(high_page_number);
@@ -2723,18 +2742,15 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
         continue;
       }
 
-      // Compute the highest aligned start within this block and range.
-      // high_page_number is exclusive and rounded down to the stride, so
-      // the top stride of pages is never returned.
-      uint32_t high_aligned =
-          high_page_number - QuickMod(high_page_number, page_scan_stride);
-      uint32_t usable_end = std::min(block_end, high_aligned);
+      // The highest aligned start within this block and range.
+      // high_page_number is exclusive.
+      uint32_t usable_end = std::min(block_end, high_page_number);
       if (usable_end < page_count) {
         continue;
       }
       uint32_t latest_start = usable_end - page_count;
       // Align down to stride.
-      latest_start -= QuickMod(latest_start, page_scan_stride);
+      latest_start &= ~(page_scan_stride - 1);
       uint32_t usable_start = std::max(block_start, low_page_number);
       if (latest_start >= usable_start &&
           latest_start + page_count <= block_end) {
@@ -3443,7 +3459,8 @@ bool PhysicalHeap::Alloc(uint32_t size, uint32_t alignment,
   const uint32_t address = heap_base_ + parent_address - parent_heap_start;
   // The parent search already returned an alignment-aligned physical address.
   assert_true(GetPhysicalAddress(address) % alignment == 0);
-  if (!BaseHeap::AllocFixed(address, size, alignment, allocation_type,
+  // Only the pages the parent reserved, not the size rounded to the alignment.
+  if (!BaseHeap::AllocFixed(address, size, page_size_, allocation_type,
                             protect)) {
     XELOGE(
         "PhysicalHeap::Alloc unable to pin physical memory in physical heap");
@@ -3451,8 +3468,8 @@ bool PhysicalHeap::Alloc(uint32_t size, uint32_t alignment,
     return false;
   }
   // Pages the GPU marked valid while unowned carry no write watch.
-  TriggerCallbacks(std::move(global_lock), address, xe::align(size, alignment),
-                   true, true, true, true, true);
+  TriggerCallbacks(std::move(global_lock), address, size, true, true, true,
+                   true, true);
   *out_address = address;
   return true;
 }
@@ -3537,9 +3554,13 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   // Shouldn't be possible for it to be allocated already.
   const uint32_t address =
       heap_base_ + parent_address - GetPhysicalAddress(heap_base_);
-  // The parent search already returned an alignment-aligned physical address.
-  assert_true(GetPhysicalAddress(address) % alignment == 0);
-  if (!BaseHeap::AllocFixed(address, size, alignment, allocation_type,
+  // The parent search already returned an alignment-aligned physical address,
+  // or for an alignment that isn't a power of two one the console's mask
+  // allows.
+  assert_true(!xe::is_pow2(alignment) ||
+              GetPhysicalAddress(address) % alignment == 0);
+  // Only the pages the parent reserved, not the size rounded to the alignment.
+  if (!BaseHeap::AllocFixed(address, size, page_size_, allocation_type,
                             protect)) {
     XELOGE(
         "PhysicalHeap::AllocRange unable to pin physical memory in physical "
@@ -3547,8 +3568,8 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
     parent_heap_->Release(parent_address);
     return false;
   }
-  TriggerCallbacks(std::move(global_lock), address, xe::align(size, alignment),
-                   true, true, true, true, true);
+  TriggerCallbacks(std::move(global_lock), address, size, true, true, true,
+                   true, true);
   *out_address = address;
   return true;
 }

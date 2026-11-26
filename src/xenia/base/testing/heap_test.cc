@@ -21,9 +21,10 @@ namespace test {
 // Uses reserve-only allocations to avoid needing real host memory mappings.
 class TestHeap {
  public:
-  TestHeap(uint32_t heap_base, uint32_t heap_size, uint32_t page_size) {
-    heap_.Initialize(nullptr, nullptr, HeapType::kGuestXex, heap_base,
-                     heap_size, page_size);
+  TestHeap(uint32_t heap_base, uint32_t heap_size, uint32_t page_size,
+           HeapType heap_type = HeapType::kGuestXex) {
+    heap_.Initialize(nullptr, nullptr, heap_type, heap_base, heap_size,
+                     page_size);
   }
 
   ~TestHeap() {
@@ -247,12 +248,12 @@ TEST_CASE("heap_alloc_alignment_top_down", "[heap]") {
   REQUIRE(h.Alloc(0x1000, 0x1000, true, &first));
   REQUIRE(first == 0x800FE000);
 
-  // 64KB-aligned top-down: stride 16, exclusive high at page 0xFF, so
-  // the highest aligned base is page 0xE0.
+  // 64KB-aligned top-down aligns only the start, so the highest aligned base
+  // below page 0xFE is page 0xF0.
   uint32_t aligned = 0;
   REQUIRE(h.Alloc(0x1000, 0x10000, true, &aligned));
   REQUIRE((aligned % 0x10000) == 0);
-  REQUIRE(aligned == 0x800E0000);
+  REQUIRE(aligned == 0x800F0000);
 }
 
 // ============================================================================
@@ -304,6 +305,146 @@ TEST_CASE("heap_alloc_range_exhaustion", "[heap]") {
   // Allocate in the upper half — should succeed.
   REQUIRE(h.AllocRange(0x80008000, 0x8000F000, 0x1000, 0x1000, false, &addr));
   REQUIRE(addr >= 0x80008000);
+}
+
+TEST_CASE("heap_alloc_range_low_inside_a_page", "[heap]") {
+  // The page holding the floor may start the block, so 16 pages fit from a
+  // floor inside page 0x10 to the end of page 0x1F.
+  TestHeap h(0x80000000, 0x100000, 0x1000);
+  uint32_t addr = 0;
+  SECTION("bottom-up") {
+    REQUIRE(
+        h.AllocRange(0x80010800, 0x8001FFFF, 0x10000, 0x1000, false, &addr));
+    CHECK(addr == 0x80010000);
+  }
+  SECTION("top-down") {
+    REQUIRE(h.AllocRange(0x80010800, 0x8001FFFF, 0x10000, 0x1000, true, &addr));
+    CHECK(addr == 0x80010000);
+  }
+}
+
+TEST_CASE("heap_alloc_range_top_down_aligns_the_start", "[heap]") {
+  TestHeap h(0x80000000, 0x100000, 0x1000);
+  uint32_t addr = 0;
+  SECTION("the ceiling's page starts a stride") {
+    REQUIRE(h.AllocRange(0x80010000, 0x80020FFF, 0x1000, 0x10000, true, &addr));
+    CHECK(addr == 0x80020000);
+  }
+  SECTION("the ceiling ends a stride") {
+    REQUIRE(h.AllocRange(0x80010000, 0x8002FFFF, 0x1000, 0x10000, true, &addr));
+    CHECK(addr == 0x80020000);
+  }
+}
+
+TEST_CASE("heap_alloc_range_top_down_stride_not_a_power_of_two", "[heap]") {
+  // The start is masked with the stride less one like the console's, so a
+  // stride of 3 pages only clears bit 1 of the page number.
+  TestHeap h(0x80000000, 0x100000, 0x1000);
+  uint32_t addr = 0;
+  SECTION("the mask clears bit 1 of the ceiling's page") {
+    REQUIRE(h.AllocRange(0x80010000, 0x80012FFF, 0x1000, 0x3000, true, &addr));
+    CHECK(addr == 0x80010000);
+  }
+  SECTION("bit 0 stays") {
+    REQUIRE(h.AllocRange(0x80010000, 0x80013FFF, 0x1000, 0x3000, true, &addr));
+    CHECK(addr == 0x80011000);
+  }
+  SECTION("a used page starts the block again below it") {
+    REQUIRE(h.AllocFixed(0x80011000, 0x1000));
+    REQUIRE(h.AllocRange(0x80000000, 0x80013FFF, 0x2000, 0x3000, true, &addr));
+    CHECK(addr == 0x8000D000);
+  }
+  SECTION("starting again below the floor fails") {
+    REQUIRE(h.AllocFixed(0x80011000, 0x1000));
+    CHECK_FALSE(
+        h.AllocRange(0x80010000, 0x80013FFF, 0x2000, 0x3000, true, &addr));
+  }
+}
+
+// ============================================================================
+// The ranges callers search
+// ============================================================================
+
+// NtAllocateVirtualMemory with no base: a region starts on 64KB inside the
+// title's space for its page size.
+TEST_CASE("heap_alloc_range_title_regions_4k_pages", "[heap]") {
+  TestHeap h(0x00000000, 0x40000000, 0x1000);
+  uint32_t addr = 0;
+  SECTION("bottom-up") {
+    REQUIRE(
+        h.AllocRange(0x00010000, 0x2FFEFFFF, 0x1000, 0x10000, false, &addr));
+    CHECK(addr == 0x00010000);
+    REQUIRE(
+        h.AllocRange(0x00010000, 0x2FFEFFFF, 0x3000, 0x10000, false, &addr));
+    CHECK(addr == 0x00020000);
+  }
+  SECTION("top-down") {
+    REQUIRE(h.AllocRange(0x00010000, 0x2FFEFFFF, 0x1000, 0x10000, true, &addr));
+    CHECK(addr == 0x2FFE0000);
+    REQUIRE(h.AllocRange(0x00010000, 0x2FFEFFFF, 0x3000, 0x10000, true, &addr));
+    CHECK(addr == 0x2FFD0000);
+  }
+}
+
+TEST_CASE("heap_alloc_range_title_regions_64k_pages", "[heap]") {
+  TestHeap h(0x40000000, 0x3F000000, 0x10000);
+  uint32_t addr = 0;
+  SECTION("bottom-up") {
+    REQUIRE(
+        h.AllocRange(0x40000000, 0x6FFEFFFF, 0x10000, 0x10000, false, &addr));
+    CHECK(addr == 0x40000000);
+  }
+  SECTION("top-down") {
+    REQUIRE(
+        h.AllocRange(0x40000000, 0x6FFEFFFF, 0x10000, 0x10000, true, &addr));
+    CHECK(addr == 0x6FFE0000);
+    REQUIRE(
+        h.AllocRange(0x40000000, 0x6FFEFFFF, 0x30000, 0x10000, true, &addr));
+    CHECK(addr == 0x6FFB0000);
+  }
+}
+
+// MmCreateKernelStack: a guard page then the stack, bottom-up in the title's
+// stack space.
+TEST_CASE("heap_alloc_range_kernel_stacks", "[heap]") {
+  uint32_t addr = 0;
+  SECTION("4KB pages") {
+    TestHeap h(0x00000000, 0x40000000, 0x1000);
+    REQUIRE(h.AllocRange(0x30000000, 0x37FFFFFF, 0x5000, 0x1000, false, &addr));
+    CHECK(addr == 0x30000000);
+    REQUIRE(h.AllocRange(0x30000000, 0x37FFFFFF, 0x5000, 0x1000, false, &addr));
+    CHECK(addr == 0x30005000);
+  }
+  SECTION("64KB pages") {
+    TestHeap h(0x40000000, 0x3F000000, 0x10000);
+    REQUIRE(
+        h.AllocRange(0x70000000, 0x77FFFFFF, 0x20000, 0x10000, false, &addr));
+    CHECK(addr == 0x70000000);
+    REQUIRE(
+        h.AllocRange(0x70000000, 0x77FFFFFF, 0x20000, 0x10000, false, &addr));
+    CHECK(addr == 0x70020000);
+  }
+}
+
+// SystemHeapAlloc: bottom-up in the top 256MB of the 4KB virtual heap.
+TEST_CASE("heap_alloc_system_heap_virtual", "[heap]") {
+  TestHeap h(0x00000000, 0x40000000, 0x1000, HeapType::kGuestVirtual);
+  uint32_t addr = 0;
+  REQUIRE(h.heap().AllocSystemHeap(0x20, 0x20, kMemoryAllocationReserve,
+                                   kMemoryProtectRead, false, &addr));
+  CHECK(addr == 0x30000000);
+  REQUIRE(h.heap().AllocSystemHeap(0x2000, 0x20, kMemoryAllocationReserve,
+                                   kMemoryProtectRead, false, &addr));
+  CHECK(addr == 0x30001000);
+}
+
+// The kernel module's trampolines: bottom-up where the kernel image would
+// sit, on the 64KB xex heap.
+TEST_CASE("heap_alloc_range_kernel_trampolines", "[heap]") {
+  TestHeap h(0x80000000, 0x10000000, 0x10000);
+  uint32_t addr = 0;
+  REQUIRE(h.AllocRange(0x80040000, 0x801C0000, 400 * 8, 16, false, &addr));
+  CHECK(addr == 0x80040000);
 }
 
 // ============================================================================

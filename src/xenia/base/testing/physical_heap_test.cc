@@ -254,6 +254,94 @@ TEST_CASE("PhysicalHeap::AllocRange stays within the requested range",
   REQUIRE(addr + size - 1 <= high_address);
 }
 
+// The bounds MmAllocatePhysicalMemoryEx gives the heap, with the physical
+// addresses a console returns for them.
+TEST_CASE("PhysicalHeap vE0000000 AllocRange placement", "[memory]") {
+  Memory memory;
+  VirtualHeap parent;
+  parent.Initialize(nullptr, nullptr, HeapType::kGuestPhysical, 0x00000000,
+                    0x20000000, 4096);
+
+  PhysicalHeap heap;
+  heap.Initialize(&memory, nullptr, HeapType::kGuestPhysical, 0xE0000000,
+                  0x1FD00000, 4096, &parent);
+
+  uint32_t addr = 0;
+  SECTION("the page holding the floor starts the block") {
+    REQUIRE(heap.AllocRange(0xF02FF800, 0xF030EFFF, 0x10000, 0x1000,
+                            kMemoryAllocationReserve, kMemoryProtectRead, true,
+                            &addr));
+    CHECK(addr == 0xF02FF000);
+    CHECK(heap.GetPhysicalAddress(addr) == 0x10300000);
+  }
+
+  SECTION("a block of less than the alignment takes the ceiling's stride") {
+    REQUIRE(heap.AllocRange(0xF03FF000, 0xF040FFFF, 0x1000, 0x10000,
+                            kMemoryAllocationReserve, kMemoryProtectRead, true,
+                            &addr));
+    CHECK(addr == 0xF040F000);
+    CHECK(heap.GetPhysicalAddress(addr) == 0x10410000);
+    // The block holds its own pages only, so the next page is free in both
+    // heaps.
+    uint32_t size = 0;
+    REQUIRE(heap.QuerySize(addr, &size));
+    CHECK(size == 0x1000);
+    uint32_t next = 0;
+    REQUIRE(heap.AllocRange(0xF040F000, 0xF0410FFF, 0x1000, 0x1000,
+                            kMemoryAllocationReserve, kMemoryProtectRead, true,
+                            &next));
+    CHECK(next == 0xF0410000);
+  }
+
+  SECTION("a block of less than the alignment over the whole heap") {
+    REQUIRE(heap.AllocRange(0xE0000000, 0xFFCFFFFF, 0x1000, 0x10000,
+                            kMemoryAllocationReserve, kMemoryProtectRead, true,
+                            &addr));
+    CHECK(addr == 0xFFCFF000);
+    CHECK(heap.GetPhysicalAddress(addr) == 0x1FD00000);
+  }
+}
+
+// SystemHeapAlloc with kSystemHeapPhysical: top-down on the 4KB heap.
+TEST_CASE("PhysicalHeap vE0000000 system heap", "[memory]") {
+  Memory memory;
+  VirtualHeap parent;
+  parent.Initialize(nullptr, nullptr, HeapType::kGuestPhysical, 0x00000000,
+                    0x20000000, 4096);
+
+  PhysicalHeap heap;
+  heap.Initialize(&memory, nullptr, HeapType::kGuestPhysical, 0xE0000000,
+                  0x1FD00000, 4096, &parent);
+
+  uint32_t addr = 0;
+  REQUIRE(heap.AllocSystemHeap(0x20, 0x20, kMemoryAllocationReserve,
+                               kMemoryProtectRead, false, &addr));
+  CHECK(addr == 0xFFCFF000);
+  REQUIRE(heap.AllocSystemHeap(0x1C, 0x20, kMemoryAllocationReserve,
+                               kMemoryProtectRead, false, &addr));
+  CHECK(addr == 0xFFCFE000);
+}
+
+// The 64KB page reserve Memory makes at startup, top-down under the last 64KB
+// of physical memory it reserves first.
+TEST_CASE("PhysicalHeap 64KB pages Alloc", "[memory]") {
+  Memory memory;
+  VirtualHeap parent;
+  parent.Initialize(nullptr, nullptr, HeapType::kGuestPhysical, 0x00000000,
+                    0x20000000, 4096);
+  REQUIRE(parent.AllocFixed(0x1FFF0000, 0x10000, 0x10000,
+                            kMemoryAllocationReserve, kMemoryProtectNoAccess));
+
+  PhysicalHeap heap;
+  heap.Initialize(&memory, nullptr, HeapType::kGuestPhysical, 0xA0000000,
+                  0x20000000, 64 * 1024, &parent);
+
+  uint32_t addr = 0;
+  REQUIRE(heap.Alloc(0x340000, 64 * 1024, kMemoryAllocationReserve,
+                     kMemoryProtectNoAccess, true, &addr));
+  CHECK(addr == 0xBFCB0000);
+}
+
 TEST_CASE("PhysicalHeap vE0000000 release", "[memory]") {
   Memory memory;
   VirtualHeap parent;
