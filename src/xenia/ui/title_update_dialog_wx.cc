@@ -334,7 +334,7 @@ void TitleUpdateDialog::Download(const TitleUpdateDownload& update) {
 
 void TitleUpdateDialog::InstallFromFile() {
   wxFileDialog picker(this, _("Select a title update package"), wxString(),
-                      wxString(), _("All Files (*.*)|*.*"),
+                      wxString(), _("All Files") + wxT("|*"),
                       wxFD_OPEN | wxFD_FILE_MUST_EXIST);
   if (picker.ShowModal() != wxID_OK) {
     return;

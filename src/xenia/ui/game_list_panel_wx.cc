@@ -523,7 +523,7 @@ void GameListPanel::LaunchOrPrompt(const LibraryKey& key,
                      "Disc Image (*.iso)|*.iso|"
                      "Disc Archive (*.zar)|*.zar|"
                      "Xbox Executable (*.xex)|*.xex|"
-                     "All Files (*.*)|*.*"),
+                     "All Files|*"),
                    wxFD_OPEN | wxFD_FILE_MUST_EXIST);
   if (dlg.ShowModal() == wxID_OK) {
     // Replacement chosen, drop the stale path.

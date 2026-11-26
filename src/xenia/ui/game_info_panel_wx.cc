@@ -871,7 +871,7 @@ void GameInfoPanel::ImportContent(
     return;
   }
   wxFileDialog picker(wxGetTopLevelParent(this), _("Select content packages"),
-                      wxString(), wxString(), _("All Files (*.*)|*.*"),
+                      wxString(), wxString(), _("All Files") + wxT("|*"),
                       wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
   if (picker.ShowModal() != wxID_OK) {
     return;
