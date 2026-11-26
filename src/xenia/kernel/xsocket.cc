@@ -222,12 +222,13 @@ const std::map<uint32_t, int> supported_levels = {{0xFFFF, SOL_SOCKET},
 namespace {
 constexpr uint32_t kFD_READ = 1;
 constexpr uint32_t kFD_WRITE = 2;
-constexpr uint32_t kFD_OOB = 4;
 constexpr uint32_t kFD_ACCEPT = 8;
 constexpr uint32_t kFD_CONNECT = 16;
 constexpr uint32_t kFD_CLOSE = 32;
-constexpr uint32_t kReadEvents = kFD_READ | kFD_ACCEPT | kFD_CLOSE | kFD_OOB;
+constexpr uint32_t kReadEvents = kFD_READ | kFD_ACCEPT | kFD_CLOSE;
 constexpr uint32_t kWriteEvents = kFD_WRITE | kFD_CONNECT;
+// What the console's WSAEventSelect keeps, everything but FD_OOB.
+constexpr uint32_t kSelectableEvents = kReadEvents | kWriteEvents;
 }  // namespace
 
 // asio error_code -> Winsock WSAE* code. Guests look up by Winsock value;
@@ -1654,6 +1655,8 @@ int XSocket::WSAEventSelect(object_ref<XEvent> event, uint32_t flags) {
     last_error_ = uint32_t(X_WSAError::X_WSAENOTSOCK);
     return -1;
   }
+  // The console drops FD_OOB and any bit it doesn't know.
+  flags &= kSelectableEvents;
 
   asio::error_code ec;
 
@@ -1687,9 +1690,9 @@ int XSocket::WSAEventSelect(object_ref<XEvent> event, uint32_t flags) {
   selected_event_ = std::move(event);
   selected_event_flags_ = flags;
   // Arming clears the event. Readiness that already holds sets it again
-  // below. FD_OOB alone leaves it as is. Host sockets keep theirs since the
-  // I/O thread would only set it again later.
-  if (on_system_link_ && selected_event_ && (flags & ~kFD_OOB)) {
+  // below. Host sockets keep theirs since the I/O thread would only set it
+  // again later.
+  if (on_system_link_ && selected_event_ && flags) {
     selected_event_->Reset();
   }
 
