@@ -975,8 +975,11 @@ dword_result_t xeMmQueryStatistics(
       unreserved_pages, used_pages, reserved_pages_bytes);
 
   assert_true(used_pages < stats_ptr->total_physical_pages);
-  stats_ptr->title.available_pages =
-      stats_ptr->total_physical_pages - stats_ptr->kernel_pages - used_pages;
+  // Each partition's free 4 KB frames.
+  const BaseHeap* physical =
+      static_cast<const PhysicalHeap*>(physical_heaps[0])->parent_heap();
+  stats_ptr->title.available_pages = physical->UnreservedPageCountInRange(
+      kSystemPhysicalMemoryEnd, 0x1FFFFFFF);
   stats_ptr->title.total_virtual_memory_bytes = 0x2FFE0000;
   stats_ptr->title.reserved_virtual_memory_bytes = reserved_pages_bytes;
   stats_ptr->title.physical_pages = 0x00001000;  // TODO(gibbed): FIXME
@@ -988,7 +991,8 @@ dword_result_t xeMmQueryStatistics(
   stats_ptr->title.page_table_pages = 0x00000100;
   stats_ptr->title.cache_pages = 0x00000100;
 
-  stats_ptr->system.available_pages = 0x00000000;
+  stats_ptr->system.available_pages =
+      physical->UnreservedPageCountInRange(0, kSystemPhysicalMemoryEnd - 1);
   stats_ptr->system.total_virtual_memory_bytes = 0x00000000;
   stats_ptr->system.reserved_virtual_memory_bytes = 0x00000000;
   stats_ptr->system.physical_pages = 0x00000000;

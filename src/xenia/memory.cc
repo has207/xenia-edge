@@ -3325,6 +3325,32 @@ bool BaseHeap::IsPageCommitted(uint32_t address) {
           kMemoryAllocationCommit) != 0;
 }
 
+uint32_t BaseHeap::UnreservedPageCountInRange(uint32_t low_address,
+                                              uint32_t high_address) const {
+  low_address = std::max(heap_base_, low_address);
+  high_address = std::min(heap_base_ + (heap_size_ - 1), high_address);
+  if (low_address > high_address) {
+    return 0;
+  }
+  const uint32_t low_page = (low_address - heap_base_) >> page_size_shift_;
+  const uint32_t end_page =
+      ((high_address - heap_base_) >> page_size_shift_) + 1;
+  auto global_lock = global_critical_region_.Acquire();
+  uint32_t count = 0;
+  auto it = free_blocks_.upper_bound(low_page);
+  if (it != free_blocks_.begin()) {
+    --it;
+  }
+  for (; it != free_blocks_.end() && it->first < end_page; ++it) {
+    const uint32_t block_start = std::max(it->first, low_page);
+    const uint32_t block_end = std::min(it->first + it->second, end_page);
+    if (block_start < block_end) {
+      count += block_end - block_start;
+    }
+  }
+  return count;
+}
+
 bool BaseHeap::IsRangeUnallocated(uint32_t address, uint32_t size) {
   if (address < heap_base_ || (address - heap_base_) >= heap_size_ ||
       size > heap_size_ - (address - heap_base_)) {

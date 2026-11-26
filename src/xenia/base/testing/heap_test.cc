@@ -637,5 +637,23 @@ TEST_CASE("heap_uninitialized_runs", "[heap]") {
   CHECK(h.heap().TakeUninitializedRuns(0x80000000, 0x3000).empty());
 }
 
+TEST_CASE("heap_unreserved_page_count_in_range", "[heap]") {
+  TestHeap h(0x80000000, 0x100000, 0x1000);
+  REQUIRE(h.AllocFixed(0x80010000, 0x4000));
+  REQUIRE(h.AllocFixed(0x800F0000, 0x10000));
+
+  CHECK(h.heap().UnreservedPageCountInRange(0x80000000, 0x800FFFFF) == 236);
+  // Only the free pages on each side of a block count.
+  CHECK(h.heap().UnreservedPageCountInRange(0x8000F000, 0x80014FFF) == 2);
+  // The bounds are the pages holding them.
+  CHECK(h.heap().UnreservedPageCountInRange(0x8000FFFF, 0x80014001) == 2);
+  CHECK(h.heap().UnreservedPageCountInRange(0x80010000, 0x80013FFF) == 0);
+  CHECK(h.heap().UnreservedPageCountInRange(0x80020000, 0x80020000) == 1);
+  // Clamped to the heap.
+  CHECK(h.heap().UnreservedPageCountInRange(0x70000000, 0x8000FFFF) == 16);
+  CHECK(h.heap().UnreservedPageCountInRange(0x800E0000, 0xFFFFFFFF) == 16);
+  CHECK(h.heap().UnreservedPageCountInRange(0x80020000, 0x8001FFFF) == 0);
+}
+
 }  // namespace test
 }  // namespace xe

@@ -149,6 +149,10 @@ class BaseHeap {
   // Sum of unreserved pages in heap
   uint32_t unreserved_page_count() const { return unreserved_page_count_; }
 
+  // Unreserved pages between the pages holding the two addresses, inclusive.
+  uint32_t UnreservedPageCountInRange(uint32_t low_address,
+                                      uint32_t high_address) const;
+
   // Sum of reserved pages in heap
   uint32_t reserved_page_count() const {
     return total_page_count() - unreserved_page_count();
