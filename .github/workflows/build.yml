@@ -5,6 +5,11 @@ name: Build (reusable)
 # sccache self-demotes to read-only on its startup write probe there.
 on:
   workflow_call:
+    inputs:
+      version:
+        description: Release number to bake in, empty for non-release builds.
+        type: string
+        default: ''
 
 jobs:
   lint:
@@ -130,6 +135,7 @@ jobs:
           SCCACHE_GHA_ENABLED: "true"
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
+          XE_BUILD_VERSION: ${{ inputs.version }}
         run: ./xenia-build.py build --config=Release
       - name: sccache stats
         if: always()
@@ -279,6 +285,7 @@ jobs:
           SCCACHE_GHA_ENABLED: "true"
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
+          XE_BUILD_VERSION: ${{ inputs.version }}
         run: ./xenia-build.py build --config=Release --target=xenia-app
       - name: sccache stats
         if: always()
@@ -387,6 +394,7 @@ jobs:
           SCCACHE_GHA_ENABLED: "true"
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
+          XE_BUILD_VERSION: ${{ inputs.version }}
         run: python xenia-build.py build --config=Release --target=xenia-app
       - name: sccache stats
         if: always()

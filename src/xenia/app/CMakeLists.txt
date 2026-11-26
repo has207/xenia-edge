@@ -170,12 +170,17 @@ elseif(APPLE)
     GENERATED TRUE
     MACOSX_PACKAGE_LOCATION Resources)
 
+  # CI sets XE_BUILD_VERSION for releases.
+  set(_xe_app_version "$ENV{XE_BUILD_VERSION}")
+  if(_xe_app_version STREQUAL "")
+    set(_xe_app_version "1.0")
+  endif()
   set_target_properties(xenia-app PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
     MACOSX_BUNDLE_BUNDLE_NAME "Xenia-edge"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.xenia.edge"
-    MACOSX_BUNDLE_BUNDLE_VERSION "1"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${_xe_app_version}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${_xe_app_version}"
     MACOSX_BUNDLE_ICON_FILE "AppIcon.icns")
 
   target_link_options(xenia-app PRIVATE

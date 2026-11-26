@@ -391,6 +391,12 @@ def generate_version_h(build_dir="build"):
 #define XE_BUILD_PR_NUMBER "{pr_number}"
 """
 
+    # Release number, set by CI for edge releases.
+    version = os.getenv("XE_BUILD_VERSION")
+    if version:
+        contents_new += f"""#define XE_BUILD_VERSION "{version}"
+"""
+
     # footer
     contents_new += """#endif  // GENERATED_VERSION_H_
 """

@@ -602,12 +602,16 @@ EmulatorWindow::EmulatorWindow(Emulator* emulator,
                 " CHECKED"
 #endif
 #endif
+#ifdef XE_BUILD_VERSION
+                " " XE_BUILD_VERSION;
+#else
                 " ("
 #ifdef XE_BUILD_IS_PR
                 "PR#" XE_BUILD_PR_NUMBER " - "
 #endif
                 XE_BUILD_BRANCH "@" XE_BUILD_COMMIT_SHORT " on " XE_BUILD_DATE
                 ")";
+#endif
 }
 
 std::unique_ptr<EmulatorWindow> EmulatorWindow::Create(
@@ -3685,8 +3689,12 @@ void EmulatorWindow::ShowAbout() {
     }
   }
   info.SetName("Xenia Edge");
+#ifdef XE_BUILD_VERSION
+  info.SetVersion(XE_BUILD_VERSION);
+#else
   info.SetVersion(wxString::Format("%s@%s (%s)", XE_BUILD_BRANCH,
                                    XE_BUILD_COMMIT_SHORT, XE_BUILD_DATE));
+#endif
   info.SetDescription(_("Experimental fork of Xenia Canary."));
 
   auto* wx_window = static_cast<ui::WxWindow*>(window_.get());

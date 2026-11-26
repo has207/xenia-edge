@@ -22,6 +22,51 @@ on:
 # `contents: write` intact.
 
 jobs:
+  # Reserves the release number up front so the builds can bake it in. Only edge
+  # pushes get one, everything else builds with an empty version.
+  version:
+    name: Version
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.reserve.outputs.version }}
+    steps:
+      - name: Reserve release number
+        id: reserve
+        if: |
+          github.repository == 'has207/xenia-edge' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/edge'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          refs=$(git ls-remote --tags "https://github.com/${GH_REPO}")
+          # A full re-run keeps the number this commit already has.
+          tag=$(printf '%s\n' "$refs" | sed -n "s|^${GITHUB_SHA}\trefs/tags/\([0-9]\{8\}\.[0-9]\+\)$|\1|p" | head -n1)
+          # UTC date plus a per-day counter from 0, e.g. 20261125.0
+          day=$(date -u +%Y%m%d)
+          n=$(printf '%s\n' "$refs" | sed -n "s|.*\trefs/tags/${day}\.\([0-9]\+\)$|\1|p" | sort -n | tail -n1)
+          n=${n:--1}
+          # Creating a ref fails if it exists, so a concurrent run moves on to the next number.
+          for attempt in 1 2 3 4 5; do
+            [ -n "$tag" ] && break
+            n=$((n + 1))
+            if gh api "repos/${GH_REPO}/git/refs" -f ref="refs/tags/${day}.${n}" -f sha="$GITHUB_SHA" > /dev/null; then
+              tag="${day}.${n}"
+            fi
+          done
+          if [ -z "$tag" ]; then
+            echo "::error::Could not reserve a release number"
+            exit 1
+          fi
+          echo "Version: $tag"
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
   # One build job for every ref, each granted `actions: write` so any branch can
   # populate the sccache cache. Cache writes cover only third_party (stable
   # across branches), keeping per-branch entries small and isolated. Fork PRs
@@ -29,6 +74,7 @@ jobs:
   # read-only on its startup write probe.
   build:
     name: Build
+    needs: version
     # Draft PRs don't need the pipeline. Marking one ready re-triggers it.
     if: >-
       github.event_name != 'pull_request' ||
@@ -37,17 +83,16 @@ jobs:
       contents: read
       actions: write
     uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
 
   release:
     name: Create Release
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: |
-      github.repository == 'has207/xenia-edge' &&
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/edge'
+    if: needs.version.outputs.version != ''
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -76,6 +121,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.version }}
         run: |
           cd linux_artifacts
           # For Linux, just rename the AppImage (no need to zip a single file)
@@ -87,8 +133,9 @@ jobs:
           mv xenia_edge_macos.dmg ../xenia_edge_macos.dmg
           cd ..
 
+          tag=$TAG
+
           # Build release body: commit list since last release + compare URL
-          tag=${GITHUB_SHA::7}
           prev_tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
           prev_sha=""
           if [ -n "$prev_tag" ]; then
@@ -109,7 +156,7 @@ jobs:
           } > release_notes.md
 
           # Create release
-          gh release create $tag \
+          gh release create $tag --verify-tag \
             xenia_edge_linux.AppImage xenia_edge_windows.zip \
             xenia_edge_macos.dmg \
-            --target $GITHUB_SHA -t "xenia_edge" --notes-file release_notes.md
+            -t "xenia_edge $tag" --notes-file release_notes.md

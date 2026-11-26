@@ -179,6 +179,10 @@ static bool exception_pointers_handler(HostExceptionReport* report) {
   DWORD except_code = report->ExceptionInfo->ExceptionRecord->ExceptionCode;
 
   std::string build = (
+#ifdef XE_BUILD_VERSION
+      XE_BUILD_VERSION
+      " - "
+#endif
 #ifdef XE_BUILD_IS_PR
       "PR#" XE_BUILD_PR_NUMBER " - "
 #endif
