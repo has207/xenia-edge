@@ -341,10 +341,14 @@ dword_result_t XamGetCachedTitleName_entry(dword_t title_id,
   std::u16string title_name = xe::to_utf16(
       kernel_state()->emulator()->game_info_database()->GetTitleName());
 
-  xe::string_util::copy_and_swap_truncating(title_name_ptr, title_name,
-                                            title_name.size() + 1);
-
-  *title_name_length_ptr = title_name.size() + 1;
+  // The cache keeps 22 characters, and a longer name or a smaller buffer is
+  // cut short without an error.
+  constexpr uint32_t kCachedTitleNameCount = 23;
+  const uint32_t buffer_count =
+      std::min<uint32_t>(*title_name_length_ptr, kCachedTitleNameCount);
+  const size_t copied = xe::string_util::copy_and_swap_truncating(
+      title_name_ptr, title_name, buffer_count);
+  *title_name_length_ptr = static_cast<uint32_t>(copied + 1);
 
   return X_ERROR_SUCCESS;
 }
