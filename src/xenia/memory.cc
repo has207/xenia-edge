@@ -3970,11 +3970,9 @@ bool PhysicalHeap::TriggerCallbacks(
     // No watches on this page — another thread already cleared them (race
     // condition between the fault firing and acquiring the lock). Return true
     // so the faulting instruction retries; the page is now unprotected and the
-    // access will succeed. This is the signal-safe equivalent of the
-    // QueryProtect check in the non-Linux path of
-    // MMIOHandler::ExceptionCallback. If the guest doesn't permit the write
-    // either, retrying it faults forever, so report it unhandled and let the
-    // violation surface.
+    // access will succeed. If the guest doesn't permit the write either,
+    // retrying it faults forever, so report it unhandled and let the violation
+    // surface.
     return SystemPageGuestAccess(system_page_first) ==
            xe::memory::PageAccess::kReadWrite;
   }

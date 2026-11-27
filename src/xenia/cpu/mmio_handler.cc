@@ -466,44 +466,15 @@ bool MMIOHandler::HandleAccessViolation(Exception* ex) {
     }
   }
   if (!range) {
-    // Recheck if the pages are still protected (race condition - another thread
-    // clears the watch we just hit).
-    // Do this under the lock so we don't introduce another race condition.
-    auto lock = global_critical_region_.Acquire();
-#if XE_PLATFORM_LINUX || XE_PLATFORM_MAC
-    // POSIX exception handling runs inside a signal handler (SIGSEGV / SIGBUS).
-    // QueryProtect is not async-signal-safe on either platform: Linux reads
-    // /proc/self/maps via std::ifstream, and macOS issues a mach_msg via
-    // mach_vm_region. Either can deadlock or corrupt state if the signal
-    // interrupted malloc, the C++ runtime, or another mach reply-port use.
-    // Skip the race-condition check and go straight to the callback — if
-    // watches were already cleared by another thread, TriggerCallbacks finds
-    // no watches and the page is unprotected by the time we retry.
-    if (access_violation_callback_) {
-      return access_violation_callback_(std::move(lock),
-                                        access_violation_callback_context_,
-                                        fault_host_address, is_write, ex);
+    // A write watch or an actual access violation. The callback recognizes a
+    // watch another thread already cleared from its own page state, as asking
+    // the host isn't signal safe and on Windows walks the whole protected run.
+    if (!access_violation_callback_) {
+      return false;
     }
-    return false;
-#else
-    memory::PageAccess cur_access;
-    size_t page_length = memory::page_size();
-    memory::QueryProtect(fault_host_address, page_length, cur_access);
-    if (cur_access != memory::PageAccess::kNoAccess &&
-        (!is_write || cur_access != memory::PageAccess::kReadOnly)) {
-      // Another thread has cleared this watch. Abort.
-      XELOGD("Race condition on watch, was already cleared by another thread!");
-      return true;
-    }
-    // The address is not found within any range, so either a write watch or an
-    // actual access violation.
-    if (access_violation_callback_) {
-      return access_violation_callback_(std::move(lock),
-                                        access_violation_callback_context_,
-                                        fault_host_address, is_write, ex);
-    }
-    return false;
-#endif
+    return access_violation_callback_(global_critical_region_.Acquire(),
+                                      access_violation_callback_context_,
+                                      fault_host_address, is_write, ex);
   }
 
   auto rip = ex->pc();
