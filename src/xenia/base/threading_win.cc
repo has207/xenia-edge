@@ -133,6 +133,19 @@ void MaybeYield() {
   // memorybarrier is really not necessary here...
   // MemoryBarrier();
 }
+// Expires closer to its due time than NtDelayExecution does.
+struct ThreadSleepTimer {
+  // Null before Windows 10 1803.
+  HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr,
+                                         CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                                         TIMER_MODIFY_STATE | SYNCHRONIZE);
+  ~ThreadSleepTimer() {
+    if (handle) {
+      CloseHandle(handle);
+    }
+  }
+};
+
 void NanoSleep(int64_t ns) {
   // nanosleep is done in 100 nanosecond increments
   int64_t in_nt_increments = ns / 100LL;
@@ -142,6 +155,16 @@ void NanoSleep(int64_t ns) {
     in_nt_increments = 1;
   }
   in_nt_increments = -in_nt_increments;
+  if (ns > 0) {
+    thread_local ThreadSleepTimer timer;
+    LARGE_INTEGER due_time;
+    due_time.QuadPart = in_nt_increments;
+    if (timer.handle &&
+        SetWaitableTimer(timer.handle, &due_time, 0, nullptr, nullptr, false)) {
+      WaitForSingleObject(timer.handle, INFINITE);
+      return;
+    }
+  }
   NtDelayExecutionPointer.invoke(0, &in_nt_increments);
 }
 void SyncMemory() { MemoryBarrier(); }
@@ -155,8 +178,7 @@ void Sleep(std::chrono::microseconds duration) {
 }
 
 void PreciseSleep(std::chrono::nanoseconds duration) {
-  // NtDelayExecution already has 100ns resolution; the overshoot this exists
-  // to correct is an ARM64-Linux scheduler problem.
+  // The overshoot this exists to correct is an ARM64-Linux scheduler problem.
   NanoSleep(duration.count());
 }
 

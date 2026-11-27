@@ -137,6 +137,15 @@ TEST_CASE("Sleep Current Thread", "[sleep]") {
   REQUIRE(duration >= wait_time);
 }
 
+TEST_CASE("NanoSleep Current Thread", "[sleep]") {
+  for (std::chrono::microseconds wait_time : {100us, 900us, 15000us}) {
+    auto start = std::chrono::steady_clock::now();
+    NanoSleep(std::chrono::nanoseconds(wait_time).count());
+    auto duration = std::chrono::steady_clock::now() - start;
+    REQUIRE(duration >= wait_time);
+  }
+}
+
 TEST_CASE("TlsHandle") {
   // Test Allocate
   auto handle = threading::AllocateTlsHandle();
