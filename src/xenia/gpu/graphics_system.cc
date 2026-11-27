@@ -215,12 +215,19 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
               const uint64_t target_duration_ticks = tick_freq / vblank_hz;
               const uint64_t current_time = Clock::QueryGuestTickCount();
               const uint64_t time_delta = current_time - last_frame_time;
-#if XE_PLATFORM_WIN32 || XE_PLATFORM_MAC
-              // A capped period sleeps 90% and spins the rest, an uncapped one
-              // is too short for that.
+#if XE_PLATFORM_MAC
+              // A capped period sleeps 90% and spins the rest.
               const bool spin_to_deadline = refresh_cap_enabled;
 #else
               const bool spin_to_deadline = false;
+#endif
+#if XE_PLATFORM_WIN32
+              // A capped period spins its last millisecond because a sleep can
+              // end most of a millisecond late. An uncapped period is too
+              // short for that.
+              const int64_t spin_tail_ns = refresh_cap_enabled ? 1000000 : 0;
+#else
+              const int64_t spin_tail_ns = 0;
 #endif
 
               if (time_delta >= target_duration_ticks) {
@@ -236,11 +243,16 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
                       900000000.0 / (vblank_hz * Clock::guest_time_scalar())));
                 }
               } else if (!spin_to_deadline) {
-                // Sleep to the deadline, so a late wake-up shortens the
+                // Sleep toward the deadline, so a late wake-up shortens the
                 // next sleep instead of stretching the period.
-                threading::NanoSleep(static_cast<int64_t>(
-                    (target_duration_ticks - time_delta) * 1000000000.0 /
-                    (tick_freq * Clock::guest_time_scalar())));
+                const int64_t sleep_ns =
+                    static_cast<int64_t>(
+                        (target_duration_ticks - time_delta) * 1000000000.0 /
+                        (tick_freq * Clock::guest_time_scalar())) -
+                    spin_tail_ns;
+                if (sleep_ns > 0) {
+                  threading::NanoSleep(sleep_ns);
+                }
               }
             }
             return 0;
