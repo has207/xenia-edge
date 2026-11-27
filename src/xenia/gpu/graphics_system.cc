@@ -205,52 +205,42 @@ X_STATUS GraphicsSystem::Setup(cpu::Processor* processor,
               // Read guest_display_refresh_cap cvar each frame to allow
               // runtime changes
               // true: Fire vblanks at fixed rate (50Hz PAL, 60Hz NTSC)
-              // false: Fire vblanks limited by framerate_limit or 1ms
+              // false: Fire vblanks every millisecond
               // Note: framerate_limit is handled separately at IssueSwap for
               // host presentation throttling
-              bool refresh_cap_enabled = cvars::guest_display_refresh_cap;
-
-              if (refresh_cap_enabled) {
-                const uint32_t vblank_hz = GetGuestVblankRateHz();
-                const uint64_t tick_freq = Clock::guest_tick_frequency();
-                const uint64_t target_duration_ticks = tick_freq / vblank_hz;
-                const uint64_t current_time = Clock::QueryGuestTickCount();
-                const uint64_t time_delta = current_time - last_frame_time;
-
-                if (time_delta >= target_duration_ticks) {
-                  // If we've fallen behind by more than 2 frames, reset
-                  if (time_delta > target_duration_ticks * 2) {
-                    last_frame_time = current_time;
-                  } else {
-                    last_frame_time += target_duration_ticks;
-                  }
-                  MarkVblank();
+              const bool refresh_cap_enabled = cvars::guest_display_refresh_cap;
+              const uint32_t vblank_hz =
+                  refresh_cap_enabled ? GetGuestVblankRateHz() : 1000;
+              const uint64_t tick_freq = Clock::guest_tick_frequency();
+              const uint64_t target_duration_ticks = tick_freq / vblank_hz;
+              const uint64_t current_time = Clock::QueryGuestTickCount();
+              const uint64_t time_delta = current_time - last_frame_time;
 #if XE_PLATFORM_WIN32 || XE_PLATFORM_MAC
-                  // Sleep for 90% of the period, spin for the rest.
-                  const uint64_t sleep_ns = static_cast<uint64_t>(
-                      900000000.0 / (vblank_hz * Clock::guest_time_scalar()));
-#if XE_PLATFORM_MAC
-                  threading::NanoSleepPrecise(sleep_ns);
+              // A capped period sleeps 90% and spins the rest, an uncapped one
+              // is too short for that.
+              const bool spin_to_deadline = refresh_cap_enabled;
 #else
-                  threading::NanoSleep(sleep_ns);
+              const bool spin_to_deadline = false;
 #endif
-#endif
+
+              if (time_delta >= target_duration_ticks) {
+                // If we've fallen behind by more than 2 frames, reset
+                if (time_delta > target_duration_ticks * 2) {
+                  last_frame_time = current_time;
+                } else {
+                  last_frame_time += target_duration_ticks;
                 }
-#if XE_PLATFORM_LINUX
-                else {
-                  // Sleep to the deadline, so a late wake-up shortens the
-                  // next sleep instead of stretching the period.
-                  threading::NanoSleep(static_cast<int64_t>(
-                      (target_duration_ticks - time_delta) * 1000000000.0 /
-                      (tick_freq * Clock::guest_time_scalar())));
-                }
-#endif
-              } else {
-                // Unlimited mode (guest_display_refresh_cap=false) - fire
-                // vblanks as fast as possible Host presentation is separately
-                // throttled by framerate_limit
                 MarkVblank();
-                threading::Sleep(std::chrono::milliseconds(1));
+                if (spin_to_deadline) {
+                  threading::NanoSleepPrecise(static_cast<int64_t>(
+                      900000000.0 / (vblank_hz * Clock::guest_time_scalar())));
+                }
+              } else if (!spin_to_deadline) {
+                // Sleep to the deadline, so a late wake-up shortens the
+                // next sleep instead of stretching the period.
+                threading::NanoSleep(static_cast<int64_t>(
+                    (target_duration_ticks - time_delta) * 1000000000.0 /
+                    (tick_freq * Clock::guest_time_scalar())));
               }
             }
             return 0;
