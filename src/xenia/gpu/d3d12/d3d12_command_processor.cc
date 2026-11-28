@@ -1876,11 +1876,16 @@ template <uint32_t register_lower_bound, uint32_t register_upper_bound>
 XE_FORCEINLINE void
 D3D12CommandProcessor::WriteRegisterRangeFromMem_WithKnownBound(
     uint32_t start_index, uint32_t* base, uint32_t num_registers) {
-  uint32_t end = start_index + num_registers;
   LogRegisterSets(start_index, base, num_registers);
+  // Registers past the end of the register file are dropped.
+  uint32_t end = std::min(start_index + num_registers,
+                          uint32_t(RegisterFile::kRegisterCount));
+  if (start_index >= end) {
+    return;
+  }
   uint32_t current_index = start_index;
 
-  auto get_end_before_qty = [&end, current_index](uint32_t regnum) {
+  auto get_end_before_qty = [&end, &current_index](uint32_t regnum) {
     return std::min<uint32_t>(regnum, end) - current_index;
   };
 #define REGULAR_WRITE_CALLBACK(s, e, i, b, n) \
