@@ -315,9 +315,8 @@ class VulkanCommandProcessor final : public CommandProcessor {
   std::string MakeTitleStateSuffix() const override;
   XE_FORCEINLINE
   void WriteRegister(uint32_t index, uint32_t value) override;
-  XE_FORCEINLINE
-  virtual void WriteRegistersFromMem(uint32_t start_index, uint32_t* base,
-                                     uint32_t num_registers) override;
+
+#include "../register_write_command_processor_declare.h"
 
   void OnGammaRamp256EntryTableValueWritten() override;
   void OnGammaRampPWLValueWritten() override;

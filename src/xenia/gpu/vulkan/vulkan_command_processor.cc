@@ -1649,6 +1649,42 @@ void VulkanCommandProcessor::ShutdownContext() {
   CommandProcessor::ShutdownContext();
 }
 
+// Whether any of the float constants first to last of one shader stage is in
+// the map of the constants its shader uses.
+static bool AnyFloatConstantInMap(const uint64_t* map, uint32_t first,
+                                  uint32_t last) {
+  for (uint32_t word = first >> 6; word <= last >> 6; ++word) {
+    uint64_t mask = UINT64_MAX;
+    if (word == first >> 6) {
+      mask &= UINT64_MAX << (first & 63);
+    }
+    if (word == last >> 6) {
+      mask &= UINT64_MAX >> (63 - (last & 63));
+    }
+    if (map[word] & mask) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Whether a write of the registers first_index to last_index changes what the
+// system constants are built from. Those are the index and tessellation
+// parameters and the user clip planes.
+static bool SystemConstantRegistersWritten(uint32_t first_index,
+                                           uint32_t last_index) {
+  auto written = [first_index, last_index](uint32_t first_register,
+                                           uint32_t last_register) {
+    return first_index <= last_register && last_index >= first_register;
+  };
+  return written(XE_GPU_REG_VGT_MAX_VTX_INDX, XE_GPU_REG_VGT_INDX_OFFSET) ||
+         written(XE_GPU_REG_VGT_DMA_SIZE, XE_GPU_REG_VGT_DMA_SIZE) ||
+         written(XE_GPU_REG_PA_CL_CLIP_CNTL, XE_GPU_REG_PA_CL_CLIP_CNTL) ||
+         written(XE_GPU_REG_VGT_HOS_MAX_TESS_LEVEL,
+                 XE_GPU_REG_VGT_HOS_MIN_TESS_LEVEL) ||
+         written(XE_GPU_REG_PA_CL_UCP_0_X, XE_GPU_REG_PA_CL_UCP_5_W);
+}
+
 void VulkanCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
   CommandProcessor::WriteRegister(index, value);
 
@@ -1684,32 +1720,82 @@ void VulkanCommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
       texture_cache_->TextureFetchConstantWritten(
           (index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) / 6);
     }
-  } else if (index == XE_GPU_REG_VGT_MAX_VTX_INDX ||
-             index == XE_GPU_REG_VGT_MIN_VTX_INDX ||
-             index == XE_GPU_REG_VGT_INDX_OFFSET ||
-             index == XE_GPU_REG_VGT_DMA_SIZE ||
-             index == XE_GPU_REG_VGT_HOS_MAX_TESS_LEVEL ||
-             index == XE_GPU_REG_VGT_HOS_MIN_TESS_LEVEL) {
-    // Tessellation factor range and index parameters are in the system
-    // constants buffer.
-    current_constant_buffers_up_to_date_ &=
-        ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferSystem);
-  } else if ((index >= XE_GPU_REG_PA_CL_UCP_0_X &&
-              index <= XE_GPU_REG_PA_CL_UCP_5_W) ||
-             index == XE_GPU_REG_PA_CL_CLIP_CNTL) {
-    // User clip planes are in the system constants buffer.
+  } else if (SystemConstantRegistersWritten(index, index)) {
     current_constant_buffers_up_to_date_ &=
         ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferSystem);
   }
 }
-void VulkanCommandProcessor::WriteRegistersFromMem(uint32_t start_index,
-                                                   uint32_t* base,
-                                                   uint32_t num_registers) {
-  for (uint32_t i = 0; i < num_registers; ++i) {
-    uint32_t data = xe::load_and_swap<uint32_t>(base + i);
-    VulkanCommandProcessor::WriteRegister(start_index + i, data);
+
+XE_FORCEINLINE
+void VulkanCommandProcessor::WriteShaderConstantsFromMem(
+    uint32_t start_index, uint32_t* base, uint32_t num_registers) {
+  if (frame_open_) {
+    // The first 256 constants are the vertex shader's, the rest the pixel
+    // shader's.
+    uint32_t first = (start_index - XE_GPU_REG_SHADER_CONSTANT_000_X) >> 2;
+    uint32_t last =
+        (start_index + num_registers - 1 - XE_GPU_REG_SHADER_CONSTANT_000_X) >>
+        2;
+    if (first < 256 &&
+        AnyFloatConstantInMap(current_float_constant_map_vertex_, first,
+                              std::min(last, UINT32_C(255)))) {
+      current_constant_buffers_up_to_date_ &=
+          ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferFloatVertex);
+    }
+    if (last >= 256 && AnyFloatConstantInMap(
+                           current_float_constant_map_pixel_,
+                           std::max(first, UINT32_C(256)) - 256, last - 256)) {
+      current_constant_buffers_up_to_date_ &=
+          ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferFloatPixel);
+    }
   }
+  copy_and_swap_32_unaligned(&register_file_->values[start_index], base,
+                             num_registers);
 }
+
+XE_FORCEINLINE
+void VulkanCommandProcessor::WriteBoolLoopFromMem(uint32_t start_index,
+                                                  uint32_t* base,
+                                                  uint32_t num_registers) {
+  current_constant_buffers_up_to_date_ &=
+      ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferBoolLoop);
+  copy_and_swap_32_unaligned(&register_file_->values[start_index], base,
+                             num_registers);
+}
+
+XE_FORCEINLINE
+void VulkanCommandProcessor::WriteFetchFromMem(uint32_t start_index,
+                                               uint32_t* base,
+                                               uint32_t num_registers) {
+  current_constant_buffers_up_to_date_ &=
+      ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferFetch);
+  if (texture_cache_) {
+    texture_cache_->TextureFetchConstantsWritten(
+        (start_index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) / 6,
+        (start_index + num_registers - 1 -
+         XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) /
+            6);
+  }
+  copy_and_swap_32_unaligned(&register_file_->values[start_index], base,
+                             num_registers);
+}
+
+XE_FORCEINLINE
+void VulkanCommandProcessor::WriteRegularRegistersFromMem(
+    uint32_t start_index, uint32_t* base, uint32_t num_registers) {
+  if (SystemConstantRegistersWritten(start_index,
+                                     start_index + num_registers - 1)) {
+    current_constant_buffers_up_to_date_ &=
+        ~(UINT32_C(1) << SpirvShaderTranslator::kConstantBufferSystem);
+  }
+  copy_and_swap_32_unaligned(&register_file_->values[start_index], base,
+                             num_registers);
+}
+
+#define COMMAND_PROCESSOR VulkanCommandProcessor
+#include "../register_write_command_processor_implement.h"
+#undef COMMAND_PROCESSOR
+
 void VulkanCommandProcessor::SparseBindBuffer(
     VkBuffer buffer, uint32_t bind_count, const VkSparseMemoryBind* binds,
     VkPipelineStageFlags wait_stage_mask) {
