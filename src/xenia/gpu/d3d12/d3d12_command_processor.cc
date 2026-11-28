@@ -1623,146 +1623,6 @@ void D3D12CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
   WriteRegisterForceinline(index, value);
 }
 
-void D3D12CommandProcessor::WriteRegistersFromMem(uint32_t start_index,
-                                                  uint32_t* base,
-                                                  uint32_t num_registers) {
-  WriteRegisterRangeFromMem_WithKnownBound<0, 0xFFFF>(start_index, base,
-                                                      num_registers);
-}
-
-void D3D12CommandProcessor::WriteALURangeFromRing(xe::RingBuffer* ring,
-                                                  uint32_t base,
-                                                  uint32_t num_times) {
-  WriteRegisterRangeFromRing_WithKnownBound<
-      XE_GPU_REG_SHADER_CONSTANT_000_X, XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0>(
-      ring, base + XE_GPU_REG_SHADER_CONSTANT_000_X, num_times);
-}
-
-void D3D12CommandProcessor::WriteFetchRangeFromRing(xe::RingBuffer* ring,
-                                                    uint32_t base,
-                                                    uint32_t num_times) {
-  WriteRegisterRangeFromRing_WithKnownBound<0x4800, 0x5002>(ring, base + 0x4800,
-                                                            num_times);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteBoolRangeFromRing(xe::RingBuffer* ring,
-                                                   uint32_t base,
-                                                   uint32_t num_times) {
-  // D3D12CommandProcessor::WriteRegisterRangeFromRing(ring, base + 0x4900,
-  //                                                   num_times);
-
-  WriteRegisterRangeFromRing_WithKnownBound<0x4900, 0x5002>(ring, base + 0x4900,
-                                                            num_times);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteLoopRangeFromRing(xe::RingBuffer* ring,
-                                                   uint32_t base,
-                                                   uint32_t num_times) {
-  // D3D12CommandProcessor::WriteRegisterRangeFromRing(ring, base + 0x4908,
-  //                                                   num_times);
-
-  WriteRegisterRangeFromRing_WithKnownBound<0x4908, 0x5002>(ring, base + 0x4908,
-                                                            num_times);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteREGISTERSRangeFromRing(xe::RingBuffer* ring,
-                                                        uint32_t base,
-                                                        uint32_t num_times) {
-  // D3D12CommandProcessor::WriteRegisterRangeFromRing(ring, base + 0x2000,
-  //                                                  num_times);
-
-  WriteRegisterRangeFromRing_WithKnownBound<0x2000, 0x2000 + 0x800>(
-      ring, base + 0x2000, num_times);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteALURangeFromMem(uint32_t start_index,
-                                                 uint32_t* base,
-                                                 uint32_t num_registers) {
-  WriteRegisterRangeFromMem_WithKnownBound<
-      XE_GPU_REG_SHADER_CONSTANT_000_X, XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0>(
-      start_index + 0x4000, base, num_registers);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteFetchRangeFromMem(uint32_t start_index,
-                                                   uint32_t* base,
-                                                   uint32_t num_registers) {
-  WriteRegisterRangeFromMem_WithKnownBound<0x4800, 0x5002>(start_index + 0x4800,
-                                                           base, num_registers);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteBoolRangeFromMem(uint32_t start_index,
-                                                  uint32_t* base,
-                                                  uint32_t num_registers) {
-  WriteRegisterRangeFromMem_WithKnownBound<0x4900, 0x5002>(start_index + 0x4900,
-                                                           base, num_registers);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteLoopRangeFromMem(uint32_t start_index,
-                                                  uint32_t* base,
-                                                  uint32_t num_registers) {
-  WriteRegisterRangeFromMem_WithKnownBound<0x4908, 0x5002>(start_index + 0x4908,
-                                                           base, num_registers);
-}
-
-XE_FORCEINLINE
-void D3D12CommandProcessor::WriteREGISTERSRangeFromMem(uint32_t start_index,
-                                                       uint32_t* base,
-                                                       uint32_t num_registers) {
-  WriteRegisterRangeFromMem_WithKnownBound<0x2000, 0x2000 + 0x800>(
-      start_index + 0x2000, base, num_registers);
-}
-/*
-wraparound rarely happens, so its best to hoist this out of
-writeregisterrangefromring, and structure the two functions so that this can be
-tail called
-*/
-XE_NOINLINE
-void D3D12CommandProcessor::WriteRegisterRangeFromRing_WraparoundCase(
-    xe::RingBuffer* ring, uint32_t base, uint32_t num_registers) {
-  // we already brought it into L2 earlier
-  RingBuffer::ReadRange range =
-      ring->BeginPrefetchedRead<swcache::PrefetchTag::Level1>(num_registers *
-                                                              sizeof(uint32_t));
-
-  uint32_t num_regs_firstrange =
-      static_cast<uint32_t>(range.first_length / sizeof(uint32_t));
-
-  D3D12CommandProcessor::WriteRegistersFromMem(
-      base, reinterpret_cast<uint32_t*>(const_cast<uint8_t*>(range.first)),
-      num_regs_firstrange);
-
-  D3D12CommandProcessor::WriteRegistersFromMem(
-      base + num_regs_firstrange,
-      reinterpret_cast<uint32_t*>(const_cast<uint8_t*>(range.second)),
-      num_registers - num_regs_firstrange);
-
-  ring->EndRead(range);
-}
-void D3D12CommandProcessor::WriteRegisterRangeFromRing(xe::RingBuffer* ring,
-                                                       uint32_t base,
-                                                       uint32_t num_registers) {
-  RingBuffer::ReadRange range =
-      ring->BeginRead(num_registers * sizeof(uint32_t));
-
-  XE_LIKELY_IF(!range.second) {
-    WriteRegistersFromMem(
-        base, reinterpret_cast<uint32_t*>(const_cast<uint8_t*>(range.first)),
-        num_registers);
-
-    ring->EndRead(range);
-  }
-  else {
-    return WriteRegisterRangeFromRing_WraparoundCase(ring, base, num_registers);
-  }
-}
-
 template <uint32_t register_lower_bound, uint32_t register_upper_bound>
 constexpr bool bounds_may_have_reg(uint32_t reg) {
   return reg >= register_lower_bound && reg < register_upper_bound;
@@ -1824,6 +1684,12 @@ void D3D12CommandProcessor::WriteShaderConstantsFromMem(
                              num_registers);
 }
 XE_FORCEINLINE
+void D3D12CommandProcessor::WriteRegularRegistersFromMem(
+    uint32_t start_index, uint32_t* base, uint32_t num_registers) {
+  copy_and_swap_32_unaligned(&register_file_->values[start_index], base,
+                             num_registers);
+}
+XE_FORCEINLINE
 void D3D12CommandProcessor::WriteBoolLoopFromMem(uint32_t start_index,
                                                  uint32_t* base,
                                                  uint32_t num_registers) {
@@ -1849,141 +1715,10 @@ void D3D12CommandProcessor::WriteFetchFromMem(uint32_t start_index,
                              num_registers);
 }
 
-void D3D12CommandProcessor::WritePossiblySpecialRegistersFromMem(
-    uint32_t start_index, uint32_t* base, uint32_t numregs) {
-  uint32_t end = numregs + start_index;
-  for (uint32_t index = start_index; index < end; ++index, ++base) {
-    uint32_t value = xe::load_and_swap<uint32_t>(base);
+#define COMMAND_PROCESSOR D3D12CommandProcessor
+#include "../register_write_command_processor_implement.h"
+#undef COMMAND_PROCESSOR
 
-    register_file_->values[index] = value;
-
-    unsigned expr = 0;
-
-    expr |= (index - XE_GPU_REG_SCRATCH_REG0 < 8);
-
-    expr |= (index == XE_GPU_REG_COHER_STATUS_HOST);
-
-    expr |= ((index - XE_GPU_REG_DC_LUT_RW_INDEX) <=
-             (XE_GPU_REG_DC_LUT_30_COLOR - XE_GPU_REG_DC_LUT_RW_INDEX));
-
-    if (expr == 0) {
-    } else {
-      HandleSpecialRegisterWrite(index, value);
-    }
-  }
-}
-template <uint32_t register_lower_bound, uint32_t register_upper_bound>
-XE_FORCEINLINE void
-D3D12CommandProcessor::WriteRegisterRangeFromMem_WithKnownBound(
-    uint32_t start_index, uint32_t* base, uint32_t num_registers) {
-  LogRegisterSets(start_index, base, num_registers);
-  // Registers past the end of the register file are dropped.
-  uint32_t end = std::min(start_index + num_registers,
-                          uint32_t(RegisterFile::kRegisterCount));
-  if (start_index >= end) {
-    return;
-  }
-  uint32_t current_index = start_index;
-
-  auto get_end_before_qty = [&end, &current_index](uint32_t regnum) {
-    return std::min<uint32_t>(regnum, end) - current_index;
-  };
-#define REGULAR_WRITE_CALLBACK(s, e, i, b, n) \
-  copy_and_swap_32_unaligned(&register_file_->values[i], b, n)
-#define WRITE_FETCH_CONSTANTS_CALLBACK(str, er, ind, b, n) \
-  WriteFetchFromMem(ind, b, n)
-#define SPECIAL_REG_RANGE_CALLBACK(str, edr, ind, bs, n) \
-  WritePossiblySpecialRegistersFromMem(ind, bs, n)
-#define WRITE_SHADER_CONSTANTS_CALLBACK(start_range, end_range, index, base, \
-                                        n)                                   \
-  WriteShaderConstantsFromMem(index, base, n)
-#define WRITE_BOOL_LOOP_CALLBACK(s, e, i, b, n) WriteBoolLoopFromMem(i, b, n)
-
-#define DO_A_RANGE(start_range, end_range, cb)                       \
-  if constexpr (start_range >= register_lower_bound ||               \
-                end_range > register_lower_bound) {                  \
-    if (current_index < (end_range)) {                               \
-      uint32_t ntowrite = get_end_before_qty(end_range);             \
-      cb((start_range), (end_range), current_index, base, ntowrite); \
-      current_index += ntowrite;                                     \
-      base += ntowrite;                                              \
-    }                                                                \
-    if (current_index >= end) {                                      \
-      return;                                                        \
-    }                                                                \
-  }
-
-#define REFRESH_MSVC_RANGE()                              \
-  XE_MSVC_ASSUME(current_index >= register_lower_bound && \
-                 current_index < register_upper_bound)
-
-  REFRESH_MSVC_RANGE();
-
-  DO_A_RANGE(0, XE_GPU_REG_SCRATCH_REG0, REGULAR_WRITE_CALLBACK);
-  REFRESH_MSVC_RANGE();
-  DO_A_RANGE(XE_GPU_REG_SCRATCH_REG0, XE_GPU_REG_DC_LUT_30_COLOR + 1,
-             SPECIAL_REG_RANGE_CALLBACK);
-  REFRESH_MSVC_RANGE();
-  DO_A_RANGE(XE_GPU_REG_DC_LUT_30_COLOR + 1, XE_GPU_REG_SHADER_CONSTANT_000_X,
-             REGULAR_WRITE_CALLBACK);
-  REFRESH_MSVC_RANGE();
-  DO_A_RANGE(XE_GPU_REG_SHADER_CONSTANT_000_X,
-             XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0,
-             WRITE_SHADER_CONSTANTS_CALLBACK);
-  REFRESH_MSVC_RANGE();
-  DO_A_RANGE(XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0,
-             XE_GPU_REG_SHADER_CONSTANT_FETCH_31_5 + 1,
-             WRITE_FETCH_CONSTANTS_CALLBACK);
-  REFRESH_MSVC_RANGE();
-  DO_A_RANGE(XE_GPU_REG_SHADER_CONSTANT_BOOL_000_031,
-             XE_GPU_REG_SHADER_CONSTANT_LOOP_31 + 1, WRITE_BOOL_LOOP_CALLBACK);
-  REFRESH_MSVC_RANGE();
-  DO_A_RANGE(XE_GPU_REG_SHADER_CONSTANT_LOOP_31 + 1, 65536,
-             REGULAR_WRITE_CALLBACK);
-}
-template <uint32_t register_lower_bound, uint32_t register_upper_bound>
-XE_FORCEINLINE void
-D3D12CommandProcessor::WriteRegisterRangeFromRing_WithKnownBound(
-    xe::RingBuffer* ring, uint32_t base, uint32_t num_registers) {
-  RingBuffer::ReadRange range =
-      ring->BeginRead(num_registers * sizeof(uint32_t));
-
-  XE_LIKELY_IF(!range.second) {
-    WriteRegisterRangeFromMem_WithKnownBound<register_lower_bound,
-                                             register_upper_bound>(
-        base, reinterpret_cast<uint32_t*>(const_cast<uint8_t*>(range.first)),
-        num_registers);
-
-    ring->EndRead(range);
-  }
-  else {
-    return WriteRegisterRangeFromRing_WraparoundCase(ring, base, num_registers);
-  }
-}
-XE_NOINLINE
-void D3D12CommandProcessor::WriteOneRegisterFromRing(uint32_t base,
-                                                     uint32_t num_times) {
-  auto read = reader_.BeginPrefetchedRead<swcache::PrefetchTag::Level1>(
-      num_times * sizeof(uint32_t));
-
-  uint32_t first_length = read.first_length / sizeof(uint32_t);
-
-  for (uint32_t i = 0; i < first_length; ++i) {
-    D3D12CommandProcessor::WriteRegister(
-        base, xe::load_and_swap<uint32_t>(read.first + (sizeof(uint32_t) * i)));
-  }
-
-  XE_UNLIKELY_IF(read.second) {
-    uint32_t second_length = read.second_length / sizeof(uint32_t);
-
-    for (uint32_t i = 0; i < second_length; ++i) {
-      D3D12CommandProcessor::WriteRegister(
-          base,
-          xe::load_and_swap<uint32_t>(read.second + (sizeof(uint32_t) * i)));
-    }
-  }
-  reader_.EndRead(read);
-}
 void D3D12CommandProcessor::OnGammaRamp256EntryTableValueWritten() {
   gamma_ramp_256_entry_table_up_to_date_ = false;
 }

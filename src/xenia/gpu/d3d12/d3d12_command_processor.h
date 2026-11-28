@@ -286,78 +286,7 @@ class D3D12CommandProcessor final : public CommandProcessor {
   void WriteRegisterForceinline(uint32_t index, uint32_t value);
   void WriteRegister(uint32_t index, uint32_t value) override;
 
-  virtual void WriteRegistersFromMem(uint32_t start_index, uint32_t* base,
-                                     uint32_t num_registers) override;
-  /*helper functions for WriteRegistersFromMem*/
-  XE_FORCEINLINE
-  void WriteShaderConstantsFromMem(uint32_t start_index, uint32_t* base,
-                                   uint32_t num_registers);
-  XE_FORCEINLINE
-  void WriteBoolLoopFromMem(uint32_t start_index, uint32_t* base,
-                            uint32_t num_registers);
-  XE_FORCEINLINE
-  void WriteFetchFromMem(uint32_t start_index, uint32_t* base,
-                         uint32_t num_registers);
-
-  void WritePossiblySpecialRegistersFromMem(uint32_t start_index,
-                                            uint32_t* base,
-                                            uint32_t num_registers);
-  template <uint32_t register_lower_bound, uint32_t register_upper_bound>
-  XE_FORCEINLINE void WriteRegisterRangeFromMem_WithKnownBound(
-      uint32_t start_index, uint32_t* base, uint32_t num_registers);
-  XE_FORCEINLINE
-  virtual void WriteRegisterRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                                          uint32_t num_registers) override;
-  template <uint32_t register_lower_bound, uint32_t register_upper_bound>
-  XE_FORCEINLINE void WriteRegisterRangeFromRing_WithKnownBound(
-      xe::RingBuffer* ring, uint32_t base, uint32_t num_registers);
-
-  XE_NOINLINE
-  void WriteRegisterRangeFromRing_WraparoundCase(xe::RingBuffer* ring,
-                                                 uint32_t base,
-                                                 uint32_t num_registers);
-  XE_NOINLINE
-  void WriteOneRegisterFromRing(uint32_t base, uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteALURangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                             uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteFetchRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                               uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteBoolRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                              uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteLoopRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                              uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteREGISTERSRangeFromRing(xe::RingBuffer* ring, uint32_t base,
-                                   uint32_t num_times);
-
-  XE_FORCEINLINE
-  void WriteALURangeFromMem(uint32_t start_index, uint32_t* base,
-                            uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteFetchRangeFromMem(uint32_t start_index, uint32_t* base,
-                              uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteBoolRangeFromMem(uint32_t start_index, uint32_t* base,
-                             uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteLoopRangeFromMem(uint32_t start_index, uint32_t* base,
-                             uint32_t num_registers);
-
-  XE_FORCEINLINE
-  void WriteREGISTERSRangeFromMem(uint32_t start_index, uint32_t* base,
-                                  uint32_t num_registers);
+#include "../register_write_command_processor_declare.h"
 
   void OnGammaRamp256EntryTableValueWritten() override;
   void OnGammaRampPWLValueWritten() override;
