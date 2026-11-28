@@ -69,6 +69,9 @@ bool VulkanSharedMemory::Initialize() {
     return true;
   }
 
+  // Zero-copy has no uploads to order.
+  TrackSubmissionUsedPages();
+
   const VkBufferCreateFlags sparse_flags =
       VK_BUFFER_CREATE_SPARSE_BINDING_BIT |
       VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
@@ -440,7 +443,33 @@ void VulkanSharedMemory::CompletedSubmissionUpdated() {
   upload_buffer_pool_->Reclaim(command_processor_.GetCompletedSubmission());
 }
 
-void VulkanSharedMemory::EndSubmission() { upload_buffer_pool_->FlushWrites(); }
+void VulkanSharedMemory::EndSubmission() {
+  if (early_uploads_recorded_) {
+    early_uploads_recorded_ = false;
+    RecordEarlyUploadBarrier(Usage::kTransferDestination,
+                             submission_start_usage_);
+  }
+  submission_start_usage_ = last_usage_;
+  upload_buffer_pool_->FlushWrites();
+  ClearSubmissionUsedPages();
+}
+
+void VulkanSharedMemory::RecordEarlyUploadBarrier(Usage old_usage,
+                                                  Usage new_usage) {
+  VkPipelineStageFlags src_stage_mask, dst_stage_mask;
+  VkBufferMemoryBarrier barrier;
+  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  barrier.pNext = nullptr;
+  GetUsageMasks(old_usage, src_stage_mask, barrier.srcAccessMask);
+  GetUsageMasks(new_usage, dst_stage_mask, barrier.dstAccessMask);
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = buffer_;
+  barrier.offset = 0;
+  barrier.size = VK_WHOLE_SIZE;
+  command_processor_.early_upload_command_buffer().CmdVkPipelineBarrier(
+      src_stage_mask, dst_stage_mask, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+}
 
 void VulkanSharedMemory::Use(Usage usage,
                              std::pair<uint32_t, uint32_t> written_range) {
@@ -650,33 +679,47 @@ bool VulkanSharedMemory::UploadRanges(
   if (cpu_upload_ranges_.empty()) {
     return true;
   }
+  // Ranges refreshed from memexport output were copied in order. What is left
+  // has to follow them.
+  const bool early = !upload_pages_used_in_submission() &&
+                     cpu_upload_ranges_.size() == num_upload_ranges;
   upload_page_ranges = cpu_upload_ranges_.data();
   num_upload_ranges = uint32_t(cpu_upload_ranges_.size());
 
   auto& range_front = upload_page_ranges[0];
   auto& range_back = upload_page_ranges[num_upload_ranges - 1];
 
-  // upload_page_ranges are sorted, use them to determine the range for the
-  // ordering barrier.
-  Use(Usage::kTransferDestination,
-      std::make_pair(range_front.first << page_size_log2(),
-                     (range_back.first + range_back.second - range_front.first)
-                         << page_size_log2()));
-  // Submit barriers (may end render pass) before pushing debug marker so
-  // EndRenderPass is not inside the SharedMem Upload marker.
-  command_processor_.SubmitBarriers(true);
+  if (early) {
+    if (!early_uploads_recorded_) {
+      early_uploads_recorded_ = true;
+      RecordEarlyUploadBarrier(submission_start_usage_,
+                               Usage::kTransferDestination);
+    }
+  } else {
+    // upload_page_ranges are sorted, use them to determine the range for the
+    // ordering barrier.
+    Use(Usage::kTransferDestination,
+        std::make_pair(
+            range_front.first << page_size_log2(),
+            (range_back.first + range_back.second - range_front.first)
+                << page_size_log2()));
+    // Submit barriers (may end render pass) before pushing debug marker so
+    // EndRenderPass is not inside the SharedMem Upload marker.
+    command_processor_.SubmitBarriers(true);
 
-  // Calculate total upload size for debug marker.
-  uint32_t total_upload_bytes =
-      (range_back.first + range_back.second - range_front.first)
-      << page_size_log2();
-  command_processor_.PushDebugMarker(
-      "UploadRanges (SharedMem): 0x%08X-0x%08X (%u KB, %u ranges)",
-      range_front.first << page_size_log2(),
-      (range_back.first + range_back.second) << page_size_log2(),
-      total_upload_bytes / 1024, num_upload_ranges);
+    // Calculate total upload size for debug marker.
+    uint32_t total_upload_bytes =
+        (range_back.first + range_back.second - range_front.first)
+        << page_size_log2();
+    command_processor_.PushDebugMarker(
+        "UploadRanges (SharedMem): 0x%08X-0x%08X (%u KB, %u ranges)",
+        range_front.first << page_size_log2(),
+        (range_back.first + range_back.second) << page_size_log2(),
+        total_upload_bytes / 1024, num_upload_ranges);
+  }
   DeferredCommandBuffer& command_buffer =
-      command_processor_.deferred_command_buffer();
+      early ? command_processor_.early_upload_command_buffer()
+            : command_processor_.deferred_command_buffer();
   uint64_t submission_current = command_processor_.GetCurrentSubmission();
   bool successful = true;
   upload_regions_.clear();
@@ -768,7 +811,9 @@ bool VulkanSharedMemory::UploadRanges(
                                    upload_regions_.data());
     upload_regions_.clear();
   }
-  command_processor_.PopDebugMarker();
+  if (!early) {
+    command_processor_.PopDebugMarker();
+  }
   return successful;
 }
 

@@ -157,6 +157,17 @@ class SharedMemory {
       const std::pair<uint32_t, uint32_t>* upload_page_ranges,
       uint32_t num_upload_ranges) = 0;
 
+  // Starts tracking which pages have been requested or written by the GPU
+  // since the last ClearSubmissionUsedPages, for a backend that can record an
+  // upload ahead of the commands of its submission.
+  void TrackSubmissionUsedPages();
+  void ClearSubmissionUsedPages();
+  // Within UploadRanges, whether any page being uploaded has been requested or
+  // written by the GPU since the last ClearSubmissionUsedPages.
+  bool upload_pages_used_in_submission() const {
+    return upload_pages_used_in_submission_;
+  }
+
   const std::vector<std::pair<uint32_t, uint32_t>>& trace_download_ranges() {
     return trace_download_ranges_;
   }
@@ -182,6 +193,12 @@ class SharedMemory {
   uint32_t page_size_log2_;
 
   bool EnsureHostGpuMemoryAllocated(uint32_t start, uint32_t length);
+
+  // One bit per page, empty unless tracked.
+  std::vector<uint64_t> submission_used_pages_;
+  bool upload_pages_used_in_submission_ = false;
+  bool AnySubmissionPageUsed(uint32_t page_first, uint32_t page_last) const;
+  void MarkSubmissionPagesUsed(uint32_t page_first, uint32_t page_last);
   uint32_t host_gpu_memory_sparse_granularity_log2_ = UINT32_MAX;
   std::vector<uint64_t> host_gpu_memory_sparse_allocated_;
   uint32_t host_gpu_memory_sparse_allocations_ = 0;

@@ -114,6 +114,13 @@ class VulkanSharedMemory : public SharedMemory {
   Usage last_usage_;
   std::pair<uint32_t, uint32_t> last_written_range_;
 
+  // Uploads of pages nothing in the submission has used yet are recorded ahead
+  // of its commands, between a barrier out of the usage the previous submission
+  // ended in and one back into it.
+  Usage submission_start_usage_ = Usage::kTransferDestination;
+  bool early_uploads_recorded_ = false;
+  void RecordEarlyUploadBarrier(Usage old_usage, Usage new_usage);
+
   std::unique_ptr<ui::vulkan::VulkanUploadBufferPool> upload_buffer_pool_;
   std::vector<VkBufferCopy> upload_regions_;
   // Upload ranges left after the memexport ones are refreshed on the GPU.

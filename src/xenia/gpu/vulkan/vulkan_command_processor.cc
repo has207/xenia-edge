@@ -102,6 +102,7 @@ VulkanCommandProcessor::VulkanCommandProcessor(
                                ->vulkan_device(),
                            "cp"),
       deferred_command_buffer_(*this),
+      early_upload_command_buffer_(*this, 64 * 1024),
       transient_descriptor_allocator_uniform_buffer_(
           static_cast<const ui::vulkan::VulkanProvider*>(
               graphics_system->provider())
@@ -1593,6 +1594,7 @@ void VulkanCommandProcessor::ShutdownContext() {
   sparse_memory_binds_.clear();
 
   deferred_command_buffer_.Reset();
+  early_upload_command_buffer_.Reset();
   for (const auto& command_buffer_pair : command_buffers_submitted_) {
     dfn.vkDestroyCommandPool(device, command_buffer_pair.second.pool, nullptr);
   }
@@ -5659,6 +5661,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
     // Start a new deferred command buffer - will submit it to the real one in
     // the end of the submission.
     deferred_command_buffer_.Reset();
+    early_upload_command_buffer_.Reset();
 
     // Reset cached state of the command buffer.
     dynamic_viewport_update_needed_ = true;
@@ -5998,6 +6001,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
                               gpu_time_query_pool_, gpu_time_slot * 2);
     }
 
+    early_upload_command_buffer_.Execute(command_buffer.buffer);
     deferred_command_buffer_.Execute(command_buffer.buffer);
 
     // Record query resolves before submitting.

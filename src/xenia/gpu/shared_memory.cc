@@ -333,6 +333,10 @@ void SharedMemory::RangeWrittenByGpu(uint32_t start, uint32_t length,
   uint32_t page_first = start >> page_size_log2_;
   uint32_t page_last = end >> page_size_log2_;
 
+  if (!submission_used_pages_.empty()) {
+    MarkSubmissionPagesUsed(page_first, page_last);
+  }
+
   // Trigger modification callbacks so, for instance, resolved data is loaded to
   // the texture.
   FireWatches(page_first, page_last, true);
@@ -469,6 +473,9 @@ bool SharedMemory::RequestRange(uint32_t start, uint32_t length) {
     }
     if (all_valid) {
       // All pages already valid, nothing to upload
+      if (!submission_used_pages_.empty()) {
+        MarkSubmissionPagesUsed(page_first, page_last);
+      }
       return true;
     }
   }
@@ -490,11 +497,67 @@ bool SharedMemory::RequestRange(uint32_t start, uint32_t length) {
     uploads[current_upload_range++] =
         (std::make_pair(range_start, page_last + 1 - range_start));
   }
+  if (!submission_used_pages_.empty()) {
+    upload_pages_used_in_submission_ = false;
+    for (unsigned int i = 0; i < current_upload_range; ++i) {
+      if (AnySubmissionPageUsed(uploads[i].first,
+                                uploads[i].first + uploads[i].second - 1)) {
+        upload_pages_used_in_submission_ = true;
+        break;
+      }
+    }
+    MarkSubmissionPagesUsed(page_first, page_last);
+  }
   if (!current_upload_range) {
     return true;
   }
 
   return UploadRanges(uploads, current_upload_range);
+}
+
+void SharedMemory::TrackSubmissionUsedPages() {
+  submission_used_pages_.assign(((kBufferSize >> page_size_log2_) + 63) / 64,
+                                0);
+}
+
+void SharedMemory::ClearSubmissionUsedPages() {
+  std::fill(submission_used_pages_.begin(), submission_used_pages_.end(),
+            uint64_t(0));
+}
+
+bool SharedMemory::AnySubmissionPageUsed(uint32_t page_first,
+                                         uint32_t page_last) const {
+  uint32_t block_first = page_first >> 6;
+  uint32_t block_last = page_last >> 6;
+  for (uint32_t i = block_first; i <= block_last; ++i) {
+    uint64_t mask = UINT64_MAX;
+    if (i == block_first) {
+      mask &= ~((uint64_t(1) << (page_first & 63)) - 1);
+    }
+    if (i == block_last && (page_last & 63) != 63) {
+      mask &= (uint64_t(1) << ((page_last & 63) + 1)) - 1;
+    }
+    if (submission_used_pages_[i] & mask) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void SharedMemory::MarkSubmissionPagesUsed(uint32_t page_first,
+                                           uint32_t page_last) {
+  uint32_t block_first = page_first >> 6;
+  uint32_t block_last = page_last >> 6;
+  for (uint32_t i = block_first; i <= block_last; ++i) {
+    uint64_t mask = UINT64_MAX;
+    if (i == block_first) {
+      mask &= ~((uint64_t(1) << (page_first & 63)) - 1);
+    }
+    if (i == block_last && (page_last & 63) != 63) {
+      mask &= (uint64_t(1) << ((page_last & 63) + 1)) - 1;
+    }
+    submission_used_pages_[i] |= mask;
+  }
 }
 
 bool SharedMemory::IsRangeValid(uint32_t start, uint32_t length) const {
